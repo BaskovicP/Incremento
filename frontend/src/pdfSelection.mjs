@@ -47,6 +47,7 @@ function caretVisualPoint(document, caret) {
   if (!document || !caret) return null;
   try {
     let rect = caret.getBoundingClientRect?.();
+    let useRightEdge = false;
     if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) {
       const node = caret.startContainer;
       const length = node?.nodeType === 3 ? String(node.nodeValue || '').length : 0;
@@ -59,18 +60,42 @@ function caretVisualPoint(document, caret) {
       } else {
         probe.setStart(node, offset - 1);
         probe.setEnd(node, offset);
+        useRightEdge = true;
       }
       rect = probe.getBoundingClientRect?.();
     }
     if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) return null;
     return {
-      x: Number(rect.left),
+      x: Number(useRightEdge ? rect.right : rect.left),
       y: Number(rect.top) + (Number(rect.height) / 2),
       height: Number(rect.height),
     };
   } catch (_error) {
     return null;
   }
+}
+
+function mergedTextRows(rects) {
+  const rows = [];
+  for (const rect of rects.sort((a, b) => a.top - b.top || a.left - b.left)) {
+    const row = rows.find(candidate => {
+      const overlap = Math.min(candidate.bottom, rect.bottom) - Math.max(candidate.top, rect.top);
+      const minHeight = Math.min(candidate.height, rect.height);
+      const horizontalGap = Math.max(0, rect.left - candidate.right, candidate.left - rect.right);
+      return overlap >= minHeight * 0.45
+        && horizontalGap <= Math.max(candidate.height, rect.height) * 4;
+    });
+    if (!row) {
+      rows.push({ ...rect });
+      continue;
+    }
+    row.top = Math.min(row.top, rect.top);
+    row.bottom = Math.max(row.bottom, rect.bottom);
+    row.left = Math.min(row.left, rect.left);
+    row.right = Math.max(row.right, rect.right);
+    row.height = Math.max(row.height, rect.height);
+  }
+  return rows;
 }
 
 function collectTextRowRects(document, root) {
@@ -98,7 +123,79 @@ function collectTextRowRects(document, root) {
   } catch (_error) {
     return [];
   }
-  return rows;
+  return mergedTextRows(rows);
+}
+
+function nearestTextRow(rows, x, y) {
+  let nearest = null;
+  let nearestDistance = Infinity;
+  for (const row of rows) {
+    const verticalDistance = y < row.top ? row.top - y : (y > row.bottom ? y - row.bottom : 0);
+    const horizontalDistance = x < row.left ? row.left - x : (x > row.right ? x - row.right : 0);
+    const distance = verticalDistance * 10000 + horizontalDistance;
+    if (distance < nearestDistance) {
+      nearest = row;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+}
+
+function stickyTextRow(session, candidate, y) {
+  const active = session.activeRow;
+  if (!active || active === candidate) {
+    session.activeRow = candidate;
+    return candidate;
+  }
+  const goingDown = candidate.top > active.top;
+  const gap = goingDown
+    ? Math.max(0, candidate.top - active.bottom)
+    : Math.max(0, active.top - candidate.bottom);
+  const hysteresis = Math.min(gap * 0.2, Math.max(active.height, candidate.height) * 0.25);
+  const midpoint = goingDown
+    ? (active.bottom + candidate.top) / 2 + hysteresis
+    : (candidate.bottom + active.top) / 2 - hysteresis;
+  if ((goingDown && y < midpoint) || (!goingDown && y > midpoint)) return active;
+  session.activeRow = candidate;
+  return candidate;
+}
+
+function isWordCharacter(character) {
+  return !!character && !/[\s.,;:!?()[\]{}"“”‘’/\\|…—–-]/u.test(character);
+}
+
+function magneticWordCaret(document, caret, clientX) {
+  const node = caret?.startContainer;
+  if (!node || node.nodeType !== 3) return caret;
+  const text = String(node.nodeValue || '');
+  const offset = Math.max(0, Math.min(Number(caret.startOffset) || 0, text.length));
+  const candidates = [];
+  for (let boundary = Math.max(0, offset - 1); boundary <= Math.min(text.length, offset + 1); boundary += 1) {
+    if (isWordCharacter(text[boundary - 1]) === isWordCharacter(text[boundary])) continue;
+    const range = document.createRange();
+    range.setStart(node, boundary);
+    range.collapse(true);
+    const point = caretVisualPoint(document, range);
+    if (!point) continue;
+    const threshold = Math.max(2, Math.min(6, point.height * 0.22));
+    const distance = Math.abs(point.x - Number(clientX));
+    if (distance <= threshold) candidates.push({ range, distance });
+  }
+  candidates.sort((a, b) => a.distance - b.distance);
+  return candidates[0]?.range || caret;
+}
+
+function dragPreview(textLayer, caret, clientX, clientY) {
+  const node = caret?.startContainer;
+  const text = node?.nodeType === 3 ? String(node.nodeValue || '') : '';
+  const offset = Math.max(0, Math.min(Number(caret?.startOffset) || 0, text.length));
+  const layerRect = textLayer.getBoundingClientRect?.() || { left: 0, top: 0 };
+  return {
+    x: Number(clientX) - Number(layerRect.left || 0),
+    y: Number(clientY) - Number(layerRect.top || 0),
+    before: text.slice(Math.max(0, offset - 14), offset),
+    after: text.slice(offset, Math.min(text.length, offset + 14)),
+  };
 }
 
 function caretAtStablePoint(document, root, session, clientX, clientY) {
@@ -110,26 +207,20 @@ function caretAtStablePoint(document, root, session, clientX, clientY) {
     && Math.abs(nativePoint.y - y) <= Math.max(6, nativePoint.height * 1.5);
   if (!session.textRows.length) return nativeCaret;
 
-  let nearest = null;
-  let nearestDistance = Infinity;
-  for (const row of session.textRows) {
-    const verticalDistance = y < row.top ? row.top - y : (y > row.bottom ? y - row.bottom : 0);
-    const horizontalDistance = x < row.left ? row.left - x : (x > row.right ? x - row.right : 0);
-    const distance = verticalDistance * 10000 + horizontalDistance;
-    if (distance < nearestDistance) {
-      nearest = row;
-      nearestDistance = distance;
-    }
-  }
+  const nearest = nearestTextRow(session.textRows, x, y);
   if (!nearest) return nativeCaret;
-  const pointerInsideNearest = x >= nearest.left && x <= nearest.right
-    && y >= nearest.top && y <= nearest.bottom;
-  if (nativeIsNearby && pointerInsideNearest) return nativeCaret;
-  const inset = Math.min(1, Math.max(0, nearest.height / 4));
-  const probeX = Math.max(nearest.left + inset, Math.min(x, nearest.right - inset));
-  const probeY = Math.max(nearest.top + inset, Math.min(y, nearest.bottom - inset));
+  const targetRow = stickyTextRow(session, nearest, y);
+  const pointerInsideTarget = x >= targetRow.left && x <= targetRow.right
+    && y >= targetRow.top && y <= targetRow.bottom;
+  if (nativeIsNearby && pointerInsideTarget && targetRow === nearest) {
+    return magneticWordCaret(document, nativeCaret, x);
+  }
+  const inset = Math.min(1, Math.max(0, targetRow.height / 4));
+  const probeX = Math.max(targetRow.left + inset, Math.min(x, targetRow.right - inset));
+  const probeY = Math.max(targetRow.top + inset, Math.min(y, targetRow.bottom - inset));
   const snapped = caretRangeAtPoint(document, probeX, probeY);
-  return snapped?.startContainer && root.contains(snapped.startContainer) ? snapped : nativeCaret;
+  const resolved = snapped?.startContainer && root.contains(snapped.startContainer) ? snapped : nativeCaret;
+  return magneticWordCaret(document, resolved, probeX);
 }
 
 function caretMovementMatchesPointer(document, session, caret, clientY) {
@@ -163,6 +254,7 @@ function caretMovementMatchesPointer(document, session, caret, clientY) {
 export function installPrecisePdfSelectionDrag(textLayer, {
   document = globalThis.document,
   window = globalThis.window,
+  onDragPreview = () => {},
 } = {}) {
   if (!textLayer || !document || !window) return () => {};
   let session = null;
@@ -194,7 +286,9 @@ export function installPrecisePdfSelectionDrag(textLayer, {
     if (!caretMovementMatchesPointer(document, session, caret, event.clientY)) return false;
     const next = preciseRangeFromAnchor(document, session.anchor, caret);
     if (!next || !textLayer.contains(next.commonAncestorContainer)) return false;
-    return replaceSelection(window, next);
+    const replaced = replaceSelection(window, next);
+    if (replaced) onDragPreview(dragPreview(textLayer, caret, event.clientX, event.clientY));
+    return replaced;
   };
 
   const finish = (event) => {
@@ -202,12 +296,14 @@ export function installPrecisePdfSelectionDrag(textLayer, {
     update(event);
     releasePointer();
     session = null;
+    onDragPreview(null);
   };
 
   const cancel = () => {
     if (!session) return;
     releasePointer();
     session = null;
+    onDragPreview(null);
   };
 
   const start = (event) => {
@@ -215,10 +311,11 @@ export function installPrecisePdfSelectionDrag(textLayer, {
         || (usePointerEvents && event.isPrimary === false)
         || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     const textRows = collectTextRowRects(document, textLayer);
+    const initialSession = { textRows };
     const caret = caretAtStablePoint(
       document,
       textLayer,
-      { textRows },
+      initialSession,
       event.clientX,
       event.clientY,
     );
@@ -234,7 +331,9 @@ export function installPrecisePdfSelectionDrag(textLayer, {
       lastPointerY: Number(event.clientY),
       lastCaretPoint: caretVisualPoint(document, caret),
       textRows,
+      activeRow: initialSession.activeRow,
     };
+    onDragPreview(dragPreview(textLayer, caret, event.clientX, event.clientY));
     if (pointerId !== null && typeof textLayer.setPointerCapture === 'function') {
       try {
         textLayer.setPointerCapture(pointerId);
@@ -254,6 +353,7 @@ export function installPrecisePdfSelectionDrag(textLayer, {
   return () => {
     releasePointer();
     session = null;
+    onDragPreview(null);
     textLayer.removeEventListener(startEvent, start, true);
     document.removeEventListener(moveEvent, update, true);
     document.removeEventListener(endEvent, finish, true);

@@ -8976,6 +8976,7 @@
     if (!document2 || !caret) return null;
     try {
       let rect = (_a = caret.getBoundingClientRect) == null ? void 0 : _a.call(caret);
+      let useRightEdge = false;
       if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) {
         const node = caret.startContainer;
         const length = (node == null ? void 0 : node.nodeType) === 3 ? String(node.nodeValue || "").length : 0;
@@ -8988,18 +8989,40 @@
         } else {
           probe.setStart(node, offset - 1);
           probe.setEnd(node, offset);
+          useRightEdge = true;
         }
         rect = (_b = probe.getBoundingClientRect) == null ? void 0 : _b.call(probe);
       }
       if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) return null;
       return {
-        x: Number(rect.left),
+        x: Number(useRightEdge ? rect.right : rect.left),
         y: Number(rect.top) + Number(rect.height) / 2,
         height: Number(rect.height)
       };
     } catch (_error) {
       return null;
     }
+  }
+  function mergedTextRows(rects) {
+    const rows = [];
+    for (const rect of rects.sort((a, b) => a.top - b.top || a.left - b.left)) {
+      const row = rows.find((candidate) => {
+        const overlap = Math.min(candidate.bottom, rect.bottom) - Math.max(candidate.top, rect.top);
+        const minHeight = Math.min(candidate.height, rect.height);
+        const horizontalGap = Math.max(0, rect.left - candidate.right, candidate.left - rect.right);
+        return overlap >= minHeight * 0.45 && horizontalGap <= Math.max(candidate.height, rect.height) * 4;
+      });
+      if (!row) {
+        rows.push({ ...rect });
+        continue;
+      }
+      row.top = Math.min(row.top, rect.top);
+      row.bottom = Math.max(row.bottom, rect.bottom);
+      row.left = Math.min(row.left, rect.left);
+      row.right = Math.max(row.right, rect.right);
+      row.height = Math.max(row.height, rect.height);
+    }
+    return rows;
   }
   function collectTextRowRects(document2, root) {
     var _a, _b, _c, _d;
@@ -9027,18 +9050,12 @@
     } catch (_error) {
       return [];
     }
-    return rows;
+    return mergedTextRows(rows);
   }
-  function caretAtStablePoint(document2, root, session, clientX, clientY) {
-    const x = Number(clientX);
-    const y = Number(clientY);
-    const nativeCaret = caretRangeAtPoint(document2, x, y);
-    const nativePoint = caretVisualPoint(document2, nativeCaret);
-    const nativeIsNearby = nativePoint && Math.abs(nativePoint.y - y) <= Math.max(6, nativePoint.height * 1.5);
-    if (!session.textRows.length) return nativeCaret;
+  function nearestTextRow(rows, x, y) {
     let nearest = null;
     let nearestDistance = Infinity;
-    for (const row of session.textRows) {
+    for (const row of rows) {
       const verticalDistance = y < row.top ? row.top - y : y > row.bottom ? y - row.bottom : 0;
       const horizontalDistance = x < row.left ? row.left - x : x > row.right ? x - row.right : 0;
       const distance = verticalDistance * 1e4 + horizontalDistance;
@@ -9047,14 +9064,79 @@
         nearestDistance = distance;
       }
     }
+    return nearest;
+  }
+  function stickyTextRow(session, candidate, y) {
+    const active = session.activeRow;
+    if (!active || active === candidate) {
+      session.activeRow = candidate;
+      return candidate;
+    }
+    const goingDown = candidate.top > active.top;
+    const gap = goingDown ? Math.max(0, candidate.top - active.bottom) : Math.max(0, active.top - candidate.bottom);
+    const hysteresis = Math.min(gap * 0.2, Math.max(active.height, candidate.height) * 0.25);
+    const midpoint = goingDown ? (active.bottom + candidate.top) / 2 + hysteresis : (candidate.bottom + active.top) / 2 - hysteresis;
+    if (goingDown && y < midpoint || !goingDown && y > midpoint) return active;
+    session.activeRow = candidate;
+    return candidate;
+  }
+  function isWordCharacter(character) {
+    return !!character && !/[\s.,;:!?()[\]{}"“”‘’/\\|…—–-]/u.test(character);
+  }
+  function magneticWordCaret(document2, caret, clientX) {
+    var _a;
+    const node = caret == null ? void 0 : caret.startContainer;
+    if (!node || node.nodeType !== 3) return caret;
+    const text = String(node.nodeValue || "");
+    const offset = Math.max(0, Math.min(Number(caret.startOffset) || 0, text.length));
+    const candidates = [];
+    for (let boundary = Math.max(0, offset - 1); boundary <= Math.min(text.length, offset + 1); boundary += 1) {
+      if (isWordCharacter(text[boundary - 1]) === isWordCharacter(text[boundary])) continue;
+      const range = document2.createRange();
+      range.setStart(node, boundary);
+      range.collapse(true);
+      const point = caretVisualPoint(document2, range);
+      if (!point) continue;
+      const threshold = Math.max(2, Math.min(6, point.height * 0.22));
+      const distance = Math.abs(point.x - Number(clientX));
+      if (distance <= threshold) candidates.push({ range, distance });
+    }
+    candidates.sort((a, b) => a.distance - b.distance);
+    return ((_a = candidates[0]) == null ? void 0 : _a.range) || caret;
+  }
+  function dragPreview(textLayer, caret, clientX, clientY) {
+    var _a;
+    const node = caret == null ? void 0 : caret.startContainer;
+    const text = (node == null ? void 0 : node.nodeType) === 3 ? String(node.nodeValue || "") : "";
+    const offset = Math.max(0, Math.min(Number(caret == null ? void 0 : caret.startOffset) || 0, text.length));
+    const layerRect = ((_a = textLayer.getBoundingClientRect) == null ? void 0 : _a.call(textLayer)) || { left: 0, top: 0 };
+    return {
+      x: Number(clientX) - Number(layerRect.left || 0),
+      y: Number(clientY) - Number(layerRect.top || 0),
+      before: text.slice(Math.max(0, offset - 14), offset),
+      after: text.slice(offset, Math.min(text.length, offset + 14))
+    };
+  }
+  function caretAtStablePoint(document2, root, session, clientX, clientY) {
+    const x = Number(clientX);
+    const y = Number(clientY);
+    const nativeCaret = caretRangeAtPoint(document2, x, y);
+    const nativePoint = caretVisualPoint(document2, nativeCaret);
+    const nativeIsNearby = nativePoint && Math.abs(nativePoint.y - y) <= Math.max(6, nativePoint.height * 1.5);
+    if (!session.textRows.length) return nativeCaret;
+    const nearest = nearestTextRow(session.textRows, x, y);
     if (!nearest) return nativeCaret;
-    const pointerInsideNearest = x >= nearest.left && x <= nearest.right && y >= nearest.top && y <= nearest.bottom;
-    if (nativeIsNearby && pointerInsideNearest) return nativeCaret;
-    const inset = Math.min(1, Math.max(0, nearest.height / 4));
-    const probeX = Math.max(nearest.left + inset, Math.min(x, nearest.right - inset));
-    const probeY = Math.max(nearest.top + inset, Math.min(y, nearest.bottom - inset));
+    const targetRow = stickyTextRow(session, nearest, y);
+    const pointerInsideTarget = x >= targetRow.left && x <= targetRow.right && y >= targetRow.top && y <= targetRow.bottom;
+    if (nativeIsNearby && pointerInsideTarget && targetRow === nearest) {
+      return magneticWordCaret(document2, nativeCaret, x);
+    }
+    const inset = Math.min(1, Math.max(0, targetRow.height / 4));
+    const probeX = Math.max(targetRow.left + inset, Math.min(x, targetRow.right - inset));
+    const probeY = Math.max(targetRow.top + inset, Math.min(y, targetRow.bottom - inset));
     const snapped = caretRangeAtPoint(document2, probeX, probeY);
-    return (snapped == null ? void 0 : snapped.startContainer) && root.contains(snapped.startContainer) ? snapped : nativeCaret;
+    const resolved = (snapped == null ? void 0 : snapped.startContainer) && root.contains(snapped.startContainer) ? snapped : nativeCaret;
+    return magneticWordCaret(document2, resolved, probeX);
   }
   function caretMovementMatchesPointer(document2, session, caret, clientY) {
     const nextPointerY = Number(clientY);
@@ -9078,7 +9160,9 @@
   }
   function installPrecisePdfSelectionDrag(textLayer, {
     document: document2 = globalThis.document,
-    window: window2 = globalThis.window
+    window: window2 = globalThis.window,
+    onDragPreview = () => {
+    }
   } = {}) {
     if (!textLayer || !document2 || !window2) return () => {
     };
@@ -9108,27 +9192,32 @@
       if (!caretMovementMatchesPointer(document2, session, caret, event.clientY)) return false;
       const next = preciseRangeFromAnchor(document2, session.anchor, caret);
       if (!next || !textLayer.contains(next.commonAncestorContainer)) return false;
-      return replaceSelection(window2, next);
+      const replaced = replaceSelection(window2, next);
+      if (replaced) onDragPreview(dragPreview(textLayer, caret, event.clientX, event.clientY));
+      return replaced;
     };
     const finish = (event) => {
       if (!session) return;
       update(event);
       releasePointer();
       session = null;
+      onDragPreview(null);
     };
     const cancel = () => {
       if (!session) return;
       releasePointer();
       session = null;
+      onDragPreview(null);
     };
     const start = (event) => {
       var _a, _b;
       if (event.button !== 0 || Number(event.detail || 1) > 1 || usePointerEvents && event.isPrimary === false || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       const textRows = collectTextRowRects(document2, textLayer);
+      const initialSession = { textRows };
       const caret = caretAtStablePoint(
         document2,
         textLayer,
-        { textRows },
+        initialSession,
         event.clientX,
         event.clientY
       );
@@ -9143,8 +9232,10 @@
         pointerId,
         lastPointerY: Number(event.clientY),
         lastCaretPoint: caretVisualPoint(document2, caret),
-        textRows
+        textRows,
+        activeRow: initialSession.activeRow
       };
+      onDragPreview(dragPreview(textLayer, caret, event.clientX, event.clientY));
       if (pointerId !== null && typeof textLayer.setPointerCapture === "function") {
         try {
           textLayer.setPointerCapture(pointerId);
@@ -9162,6 +9253,7 @@
     return () => {
       releasePointer();
       session = null;
+      onDragPreview(null);
       textLayer.removeEventListener(startEvent, start, true);
       document2.removeEventListener(moveEvent, update, true);
       document2.removeEventListener(endEvent, finish, true);
@@ -9242,12 +9334,15 @@
   const DEFAULT_LANGUAGE = createReaderLanguage("en");
   function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLayerRef, renderInfo }) {
     const [rects, setRects] = reactExports.useState([]);
+    const [dragPreview2, setDragPreview] = reactExports.useState(null);
     const resizeRef = reactExports.useRef(null);
     reactExports.useEffect(() => {
       const textLayer = textLayerRef.current;
       if (!textLayer) return;
       const stopObserving = observePdfTextSelection(textLayer, setRects);
-      const stopPreciseDrag = installPrecisePdfSelectionDrag(textLayer);
+      const stopPreciseDrag = installPrecisePdfSelectionDrag(textLayer, {
+        onDragPreview: setDragPreview
+      });
       return () => {
         stopPreciseDrag();
         stopObserving();
@@ -9303,13 +9398,13 @@
       (_b = (_a = event.currentTarget) == null ? void 0 : _a.releasePointerCapture) == null ? void 0 : _b.call(_a, event.pointerId);
       resizeRef.current = null;
     };
-    if (!rects.length) return null;
+    if (!rects.length && !dragPreview2) return null;
     const first = rects[0];
     const last = rects[rects.length - 1];
-    const handles = [
+    const handles = rects.length ? [
       { endpoint: "start", left: first.x - 12, top: first.y - 28, stemTop: 14, dotTop: 2 },
       { endpoint: "end", left: last.x + last.w - 12, top: last.y + last.h, stemTop: 0, dotTop: 14 }
-    ];
+    ] : [];
     return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: "#pdf-text-layer ::selection { background: transparent; }" }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -9341,6 +9436,49 @@
               },
               index
             )),
+            dragPreview2 ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                className: "incremento-pdf-selection-loupe",
+                "aria-hidden": "true",
+                style: {
+                  position: "absolute",
+                  left: dragPreview2.x,
+                  top: dragPreview2.y < 64 ? dragPreview2.y + 24 : dragPreview2.y - 18,
+                  transform: dragPreview2.y < 64 ? "translate(-50%, 0)" : "translate(-50%, -100%)",
+                  display: "flex",
+                  alignItems: "center",
+                  minWidth: 64,
+                  maxWidth: 300,
+                  minHeight: 34,
+                  padding: "4px 10px",
+                  border: "1px solid rgba(255,255,255,0.92)",
+                  borderRadius: 9,
+                  boxSizing: "border-box",
+                  overflow: "hidden",
+                  color: "#fff",
+                  background: "rgba(24,31,39,0.94)",
+                  boxShadow: "0 3px 12px rgba(0,0,0,0.42)",
+                  fontFamily: "Georgia, Times New Roman, serif",
+                  fontSize: 18,
+                  lineHeight: 1.25,
+                  whiteSpace: "pre",
+                  pointerEvents: "none",
+                  zIndex: 5
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: dragPreview2.before || " " }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "span",
+                    {
+                      className: "incremento-pdf-selection-loupe-caret",
+                      style: { width: 2, height: 24, flex: "0 0 2px", background: "rgb(34,211,238)" }
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: dragPreview2.after || " " })
+                ]
+              }
+            ) : null,
             handles.map((handle) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "button",
               {

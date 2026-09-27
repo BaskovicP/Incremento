@@ -1863,6 +1863,34 @@ def _build_page_script(
           .incremento-epub-selection-resize-handle[data-endpoint="end"]::before {{ top: 0; }}
           .incremento-epub-resize-handle[data-endpoint="end"]::after,
           .incremento-epub-selection-resize-handle[data-endpoint="end"]::after {{ top: 14px; }}
+          #incremento-epub-selection-loupe {{
+            position: absolute;
+            z-index: 2147483400;
+            display: flex;
+            align-items: center;
+            min-width: 64px;
+            max-width: 300px;
+            min-height: 34px;
+            padding: 4px 10px;
+            border: 1px solid rgba(255,255,255,0.92);
+            border-radius: 9px;
+            box-sizing: border-box;
+            overflow: hidden;
+            color: #fff;
+            background: rgba(24,31,39,0.94);
+            box-shadow: 0 3px 12px rgba(0,0,0,0.42);
+            font-family: Georgia, 'Times New Roman', serif;
+            font-size: 18px;
+            line-height: 1.25;
+            white-space: pre;
+            pointer-events: none;
+          }}
+          #incremento-epub-selection-loupe-caret {{
+            width: 2px;
+            height: 24px;
+            flex: 0 0 2px;
+            background: rgb(34,211,238);
+          }}
           #incremento-epub-read-marker {{
             position: absolute;
             z-index: 2147483000;
@@ -1937,6 +1965,7 @@ def _build_page_script(
               if (/^(SCRIPT|STYLE|NOSCRIPT)$/i.test(parent.tagName || '')) return NodeFilter.FILTER_REJECT;
               if (parent.closest && parent.closest('#incremento-epub-read-marker')) return NodeFilter.FILTER_REJECT;
               if (parent.closest && parent.closest('#incremento-epub-highlight-actions')) return NodeFilter.FILTER_REJECT;
+              if (parent.closest && parent.closest('#incremento-epub-selection-loupe')) return NodeFilter.FILTER_REJECT;
               if (parent.closest && parent.closest('.incremento-epub-resize-handle')) return NodeFilter.FILTER_REJECT;
               if (parent.closest && parent.closest('.incremento-epub-selection-resize-handle')) return NodeFilter.FILTER_REJECT;
               return NodeFilter.FILTER_ACCEPT;
@@ -2223,6 +2252,7 @@ def _build_page_script(
         if (!caret) return null;
         try {{
           let rect = caret.getBoundingClientRect ? caret.getBoundingClientRect() : null;
+          let useRightEdge = false;
           if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) {{
             const node = caret.startContainer;
             const length = node && node.nodeType === 3 ? String(node.nodeValue || '').length : 0;
@@ -2235,18 +2265,41 @@ def _build_page_script(
             }} else {{
               probe.setStart(node, offset - 1);
               probe.setEnd(node, offset);
+              useRightEdge = true;
             }}
             rect = probe.getBoundingClientRect ? probe.getBoundingClientRect() : null;
           }}
           if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) return null;
           return {{
-            x: Number(rect.left),
+            x: Number(useRightEdge ? rect.right : rect.left),
             y: Number(rect.top) + (Number(rect.height) / 2),
             height: Number(rect.height),
           }};
         }} catch (err) {{
           return null;
         }}
+      }}
+      function preciseMergedTextRows(rects) {{
+        const rows = [];
+        rects.sort(function(a, b) {{ return a.top - b.top || a.left - b.left; }}).forEach(function(rect) {{
+          const row = rows.find(function(candidate) {{
+            const overlap = Math.min(candidate.bottom, rect.bottom) - Math.max(candidate.top, rect.top);
+            const minHeight = Math.min(candidate.height, rect.height);
+            const horizontalGap = Math.max(0, rect.left - candidate.right, candidate.left - rect.right);
+            return overlap >= minHeight * 0.45
+              && horizontalGap <= Math.max(candidate.height, rect.height) * 4;
+          }});
+          if (!row) {{
+            rows.push(Object.assign({{}}, rect));
+            return;
+          }}
+          row.top = Math.min(row.top, rect.top);
+          row.bottom = Math.max(row.bottom, rect.bottom);
+          row.left = Math.min(row.left, rect.left);
+          row.right = Math.max(row.right, rect.right);
+          row.height = Math.max(row.height, rect.height);
+        }});
+        return rows;
       }}
       function preciseTextRowRects(nodes) {{
         const rows = [];
@@ -2269,7 +2322,62 @@ def _build_page_script(
         }} catch (err) {{
           return [];
         }}
-        return rows;
+        return preciseMergedTextRows(rows);
+      }}
+      function preciseNearestRow(rows, x, y) {{
+        let nearest = null;
+        let nearestDistance = Infinity;
+        for (const row of rows) {{
+          const verticalDistance = y < row.top ? row.top - y : (y > row.bottom ? y - row.bottom : 0);
+          const horizontalDistance = x < row.left ? row.left - x : (x > row.right ? x - row.right : 0);
+          const distance = verticalDistance * 10000 + horizontalDistance;
+          if (distance < nearestDistance) {{
+            nearest = row;
+            nearestDistance = distance;
+          }}
+        }}
+        return nearest;
+      }}
+      function preciseStickyRow(session, candidate, y) {{
+        const active = session.activeRow;
+        if (!active || active === candidate) {{
+          session.activeRow = candidate;
+          return candidate;
+        }}
+        const goingDown = candidate.top > active.top;
+        const gap = goingDown
+          ? Math.max(0, candidate.top - active.bottom)
+          : Math.max(0, active.top - candidate.bottom);
+        const hysteresis = Math.min(gap * 0.2, Math.max(active.height, candidate.height) * 0.25);
+        const midpoint = goingDown
+          ? (active.bottom + candidate.top) / 2 + hysteresis
+          : (candidate.bottom + active.top) / 2 - hysteresis;
+        if ((goingDown && y < midpoint) || (!goingDown && y > midpoint)) return active;
+        session.activeRow = candidate;
+        return candidate;
+      }}
+      function preciseIsWordCharacter(character) {{
+        return !!character && !/[\\s.,;:!?()[\\]{{}}"“”‘’/\\\\|…—–-]/u.test(character);
+      }}
+      function preciseMagneticWordCaret(caret, clientX) {{
+        const node = caret && caret.startContainer;
+        if (!node || node.nodeType !== 3) return caret;
+        const text = String(node.nodeValue || '');
+        const offset = Math.max(0, Math.min(Number(caret.startOffset) || 0, text.length));
+        const candidates = [];
+        for (let boundary = Math.max(0, offset - 1); boundary <= Math.min(text.length, offset + 1); boundary += 1) {{
+          if (preciseIsWordCharacter(text[boundary - 1]) === preciseIsWordCharacter(text[boundary])) continue;
+          const range = document.createRange();
+          range.setStart(node, boundary);
+          range.collapse(true);
+          const point = preciseCaretVisualPoint(range);
+          if (!point) continue;
+          const threshold = Math.max(2, Math.min(6, point.height * 0.22));
+          const distance = Math.abs(point.x - Number(clientX));
+          if (distance <= threshold) candidates.push({{ range, distance }});
+        }}
+        candidates.sort(function(a, b) {{ return a.distance - b.distance; }});
+        return candidates.length ? candidates[0].range : caret;
       }}
       function preciseCaretAtPoint(session, clientX, clientY) {{
         const x = Number(clientX);
@@ -2279,27 +2387,21 @@ def _build_page_script(
         const nativeIsNearby = nativePoint
           && Math.abs(nativePoint.y - y) <= Math.max(6, nativePoint.height * 1.5);
         if (!session.rows.length) return nativeCaret;
-        let nearest = null;
-        let nearestDistance = Infinity;
-        for (const row of session.rows) {{
-          const verticalDistance = y < row.top ? row.top - y : (y > row.bottom ? y - row.bottom : 0);
-          const horizontalDistance = x < row.left ? row.left - x : (x > row.right ? x - row.right : 0);
-          const distance = verticalDistance * 10000 + horizontalDistance;
-          if (distance < nearestDistance) {{
-            nearest = row;
-            nearestDistance = distance;
-          }}
-        }}
+        const nearest = preciseNearestRow(session.rows, x, y);
         if (!nearest) return nativeCaret;
-        const pointerInsideNearest = x >= nearest.left && x <= nearest.right
-          && y >= nearest.top && y <= nearest.bottom;
-        if (nativeIsNearby && pointerInsideNearest) return nativeCaret;
-        const inset = Math.min(1, Math.max(0, nearest.height / 4));
-        const probeX = Math.max(nearest.left + inset, Math.min(x, nearest.right - inset));
-        const probeY = Math.max(nearest.top + inset, Math.min(y, nearest.bottom - inset));
+        const targetRow = preciseStickyRow(session, nearest, y);
+        const pointerInsideTarget = x >= targetRow.left && x <= targetRow.right
+          && y >= targetRow.top && y <= targetRow.bottom;
+        if (nativeIsNearby && pointerInsideTarget && targetRow === nearest) {{
+          return preciseMagneticWordCaret(nativeCaret, x);
+        }}
+        const inset = Math.min(1, Math.max(0, targetRow.height / 4));
+        const probeX = Math.max(targetRow.left + inset, Math.min(x, targetRow.right - inset));
+        const probeY = Math.max(targetRow.top + inset, Math.min(y, targetRow.bottom - inset));
         const snapped = caretRangeAtPoint(probeX, probeY);
-        return snapped && snapped.startContainer && session.nodes.has(snapped.startContainer)
+        const resolved = snapped && snapped.startContainer && session.nodes.has(snapped.startContainer)
           ? snapped : nativeCaret;
+        return preciseMagneticWordCaret(resolved, probeX);
       }}
       function preciseCaretMovementMatchesPointer(session, caret, clientY) {{
         const nextPointerY = Number(clientY);
@@ -2340,6 +2442,39 @@ def _build_page_script(
       function blockNativeSelectionDuringPreciseDrag(event) {{
         if (window._incrementoEpubPreciseSelectionDrag) event.preventDefault();
       }}
+      function removePreciseSelectionLoupe() {{
+        const existing = document.getElementById('incremento-epub-selection-loupe');
+        if (existing && existing.remove) existing.remove();
+      }}
+      function renderPreciseSelectionLoupe(caret, event) {{
+        removePreciseSelectionLoupe();
+        const node = caret && caret.startContainer;
+        const parent = document.body || document.documentElement;
+        if (!node || node.nodeType !== 3 || !parent || !document.createElement) return;
+        const text = String(node.nodeValue || '');
+        const offset = Math.max(0, Math.min(Number(caret.startOffset) || 0, text.length));
+        const loupe = document.createElement('div');
+        loupe.id = 'incremento-epub-selection-loupe';
+        loupe.setAttribute('aria-hidden', 'true');
+        const before = document.createElement('span');
+        before.textContent = text.slice(Math.max(0, offset - 14), offset) || '\u00a0';
+        const marker = document.createElement('span');
+        marker.id = 'incremento-epub-selection-loupe-caret';
+        const after = document.createElement('span');
+        after.textContent = text.slice(offset, Math.min(text.length, offset + 14)) || '\u00a0';
+        loupe.appendChild(before);
+        loupe.appendChild(marker);
+        loupe.appendChild(after);
+        loupe.style.left = Math.round(Number(window.scrollX || 0) + Number(event.clientX)) + 'px';
+        if (Number(event.clientY) < 64) {{
+          loupe.style.top = Math.round(Number(window.scrollY || 0) + Number(event.clientY) + 24) + 'px';
+          loupe.style.transform = 'translate(-50%, 0)';
+        }} else {{
+          loupe.style.top = Math.round(Number(window.scrollY || 0) + Number(event.clientY) - 18) + 'px';
+          loupe.style.transform = 'translate(-50%, -100%)';
+        }}
+        parent.appendChild(loupe);
+      }}
       function beginPreciseSelectionDrag(event) {{
         if (window._incrementoEpubPreciseSelectionDrag) {{
           event.preventDefault();
@@ -2355,7 +2490,8 @@ def _build_page_script(
         const nodes = textNodes();
         const nodeSet = new Set(nodes);
         const rows = preciseTextRowRects(nodes);
-        const caret = preciseCaretAtPoint({{ nodes: nodeSet, rows }}, event.clientX, event.clientY);
+        const initialSession = {{ nodes: nodeSet, rows }};
+        const caret = preciseCaretAtPoint(initialSession, event.clientX, event.clientY);
         if (!caret || !caret.startContainer || !nodeSet.has(caret.startContainer)) return;
         event.preventDefault();
         const anchor = typeof caret.cloneRange === 'function' ? caret.cloneRange() : caret;
@@ -2371,7 +2507,9 @@ def _build_page_script(
           captureTarget: target || null,
           lastPointerY: Number(event.clientY),
           lastCaretPoint: preciseCaretVisualPoint(caret),
+          activeRow: initialSession.activeRow,
         }};
+        renderPreciseSelectionLoupe(caret, event);
         if (pointerId !== null && target && target.setPointerCapture) {{
           try {{ target.setPointerCapture(pointerId); }} catch (err) {{}}
         }}
@@ -2386,6 +2524,7 @@ def _build_page_script(
         const next = preciseSelectionRange(session.anchor, caret);
         if (!next || !replaceEpubSelection(next)) return false;
         session.moved = session.moved || !next.collapsed;
+        renderPreciseSelectionLoupe(caret, event);
         return true;
       }}
       function finishPreciseSelectionDrag(event) {{
@@ -2395,6 +2534,7 @@ def _build_page_script(
         const moved = session.moved;
         releasePreciseSelectionPointer(session);
         window._incrementoEpubPreciseSelectionDrag = null;
+        removePreciseSelectionLoupe();
         if (moved) {{
           window._incrementoEpubSuppressSelectionClick = true;
           setTimeout(function() {{ window._incrementoEpubSuppressSelectionClick = false; }}, 0);
@@ -2406,6 +2546,7 @@ def _build_page_script(
         if (!session) return;
         releasePreciseSelectionPointer(session);
         window._incrementoEpubPreciseSelectionDrag = null;
+        removePreciseSelectionLoupe();
         reportSelection();
       }}
       function removeSelectionResizeHandles() {{
@@ -2988,6 +3129,7 @@ def _build_page_script(
       ensureStyle();
       applyTextScale(STATE.textScale);
       applyClickableLinks(STATE.clickableLinks);
+      removePreciseSelectionLoupe();
       removeSelectionResizeHandles();
       removeHighlightResizeHandles();
       document.querySelectorAll('span.incremento-epub-highlight').forEach(unwrapHighlight);
