@@ -1241,7 +1241,7 @@ export default function PdfViewer() {
     session.dragging = false;
     event?.currentTarget?.releasePointerCapture?.(event.pointerId);
     if (session.preview && String(session.preview.id || '') === session.id) {
-      window.pycmd('incremento_pdf_hl_add:' + JSON.stringify({
+      window.pycmd('incremento_pdf_hl_update:' + JSON.stringify({
         cardId: cardIdRef.current,
         highlight: session.preview,
       }));
@@ -1249,8 +1249,8 @@ export default function PdfViewer() {
       highlightRangeCacheRef.current.set(session.id, session.range.cloneRange());
     }
     session.pointerId = null;
-    resizeHighlightRef.current = null;
-    setResizingHighlightId(null);
+    session.endpoint = null;
+    session.dragState = {};
   }, [cardIdRef, updateHighlightResizePreview]);
 
   const cancelHighlightResize = useCallback((event) => {

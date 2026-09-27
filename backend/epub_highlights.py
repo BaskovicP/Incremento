@@ -53,6 +53,28 @@ def add_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> None:
     conn.commit()
 
 
+def update_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> bool:
+    """Update an existing highlight without turning a stale resize into an add."""
+    color = normalize_highlight_color(str(hl.get("color") or "yellow"), allow_snapshot=False)
+    conn = get_connection(addon_dir, profile)
+    cursor = conn.execute(
+        "UPDATE epub_highlights SET section_index = ?, color = ?, text = ?, note = ?, "
+        "start_offset = ?, end_offset = ? WHERE id = ? AND card_id = ?",
+        (
+            int(hl.get("sectionIndex", 0) or 0),
+            color,
+            str(hl.get("text") or ""),
+            str(hl.get("note") or ""),
+            int(hl.get("startOffset", 0) or 0),
+            int(hl.get("endOffset", 0) or 0),
+            str(hl.get("id") or ""),
+            int(card_id),
+        ),
+    )
+    conn.commit()
+    return cursor.rowcount > 0
+
+
 def update_highlight_note(
     addon_dir: str,
     profile: str,

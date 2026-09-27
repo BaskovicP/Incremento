@@ -47,6 +47,28 @@ def add_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> None:
     conn.commit()
 
 
+def update_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> bool:
+    """Update an existing highlight without ever creating a replacement row."""
+    color = normalize_highlight_color(hl.get("color", "yellow"), allow_snapshot=True)
+    conn = get_connection(addon_dir, profile)
+    cursor = conn.execute(
+        "UPDATE pdf_highlights SET page = ?, color = ?, text = ?, note = ?, "
+        "rects = ?, annotation_json = ? WHERE id = ? AND card_id = ?",
+        (
+            hl.get("page", 1),
+            color,
+            hl.get("text", ""),
+            hl.get("note", ""),
+            json.dumps(hl.get("rects", [])),
+            json.dumps(hl.get("pdf_annotation", {})),
+            hl["id"],
+            card_id,
+        ),
+    )
+    conn.commit()
+    return cursor.rowcount > 0
+
+
 def update_highlight_note(
     addon_dir: str,
     profile: str,

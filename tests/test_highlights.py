@@ -11,6 +11,7 @@ _spec.loader.exec_module(_mod)
 
 load_highlights = _mod.load_highlights
 add_highlight = _mod.add_highlight
+update_highlight = _mod.update_highlight
 remove_highlight = _mod.remove_highlight
 
 
@@ -84,6 +85,36 @@ class TestAddHighlight:
         add_highlight(str(tmp_path), "TestProfile", 5, make_hl("hl-x", color="orange"))
         result = load_highlights(str(tmp_path), "TestProfile", 5)
         assert result[0]["color"] == "orange"
+
+
+class TestUpdateHighlight:
+    def test_updates_only_the_existing_highlight(self, tmp_path):
+        add_highlight(str(tmp_path), "TestProfile", 1, make_hl("hl-1", text="old"))
+
+        updated = update_highlight(
+            str(tmp_path),
+            "TestProfile",
+            1,
+            make_hl("hl-1", page=3, color="blue", text="resized", rects=[{"x": 2}]),
+        )
+
+        assert updated is True
+        assert load_highlights(str(tmp_path), "TestProfile", 1) == [
+            {
+                "id": "hl-1",
+                "page": 3,
+                "color": "blue",
+                "text": "resized",
+                "note": "",
+                "rects": [{"x": 2}],
+            }
+        ]
+
+    def test_missing_highlight_is_not_inserted(self, tmp_path):
+        assert update_highlight(
+            str(tmp_path), "TestProfile", 1, make_hl("missing", text="must not be added")
+        ) is False
+        assert load_highlights(str(tmp_path), "TestProfile", 1) == []
 
 
 class TestRemoveHighlight:

@@ -300,7 +300,7 @@ test('resize controls are offered only for editable text highlights', () => {
   assert.deepEqual(activated, ['text']);
 });
 
-test('finishing or cancelling a saved PDF highlight drag hides its pins', () => {
+test('finishing a saved PDF highlight drag updates it in place and keeps its pins until dismissal', () => {
   const source = readFileSync(new URL('../src/PdfViewer.jsx', import.meta.url), 'utf8');
   assert.match(source, /const caret = stablePdfEndpointCaret\(/);
   const endResize = source.slice(
@@ -311,7 +311,10 @@ test('finishing or cancelling a saved PDF highlight drag hides its pins', () => 
     source.indexOf('const cancelHighlightResize = useCallback'),
     source.indexOf('useEffect(() => {', source.indexOf('const cancelHighlightResize = useCallback')),
   );
-  assert.match(endResize, /setResizingHighlightId\(null\)/);
+  assert.match(endResize, /incremento_pdf_hl_update:/);
+  assert.doesNotMatch(endResize, /incremento_pdf_hl_add:/);
+  assert.doesNotMatch(endResize, /setResizingHighlightId\(null\)/);
+  assert.doesNotMatch(endResize, /resizeHighlightRef\.current = null/);
   assert.match(cancelResize, /setResizingHighlightId\(null\)/);
 });
 

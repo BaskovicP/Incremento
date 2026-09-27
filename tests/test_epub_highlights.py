@@ -11,6 +11,7 @@ _spec.loader.exec_module(_mod)
 
 load_highlights = _mod.load_highlights
 add_highlight = _mod.add_highlight
+update_highlight = _mod.update_highlight
 remove_highlight = _mod.remove_highlight
 
 
@@ -66,3 +67,23 @@ class TestEpubHighlights:
         add_highlight(str(tmp_path), "TestProfile", 3, make_hl("hl-a"))
         remove_highlight(str(tmp_path), "TestProfile", 3, "hl-a")
         assert load_highlights(str(tmp_path), "TestProfile", 3) == []
+
+    def test_resize_updates_existing_highlight_without_inserting(self, tmp_path):
+        add_highlight(str(tmp_path), "TestProfile", 3, make_hl("hl-a"))
+
+        assert update_highlight(
+            str(tmp_path),
+            "TestProfile",
+            3,
+            make_hl("hl-a", text="resized", start_offset=5, end_offset=30),
+        ) is True
+        assert update_highlight(
+            str(tmp_path), "TestProfile", 3, make_hl("missing", text="must not be added")
+        ) is False
+
+        result = load_highlights(str(tmp_path), "TestProfile", 3)
+        assert len(result) == 1
+        assert result[0]["id"] == "hl-a"
+        assert result[0]["text"] == "resized"
+        assert result[0]["startOffset"] == 5
+        assert result[0]["endOffset"] == 30

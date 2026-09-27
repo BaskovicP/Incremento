@@ -1166,6 +1166,28 @@ def test_highlight_bridge_saves_only_the_active_card_and_schedules_pdf_sync(monk
     assert synced == [True]
 
 
+def test_highlight_resize_bridge_updates_only_the_existing_active_highlight(monkeypatch):
+    updated, synced = [], []
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 42)
+    monkeypatch.setattr(
+        pdf_dock,
+        'update_highlight',
+        lambda *args: updated.append(args) or args[2] == 42,
+    )
+    monkeypatch.setattr(pdf_dock, '_schedule_pdf_annotation_sync', lambda: synced.append(True))
+
+    for card in [77, 42]:
+        pdf_dock._handle_pdf_js_message(
+            pdf_dock._MSG_HL_UPDATE
+            + json.dumps({'cardId': card, 'highlight': {'id': 'same-highlight'}})
+        )
+
+    assert len(updated) == 1
+    assert updated[0][2] == 42
+    assert updated[0][3]['id'] == 'same-highlight'
+    assert synced == [True]
+
+
 @pytest.mark.parametrize("reader_locale,custom_language", [
     ("zh-Hans", None),
     ("de", {"locale": "de", "messages": {"reader_previous_page": 'Vorherige Seite "<title>"'}}),

@@ -156,9 +156,21 @@ except ImportError:
         set_read_page,
     )
 try:
-    from ..backend.pdf_highlights import load_highlights, add_highlight, remove_highlight, update_highlight_note
+    from ..backend.pdf_highlights import (
+        add_highlight,
+        load_highlights,
+        remove_highlight,
+        update_highlight,
+        update_highlight_note,
+    )
 except ImportError:
-    from pdf_highlights import load_highlights, add_highlight, remove_highlight, update_highlight_note
+    from pdf_highlights import (  # type: ignore
+        add_highlight,
+        load_highlights,
+        remove_highlight,
+        update_highlight,
+        update_highlight_note,
+    )
 try:
     from .pdf_annotation_sync import PdfAnnotationSyncQueue, sync_error_text
     from ..backend.pdf_annotations import pdf_annotation_sync_state
@@ -1393,6 +1405,7 @@ _MSG_ZOOM = "incremento_pdf_zoom:"
 _MSG_SCROLL = "incremento_pdf_scroll:"
 _MSG_APPEARANCE = "incremento_pdf_appearance:"
 _MSG_HL_ADD = "incremento_pdf_hl_add:"
+_MSG_HL_UPDATE = "incremento_pdf_hl_update:"
 _MSG_HL_COLOR = "incremento_pdf_hl_color:"
 _MSG_ANNOTATIONS = "incremento_pdf_annotations"
 _MSG_HL_DEL = "incremento_pdf_hl_del:"
@@ -2467,6 +2480,20 @@ def _handle_pdf_js_message(msg: str) -> None:
             _schedule_pdf_annotation_sync()
         except Exception as e:
             print(f"[Incremento] pdf_dock: highlight add failed: {e}")
+    elif msg.startswith(_MSG_HL_UPDATE):
+        try:
+            data = json.loads(msg[len(_MSG_HL_UPDATE) :])
+            if int(data["cardId"]) != current_pdf_card_id():
+                return
+            if update_highlight(
+                _ADDON_DIR,
+                _active_profile(),
+                int(data["cardId"]),
+                data["highlight"],
+            ):
+                _schedule_pdf_annotation_sync()
+        except Exception as e:
+            print(f"[Incremento] pdf_dock: highlight update failed: {e}")
     elif msg.startswith(_MSG_HL_DEL):
         try:
             data = json.loads(msg[len(_MSG_HL_DEL) :])

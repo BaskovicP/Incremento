@@ -10783,7 +10783,7 @@
       session.dragging = false;
       (_b = (_a = event == null ? void 0 : event.currentTarget) == null ? void 0 : _a.releasePointerCapture) == null ? void 0 : _b.call(_a, event.pointerId);
       if (session.preview && String(session.preview.id || "") === session.id) {
-        window.pycmd("incremento_pdf_hl_add:" + JSON.stringify({
+        window.pycmd("incremento_pdf_hl_update:" + JSON.stringify({
           cardId: cardIdRef.current,
           highlight: session.preview
         }));
@@ -10791,8 +10791,8 @@
         highlightRangeCacheRef.current.set(session.id, session.range.cloneRange());
       }
       session.pointerId = null;
-      resizeHighlightRef.current = null;
-      setResizingHighlightId(null);
+      session.endpoint = null;
+      session.dragState = {};
     }, [cardIdRef, updateHighlightResizePreview]);
     const cancelHighlightResize = reactExports.useCallback((event) => {
       var _a, _b;

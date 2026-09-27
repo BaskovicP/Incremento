@@ -157,9 +157,21 @@ except ImportError:
         ensure_epub_note_type,
     )
 try:
-    from ..backend.epub_highlights import load_highlights, add_highlight, remove_highlight, update_highlight_note
+    from ..backend.epub_highlights import (
+        add_highlight,
+        load_highlights,
+        remove_highlight,
+        update_highlight,
+        update_highlight_note,
+    )
 except ImportError:
-    from epub_highlights import load_highlights, add_highlight, remove_highlight, update_highlight_note  # type: ignore
+    from epub_highlights import (  # type: ignore
+        add_highlight,
+        load_highlights,
+        remove_highlight,
+        update_highlight,
+        update_highlight_note,
+    )
 try:
     from ..backend.reader_bookmarks import (
         add_reader_bookmark,
@@ -231,6 +243,7 @@ _epub_key_filter = None
 _PYCMD_BRIDGE = "__incremento_epub__:"
 _MSG_FILL_FIELD = "incremento_epub_fill_field:"
 _MSG_HL_ADD = "incremento_epub_hl_add:"
+_MSG_HL_UPDATE = "incremento_epub_hl_update:"
 _MSG_HL_DEL = "incremento_epub_hl_del:"
 _MSG_HL_NOTE = "incremento_epub_hl_note:"
 _MSG_PROGRESS = "incremento_epub_progress:"
@@ -1534,6 +1547,21 @@ class _EpubDockPage(QWebEnginePage):
             except Exception as exc:
                 print(f"[Incremento] epub_dock highlight add failed: {exc}")
             return
+        if msg.startswith(_MSG_HL_UPDATE):
+            try:
+                data = json.loads(msg[len(_MSG_HL_UPDATE) :])
+                if not _epub_bridge_card_matches(data):
+                    return
+                if update_highlight(
+                    _ADDON_DIR,
+                    _active_profile(),
+                    int(data["cardId"]),
+                    data["highlight"],
+                ):
+                    _update_sources_panel()
+            except Exception as exc:
+                print(f"[Incremento] epub_dock highlight update failed: {exc}")
+            return
         if msg.startswith(_MSG_HL_DEL):
             try:
                 data = json.loads(msg[len(_MSG_HL_DEL) :])
@@ -2722,11 +2750,12 @@ def _build_page_script(
         if (event.currentTarget && event.currentTarget.releasePointerCapture) {{
           try {{ event.currentTarget.releasePointerCapture(event.pointerId); }} catch (err) {{}}
         }}
-        send('incremento_epub_hl_add:' + JSON.stringify({{
+        send('incremento_epub_hl_update:' + JSON.stringify({{
           cardId: STATE.cardId,
           highlight: session.highlight,
         }}));
-        removeHighlightResizeHandles();
+        session.original = Object.assign({{}}, session.highlight);
+        session.endpoint = '';
       }}
       function cancelHighlightResize(event) {{
         const session = window._incrementoEpubHighlightResize;

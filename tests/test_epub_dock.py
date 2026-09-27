@@ -553,7 +553,7 @@ def test_build_page_script_supports_dragging_both_highlight_endpoints(monkeypatc
     assert "setPointerCapture" in script
     assert "pointermove" in script
     assert "pointerup" in script
-    assert "incremento_epub_hl_add:" in script
+    assert "incremento_epub_hl_update:" in script
     assert "resizeHighlightRange" in script
     assert "highlight: session.highlight" in script
     assert "id: String(target.dataset.id || '')" in script
@@ -568,7 +568,9 @@ def test_build_page_script_supports_dragging_both_highlight_endpoints(monkeypatc
         script.index("      function cancelHighlightResize"):
         script.index("      function beginHighlightResize")
     ]
-    assert "removeHighlightResizeHandles();" in finish_resize
+    assert "incremento_epub_hl_update:" in finish_resize
+    assert "incremento_epub_hl_add:" not in finish_resize
+    assert "removeHighlightResizeHandles();" not in finish_resize
     assert "removeHighlightResizeHandles();" in cancel_resize
     update_resize = script[
         script.index("      function updateHighlightResize"):
@@ -1066,6 +1068,37 @@ def test_epub_link_bridge_requires_current_card(monkeypatch):
         )
 
     assert opened == ["https://example.test/docs"]
+
+
+def test_epub_resize_bridge_updates_only_the_existing_active_highlight(monkeypatch):
+    updated, refreshed = [], []
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 42)
+    monkeypatch.setattr(epub_dock, "_active_profile", lambda: "Profile A")
+    monkeypatch.setattr(
+        epub_dock,
+        "update_highlight",
+        lambda *args: updated.append(args) or True,
+    )
+    monkeypatch.setattr(epub_dock, "_update_sources_panel", lambda: refreshed.append(True))
+    page = types.SimpleNamespace(_bridge_nonce="private-token")
+
+    for card_id in (99, 42):
+        payload = json.dumps({"cardId": card_id, "highlight": {"id": "same-highlight"}})
+        epub_dock._EpubDockPage.javaScriptConsoleMessage(
+            page,
+            0,
+            epub_dock._PYCMD_BRIDGE
+            + "private-token:"
+            + epub_dock._MSG_HL_UPDATE
+            + payload,
+            0,
+            "book.xhtml",
+        )
+
+    assert len(updated) == 1
+    assert updated[0][2] == 42
+    assert updated[0][3]["id"] == "same-highlight"
+    assert refreshed == [True]
 
 
 def test_epub_javascript_runs_in_application_world():
