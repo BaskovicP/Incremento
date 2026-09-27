@@ -9202,7 +9202,7 @@
       var _a;
       const target = event == null ? void 0 : event.target;
       if ((_a = target == null ? void 0 : target.closest) == null ? void 0 : _a.call(target, ".incremento-pdf-selection-resize-handle")) return;
-      if (!target || !textLayer.contains(target)) onSelectionHandlesChange(false);
+      onSelectionHandlesChange(false);
     };
     const update = (event) => {
       var _a;
@@ -9213,7 +9213,9 @@
       if (!caretMovementMatchesPointer(document2, session, caret, event.clientY)) return false;
       const next = preciseRangeFromAnchor(document2, session.anchor, caret);
       if (!next || !textLayer.contains(next.commonAncestorContainer)) return false;
-      return replaceSelection(window2, next);
+      const replaced = replaceSelection(window2, next);
+      if (replaced && !next.collapsed) onSelectionHandlesChange(true);
+      return replaced;
     };
     const finish = (event) => {
       if (!session) return;
@@ -9253,7 +9255,7 @@
         textRows,
         activeRow: initialSession.activeRow
       };
-      onSelectionHandlesChange(true);
+      onSelectionHandlesChange(false);
       if (pointerId !== null && typeof textLayer.setPointerCapture === "function") {
         try {
           textLayer.setPointerCapture(pointerId);
@@ -10783,6 +10785,7 @@
       setResizingHighlightId(null);
     }, [page]);
     const makeHighlight = reactExports.useCallback((sel, forcedColor = null) => {
+      var _a;
       if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
       const tl = textLayerRef.current;
       const range = sel.getRangeAt(0);
@@ -10805,16 +10808,10 @@
         rects
       };
       setHighlights((prev) => [...prev, hl]);
-      resizeHighlightRef.current = {
-        id,
-        range: typeof range.cloneRange === "function" ? range.cloneRange() : range,
-        original: hl,
-        preview: hl,
-        dragging: false,
-        pointerId: null
-      };
-      setResizingHighlightId(id);
+      resizeHighlightRef.current = null;
+      setResizingHighlightId(null);
       window.pycmd("incremento_pdf_hl_add:" + JSON.stringify({ cardId: cardIdRef.current, highlight: hl }));
+      (_a = sel.removeAllRanges) == null ? void 0 : _a.call(sel);
       return true;
     }, [textLayerRef, lastScaleRef, pageRef, cardIdRef]);
     const pickHighlightColor = reactExports.useCallback((color, applyNow = false) => {

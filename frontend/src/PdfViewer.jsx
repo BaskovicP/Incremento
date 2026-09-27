@@ -1293,16 +1293,10 @@ export default function PdfViewer() {
       rects,
     };
     setHighlights(prev => [...prev, hl]);
-    resizeHighlightRef.current = {
-      id,
-      range: typeof range.cloneRange === 'function' ? range.cloneRange() : range,
-      original: hl,
-      preview: hl,
-      dragging: false,
-      pointerId: null,
-    };
-    setResizingHighlightId(id);
+    resizeHighlightRef.current = null;
+    setResizingHighlightId(null);
     window.pycmd('incremento_pdf_hl_add:' + JSON.stringify({ cardId: cardIdRef.current, highlight: hl }));
+    sel.removeAllRanges?.();
     return true;
   }, [textLayerRef, lastScaleRef, pageRef, cardIdRef]);
 

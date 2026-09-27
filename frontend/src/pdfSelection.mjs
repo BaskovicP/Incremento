@@ -269,7 +269,7 @@ export function installPrecisePdfSelectionDrag(textLayer, {
   const hideHandlesOutsideSelection = (event) => {
     const target = event?.target;
     if (target?.closest?.('.incremento-pdf-selection-resize-handle')) return;
-    if (!target || !textLayer.contains(target)) onSelectionHandlesChange(false);
+    onSelectionHandlesChange(false);
   };
 
   const update = (event) => {
@@ -280,7 +280,9 @@ export function installPrecisePdfSelectionDrag(textLayer, {
     if (!caretMovementMatchesPointer(document, session, caret, event.clientY)) return false;
     const next = preciseRangeFromAnchor(document, session.anchor, caret);
     if (!next || !textLayer.contains(next.commonAncestorContainer)) return false;
-    return replaceSelection(window, next);
+    const replaced = replaceSelection(window, next);
+    if (replaced && !next.collapsed) onSelectionHandlesChange(true);
+    return replaced;
   };
 
   const finish = (event) => {
@@ -324,7 +326,7 @@ export function installPrecisePdfSelectionDrag(textLayer, {
       textRows,
       activeRow: initialSession.activeRow,
     };
-    onSelectionHandlesChange(true);
+    onSelectionHandlesChange(false);
     if (pointerId !== null && typeof textLayer.setPointerCapture === 'function') {
       try {
         textLayer.setPointerCapture(pointerId);

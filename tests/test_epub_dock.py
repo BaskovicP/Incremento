@@ -619,6 +619,15 @@ def test_build_page_script_shows_draggable_handles_on_live_epub_selection(monkey
     assert click_handler.index("removeHighlightResizeHandles();") < click_handler.index(
         "const target = event.target && event.target.closest"
     )
+    add_highlight = script[
+        script.index("window.incrementoAddEpubHighlight = function") : script.index(
+            "window.incrementoSnapshotEpubSelection"
+        )
+    ]
+    assert "resizeHighlightRange(target);" not in add_highlight
+    assert "window._incrementoEpubSelectionHandlesRequested = false;" in add_highlight
+    assert "removeSelectionResizeHandles();" in add_highlight
+    assert "removeHighlightResizeHandles();" in add_highlight
 
 
 def test_epub_end_handle_stays_on_its_row_in_the_right_margin(monkeypatch):
@@ -1484,6 +1493,8 @@ def test_epub_hex_selection_survives_picker_and_paints_selected_text(monkeypatch
         const pointFromOffset = offset => ({ node: {nodeValue: 'Selected passage longer'}, offset });
         const updateHighlightNodeNote = () => {};
         const resizeHighlightRange = () => true;
+        const removeSelectionResizeHandles = () => {};
+        const removeHighlightResizeHandles = () => {};
         const send = command => rows.push(JSON.parse(command.slice('incremento_epub_hl_add:'.length)).highlight);
         const document = {
             createRange: () => ({setStart(){}, setEnd(){}, collapsed: false,

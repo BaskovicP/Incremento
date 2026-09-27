@@ -2455,7 +2455,7 @@ def _build_page_script(
           lastCaretPoint: preciseCaretVisualPoint(caret),
           activeRow: initialSession.activeRow,
         }};
-        window._incrementoEpubSelectionHandlesRequested = true;
+        window._incrementoEpubSelectionHandlesRequested = false;
         if (pointerId !== null && target && target.setPointerCapture) {{
           try {{ target.setPointerCapture(pointerId); }} catch (err) {{}}
         }}
@@ -2470,6 +2470,7 @@ def _build_page_script(
         const next = preciseSelectionRange(session.anchor, caret);
         if (!next || !replaceEpubSelection(next)) return false;
         session.moved = session.moved || !next.collapsed;
+        if (!next.collapsed) window._incrementoEpubSelectionHandlesRequested = true;
         return true;
       }}
       function finishPreciseSelectionDrag(event) {{
@@ -3038,10 +3039,12 @@ def _build_page_script(
           endOffset: meta.endOffset,
         }};
         clearSelection();
+        window._incrementoEpubSelectionHandlesRequested = false;
+        removeSelectionResizeHandles();
+        removeHighlightResizeHandles();
         const target = applyHighlight(hl);
         if (!target) return false;
         send('incremento_epub_hl_add:' + JSON.stringify({{ cardId: STATE.cardId, highlight: hl }}));
-        resizeHighlightRange(target);
         window._lastEpubSelectionMeta = meta;
         window._lastEpubSelection = meta.text;
         return true;

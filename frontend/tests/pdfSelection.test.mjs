@@ -364,11 +364,12 @@ test('initial trackpad drag follows the nearest character instead of accepting n
     window,
     onSelectionHandlesChange: visible => activeStates.push(visible),
   });
-  const down = event(2);
+  const down = event(2, { target: textNode });
+  documentListeners.get('pointerdown')(down);
   layerListeners.get('pointerdown')(down);
   assert.equal(down.defaultPrevented, true);
   assert.equal(capturedPointer, 12);
-  assert.equal(activeStates.at(-1), true);
+  assert.equal(activeStates.at(-1), false, 'a simple press must not display pins before a selection exists');
   assert.equal(selected[0].collapsed, true);
   assert.equal(selected[0].startOffset, 2);
 
@@ -379,6 +380,7 @@ test('initial trackpad drag follows the nearest character instead of accepting n
   const oneCharacter = event(3);
   documentListeners.get('pointermove')(oneCharacter);
   assert.equal(oneCharacter.defaultPrevented, true);
+  assert.equal(activeStates.at(-1), true, 'pins appear once the pointer creates a real selection');
   assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [2, 3]);
 
   documentListeners.get('pointermove')(event(5, { clientY: 60 }));

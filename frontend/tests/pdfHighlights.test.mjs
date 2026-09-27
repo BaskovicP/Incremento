@@ -362,6 +362,8 @@ test('creating a text highlight saves merged PDF coordinates and preserves text,
   const finish = source.indexOf('  const pickHighlightColor', start);
   assert.ok(start > 0 && finish > start);
   const saved = [];
+  const activated = [];
+  let selectionClears = 0;
   let displayed = [];
   const scope = {
     useCallback: callback => callback,
@@ -376,7 +378,7 @@ test('creating a text highlight saves merged PDF coordinates and preserves text,
     cardIdRef: { current: 42 },
     hlColorRef: { current: 'purple' },
     resizeHighlightRef: { current: null },
-    setResizingHighlightId: () => {},
+    setResizingHighlightId: value => activated.push(value),
     setHighlights: update => { displayed = update(displayed); },
     window: { pycmd: command => saved.push(command) },
   };
@@ -385,6 +387,7 @@ test('creating a text highlight saves merged PDF coordinates and preserves text,
     isCollapsed: false,
     rangeCount: 1,
     toString: () => 'A passage with italic text.',
+    removeAllRanges: () => { selectionClears += 1; },
     getRangeAt: () => ({
       commonAncestorContainer: {},
       getClientRects: () => [
@@ -405,6 +408,9 @@ test('creating a text highlight saves merged PDF coordinates and preserves text,
   assert.equal(payload.highlight.text, selection.toString());
   assert.deepEqual(payload.highlight.rects, [{ x: 10, y: 20, w: 70, h: 20 }]);
   assert.deepEqual(JSON.parse(JSON.stringify(displayed)), [payload.highlight]);
+  assert.equal(scope.resizeHighlightRef.current, null, 'saving must not leave resize pins active');
+  assert.deepEqual(activated, [null], 'saving explicitly leaves saved-highlight pins hidden');
+  assert.equal(selectionClears, 1, 'saving clears the live selection and its temporary pins');
 });
 
 for (const outcome of ['selected', 'cancelled', 'page-changed']) {
