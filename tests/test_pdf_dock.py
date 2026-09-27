@@ -1261,6 +1261,11 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     monkeypatch.setattr(pdf_dock, "_build_pdf_dock", lambda: (_ for _ in ()).throw(AssertionError("unexpected build")))
     monkeypatch.setattr(pdf_dock, "mw", fake_mw)
     monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(
+        pdf_dock,
+        "get_pdf_annotation_reader_path",
+        lambda *args: types.SimpleNamespace(is_file=lambda: False, is_symlink=lambda: False),
+    )
     monkeypatch.setattr(pdf_dock, "get_locale", lambda: reader_locale, raising=False)
     monkeypatch.setattr(pdf_dock, "get_custom_reader_payload", lambda: custom_language, raising=False)
     monkeypatch.setattr(pdf_dock, "_pdf_highlights_payload", lambda card_id: [])
@@ -1268,6 +1273,8 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     monkeypatch.setattr(pdf_dock, "_current_pdf_limit_status", lambda *args, **kwargs: {"enabled": False})
     monkeypatch.setattr(pdf_dock, "get_read_anchor", lambda *args, **kwargs: None)
     monkeypatch.setattr(pdf_dock, "get_scroll_ratio", lambda *args, **kwargs: 0.42)
+    monkeypatch.setattr(pdf_dock, "get_page", lambda *args, **kwargs: 3)
+    monkeypatch.setattr(pdf_dock, "get_zoom", lambda *args, **kwargs: 1.0)
     monkeypatch.setattr(pdf_dock, "get_pdf_appearance_mode", lambda *args, **kwargs: "night")
     monkeypatch.setattr(pdf_dock, "configured_highlight_when_extracting", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "configured_scroll_to_top_on_page_change", lambda *args, **kwargs: False)
@@ -1289,12 +1296,25 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
         "_pdf_storage_path",
         lambda filename: f"/tmp/{filename}" if filename == "new-file.pdf" else "",
     )
-    monkeypatch.setattr(pdf_dock.os.path, "exists", lambda path: path == "/tmp/new-file.pdf")
+    monkeypatch.setattr(
+        pdf_dock.os.path,
+        "exists",
+        lambda path: path in {"/tmp/new-file.pdf", "/tmp/cached-reader.pdf"},
+    )
     sync_requests = []
+    sync_callbacks = []
+    cancelled_except = []
     def prepare_annotations(*args, callback, **kwargs):
         sync_requests.append(args)
-        callback({'reader_path': '/tmp/new-file.pdf'}, None)
-    monkeypatch.setattr(pdf_dock, '_annotation_queue', types.SimpleNamespace(request=prepare_annotations))
+        sync_callbacks.append(callback)
+    monkeypatch.setattr(
+        pdf_dock,
+        '_annotation_queue',
+        types.SimpleNamespace(
+            request=prepare_annotations,
+            cancel_except=lambda key: cancelled_except.append(key),
+        ),
+    )
 
     pdf_dock.show_pdf_in_dock(
         77,
@@ -1307,6 +1327,7 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
 
     assert pdf_dock._current_pdf_filename == "new-file.pdf"
     assert len(sync_requests) == 1
+    assert cancelled_except == [(pdf_dock._ADDON_DIR, "TestProfile", 77, "new-file.pdf")]
     assert pdf_dock._pdf_showing_missing_screen is False
     assert events == []
     assert len(load_calls) == 1
@@ -1323,6 +1344,11 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     )
     assert 'appearanceMode: "night"' in js_calls[0]
     assert '"old-file.pdf"' not in js_calls[0]
+
+    sync_callbacks.pop()({'reader_path': '/tmp/cached-reader.pdf'}, None)
+    assert len(load_calls) == 1
+    assert len(js_calls) == 2
+    assert '/tmp/cached-reader.pdf' in js_calls[1]
 
 
 def test_current_card_pdf_search_hits_orders_pages_and_builds_snippets(monkeypatch):

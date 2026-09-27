@@ -25,6 +25,7 @@ from aqt.qt import (
     QDialog,
     QDialogButtonBox,
     QEvent,
+    QFileDialog,
     QInputDialog,
     QMenu,
     QObject,
@@ -70,6 +71,7 @@ from .backend.video_manager import (
     download_and_compress_video,
     import_local_video_file,
 )
+from .backend.audio_manager import add_audio_card
 from .backend.writing_manager import (
     WRITING_FILE_FIELD,
     WRITING_NOTE_TYPE,
@@ -4710,6 +4712,55 @@ qconnect(
 _register_shortcut_action("pdf_mark_read", _pdf_mark_read_shortcut)
 
 
+def addAudioFunction() -> None:
+    """Incremento -> Add Content -> Add Audio"""
+    source_path, _selected_filter = QFileDialog.getOpenFileName(
+        mw,
+        _t("root_audio_choose_title"),
+        "",
+        _t("root_audio_file_filter"),
+    )
+    if not source_path:
+        return
+
+    title = os.path.splitext(os.path.basename(source_path))[0] or _t(
+        "root_audio_untitled"
+    )
+    profile = _active_profile()
+    collection = mw.col
+
+    from aqt.operations import CollectionOp
+
+    def operation(col):
+        if col is not collection or _active_profile() != profile:
+            raise RuntimeError(_t("root_audio_profile_changed"))
+        return add_audio_card(
+            _ADDON_DIR,
+            profile,
+            col,
+            source_path=source_path,
+            title=title,
+            deck_name="Topics",
+            tags=["topic"],
+        )
+
+    def success(_card_id) -> None:
+        if _active_profile() == profile:
+            tooltip(_t("root_audio_added", title=title))
+
+    def failure(exc: Exception) -> None:
+        if _active_profile() == profile:
+            showInfo(_t("root_audio_add_failed", error=exc))
+
+    (
+        CollectionOp(mw, operation)
+        .success(success)
+        .failure(failure)
+        .with_progress(_t("root_audio_importing"))
+        .run_in_background()
+    )
+
+
 def addVideoFunction() -> None:
     """Incremento -> Add Content -> Add Video"""
     deck_names = [d.name for d in mw.col.decks.all_names_and_ids()]
@@ -6791,6 +6842,11 @@ def _build_incremento_menu() -> None:
     qconnect(_addWebpageAction.triggered, addWebpageFunction)
     _addContentMenu.addAction(_addWebpageAction)
     _register_shortcut_action("webpage_to_pdf", _addWebpageAction)
+
+    _addAudioAction = QAction(_t("root_menu_add_audio"), mw)
+    _addAudioAction.setProperty("incremento_translation_key", "root_menu_add_audio")
+    qconnect(_addAudioAction.triggered, addAudioFunction)
+    _addContentMenu.addAction(_addAudioAction)
 
     _addVideoAction = QAction(_t("root_menu_add_video"), mw)
     _addVideoAction.setProperty("incremento_translation_key", "root_menu_add_video")

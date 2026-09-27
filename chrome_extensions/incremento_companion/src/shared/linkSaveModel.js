@@ -1,3 +1,5 @@
+import { isSupportedVideoUrl } from "./url.js";
+
 export const LINK_SAVE_SETTINGS_KEY = "incremento_link_save_settings";
 
 export const MODIFIER_OPTIONS = [
@@ -110,9 +112,26 @@ export function buildLinkSaveFallbackTitle(rawUrl) {
 }
 
 export function buildLinkSaveTitle(rawLinkText, rawUrl) {
-  const linkText = collapseWhitespace(rawLinkText);
-  if (linkText) {
-    return linkText.slice(0, 240);
+  return buildLinkSaveTitleFromCandidates([rawLinkText], rawUrl);
+}
+
+function isLikelyMediaDurationLabel(value) {
+  const text = collapseWhitespace(value);
+  if (/^\d{1,3}:\d{2}(?::\d{2})?$/.test(text)) {
+    return true;
+  }
+  const words = text.toLowerCase().replace(/[,.]/g, " ").replace(/\s+/g, " ").trim();
+  return /^(?:\d+\s*(?:hours?|hrs?|minutes?|mins?|seconds?|secs?)\s*)+$/.test(words);
+}
+
+export function buildLinkSaveTitleFromCandidates(rawCandidates, rawUrl) {
+  const rejectDuration = isSupportedVideoUrl(rawUrl);
+  for (const candidate of Array.isArray(rawCandidates) ? rawCandidates : []) {
+    const title = collapseWhitespace(candidate);
+    if (!title || (rejectDuration && isLikelyMediaDurationLabel(title))) {
+      continue;
+    }
+    return title.slice(0, 240);
   }
   return buildLinkSaveFallbackTitle(rawUrl).slice(0, 240);
 }

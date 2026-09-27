@@ -5,6 +5,7 @@ import {
   buildContextMenuImportOptions,
   buildLinkSaveFallbackTitle,
   buildLinkSaveTitle,
+  buildLinkSaveTitleFromCandidates,
   DEFAULT_LINK_SAVE_SETTINGS,
   eventMatchesLinkSaveModifier,
   isSupportedLinkSaveUrl,
@@ -71,6 +72,17 @@ test("buildLinkSaveTitle prefers cleaned link text", () => {
   assert.equal(
     buildLinkSaveTitle("   Example   article  ", "https://example.com/path"),
     "Example article",
+  );
+});
+
+test("YouTube thumbnail title selection skips duration overlays", () => {
+  const url = "https://www.youtube.com/watch?v=abc123&t=633s";
+  assert.equal(
+    buildLinkSaveTitleFromCandidates(
+      ["10:33", "10 minutes, 33 seconds", "A useful lecture about memory"],
+      url,
+    ),
+    "A useful lecture about memory",
   );
 });
 

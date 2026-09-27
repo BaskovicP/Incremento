@@ -91,7 +91,11 @@ The derived `pdf_annotations/<card_id>/reader.pdf` omits native highlights
 and Incremento snapshot frames so the interactive viewer paints them once; other
 annotation appearances stay native. These paths belong to `backend/paths.py` and
 are included with the profile tree in full backups. Unlinked original PDFs are
-never scanned or inferred. Protected or changed-content documents fail closed.
+never scanned or inferred. The dock displays the latest derived copy, or the
+managed PDF as a safe fallback, before starting background interchange. Moving
+to another PDF cancels obsolete work, lock-queue time is separate from the
+bounded processing budget, and unchanged baselines reuse the validated derived
+copy. Protected or changed-content documents fail closed.
 
 `backend/db_schema.py` owns the migration ledger. `schema_migrations` and `PRAGMA user_version` advance in the same transaction as each schema change. Failed migrations roll back the schema, ledger row, and version together.
 
@@ -124,6 +128,8 @@ Creating PDF, EPUB, writing, managed local-file, or downloaded/local-video conte
 5. atomically register `content_items` and mark the journal committed.
 
 Before an Anki card exists, failure removes only paths explicitly created by that operation. Once a card exists, recovery preserves user content rather than guessing. On the next profile open, `backend/reconciliation.py` can rebind an interrupted import through an optional legacy `Incremento_Content_ID` or the exact existing provenance source link, remove rows whose Anki owner is definitely gone, and repair unambiguous knowledge-tree links. New installations do not add `Incremento_Content_ID` to Anki note types; the canonical identity lives in SQLite.
+
+Audio imports use the same content identity journal but deliberately store the selected file in Anki's `collection.media`, not under `user_files/`. A unique Anki media name and a canonical `[sound:...]` note-field reference make normal Anki media sync authoritative for desktop and mobile availability. Failure before note creation moves the newly added media file to Anki's trash. The minimal card-template player stores resume position in that client's WebView `localStorage`; this state is per device, is not Incremento SQLite data, and does not synchronize through AnkiWeb.
 
 ## Anki note-type updates
 

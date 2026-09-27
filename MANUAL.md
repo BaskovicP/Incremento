@@ -14,6 +14,7 @@ Incremento is an Anki add-on for incremental learning from mixed content. It com
 5. [Adding Content Cards](#5-adding-content-cards)
 6. [PDF and EPUB Cards](#6-pdf-and-epub-cards)
 7. [Video Cards](#7-video-cards)
+   - [Audio Cards](#7a-audio-cards)
 8. [Web, Writing, and Local File Cards](#8-web-writing-and-local-file-cards)
 9. [Search and Navigation Tools](#9-search-and-navigation-tools)
 10. [Statistics and Focus Timer](#10-statistics-and-focus-timer)
@@ -107,6 +108,7 @@ Incremento adds its own top-level **Incremento** menu to Anki's menu bar.
 | **Add Content → Add Markdown Document…** | Batch-import rendered Markdown learning documents with preview |
 | **Edit Current Markdown Document…** | Edit the open Markdown study copy with source and preview |
 | **Add Content → Webpage to PDF** | Render a webpage into a PDF card |
+| **Add Content → Add Audio** | Import a mobile-compatible audio topic card |
 | **Add Content → Add Video** | Add a YouTube, Vimeo, or local video card |
 | **Add Content → Add Markdown Writing…** | Create a writing card backed by a markdown file |
 | **Add Content → Web Page** | Create a browsable web page card |
@@ -216,7 +218,7 @@ For example, 100 cards with 60% Topics / 40% Items and 10% Documents within Topi
 
 At 100% Items, the document control is disabled and displays 0%; its saved preference is retained for when Topics are enabled again. PDFs and EPUBs explicitly classified as Items remain eligible as Items and do not consume the document-Topic target. Regular flashcards extracted from a document are not automatically document-reading cards.
 
-The estimate table separates Documents (Topics), Other Topics, and Items. Documents plus Other Topics form the Topic total. Percentages inside each table column describe tag shares, not Topic/Item percentages.
+The estimate table separates Documents (Topics), Other Topics, and Items. Documents plus Other Topics form the Topic total. Percentages inside each table column describe tag shares, not Topic/Item percentages. The first Total row shows the estimated count for each content column and the whole session.
 
 Document Topics are eligible regardless of New/Learning/Due state and respect Topic classification, Topic filters, and active tag constraints. Separate Advanced content-type priorities can still reserve document places independently before the normal mix; these explicit overrides can change the final allocation, including in an Items-only setup.
 
@@ -255,7 +257,7 @@ You can allocate part of each session to specific tags:
 
 1. Add one or more tags.
 2. Set each tag percentage.
-3. Lock any tag whose share should stay fixed.
+3. Lock any tag whose share should stay fixed, or use **Lock all tags** to lock every current tag row at once. When all rows are locked, the same button becomes **Unlock all tags**.
 4. Use **After exhausting tag groups, fill with rest of cards** if you want leftover slots topped up automatically.
 
 The always-present **Other** row excludes every active selected tag, including its subtags. For example, with `spiritual` selected, neither `spiritual` nor `spiritual::prayer` can enter through Other. Cards may still have unrelated tags; they do not need to be untagged. This applies to topics, items, documents, media, leftover-slot filling, and auto-refill. When no specific tags have been added, Other is necessarily 100% and its slider is disabled. Adding a tag restores the normal editable balance.
@@ -350,6 +352,12 @@ For local files, Incremento can either:
 - keep original quality
 - encode H.264 high quality
 - encode H.264 smaller size
+
+### Add Audio
+
+Use **Incremento → Add Content → Add Audio** to choose an MP3, M4A, AAC, or WAV file. Incremento copies it into Anki media, creates an **Incremento Audio** topic card in the `Topics` deck, and uses the filename as its title. The individual file must stay within AnkiWeb's 100 MB media-file limit; MP3 is the most portable and space-efficient choice.
+
+The player is part of the card template, so it works in desktop Anki, AnkiMobile, and AnkiDroid without an Incremento mobile add-on. It restores the last playback position stored by that Anki client. This position is local to each device and does not synchronize through AnkiWeb. Finishing the audio clears the saved position so the next playback starts from the beginning.
 
 ### Add Markdown Writing
 
@@ -598,10 +606,12 @@ or focus it with the keyboard, keeping it out of screenshots when idle.
 
 With PyMuPDF 1.26 or newer installed, opening a PDF or editing its annotations
 syncs highlights and notes into the managed PDF as standard, editable PDF
-annotations. Existing PDF highlights, underlines, squiggles, strikeouts, sticky
-notes, free-text boxes, rectangles, and circles also appear in Incremento's
-Highlights panel. Their comments can be edited there. Other annotation types
-remain in the PDF with their native appearance.
+annotations. The reader opens immediately from its latest display copy while
+this interchange continues in the background; switching to another PDF cancels
+obsolete work for the previous document. Existing PDF highlights, underlines,
+squiggles, strikeouts, sticky notes, free-text boxes, rectangles, and circles
+also appear in Incremento's Highlights panel. Their comments can be edited
+there. Other annotation types remain in the PDF with their native appearance.
 
 To share changes with a PDF outside Incremento, open **Highlights → PDF annotation
 sync… → Link original PDF…** and select the matching document once. Incremento
@@ -612,7 +622,10 @@ file in its folder without syncing. On other systems, **Show containing folder**
 opens the folder.
 After editing in another reader, save there and reopen the Incremento PDF or
 choose **Sync now**. Files are not watched continuously. **Unlink original PDF**
-stops writing the external file.
+stops writing the external file. If a PDF exceeds the bounded sync limits, the
+automatic attempt is not repeated again during the current profile session;
+**Sync now** or linking the original explicitly retries it. Reopening or
+switching the Anki profile also resets this temporary suppression.
 
 Concurrent comments on the same passage are combined; conflicting positions
 are retained as separate annotations. Incremento preserves newer annotations
@@ -706,6 +719,16 @@ Use **Add Card at this point** to create a new card tied to the current video mo
 ### Browser sync
 
 If you use the companion browser extension, watched YouTube/Vimeo time can be pushed back into Incremento video cards automatically.
+
+---
+
+## 7A. Audio Cards
+
+Audio cards use the **Incremento Audio** note type and play directly inside the card. Import them through **Incremento → Add Content → Add Audio**. The audio itself is ordinary Anki media and therefore follows normal Anki media sync to desktop, AnkiMobile, and AnkiDroid.
+
+The card remembers its listening position independently on each device. Opening the same card again on that device resumes near the saved second; reaching the end resets it. Clearing the app's web storage, reinstalling the app, or moving to another device starts from that device's own position.
+
+The first version intentionally has no separate desktop dock, timestamp extraction, bookmarks, or cross-device position sync.
 
 ---
 
@@ -1064,7 +1087,7 @@ Because topic interaction is a frequency preference rather than a recall test, c
 
 ### Card-format updates and AnkiWeb sync
 
-Incremento does not silently update existing Anki note-type fields or card templates at startup. It first inspects the existing Incremento PDF, EPUB, video, web, writing, and local-file note types without saving anything. If an update is needed, an **Incremento Card Format Update** dialog lists the affected note types and explicitly states that the collection has not yet been changed.
+Incremento does not silently update existing Anki note-type fields or card templates at startup. It first inspects the existing Incremento PDF, EPUB, audio, video, web, writing, and local-file note types without saving anything. If an update is needed, an **Incremento Card Format Update** dialog lists the affected note types and explicitly states that the collection has not yet been changed.
 
 The dialog offers:
 

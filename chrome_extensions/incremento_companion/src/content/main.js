@@ -1,11 +1,12 @@
 import {
-  buildLinkSaveTitle,
+  buildLinkSaveTitleFromCandidates,
   DEFAULT_LINK_SAVE_SETTINGS,
   eventMatchesLinkSaveModifier,
   isSupportedLinkSaveUrl,
   LINK_SAVE_SETTINGS_KEY,
   normalizeLinkSaveSettings,
 } from "../shared/linkSaveModel.js";
+import { supportedVideoIdentity } from "../shared/url.js";
 import {
   MAX_BROWSER_CAPTURE_HTML_CHARS,
   MAX_BROWSER_CAPTURE_IMAGE_BYTES,
@@ -26,7 +27,7 @@ import { formatNumber, initializeLanguage, subscribeLanguage, t, tn, watchLangua
 import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
 
 (() => {
-  const CONTENT_SCRIPT_VERSION = "browser-capture-v9";
+  const CONTENT_SCRIPT_VERSION = "browser-capture-v10";
   const BROWSER_CAPTURE_ROOT_ID = "incremento-browser-capture-root";
   const scriptState = (
     window.__incrementoContentScriptState
@@ -231,18 +232,75 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
     if (!isSupportedLinkSaveUrl(url)) {
       return null;
     }
-    const accessibleTitle = String(
-      anchor.getAttribute?.("aria-label")
-      || anchor.getAttribute?.("title")
-      || anchor.querySelector?.("[aria-label]")?.getAttribute?.("aria-label")
-      || anchor.querySelector?.("[title]")?.getAttribute?.("title")
-      || anchor.textContent
-      || ""
-    );
+    const videoTitleCandidates = collectMatchingVideoTitleCandidates(anchor, url);
+    const titleCandidates = [
+      ...videoTitleCandidates,
+      anchor.getAttribute?.("aria-label"),
+      anchor.getAttribute?.("title"),
+      anchor.querySelector?.("img[alt]")?.getAttribute?.("alt"),
+      anchor.querySelector?.("[aria-label]")?.getAttribute?.("aria-label"),
+      anchor.querySelector?.("[title]")?.getAttribute?.("title"),
+      anchor.textContent,
+    ];
     return {
       url,
-      title: buildLinkSaveTitle(accessibleTitle, url),
+      title: buildLinkSaveTitleFromCandidates(titleCandidates, url),
     };
+  }
+
+  function appendElementTitleCandidates(candidates, element) {
+    if (!element) {
+      return;
+    }
+    candidates.push(
+      element.getAttribute?.("title"),
+      element.getAttribute?.("data-title-no-tooltip"),
+      element.textContent,
+      element.getAttribute?.("aria-label"),
+    );
+  }
+
+  function collectMatchingVideoTitleCandidates(anchor, url) {
+    const identity = supportedVideoIdentity(url);
+    if (!identity) {
+      return [];
+    }
+    const candidates = [];
+    const card = anchor.closest?.([
+      "ytd-rich-item-renderer",
+      "ytd-video-renderer",
+      "ytd-grid-video-renderer",
+      "ytd-compact-video-renderer",
+      "ytd-playlist-video-renderer",
+      "ytd-playlist-panel-video-renderer",
+      "ytd-reel-item-renderer",
+      "yt-lockup-view-model",
+      "ytm-shorts-lockup-view-model",
+      "[data-video-id]",
+    ].join(", ")) || null;
+    const scopes = card ? [card, document] : [document];
+    for (const scope of scopes) {
+      const links = scope === document ? document.links || [] : scope.querySelectorAll?.("a[href]") || [];
+      const limit = Math.min(Number(links.length) || 0, scope === document ? 2_000 : 200);
+      for (let index = 0; index < limit; index += 1) {
+        const candidateLink = links[index];
+        if (candidateLink === anchor) {
+          continue;
+        }
+        const candidateUrl = String(
+          candidateLink?.href || candidateLink?.getAttribute?.("href") || ""
+        ).trim();
+        if (supportedVideoIdentity(candidateUrl) !== identity) {
+          continue;
+        }
+        appendElementTitleCandidates(candidates, candidateLink);
+        appendElementTitleCandidates(
+          candidates,
+          candidateLink.querySelector?.("#video-title, #video-title-link, [data-title-no-tooltip]"),
+        );
+      }
+    }
+    return candidates;
   }
 
   function ensureTrackingBadge() {

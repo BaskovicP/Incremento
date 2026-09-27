@@ -30,6 +30,20 @@ def test_versioned_onboarding_is_wired_to_first_run_and_manual_reopen():
     assert 'QAction(_t("root_menu_getting_started")' in entrypoint
 
 
+def test_audio_import_is_exposed_as_a_background_add_content_action():
+    entrypoint = (ROOT / "__init__.py").read_text(encoding="utf-8")
+    body = entrypoint.split("def addAudioFunction() -> None:", 1)[1].split(
+        "def addVideoFunction() -> None:", 1
+    )[0]
+
+    assert 'QAction(_t("root_menu_add_audio")' in entrypoint
+    assert "QFileDialog.getOpenFileName" in body
+    assert "CollectionOp(mw, operation)" in body
+    assert "add_audio_card(" in body
+    assert 'deck_name="Topics"' in body
+    assert 'tags=["topic"]' in body
+
+
 def test_non_modal_command_and_activity_dialogs_are_shown_exactly_once():
     entrypoint = (ROOT / "__init__.py").read_text(encoding="utf-8")
     palette_body = entrypoint.split("def _open_command_palette()", 1)[1].split(

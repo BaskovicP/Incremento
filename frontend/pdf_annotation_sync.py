@@ -34,15 +34,28 @@ class PdfAnnotationSyncQueue:
         self.submit = submit
         self.sync = sync
         self.jobs = {}
+        self.auto_suppressed = set()
 
     def reset(self):
-        for job in self.jobs.values():
+        self.cancel_except(None)
+        self.auto_suppressed.clear()
+
+    def cancel_except(self, keep_key):
+        """Cancel jobs that no longer belong to the PDF visible in the reader."""
+        for key, job in list(self.jobs.items()):
+            if key == keep_key:
+                continue
             job['cancel'].set()
             activity_log.cancel_activity(job['activity'])
-        self.jobs.clear()
+            self.jobs.pop(key, None)
 
-    def request(self, addon_dir, profile, card_id, filename, *, source_path=None, callback=None, callback_key=None):
+    def request(self, addon_dir, profile, card_id, filename, *, source_path=None,
+                callback=None, callback_key=None, automatic=False):
         key = (addon_dir, profile, int(card_id), filename)
+        if automatic and key in self.auto_suppressed:
+            return False
+        if not automatic:
+            self.auto_suppressed.discard(key)
         job = self.jobs.get(key)
         if job is not None:
             job['pending'] = True
@@ -50,11 +63,11 @@ class PdfAnnotationSyncQueue:
                 job['source'] = source_path
             if callback:
                 job['callbacks'][callback_key if callback_key is not None else callback] = callback
-            return
+            return True
         if len(self.jobs) >= 16:
             if callback:
                 callback(None, PdfAnnotationSyncError('limits'))
-            return
+            return False
         cancel = Event()
         job = {'cancel': cancel, 'source': source_path,
                'callbacks': {callback_key if callback_key is not None else callback: callback} if callback else {},
@@ -62,6 +75,7 @@ class PdfAnnotationSyncQueue:
                'activity': activity_log.start_activity(t('reader_pdf_sync_title'), cancel=cancel.set)}
         self.jobs[key] = job
         self._start(key, job)
+        return True
 
     def _start(self, key, job):
         source = job['source']
@@ -84,11 +98,14 @@ class PdfAnnotationSyncQueue:
                 error = PdfAnnotationSyncError('file_changed')
             self.jobs.pop(key, None)
             if error:
+                if getattr(error, 'reason', None) == 'limits':
+                    self.auto_suppressed.add(key)
                 activity_log.fail_activity(job['activity'], sync_error_text(error))
             elif job['cancel'].is_set():
                 error = PdfAnnotationSyncError('cancelled')
                 activity_log.cancel_activity(job['activity'])
             else:
+                self.auto_suppressed.discard(key)
                 activity_log.finish_activity(job['activity'], detail=t('reader_pdf_sync_complete'))
             for callback in job['callbacks'].values():
                 callback(result, error)

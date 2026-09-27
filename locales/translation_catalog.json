@@ -19775,6 +19775,66 @@
     },
     {
       "component": "addon",
+      "key": "root_audio_add_failed",
+      "form": "",
+      "source": "Failed to add audio card:\n{error}",
+      "tokens": [
+        "{error}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_audio_added",
+      "form": "",
+      "source": "Audio card “{title}” added to Topics.",
+      "tokens": [
+        "{title}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_audio_choose_title",
+      "form": "",
+      "source": "Choose an audio file",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_audio_file_filter",
+      "form": "",
+      "source": "Audio files (*.mp3 *.m4a *.aac *.wav)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_audio_importing",
+      "form": "",
+      "source": "Importing audio into Anki media…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_audio_profile_changed",
+      "form": "",
+      "source": "Audio import was cancelled because the active Anki profile changed.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_audio_untitled",
+      "form": "",
+      "source": "Untitled Audio",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "root_backup_activity_category",
       "form": "",
       "source": "Backup",
@@ -22195,6 +22255,14 @@
       "key": "root_menu_activity_center",
       "form": "",
       "source": "Activity Center…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_menu_add_audio",
+      "form": "",
+      "source": "Add Audio",
       "tokens": [],
       "markup": []
     },
@@ -24784,6 +24852,14 @@
     },
     {
       "component": "addon",
+      "key": "session_lock_all_tags",
+      "form": "",
+      "source": "Lock all tags",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "session_lock_pdf_tooltip",
       "form": "",
       "source": "Lock the document percentage within Topics. This conditional percentage does not rebalance the Topic/Item mix.",
@@ -26133,6 +26209,14 @@
       "key": "session_type",
       "form": "",
       "source": "Type",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "session_unlock_all_tags",
+      "form": "",
+      "source": "Unlock all tags",
       "tokens": [],
       "markup": []
     },

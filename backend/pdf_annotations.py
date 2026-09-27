@@ -38,6 +38,8 @@ MAX_PAGES = 5000
 MAX_ANNOTATIONS = 10000
 MAX_RECTS = 2000
 MAX_BASELINE_CHARS = 8388608
+MAX_SYNC_LOCK_WAIT_SECONDS = 300
+MAX_SYNC_PROCESSING_SECONDS = 120
 SUPPORTED_KINDS = {'Highlight', 'Underline', 'Squiggly', 'StrikeOut', 'Text', 'FreeText', 'Square', 'Circle'}
 MARKUP_KINDS = {'Highlight', 'Underline', 'Squiggly', 'StrikeOut'}
 # PyMuPDF's process-global runtime and multi-file writes are serialized. SQLite
@@ -553,9 +555,10 @@ def sync_pdf_annotations(addon_dir: str, profile: str, card_id: int, filename: s
         raise PdfAnnotationSyncError('dependency') from exc
     if tuple(int(part) for part in fitz.VersionBind.split('.')[:2]) < (1, 26):
         raise PdfAnnotationSyncError('dependency')
-    deadline = time.monotonic() + 60
+    wait_deadline = time.monotonic() + MAX_SYNC_LOCK_WAIT_SECONDS
     while not _sync_lock.acquire(timeout=.1):
-        _checkpoint(cancel, deadline)
+        _checkpoint(cancel, wait_deadline)
+    deadline = time.monotonic() + MAX_SYNC_PROCESSING_SECONDS
     documents = []
     staged = []
     try:
@@ -683,14 +686,18 @@ def _sync_locked(addon_dir, profile, card_id, filename, source_path, cancel, dea
     _check_profile_path(addon_dir, profile, reader)
     # Retain native appearances for other annotation kinds. Highlights and
     # Incremento snapshot frames are rendered by the reader's interactive layer.
-    managed_doc = documents[0]
-    snapshot_names = {row['pdf_annotation']['name'] for row in merged.values() if row.get('color') == 'snapshot'}
-    for page in managed_doc:
-        xrefs = [a.xref for a in (page.annots() or []) if a.type[1] == 'Highlight' or a.info.get('id') in snapshot_names]
-        for xref in xrefs:
-            page.delete_annot(page.load_annot(xref))
-    reader_temp = _stage_pdf(managed_doc, reader)
-    staged.append(reader_temp)
+    reader_temp = None
+    reuse_reader = (not writes and baseline_json == state['baseline_json']
+                    and reader.is_file() and not reader.is_symlink())
+    if not reuse_reader:
+        managed_doc = documents[0]
+        snapshot_names = {row['pdf_annotation']['name'] for row in merged.values() if row.get('color') == 'snapshot'}
+        for page in managed_doc:
+            xrefs = [a.xref for a in (page.annots() or []) if a.type[1] == 'Highlight' or a.info.get('id') in snapshot_names]
+            for xref in xrefs:
+                page.delete_annot(page.load_annot(xref))
+        reader_temp = _stage_pdf(managed_doc, reader)
+        staged.append(reader_temp)
     _checkpoint(cancel, deadline)
     # Validate all original snapshots again before beginning the commit phase.
     for target, signature in zip(targets, signatures):
@@ -702,7 +709,8 @@ def _sync_locked(addon_dir, profile, card_id, filename, source_path, cancel, dea
     for temporary, target, signature in writes:
         _backup(addon_dir, profile, card_id, target, signature, source=target != managed)
         _atomic_replace_pdf(temporary, target, signature)
-    _atomic_replace_pdf(reader_temp, reader, _file_signature(reader) if reader.exists() else None)
+    if reader_temp is not None:
+        _atomic_replace_pdf(reader_temp, reader, _file_signature(reader) if reader.exists() else None)
     retry_needed = False
     with conn:
         # Acquire only the short SQLite commit lock, then compare against the

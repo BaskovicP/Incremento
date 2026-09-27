@@ -1791,6 +1791,9 @@ class SchedulerConfigDialog(QDialog):
         qconnect(add_btn.clicked, lambda: self._add_tag_row(self._tag_combo.currentText(), group_name="tags"))
         qconnect(add_btn.clicked, lambda: self._schedule_live_preview_refresh())
         add_tag_row.addWidget(add_btn)
+        self._lock_all_tags_btn = QPushButton(t("session_lock_all_tags"))
+        qconnect(self._lock_all_tags_btn.clicked, self._toggle_all_tag_locks)
+        add_tag_row.addWidget(self._lock_all_tags_btn)
         layout.addLayout(add_tag_row)
 
         self._no_tags_cb = QCheckBox(t("session_include_other_cards"))
@@ -2644,6 +2647,7 @@ class SchedulerConfigDialog(QDialog):
         self._update_other_label()
         self._refresh_expected_mix_preview()
         self._sync_priority_order_visibility()
+        self._sync_lock_all_tags_button()
         self._schedule_live_preview_refresh()
 
     def _make_row_base(
@@ -2763,6 +2767,7 @@ class SchedulerConfigDialog(QDialog):
         self._update_other_label()
         self._refresh_expected_mix_preview()
         self._sync_priority_order_visibility()
+        self._sync_lock_all_tags_button()
         self._schedule_live_preview_refresh()
 
     def _remove_row(self, row_dict: dict, allow_other: bool = False) -> None:
@@ -2786,6 +2791,7 @@ class SchedulerConfigDialog(QDialog):
         self._update_other_label()
         self._refresh_expected_mix_preview()
         self._sync_priority_order_visibility()
+        self._sync_lock_all_tags_button()
         self._schedule_live_preview_refresh()
 
     # ------------------------------------------------------------------
@@ -2864,6 +2870,38 @@ class SchedulerConfigDialog(QDialog):
             row["pct_label"].setText(t("session_percent", value=row["slider"].value()))
         self._sync_no_tags_checkbox_from_other_slider()
         self._update_other_label()
+        self._refresh_expected_mix_preview()
+        self._sync_lock_all_tags_button()
+        self._schedule_live_preview_refresh()
+
+    def _sync_lock_all_tags_button(self) -> None:
+        button = getattr(self, "_lock_all_tags_btn", None)
+        if button is None:
+            return
+        rows = list(getattr(self, "_linked_rows", []))
+        all_locked = bool(rows) and all(row["lock_cb"].isChecked() for row in rows)
+        button.setText(
+            t("session_unlock_all_tags") if all_locked else t("session_lock_all_tags")
+        )
+
+    def _toggle_all_tag_locks(self) -> None:
+        """Lock or unlock every current tag quota without changing weights."""
+        rows = list(self._linked_rows)
+        should_lock = not (
+            bool(rows) and all(row["lock_cb"].isChecked() for row in rows)
+        )
+        lone_other = not any(row.get("tag") != NO_TAGS_KEY for row in rows)
+        self._updating = True
+        try:
+            for row in rows:
+                row["lock_cb"].setChecked(should_lock)
+                row["slider"].setEnabled(
+                    not should_lock
+                    and not (lone_other and row.get("tag") == NO_TAGS_KEY)
+                )
+        finally:
+            self._updating = False
+        self._sync_lock_all_tags_button()
         self._refresh_expected_mix_preview()
         self._schedule_live_preview_refresh()
 
@@ -3262,18 +3300,35 @@ class SchedulerConfigDialog(QDialog):
             for tag in tag_labels:
                 matrix[tag][content_name] = int(per_content_counts.get(tag, 0))
 
-        table.setRowCount(len(tag_labels))
-        for r, tag in enumerate(tag_labels):
+        table.setRowCount(len(tag_labels) + 1)
+        column_totals = {content_name: 0 for content_name, _ in content_cols}
+        for r, tag in enumerate(tag_labels, start=1):
             tag_item = QTableWidgetItem(_preview_tag_label(tag))
             table.setItem(r, 0, tag_item)
             total = 0
             for c, (content_name, content_total) in enumerate(content_cols, start=1):
                 count = matrix[tag][content_name]
                 total += count
+                column_totals[content_name] += count
                 self._set_heatmap_cell(table, r, c, count, content_total)
             tot_item = QTableWidgetItem(str(total))
             tot_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             table.setItem(r, 4, tot_item)
+
+        total_row = 0
+        table.setItem(total_row, 0, QTableWidgetItem(t("session_total")))
+        grand_total = 0
+        for c, (content_name, _) in enumerate(content_cols, start=1):
+            count = column_totals[content_name]
+            grand_total += count
+            item = QTableWidgetItem(str(count))
+            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            table.setItem(total_row, c, item)
+        grand_total_item = QTableWidgetItem(str(grand_total))
+        grand_total_item.setTextAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        table.setItem(total_row, 4, grand_total_item)
 
         note = t("session_heatmap_note")
         if tags_normalized:

@@ -144,9 +144,47 @@ def test_heatmap_localizes_synthetic_other_without_renaming_real_other_tag(monke
     dialog._update_tag_content_heatmap(
         rows=[('Other', 0.5)], tag_shares_for_content={'Other': 0.5, _MOD.NO_TAGS_KEY: 0.5},
         tags_normalized=True, cc={'pdf': 2, 'topics': 0, 'items': 0})
-    assert items[(0, 0)] == 'Other' and items[(1, 0)] == 'Ostalo'
-    assert items[(0, 4)] == '1' and items[(1, 4)] == '1'
+    assert items[(0, 0)] == 'Ukupno'
+    assert items[(1, 0)] == 'Other' and items[(2, 0)] == 'Ostalo'
+    assert items[(1, 4)] == '1' and items[(2, 4)] == '1'
     assert 'Ćelije' in notes[0] and '100%' in notes[0]
+
+
+def test_heatmap_adds_localized_column_totals_row(monkeypatch):
+    from backend.i18n import Translator
+
+    monkeypatch.setattr(_MOD, 't', Translator('hr').t)
+    items, row_counts = {}, []
+    monkeypatch.setattr(_MOD, 'QTableWidgetItem', lambda text: SimpleNamespace(
+        text=text, setTextAlignment=lambda value: None))
+    monkeypatch.setattr(
+        _MOD,
+        'Qt',
+        SimpleNamespace(
+            AlignmentFlag=SimpleNamespace(AlignRight=1, AlignVCenter=2)
+        ),
+    )
+    dialog = object.__new__(SchedulerConfigDialog)
+    dialog._tag_content_table = SimpleNamespace(
+        setRowCount=row_counts.append,
+        setItem=lambda row, col, item: items.update({(row, col): item.text}),
+    )
+    dialog._tag_content_note_lbl = SimpleNamespace(setText=lambda _text: None)
+
+    def _capture_heatmap_cell(table, row, col, count, _content_total):
+        table.setItem(row, col, SimpleNamespace(text=str(count)))
+
+    dialog._set_heatmap_cell = _capture_heatmap_cell
+    dialog._update_tag_content_heatmap(
+        rows=[('law', 0.25), ('data', 0.75)],
+        tag_shares_for_content={'law': 0.25, 'data': 0.75},
+        tags_normalized=False,
+        cc={'pdf': 4, 'topics': 8, 'items': 12},
+    )
+
+    assert row_counts == [3]
+    assert items[(0, 0)] == 'Ukupno'
+    assert [items[(0, col)] for col in range(1, 5)] == ['4', '8', '12', '24']
 
 
 def test_session_debug_translates_enums_and_preserves_note_content(monkeypatch):
@@ -229,8 +267,12 @@ def test_session_dialog_help_and_confirmation_copy_use_shipped_locales():
 
     assert hr.t("session_delete_today_title") == "Izbriši današnje podatke"
     assert "strogo" in hr.t("session_funnel_help").lower()
+    assert hr.t("session_lock_all_tags") == "Zaključaj sve oznake"
+    assert hr.t("session_unlock_all_tags") == "Otključaj sve oznake"
     assert zh.t("session_export_statistics_title") == "导出统计数据"
     assert "PDF" in zh.t("session_content_pdf_help")
+    assert zh.t("session_lock_all_tags") == "锁定所有标签"
+    assert zh.t("session_unlock_all_tags") == "解锁所有标签"
 
 
 def test_statistics_export_uses_history_aware_snapshot(tmp_path, monkeypatch):
@@ -1001,6 +1043,58 @@ class TestSchedulerConfigDialogState:
 
         assert other_slider.value() == 35
         assert other_slider.enabled is True
+
+    def test_lock_all_tags_button_toggles_every_row_without_changing_weights(self):
+        dialog = SchedulerConfigDialog.__new__(SchedulerConfigDialog)
+        writing_slider = _FakeValueWidget(65)
+        other_slider = _FakeValueWidget(35)
+        dialog._linked_rows = [
+            {
+                "tag": "writing",
+                "slider": writing_slider,
+                "lock_cb": _FakeCheckBox(False),
+            },
+            {
+                "tag": _MOD.NO_TAGS_KEY,
+                "slider": other_slider,
+                "lock_cb": _FakeCheckBox(False),
+            },
+        ]
+        dialog._updating = False
+        refreshes = []
+        labels = []
+        dialog._lock_all_tags_btn = SimpleNamespace(setText=labels.append)
+        dialog._refresh_expected_mix_preview = lambda: refreshes.append("mix")
+        dialog._schedule_live_preview_refresh = lambda: refreshes.append("live")
+
+        dialog._toggle_all_tag_locks()
+
+        assert [row["lock_cb"].isChecked() for row in dialog._linked_rows] == [
+            True,
+            True,
+        ]
+        assert [writing_slider.value(), other_slider.value()] == [65, 35]
+        assert writing_slider.enabled is False and other_slider.enabled is False
+        assert refreshes == ["mix", "live"]
+        assert labels[-1] == "Unlock all tags"
+
+        dialog._toggle_all_tag_locks()
+
+        assert [row["lock_cb"].isChecked() for row in dialog._linked_rows] == [
+            False,
+            False,
+        ]
+        assert [writing_slider.value(), other_slider.value()] == [65, 35]
+        assert writing_slider.enabled is True and other_slider.enabled is True
+        assert refreshes == ["mix", "live", "mix", "live"]
+        assert labels[-1] == "Lock all tags"
+
+    def test_setup_ui_wires_localized_lock_all_tags_button(self):
+        setup_source = inspect.getsource(SchedulerConfigDialog._setup_ui)
+
+        assert 'QPushButton(t("session_lock_all_tags"))' in setup_source
+        assert "self._lock_all_tags_btn" in setup_source
+        assert "self._toggle_all_tag_locks" in setup_source
 
     def test_accept_persists_current_values_into_selected_preset(self, monkeypatch):
         stored_config = {

@@ -1,6 +1,6 @@
 # Incremento
 
-Incremento is a modern Anki add-on for incremental learning from mixed content. It brings a SuperMemo-style long-form learning workflow into Anki, combining PDFs, EPUBs, videos, web pages, writing notes, and local files with normal flashcards so you can study, extract, and review in one place.
+Incremento is a modern Anki add-on for incremental learning from mixed content. It brings a SuperMemo-style long-form learning workflow into Anki, combining PDFs, EPUBs, audio, videos, web pages, writing notes, and local files with normal flashcards so you can study, extract, and review in one place.
 
 Incremento supports Anki 24.11 and newer. Optional features that depend on Anki's private reviewer API check compatibility at runtime and fail closed without rescheduling cards when the API is unavailable.
 
@@ -8,6 +8,7 @@ Incremento supports Anki 24.11 and newer. Optional features that depend on Anki'
 
 - Builds filtered study sessions with configurable card states, topic/item and document mixes, tags, priorities, ordering, and optional auto-refill
 - Opens PDF, EPUB, video, web, writing, and local-file material in persistent reviewer docks that remember progress
+- Imports MP3, M4A, AAC, and WAV as synced Anki audio cards with per-device playback resume on desktop and mobile
 - Provides a searchable PDF-and-EPUB Document Bookshelf on `Option+Shift+P` / `Alt+Shift+P`, with format/tag filters, possible-duplicate cleanup, and visual one-click opening
 - Reviews cards attached to the current PDF, EPUB, or video with Topic/Item, direct/nested, media-range, due-state, ordering, and count controls, then restores the source position
 - Creates cards from selections and highlights while preserving source metadata and links

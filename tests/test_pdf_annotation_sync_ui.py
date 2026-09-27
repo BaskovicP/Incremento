@@ -66,6 +66,27 @@ def test_profile_teardown_cancels_old_worker_and_discards_its_callbacks():
     assert results == []
 
 
+def test_switching_documents_cancels_stale_worker_and_discards_its_callbacks():
+    runner = Runner()
+    calls, results = [], []
+
+    def sync(*args, cancel, **kw):
+        calls.append((args[2], cancel()))
+        return {'retry_needed': False}
+
+    queue = ui.PdfAnnotationSyncQueue(runner.submit, sync)
+    queue.request('/addon', 'Profile', 42, 'first.pdf', callback=lambda *args: results.append('stale'))
+    keep = ('/addon', 'Profile', 77, 'second.pdf')
+
+    queue.cancel_except(keep)
+    queue.request(*keep, callback=lambda *args: results.append('current'))
+
+    runner.complete()
+    runner.complete()
+    assert calls == [(42, True), (77, False)]
+    assert results == ['current']
+
+
 def test_unchanged_request_retries_a_newer_sqlite_edit_before_delivering_success():
     runner = Runner()
     count, results = [], []
@@ -87,3 +108,24 @@ def test_sync_failure_is_delivered_without_an_infinite_retry_loop():
     runner.complete()
     assert isinstance(results[0][1], OSError)
     assert not runner.tasks
+
+
+def test_automatic_sync_stops_retrying_an_unchanged_over_limit_pdf_until_explicit_retry():
+    runner = Runner()
+    results = []
+
+    def fail_limits(*args, **kw):
+        raise ui.PdfAnnotationSyncError('limits')
+
+    queue = ui.PdfAnnotationSyncQueue(runner.submit, fail_limits)
+    request = ('/addon', 'Profile', 42, 'large.pdf')
+    queue.request(*request, automatic=True, callback=lambda *args: results.append(args))
+    runner.complete()
+
+    assert len(results) == 1
+    assert queue.request(*request, automatic=True, callback=lambda *args: results.append(args)) is False
+    assert runner.tasks == []
+    assert len(results) == 1
+
+    assert queue.request(*request, callback=lambda *args: results.append(args)) is True
+    assert len(runner.tasks) == 1

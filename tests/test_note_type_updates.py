@@ -201,6 +201,7 @@ def test_shipped_specs_do_not_require_internal_content_id_field():
     specs = ntu.incremento_note_type_specs()
 
     assert {spec.name for spec in specs} == {
+        "Incremento Audio",
         "Incremento PDF",
         "Incremento EPUB",
         "Incremento Video",

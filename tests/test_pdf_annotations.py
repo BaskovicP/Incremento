@@ -106,6 +106,56 @@ def test_incremento_highlight_and_unicode_note_become_one_editable_pdf_annotatio
     assert filename.read_bytes() == before, 'unchanged sync must not rewrite or duplicate annotations'
 
 
+def test_processing_deadline_starts_after_waiting_for_the_global_sync_lock(tmp_path, monkeypatch):
+    pdf_file(tmp_path)
+    now = [100.0]
+
+    class DelayedLock:
+        def __init__(self):
+            self.attempts = 0
+            self.released = False
+
+        def acquire(self, timeout):
+            self.attempts += 1
+            if self.attempts == 1:
+                now[0] += 75
+                return False
+            return True
+
+        def release(self):
+            self.released = True
+
+    lock = DelayedLock()
+    remaining = []
+    monkeypatch.setattr(annotations, '_sync_lock', lock)
+    monkeypatch.setattr(annotations.time, 'monotonic', lambda: now[0])
+    monkeypatch.setattr(
+        annotations,
+        '_sync_locked',
+        lambda *args: remaining.append(args[6] - now[0]) or {'reader_path': 'unused'},
+    )
+
+    result = sync(tmp_path)
+
+    assert result == {'reader_path': 'unused'}
+    assert remaining[0] >= 60
+    assert lock.released
+
+
+def test_unchanged_sync_reuses_cached_reader_without_resaving_the_pdf(tmp_path, monkeypatch):
+    pdf_file(tmp_path)
+    first = sync(tmp_path)
+
+    def unexpected_save(*_args, **_kwargs):
+        raise AssertionError('unchanged sync must reuse the validated reader copy')
+
+    monkeypatch.setattr(annotations, '_stage_pdf', unexpected_save)
+    second = sync(tmp_path)
+
+    assert second['reader_path'] == first['reader_path']
+    assert not second['changed']
+
+
 def test_custom_hex_color_is_kept_in_database_and_exported_pdf(tmp_path):
     filename = pdf_file(tmp_path)
     highlight = local_highlight('A searchable custom-color note')

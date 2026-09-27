@@ -99,7 +99,7 @@ Incremento creates a webpage card and displays a small success or error message 
 
 ### Right-click action
 
-Enable **Enable right-click link action**, choose the **Right-click destination deck**, save the settings, then right-click a link and choose **Add link to Incremento**. Every card created by this action receives the `topic` tag and goes to the selected deck. Supported YouTube and Vimeo video links create Incremento Video cards automatically; other HTTP(S) links create Incremento Web cards. YouTube watch, short, live, embed, and `youtu.be` links are recognized, and a timestamp in the clicked URL is preserved.
+Enable **Enable right-click link action**, choose the **Right-click destination deck**, save the settings, then right-click a link and choose **Add link to Incremento**. Every card created by this action receives the `topic` tag and goes to the selected deck. Supported YouTube and Vimeo video links create Incremento Video cards automatically; other HTTP(S) links create Incremento Web cards. YouTube watch, short, live, embed, and `youtu.be` links are recognized, and a timestamp in the clicked URL is preserved. When you right-click a YouTube thumbnail or its duration overlay, Companion uses the surrounding video's title instead of the duration label.
 
 Links saved from a tab linked to an Incremento card retain that card as their source/parent context.
 

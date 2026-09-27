@@ -180,9 +180,10 @@ def ensure_note_type(
 def incremento_note_type_specs() -> tuple[NoteTypeSpec, ...]:
     """Return all Incremento-owned note-type specifications lazily."""
     try:
-        from . import epub_manager, local_file_manager, pdf_manager
+        from . import audio_manager, epub_manager, local_file_manager, pdf_manager
         from . import video_manager, web_manager, writing_manager
     except ImportError:
+        import audio_manager  # type: ignore
         import epub_manager  # type: ignore
         import local_file_manager  # type: ignore
         import pdf_manager  # type: ignore
@@ -191,6 +192,7 @@ def incremento_note_type_specs() -> tuple[NoteTypeSpec, ...]:
         import writing_manager  # type: ignore
 
     return (
+        audio_manager.audio_note_type_spec(),
         pdf_manager.pdf_note_type_spec(),
         epub_manager.epub_note_type_spec(),
         video_manager.video_note_type_spec(),

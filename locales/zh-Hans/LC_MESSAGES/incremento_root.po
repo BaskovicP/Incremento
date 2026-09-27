@@ -26,6 +26,10 @@ msgstr "活动中心…"
 msgid "root_menu_add_content"
 msgstr "添加内容"
 
+#. Menu or action: Add Audio
+msgid "root_menu_add_audio"
+msgstr "添加音频"
+
 #. Menu or action: Add EPUB
 msgid "root_menu_add_epub"
 msgstr "添加 EPUB"
@@ -679,6 +683,34 @@ msgstr "视频卡片“{title}”已添加到 {deck}（本地副本已就绪）�
 #. Root reviewer/import feedback: Video card '{title}' added to {deck}.
 msgid "root_video_added"
 msgstr "视频卡片“{title}”已添加到 {deck}。"
+
+#. Root audio import: Choose an audio file
+msgid "root_audio_choose_title"
+msgstr "选择音频文件"
+
+#. Root audio import: Audio files (*.mp3 *.m4a *.aac *.wav)
+msgid "root_audio_file_filter"
+msgstr "音频文件 (*.mp3 *.m4a *.aac *.wav)"
+
+#. Root audio import: Untitled Audio
+msgid "root_audio_untitled"
+msgstr "未命名音频"
+
+#. Root audio import: Importing audio into Anki media…
+msgid "root_audio_importing"
+msgstr "正在将音频导入 Anki 媒体…"
+
+#. Root audio import: Audio import was cancelled because the active Anki profile changed.
+msgid "root_audio_profile_changed"
+msgstr "由于活动的 Anki 配置文件已更改，音频导入已取消。"
+
+#. Root audio import: Audio card “{title}” added to Topics.
+msgid "root_audio_added"
+msgstr "音频卡片“{title}”已添加到 Topics。"
+
+#. Root audio import: Failed to add audio card:
+msgid "root_audio_add_failed"
+msgstr "添加音频卡片失败：\n{error}"
 
 #. Root reviewer/import feedback: Failed to add video card:
 msgid "root_video_add_failed"

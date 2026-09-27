@@ -26,6 +26,10 @@ msgstr "Centar aktivnosti…"
 msgid "root_menu_add_content"
 msgstr "Dodaj sadržaj"
 
+#. Menu or action: Add Audio
+msgid "root_menu_add_audio"
+msgstr "Dodaj audiozapis"
+
 #. Menu or action: Add EPUB
 msgid "root_menu_add_epub"
 msgstr "Dodaj EPUB"
@@ -707,6 +711,34 @@ msgstr "Kartica videozapisa '{title}' dodana u špil {deck} (lokalna kopija je s
 #. Root reviewer/import feedback: Video card '{title}' added to {deck}.
 msgid "root_video_added"
 msgstr "Kartica videozapisa '{title}' dodana u špil {deck}."
+
+#. Root audio import: Choose an audio file
+msgid "root_audio_choose_title"
+msgstr "Odaberite audiodatoteku"
+
+#. Root audio import: Audio files (*.mp3 *.m4a *.aac *.wav)
+msgid "root_audio_file_filter"
+msgstr "Audiodatoteke (*.mp3 *.m4a *.aac *.wav)"
+
+#. Root audio import: Untitled Audio
+msgid "root_audio_untitled"
+msgstr "Audiozapis bez naslova"
+
+#. Root audio import: Importing audio into Anki media…
+msgid "root_audio_importing"
+msgstr "Uvoz audiozapisa u Anki medije…"
+
+#. Root audio import: Audio import was cancelled because the active Anki profile changed.
+msgid "root_audio_profile_changed"
+msgstr "Uvoz audiozapisa otkazan je jer se aktivni Anki profil promijenio."
+
+#. Root audio import: Audio card “{title}” added to Topics.
+msgid "root_audio_added"
+msgstr "Audio kartica „{title}” dodana je u špil Topics."
+
+#. Root audio import: Failed to add audio card:
+msgid "root_audio_add_failed"
+msgstr "Dodavanje audio kartice nije uspjelo:\n{error}"
 
 #. Root reviewer/import feedback: Failed to add video card:
 msgid "root_video_add_failed"

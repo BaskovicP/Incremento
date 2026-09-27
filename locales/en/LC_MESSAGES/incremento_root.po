@@ -26,6 +26,10 @@ msgstr "Activity Center…"
 msgid "root_menu_add_content"
 msgstr "Add Content"
 
+#. Menu or action: Add Audio
+msgid "root_menu_add_audio"
+msgstr "Add Audio"
+
 #. Menu or action: Add EPUB
 msgid "root_menu_add_epub"
 msgstr "Add EPUB"
@@ -693,6 +697,34 @@ msgstr "Video card '{title}' added to {deck} (local copy ready)."
 #. Root reviewer/import feedback: Video card '{title}' added to {deck}.
 msgid "root_video_added"
 msgstr "Video card '{title}' added to {deck}."
+
+#. Root audio import: Choose an audio file
+msgid "root_audio_choose_title"
+msgstr "Choose an audio file"
+
+#. Root audio import: Audio files (*.mp3 *.m4a *.aac *.wav)
+msgid "root_audio_file_filter"
+msgstr "Audio files (*.mp3 *.m4a *.aac *.wav)"
+
+#. Root audio import: Untitled Audio
+msgid "root_audio_untitled"
+msgstr "Untitled Audio"
+
+#. Root audio import: Importing audio into Anki media…
+msgid "root_audio_importing"
+msgstr "Importing audio into Anki media…"
+
+#. Root audio import: Audio import was cancelled because the active Anki profile changed.
+msgid "root_audio_profile_changed"
+msgstr "Audio import was cancelled because the active Anki profile changed."
+
+#. Root audio import: Audio card “{title}” added to Topics.
+msgid "root_audio_added"
+msgstr "Audio card “{title}” added to Topics."
+
+#. Root audio import: Failed to add audio card:
+msgid "root_audio_add_failed"
+msgstr "Failed to add audio card:\n{error}"
 
 #. Root reviewer/import feedback: Failed to add video card:
 msgid "root_video_add_failed"

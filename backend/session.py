@@ -471,11 +471,7 @@ def _prepare_filtered_review_deck(
             if changes is not None:
                 _merge_op_changes(changes, empty_result)
 
-    if did is not None:
-        empty_result = collection.sched.empty_filtered_deck(did)
-        if changes is not None:
-            _merge_op_changes(changes, empty_result)
-    else:
+    if did is None:
         did = collection.decks.new_filtered(deck_name)
 
     fdu = collection.sched.get_or_create_filtered_deck(did)
@@ -486,10 +482,14 @@ def _prepare_filtered_review_deck(
         limit=len(normalized_ids),
         order=DYN_DUE if preserve_order else DYN_OLDEST,
     )
+    # Anki's add/update operation atomically empties and rebuilds the target
+    # filtered deck.  Calling empty_filtered_deck() first leaves the live
+    # session empty if the update fails, while calling rebuild_filtered_deck()
+    # afterwards performs the same rebuild twice.  The redundant second call
+    # can be rejected by newer Anki backends while the reviewer is active.
     op = collection.sched.add_or_update_filtered_deck(fdu)
-    rebuild_result = collection.sched.rebuild_filtered_deck(op.id)
     if changes is not None:
-        _merge_op_changes(changes, op, rebuild_result)
+        _merge_op_changes(changes, op)
 
     if preserve_order:
         position = 0

@@ -694,6 +694,60 @@ class TestExplicitReviewSelector:
 
 
 class TestPrepareFilteredReviewDeck:
+    def test_prepare_does_not_rebuild_after_atomic_add_or_update(self, monkeypatch):
+        class _Terms(list):
+            def add(self, **kwargs):
+                self.append(kwargs)
+
+        filtered_deck_id = 55
+        terms = _Terms()
+        fdu = types.SimpleNamespace(
+            config=types.SimpleNamespace(reschedule=False, search_terms=terms)
+        )
+        cards = {
+            101: types.SimpleNamespace(id=101, due=99, did=9, odid=0),
+            102: types.SimpleNamespace(id=102, due=99, did=9, odid=0),
+        }
+        rebuild_calls = []
+
+        def _add_or_update_filtered_deck(_fdu):
+            for card in cards.values():
+                card.odid = card.did
+                card.did = filtered_deck_id
+            return types.SimpleNamespace(id=filtered_deck_id)
+
+        def _redundant_rebuild(_did):
+            rebuild_calls.append(int(_did))
+            raise RuntimeError("Anki backend rejected redundant rebuild")
+
+        fake_col = types.SimpleNamespace(
+            decks=types.SimpleNamespace(
+                by_name=lambda _name: {"id": filtered_deck_id, "dyn": 1},
+                new_filtered=lambda _name: filtered_deck_id,
+                select=lambda _did: None,
+            ),
+            sched=types.SimpleNamespace(
+                empty_filtered_deck=lambda _did: (_ for _ in ()).throw(
+                    AssertionError("atomic update must replace the target deck")
+                ),
+                get_or_create_filtered_deck=lambda _did: fdu,
+                add_or_update_filtered_deck=_add_or_update_filtered_deck,
+                rebuild_filtered_deck=_redundant_rebuild,
+            ),
+            get_card=lambda cid: cards[cid],
+            update_cards=lambda _cards, skip_undo_entry=False: None,
+        )
+        monkeypatch.setattr(_SESSION_MOD, "mw", types.SimpleNamespace(col=fake_col))
+
+        deck_id = _SESSION_MOD._prepare_filtered_review_deck(
+            [101, 102],
+            deck_name="Incremento Session",
+            preserve_order=True,
+        )
+
+        assert deck_id == filtered_deck_id
+        assert rebuild_calls == []
+
     def test_prepare_can_reclaim_selected_cards_from_foreign_filtered_deck(
         self, monkeypatch
     ):
@@ -736,12 +790,14 @@ class TestPrepareFilteredReviewDeck:
                 card.did = int(card.odid)
                 card.odid = 0
 
-        def _rebuild_filtered_deck(deck_id):
+        def _add_or_update_filtered_deck(_fdu):
+            deck_id = target_deck_id
             rebuild_calls.append(int(deck_id))
             for card_id in (101, 103):
                 card = cards[card_id]
                 card.odid = int(card.did)
                 card.did = int(deck_id)
+            return types.SimpleNamespace(id=target_deck_id)
 
         fake_col = types.SimpleNamespace(
             decks=types.SimpleNamespace(
@@ -757,10 +813,10 @@ class TestPrepareFilteredReviewDeck:
             sched=types.SimpleNamespace(
                 empty_filtered_deck=_empty_filtered_deck,
                 get_or_create_filtered_deck=lambda _did: fdu,
-                add_or_update_filtered_deck=lambda _fdu: types.SimpleNamespace(
-                    id=target_deck_id
+                add_or_update_filtered_deck=_add_or_update_filtered_deck,
+                rebuild_filtered_deck=lambda _did: (_ for _ in ()).throw(
+                    AssertionError("must not rebuild twice")
                 ),
-                rebuild_filtered_deck=_rebuild_filtered_deck,
             ),
             get_card=lambda card_id: cards[int(card_id)],
             update_cards=lambda _cards, skip_undo_entry=False: None,
@@ -782,7 +838,7 @@ class TestPrepareFilteredReviewDeck:
         assert cards[102].did == home_deck_id
         assert cards[102].odid == 0
 
-    def test_preserve_order_assigns_due_after_rebuild(self, monkeypatch):
+    def test_preserve_order_assigns_due_after_atomic_update(self, monkeypatch):
         updated_cards = []
         rebuild_calls = []
 
@@ -805,7 +861,8 @@ class TestPrepareFilteredReviewDeck:
             103: types.SimpleNamespace(id=103, due=999, did=original_deck_id),
         }
 
-        def _rebuild_filtered_deck(did):
+        def _add_or_update_filtered_deck(_fdu):
+            did = filtered_deck_id
             rebuild_calls.append(
                 {
                     "did": did,
@@ -819,12 +876,15 @@ class TestPrepareFilteredReviewDeck:
             cards[102].due = -99998
             cards[103].did = filtered_deck_id
             cards[103].due = -99997
+            return types.SimpleNamespace(id=filtered_deck_id)
 
         fake_sched = types.SimpleNamespace(
             empty_filtered_deck=lambda did: None,
             get_or_create_filtered_deck=lambda did: fdu,
-            add_or_update_filtered_deck=lambda fdu_arg: types.SimpleNamespace(id=filtered_deck_id),
-            rebuild_filtered_deck=_rebuild_filtered_deck,
+            add_or_update_filtered_deck=_add_or_update_filtered_deck,
+            rebuild_filtered_deck=lambda _did: (_ for _ in ()).throw(
+                AssertionError("must not rebuild twice")
+            ),
         )
         fake_decks = types.SimpleNamespace(
             by_name=lambda name: None,

@@ -73,7 +73,7 @@ except ImportError:
     )
 
 try:
-    from ..backend.paths import get_active_profile as _active_profile
+    from ..backend.paths import get_active_profile as _active_profile, get_pdf_annotation_reader_path
     from ..backend.content_safety import external_plain_text_to_anki_html
     from ..backend.config_service import (
         configured_pdf_default_appearance as _configured_pdf_default_appearance,
@@ -87,7 +87,7 @@ try:
     )
     from ..backend.anki_compat import show_reviewer_question
 except ImportError:
-    from paths import get_active_profile as _active_profile
+    from paths import get_active_profile as _active_profile, get_pdf_annotation_reader_path
     from content_safety import external_plain_text_to_anki_html  # type: ignore
     from config_service import (  # type: ignore
         configured_pdf_default_appearance as _configured_pdf_default_appearance,
@@ -296,6 +296,14 @@ def _reload_current_pdf_annotations(result):
                      search_query=_current_pdf_search_query, search_hits=list(_current_pdf_search_hits),
                      active_search_hit_index=_current_pdf_search_hit_index,
                      offer_due_review_prompt=False, _annotation_result=result)
+
+
+def _initial_pdf_annotation_result(profile, card_id, managed_path):
+    """Choose a usable reader immediately while interchange runs in the background."""
+    reader = get_pdf_annotation_reader_path(_ADDON_DIR, profile, card_id)
+    if reader.is_file() and not reader.is_symlink():
+        return {'reader_path': str(reader)}
+    return {'reader_path': managed_path, 'native_highlights_visible': True}
 
 
 def _schedule_pdf_annotation_sync(*, source_path=None, callback=None, refresh=False):
@@ -3390,24 +3398,32 @@ def show_pdf_in_dock(
     secured_pdf_path = _pdf_storage_path(resolved_filename)
     if _annotation_result is None and normalized_card_id > 0 and os.path.exists(secured_pdf_path):
         profile, generation, dock = _active_profile(), _pdf_annotation_generation, _pdf_dock
-        dock.show()
-        dock.raise_()
-        try:
-            dock._view.setEnabled(False)
-            dock.setWindowTitle(t('reader_pdf_sync_running'))
-        except AttributeError:
-            pass
+        key = (_ADDON_DIR, profile, normalized_card_id, resolved_filename)
+        _annotation_queue.cancel_except(key)
+        initial_result = _initial_pdf_annotation_result(
+            profile, normalized_card_id, secured_pdf_path)
+        show_pdf_in_dock(
+            card_id, resolved_filename, page, zoom, via_link, read_page,
+            search_query, jump_excerpt, jump_highlight_id, search_hits,
+            active_search_hit_index, preserve_history, offer_due_review_prompt,
+            scroll_ratio_override, _annotation_result=initial_result,
+        )
         def prepared(result, error):
             if not _pdf_annotation_context_matches(profile, normalized_card_id, resolved_filename, dock, generation):
                 return
             if error:
                 tooltip(sync_error_text(error))
-                result = {'reader_path': secured_pdf_path, 'native_highlights_visible': True}
-            show_pdf_in_dock(card_id, resolved_filename, page, zoom, via_link, read_page, search_query,
-                             jump_excerpt, jump_highlight_id, search_hits, active_search_hit_index,
-                             preserve_history, offer_due_review_prompt, scroll_ratio_override,
-                             _annotation_result=result)
-        _annotation_queue.request(_ADDON_DIR, profile, normalized_card_id, resolved_filename, callback=prepared)
+                return
+            if (result.get('reader_path') != initial_result.get('reader_path')
+                    or result.get('changed') or result.get('imported')
+                    or result.get('appearance_changed') or result.get('conflicts')):
+                _reload_current_pdf_annotations(result)
+        _annotation_queue.request(
+            *key,
+            callback=prepared,
+            callback_key=('reader-open', generation),
+            automatic=True,
+        )
         return
     if _annotation_result:
         secured_pdf_path = _annotation_result['reader_path']
