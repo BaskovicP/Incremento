@@ -558,6 +558,29 @@ def test_build_page_script_supports_dragging_both_highlight_endpoints(monkeypatc
     assert "highlight: session.highlight" in script
     assert "id: String(target.dataset.id || '')" in script
     assert "if (endOffset <= startOffset) return null" in script
+    assert "opacity: 0;\n            pointer-events: none;" in script
+    assert "#incremento-epub-highlight-actions:hover #incremento-epub-highlight-resize-btn" in script
+    finish_resize = script[
+        script.index("      function finishHighlightResize"):
+        script.index("      function cancelHighlightResize")
+    ]
+    cancel_resize = script[
+        script.index("      function cancelHighlightResize"):
+        script.index("      function beginHighlightResize")
+    ]
+    assert "removeHighlightResizeHandles();" in finish_resize
+    assert "removeHighlightResizeHandles();" in cancel_resize
+    update_resize = script[
+        script.index("      function updateHighlightResize"):
+        script.index("      function finishHighlightResize")
+    ]
+    assert "const caret = preciseCaretAtPoint(session" in update_resize
+    click_handler = script[
+        script.index("window._incrementoEpubClickListener = function(event)"):
+        script.index("document.addEventListener('click'", script.index("window._incrementoEpubClickListener"))
+    ]
+    assert "resizeHighlightRange(target);" in click_handler
+    assert "openHighlightActionMenu(target);" in click_handler
 
 
 def test_build_page_script_shows_draggable_handles_on_live_epub_selection(monkeypatch):

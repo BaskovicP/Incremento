@@ -65,3 +65,26 @@ export function normalizePdfHighlightRects(rects) {
     return merged;
   }).sort((a, b) => a.y - b.y || a.x - b.x);
 }
+
+/** Resolve a saved highlight from a click that occurred over the PDF text layer. */
+export function pdfHighlightAtClientPoint(highlights, renderInfo, wrapperRect, clientX, clientY) {
+  const scale = Number(renderInfo?.scale);
+  const left = Number(renderInfo?.tlLeft);
+  const wrapperLeft = Number(wrapperRect?.left);
+  const wrapperTop = Number(wrapperRect?.top);
+  const x = Number(clientX);
+  const y = Number(clientY);
+  if (![scale, left, wrapperLeft, wrapperTop, x, y].every(Number.isFinite) || scale <= 0) return null;
+  const pdfX = (x - wrapperLeft - left) / scale;
+  const pdfY = (y - wrapperTop) / scale;
+  const candidates = Array.isArray(highlights) ? highlights : [];
+  for (let index = candidates.length - 1; index >= 0; index -= 1) {
+    const highlight = candidates[index];
+    const hit = normalizePdfHighlightRects(highlight?.rects).some(rect => (
+      pdfX >= rect.x && pdfX <= rect.x + rect.w
+      && pdfY >= rect.y && pdfY <= rect.y + rect.h
+    ));
+    if (hit) return highlight;
+  }
+  return null;
+}

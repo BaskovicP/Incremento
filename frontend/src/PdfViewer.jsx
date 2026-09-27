@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePdfRender } from './usePdfRender.js';
-import HighlightLayer  from './HighlightLayer.jsx';
+import HighlightLayer, { isResizableTextHighlight } from './HighlightLayer.jsx';
 import PdfSelectionLayer from './PdfSelectionLayer.jsx';
-import { normalizePdfHighlightRects } from './pdfHighlightRects.mjs';
+import { normalizePdfHighlightRects, pdfHighlightAtClientPoint } from './pdfHighlightRects.mjs';
 import { HL_COLORS, HL_SOLID, highlightSolidColor, normalizeHighlightColor } from './highlightColors.mjs';
 import { pushPdfLinkHistory, takePdfLinkHistory } from './pdfLinkHistory.mjs';
 import { pdfAnchorScrollRatio } from './pdfAnchorLocation.mjs';
 import { createReaderLanguage } from './i18n.mjs';
 import { joinPdfTextParts, truncatePdfText } from './pdfCjkText.mjs';
 import { selectionCleaned } from './pdfTextSelection.mjs';
+import { stablePdfEndpointCaret } from './pdfSelection.mjs';
 import {
   PDF_APPEARANCE_MODES,
   normalizePdfAppearanceMode,
@@ -1116,10 +1117,29 @@ export default function PdfViewer() {
       preview: highlight,
       dragging: false,
       pointerId: null,
+      dragState: {},
     };
     setResizingHighlightId(String(highlight.id || ''));
     return true;
   }, [lastScaleRef, textLayerRef]);
+
+  const activateHighlightFromPageClick = useCallback((event) => {
+    if (snapshotMode || event?.defaultPrevented) return;
+    const interactive = event?.target?.closest?.('button,a,input,textarea,select,[contenteditable="true"]');
+    if (interactive) return;
+    const selection = window.getSelection?.();
+    if (selection && !selection.isCollapsed) return;
+    const wrapper = containerRef.current;
+    if (!wrapper) return;
+    const highlight = pdfHighlightAtClientPoint(
+      pageHighlights,
+      renderInfo,
+      wrapper.getBoundingClientRect(),
+      Number(event?.clientX),
+      Number(event?.clientY),
+    );
+    if (isResizableTextHighlight(highlight)) activateHighlightResize(highlight);
+  }, [activateHighlightResize, containerRef, pageHighlights, renderInfo, snapshotMode]);
 
   const updateHighlightResizePreview = useCallback((event) => {
     const session = resizeHighlightRef.current;
@@ -1127,10 +1147,13 @@ export default function PdfViewer() {
     const scale = Number(lastScaleRef.current || 0);
     if (!session?.dragging || !tl || !scale) return false;
     if (session.pointerId !== null && Number(event?.pointerId) !== session.pointerId) return false;
-    const caret = caretRangeAtClientPoint(
-      tl.ownerDocument,
+    const caret = stablePdfEndpointCaret(
+      tl,
+      session.range,
+      session.endpoint,
       Number(event?.clientX),
       Number(event?.clientY),
+      { document: tl.ownerDocument, dragState: session.dragState },
     );
     if (!caret?.startContainer || !tl.contains(caret.startContainer)) return false;
     try {
@@ -1191,6 +1214,8 @@ export default function PdfViewer() {
       session.original = session.preview;
     }
     session.pointerId = null;
+    resizeHighlightRef.current = null;
+    setResizingHighlightId(null);
   }, [cardIdRef, updateHighlightResizePreview]);
 
   const cancelHighlightResize = useCallback((event) => {
@@ -1204,6 +1229,8 @@ export default function PdfViewer() {
     )));
     session.preview = original;
     session.pointerId = null;
+    resizeHighlightRef.current = null;
+    setResizingHighlightId(null);
   }, []);
 
   useEffect(() => {
@@ -2996,6 +3023,7 @@ export default function PdfViewer() {
       <div
         id="pdf-canvas-wrapper"
         ref={containerRef}
+        onClick={activateHighlightFromPageClick}
         style={{
           position: 'relative',
           display: 'block',

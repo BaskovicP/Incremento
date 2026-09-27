@@ -8550,6 +8550,24 @@
       return merged;
     }).sort((a, b) => a.y - b.y || a.x - b.x);
   }
+  function pdfHighlightAtClientPoint(highlights, renderInfo, wrapperRect, clientX, clientY) {
+    const scale = Number(renderInfo == null ? void 0 : renderInfo.scale);
+    const left = Number(renderInfo == null ? void 0 : renderInfo.tlLeft);
+    const wrapperLeft = Number(wrapperRect == null ? void 0 : wrapperRect.left);
+    const wrapperTop = Number(wrapperRect == null ? void 0 : wrapperRect.top);
+    const x = Number(clientX);
+    const y = Number(clientY);
+    if (![scale, left, wrapperLeft, wrapperTop, x, y].every(Number.isFinite) || scale <= 0) return null;
+    const pdfX = (x - wrapperLeft - left) / scale;
+    const pdfY = (y - wrapperTop) / scale;
+    const candidates = Array.isArray(highlights) ? highlights : [];
+    for (let index = candidates.length - 1; index >= 0; index -= 1) {
+      const highlight = candidates[index];
+      const hit = normalizePdfHighlightRects(highlight == null ? void 0 : highlight.rects).some((rect) => pdfX >= rect.x && pdfX <= rect.x + rect.w && pdfY >= rect.y && pdfY <= rect.y + rect.h);
+      if (hit) return highlight;
+    }
+    return null;
+  }
   const HL_COLORS = {
     yellow: "rgba(255,220,0,0.45)",
     green: "rgba(0,200,80,0.4)",
@@ -8679,9 +8697,18 @@
         .incremento-pdf-note-action {
           opacity: 0;
         }
+        .incremento-pdf-resize-action {
+          opacity: 0;
+          pointer-events: none;
+        }
         .incremento-pdf-highlight-actions:hover .incremento-pdf-note-action,
         .incremento-pdf-note-action:focus-visible {
           opacity: 1;
+        }
+        .incremento-pdf-highlight-actions:hover .incremento-pdf-resize-action,
+        .incremento-pdf-resize-action:focus-visible {
+          opacity: 1;
+          pointer-events: auto;
         }
       ` }),
       displayHighlights.map(
@@ -9243,13 +9270,11 @@
       document2.removeEventListener("dragstart", blockNativeSelection, true);
     };
   }
-  function movePdfSelectionEndpoint(textLayer, currentRange, endpoint, clientX, clientY, {
+  function stablePdfEndpointCaret(textLayer, currentRange, endpoint, clientX, clientY, {
     document: document2 = globalThis.document,
-    window: window2 = globalThis.window,
-    dragState = null
+    dragState = {}
   } = {}) {
     if (!textLayer || !currentRange || !["start", "end"].includes(endpoint)) return null;
-    let caret = null;
     if (dragState && typeof dragState === "object") {
       if (!Array.isArray(dragState.textRows)) {
         dragState.textRows = collectTextRowRects(document2, textLayer);
@@ -9266,10 +9291,24 @@
         } catch (_error) {
         }
       }
-      caret = caretAtStablePoint(document2, textLayer, dragState, Number(clientX), Number(clientY));
-    } else {
-      caret = caretRangeAtPoint(document2, Number(clientX), Number(clientY));
+      return caretAtStablePoint(document2, textLayer, dragState, Number(clientX), Number(clientY));
     }
+    return caretRangeAtPoint(document2, Number(clientX), Number(clientY));
+  }
+  function movePdfSelectionEndpoint(textLayer, currentRange, endpoint, clientX, clientY, {
+    document: document2 = globalThis.document,
+    window: window2 = globalThis.window,
+    dragState = null
+  } = {}) {
+    if (!textLayer || !currentRange || !["start", "end"].includes(endpoint)) return null;
+    const caret = stablePdfEndpointCaret(
+      textLayer,
+      currentRange,
+      endpoint,
+      clientX,
+      clientY,
+      { document: document2, dragState }
+    );
     if (!(caret == null ? void 0 : caret.startContainer) || !textLayer.contains(caret.startContainer)) return null;
     try {
       const next = document2.createRange();
@@ -10591,21 +10630,43 @@
         original: highlight,
         preview: highlight,
         dragging: false,
-        pointerId: null
+        pointerId: null,
+        dragState: {}
       };
       setResizingHighlightId(String(highlight.id || ""));
       return true;
     }, [lastScaleRef, textLayerRef]);
+    const activateHighlightFromPageClick = reactExports.useCallback((event) => {
+      var _a, _b, _c;
+      if (snapshotMode || (event == null ? void 0 : event.defaultPrevented)) return;
+      const interactive = (_b = (_a = event == null ? void 0 : event.target) == null ? void 0 : _a.closest) == null ? void 0 : _b.call(_a, 'button,a,input,textarea,select,[contenteditable="true"]');
+      if (interactive) return;
+      const selection = (_c = window.getSelection) == null ? void 0 : _c.call(window);
+      if (selection && !selection.isCollapsed) return;
+      const wrapper = containerRef.current;
+      if (!wrapper) return;
+      const highlight = pdfHighlightAtClientPoint(
+        pageHighlights,
+        renderInfo,
+        wrapper.getBoundingClientRect(),
+        Number(event == null ? void 0 : event.clientX),
+        Number(event == null ? void 0 : event.clientY)
+      );
+      if (isResizableTextHighlight(highlight)) activateHighlightResize(highlight);
+    }, [activateHighlightResize, containerRef, pageHighlights, renderInfo, snapshotMode]);
     const updateHighlightResizePreview = reactExports.useCallback((event) => {
       const session = resizeHighlightRef.current;
       const tl = textLayerRef.current;
       const scale = Number(lastScaleRef.current || 0);
       if (!(session == null ? void 0 : session.dragging) || !tl || !scale) return false;
       if (session.pointerId !== null && Number(event == null ? void 0 : event.pointerId) !== session.pointerId) return false;
-      const caret = caretRangeAtClientPoint(
-        tl.ownerDocument,
+      const caret = stablePdfEndpointCaret(
+        tl,
+        session.range,
+        session.endpoint,
         Number(event == null ? void 0 : event.clientX),
-        Number(event == null ? void 0 : event.clientY)
+        Number(event == null ? void 0 : event.clientY),
+        { document: tl.ownerDocument, dragState: session.dragState }
       );
       if (!(caret == null ? void 0 : caret.startContainer) || !tl.contains(caret.startContainer)) return false;
       try {
@@ -10661,6 +10722,8 @@
         session.original = session.preview;
       }
       session.pointerId = null;
+      resizeHighlightRef.current = null;
+      setResizingHighlightId(null);
     }, [cardIdRef, updateHighlightResizePreview]);
     const cancelHighlightResize = reactExports.useCallback((event) => {
       var _a, _b;
@@ -10672,6 +10735,8 @@
       setHighlights((previous) => previous.map((item) => String(item.id || "") === session.id ? original : item));
       session.preview = original;
       session.pointerId = null;
+      resizeHighlightRef.current = null;
+      setResizingHighlightId(null);
     }, []);
     reactExports.useEffect(() => {
       const session = resizeHighlightRef.current;
@@ -12488,6 +12553,7 @@
             {
               id: "pdf-canvas-wrapper",
               ref: containerRef,
+              onClick: activateHighlightFromPageClick,
               style: {
                 position: "relative",
                 display: "block",

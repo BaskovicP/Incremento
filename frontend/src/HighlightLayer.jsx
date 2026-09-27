@@ -15,7 +15,7 @@ function isSnapshotHighlight(highlight) {
   return String(highlight?.color || '') === 'snapshot';
 }
 
-function isResizableTextHighlight(highlight) {
+export function isResizableTextHighlight(highlight) {
   const kind = String(highlight?.pdf_annotation?.kind || 'Highlight');
   return !isSnapshotHighlight(highlight)
     && kind === 'Highlight'
@@ -100,9 +100,18 @@ export default function HighlightLayer({
         .incremento-pdf-note-action {
           opacity: 0;
         }
+        .incremento-pdf-resize-action {
+          opacity: 0;
+          pointer-events: none;
+        }
         .incremento-pdf-highlight-actions:hover .incremento-pdf-note-action,
         .incremento-pdf-note-action:focus-visible {
           opacity: 1;
+        }
+        .incremento-pdf-highlight-actions:hover .incremento-pdf-resize-action,
+        .incremento-pdf-resize-action:focus-visible {
+          opacity: 1;
+          pointer-events: auto;
         }
       `}</style>
       {/* ── Highlight rects — below text layer (z:1), non-blocking ── */}

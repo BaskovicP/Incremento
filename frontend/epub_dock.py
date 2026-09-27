@@ -1817,6 +1817,13 @@ def _build_page_script(
           #incremento-epub-highlight-resize-btn {{
             background: rgba(3, 105, 161, 0.96);
             color: #e0f2fe;
+            opacity: 0;
+            pointer-events: none;
+          }}
+          #incremento-epub-highlight-actions:hover #incremento-epub-highlight-resize-btn,
+          #incremento-epub-highlight-resize-btn:focus-visible {{
+            opacity: 1;
+            pointer-events: auto;
           }}
           .incremento-epub-resize-handle,
           .incremento-epub-selection-resize-handle {{
@@ -2662,6 +2669,17 @@ def _build_page_script(
         if (!nextTarget) return false;
         session.target = nextTarget;
         session.highlight = nextHighlight;
+        const active = session.activeRow;
+        const nodes = textNodes();
+        session.nodes = new Set(nodes);
+        session.rows = preciseTextRowRects(nodes);
+        if (active) {{
+          session.activeRow = preciseNearestRow(
+            session.rows,
+            (active.left + active.right) / 2,
+            (active.top + active.bottom) / 2
+          );
+        }}
         syncHighlightResizeHandles();
         return true;
       }}
@@ -2669,8 +2687,8 @@ def _build_page_script(
         const session = window._incrementoEpubHighlightResize;
         if (!session || !session.dragging) return false;
         if (session.pointerId !== null && Number(event.pointerId) !== session.pointerId) return false;
-        const caret = caretRangeAtPoint(Number(event.clientX), Number(event.clientY));
-        if (!caret || !caret.startContainer) return false;
+        const caret = preciseCaretAtPoint(session, Number(event.clientX), Number(event.clientY));
+        if (!caret || !caret.startContainer || !session.nodes.has(caret.startContainer)) return false;
         const offset = offsetFromPoint(caret.startContainer, caret.startOffset);
         let startOffset = session.highlight.startOffset;
         let endOffset = session.highlight.endOffset;
@@ -2705,6 +2723,7 @@ def _build_page_script(
           cardId: STATE.cardId,
           highlight: session.highlight,
         }}));
+        removeHighlightResizeHandles();
       }}
       function cancelHighlightResize(event) {{
         const session = window._incrementoEpubHighlightResize;
@@ -2715,6 +2734,7 @@ def _build_page_script(
         if (event.currentTarget && event.currentTarget.releasePointerCapture) {{
           try {{ event.currentTarget.releasePointerCapture(event.pointerId); }} catch (err) {{}}
         }}
+        removeHighlightResizeHandles();
       }}
       function beginHighlightResize(event) {{
         const session = window._incrementoEpubHighlightResize;
@@ -2724,12 +2744,26 @@ def _build_page_script(
         session.endpoint = String(event.currentTarget.dataset.endpoint || '');
         session.dragging = true;
         session.pointerId = Number.isFinite(Number(event.pointerId)) ? Number(event.pointerId) : null;
+        const boundaryOffset = session.endpoint === 'start'
+          ? session.highlight.startOffset : session.highlight.endOffset;
+        const boundaryPoint = pointFromOffset(boundaryOffset);
+        session.activeRow = null;
+        if (boundaryPoint) {{
+          try {{
+            const boundary = document.createRange();
+            boundary.setStart(boundaryPoint.node, boundaryPoint.offset);
+            boundary.collapse(true);
+            const point = preciseCaretVisualPoint(boundary);
+            if (point) session.activeRow = preciseNearestRow(session.rows, point.x, point.y);
+          }} catch (err) {{}}
+        }}
         if (event.currentTarget.setPointerCapture) event.currentTarget.setPointerCapture(event.pointerId);
       }}
       function resizeHighlightRange(target) {{
         const highlight = highlightFromNode(target);
         if (!highlight) return false;
         removeHighlightResizeHandles();
+        const resizeNodes = textNodes();
         const session = {{
           target,
           highlight,
@@ -2737,6 +2771,9 @@ def _build_page_script(
           endpoint: '',
           dragging: false,
           pointerId: null,
+          nodes: new Set(resizeNodes),
+          rows: preciseTextRowRects(resizeNodes),
+          activeRow: null,
         }};
         window._incrementoEpubHighlightResize = session;
         ['start', 'end'].forEach(function(endpoint) {{
@@ -3199,6 +3236,7 @@ def _build_page_script(
           removeHighlightActionMenu();
           return;
         }}
+        resizeHighlightRange(target);
         openHighlightActionMenu(target);
       }};
       document.addEventListener('click', window._incrementoEpubClickListener, true);

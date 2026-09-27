@@ -4,7 +4,7 @@ import test from 'node:test';
 import { normalizeHighlightColor } from '../src/highlightColors.mjs';
 import vm from 'node:vm';
 import { transformWithEsbuild } from 'vite';
-import { normalizePdfHighlightRects } from '../src/pdfHighlightRects.mjs';
+import { normalizePdfHighlightRects, pdfHighlightAtClientPoint } from '../src/pdfHighlightRects.mjs';
 import { selectionCleaned } from '../src/pdfTextSelection.mjs';
 
 // Render the actual JSX component without PDF.js or a browser. The resulting
@@ -136,6 +136,23 @@ test('merged text highlight geometry scales and offsets with the PDF text layer'
   assert.deepEqual(paintedRects(nodes), [{ x: 50, y: 40, w: 140, h: 40 }]);
 });
 
+test('a plain click resolves the saved PDF highlight beneath the text', () => {
+  const first = { id: 'first', rects: [{ x: 10, y: 20, w: 80, h: 20 }] };
+  const topmost = { id: 'topmost', rects: [{ x: 30, y: 20, w: 60, h: 20 }] };
+  const renderInfo = { scale: 2, tlLeft: 40 };
+  const wrapperRect = { left: 100, top: 50 };
+
+  assert.equal(
+    pdfHighlightAtClientPoint([first, topmost], renderInfo, wrapperRect, 100 + 40 + 70, 50 + 60),
+    topmost,
+    'overlapping highlights must activate the visually newest highlight',
+  );
+  assert.equal(pdfHighlightAtClientPoint([first], renderInfo, wrapperRect, 80, 80), null);
+  const viewerSource = readFileSync(new URL('../src/PdfViewer.jsx', import.meta.url), 'utf8');
+  assert.match(viewerSource, /onClick=\{activateHighlightFromPageClick\}/);
+  assert.match(viewerSource, /if \(isResizableTextHighlight\(highlight\)\) activateHighlightResize\(highlight\)/);
+});
+
 test('hovering a saved note invokes the custom popup without a second native tooltip', () => {
   const highlight = { id: 'noted', color: 'yellow', note: 'Arabic العربية\n\nA saved note', rects: [
     { x: 10, y: 20, w: 100, h: 20 },
@@ -246,10 +263,28 @@ test('resize controls are offered only for editable text highlights', () => {
     { id: 'underline', color: 'yellow', pdf_annotation: { kind: 'Underline' }, rects: [{ x: 10, y: 80, w: 100, h: 20 }] },
   ], { activateHighlightResize: highlight => activated.push(highlight.id) });
   const actions = nodes.filter(node => node.props?.className === 'incremento-pdf-resize-action');
+  const css = nodes.filter(node => node.type === 'style').map(node => node.props.children).join('\n');
 
   assert.equal(actions.length, 1);
+  assert.match(css, /\.incremento-pdf-resize-action\s*\{\s*opacity:\s*0\s*;/);
+  assert.match(css, /\.incremento-pdf-highlight-actions:hover\s+\.incremento-pdf-resize-action/);
   actions[0].props.onClick();
   assert.deepEqual(activated, ['text']);
+});
+
+test('finishing or cancelling a saved PDF highlight drag hides its pins', () => {
+  const source = readFileSync(new URL('../src/PdfViewer.jsx', import.meta.url), 'utf8');
+  assert.match(source, /const caret = stablePdfEndpointCaret\(/);
+  const endResize = source.slice(
+    source.indexOf('const endHighlightResize = useCallback'),
+    source.indexOf('const cancelHighlightResize = useCallback'),
+  );
+  const cancelResize = source.slice(
+    source.indexOf('const cancelHighlightResize = useCallback'),
+    source.indexOf('useEffect(() => {', source.indexOf('const cancelHighlightResize = useCallback')),
+  );
+  assert.match(endResize, /setResizingHighlightId\(null\)/);
+  assert.match(cancelResize, /setResizingHighlightId\(null\)/);
 });
 
 test('resizing preserves highlight identity and notes while invalidating stale PDF geometry', () => {

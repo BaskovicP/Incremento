@@ -345,14 +345,12 @@ export function installPrecisePdfSelectionDrag(textLayer, {
   };
 }
 
-/** Move one endpoint of the real browser selection and retain the other. */
-export function movePdfSelectionEndpoint(textLayer, currentRange, endpoint, clientX, clientY, {
+/** Resolve an endpoint drag while keeping blank horizontal space on the active row. */
+export function stablePdfEndpointCaret(textLayer, currentRange, endpoint, clientX, clientY, {
   document = globalThis.document,
-  window = globalThis.window,
-  dragState = null,
+  dragState = {},
 } = {}) {
   if (!textLayer || !currentRange || !['start', 'end'].includes(endpoint)) return null;
-  let caret = null;
   if (dragState && typeof dragState === 'object') {
     if (!Array.isArray(dragState.textRows)) {
       dragState.textRows = collectTextRowRects(document, textLayer);
@@ -370,10 +368,26 @@ export function movePdfSelectionEndpoint(textLayer, currentRange, endpoint, clie
         // Fall through to pointer-based row resolution below.
       }
     }
-    caret = caretAtStablePoint(document, textLayer, dragState, Number(clientX), Number(clientY));
-  } else {
-    caret = caretRangeAtPoint(document, Number(clientX), Number(clientY));
+    return caretAtStablePoint(document, textLayer, dragState, Number(clientX), Number(clientY));
   }
+  return caretRangeAtPoint(document, Number(clientX), Number(clientY));
+}
+
+/** Move one endpoint of the real browser selection and retain the other. */
+export function movePdfSelectionEndpoint(textLayer, currentRange, endpoint, clientX, clientY, {
+  document = globalThis.document,
+  window = globalThis.window,
+  dragState = null,
+} = {}) {
+  if (!textLayer || !currentRange || !['start', 'end'].includes(endpoint)) return null;
+  const caret = stablePdfEndpointCaret(
+    textLayer,
+    currentRange,
+    endpoint,
+    clientX,
+    clientY,
+    { document, dragState },
+  );
   if (!caret?.startContainer || !textLayer.contains(caret.startContainer)) return null;
   try {
     const next = document.createRange();
