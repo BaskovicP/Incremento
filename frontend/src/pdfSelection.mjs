@@ -243,6 +243,7 @@ export function installPrecisePdfSelectionDrag(textLayer, {
   document = globalThis.document,
   window = globalThis.window,
   onSelectionHandlesChange = () => {},
+  onCollapsedClick = () => {},
 } = {}) {
   if (!textLayer || !document || !window) return () => {};
   let session = null;
@@ -281,15 +282,23 @@ export function installPrecisePdfSelectionDrag(textLayer, {
     const next = preciseRangeFromAnchor(document, session.anchor, caret);
     if (!next || !textLayer.contains(next.commonAncestorContainer)) return false;
     const replaced = replaceSelection(window, next);
-    if (replaced && !next.collapsed) onSelectionHandlesChange(true);
+    if (replaced && !next.collapsed) {
+      session.moved = true;
+      onSelectionHandlesChange(true);
+    }
     return replaced;
   };
 
   const finish = (event) => {
     if (!session) return;
     update(event);
+    const clickPoint = session.moved ? null : {
+      clientX: Number(event?.clientX),
+      clientY: Number(event?.clientY),
+    };
     releasePointer();
     session = null;
+    if (clickPoint) onCollapsedClick(clickPoint);
   };
 
   const cancel = () => {
@@ -325,6 +334,7 @@ export function installPrecisePdfSelectionDrag(textLayer, {
       lastCaretPoint: caretVisualPoint(document, caret),
       textRows,
       activeRow: initialSession.activeRow,
+      moved: false,
     };
     onSelectionHandlesChange(false);
     if (pointerId !== null && typeof textLayer.setPointerCapture === 'function') {

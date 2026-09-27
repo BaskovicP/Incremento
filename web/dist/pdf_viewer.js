@@ -9177,6 +9177,8 @@
     document: document2 = globalThis.document,
     window: window2 = globalThis.window,
     onSelectionHandlesChange = () => {
+    },
+    onCollapsedClick = () => {
     }
   } = {}) {
     if (!textLayer || !document2 || !window2) return () => {
@@ -9214,14 +9216,22 @@
       const next = preciseRangeFromAnchor(document2, session.anchor, caret);
       if (!next || !textLayer.contains(next.commonAncestorContainer)) return false;
       const replaced = replaceSelection(window2, next);
-      if (replaced && !next.collapsed) onSelectionHandlesChange(true);
+      if (replaced && !next.collapsed) {
+        session.moved = true;
+        onSelectionHandlesChange(true);
+      }
       return replaced;
     };
     const finish = (event) => {
       if (!session) return;
       update(event);
+      const clickPoint = session.moved ? null : {
+        clientX: Number(event == null ? void 0 : event.clientX),
+        clientY: Number(event == null ? void 0 : event.clientY)
+      };
       releasePointer();
       session = null;
+      if (clickPoint) onCollapsedClick(clickPoint);
     };
     const cancel = () => {
       if (!session) return;
@@ -9253,7 +9263,8 @@
         lastPointerY: Number(event.clientY),
         lastCaretPoint: caretVisualPoint(document2, caret),
         textRows,
-        activeRow: initialSession.activeRow
+        activeRow: initialSession.activeRow,
+        moved: false
       };
       onSelectionHandlesChange(false);
       if (pointerId !== null && typeof textLayer.setPointerCapture === "function") {
@@ -9387,7 +9398,13 @@
     };
   }
   const DEFAULT_LANGUAGE = createReaderLanguage("en");
-  function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLayerRef, renderInfo }) {
+  function PdfSelectionLayer({
+    language = DEFAULT_LANGUAGE,
+    textLayerRef,
+    renderInfo,
+    onTextClick = () => {
+    }
+  }) {
     const [rects, setRects] = reactExports.useState([]);
     const [selectionHandlesVisible, setSelectionHandlesVisible] = reactExports.useState(false);
     const resizeRef = reactExports.useRef(null);
@@ -9396,13 +9413,14 @@
       if (!textLayer) return;
       const stopObserving = observePdfTextSelection(textLayer, setRects);
       const stopPreciseDrag = installPrecisePdfSelectionDrag(textLayer, {
-        onSelectionHandlesChange: setSelectionHandlesVisible
+        onSelectionHandlesChange: setSelectionHandlesVisible,
+        onCollapsedClick: onTextClick
       });
       return () => {
         stopPreciseDrag();
         stopObserving();
       };
-    }, [textLayerRef, renderInfo]);
+    }, [textLayerRef, renderInfo, onTextClick]);
     const beginResize = (endpoint, event) => {
       var _a, _b;
       const textLayer = textLayerRef.current;
@@ -10047,6 +10065,7 @@
     const [autoHighlight, setAutoHighlight] = reactExports.useState(false);
     const [resizingHighlightId, setResizingHighlightId] = reactExports.useState(null);
     const resizeHighlightRef = reactExports.useRef(null);
+    const highlightRangeCacheRef = reactExports.useRef(/* @__PURE__ */ new Map());
     const scrollToTopOnPageChangeRef = reactExports.useRef(true);
     const hlColorRef = reactExports.useRef("yellow");
     const pendingHighlightSelectionRef = reactExports.useRef(null);
@@ -10624,6 +10643,7 @@
     const deleteHighlight = reactExports.useCallback((id) => {
       var _a;
       setHighlights((prev) => prev.filter((h) => h.id !== id));
+      highlightRangeCacheRef.current.delete(String(id || ""));
       if (((_a = resizeHighlightRef.current) == null ? void 0 : _a.id) === String(id || "")) {
         resizeHighlightRef.current = null;
         setResizingHighlightId(null);
@@ -10640,24 +10660,44 @@
       const tl = textLayerRef.current;
       const scale = Number(lastScaleRef.current || 0);
       if (!highlight || !tl || !scale) return false;
-      const range = textRangeForPdfHighlight(highlight, tl, scale);
+      const id = String(highlight.id || "");
+      let range = highlightRangeCacheRef.current.get(id) || null;
+      if (!(range == null ? void 0 : range.commonAncestorContainer) || !tl.contains(range.commonAncestorContainer)) {
+        highlightRangeCacheRef.current.delete(id);
+        range = textRangeForPdfHighlight(highlight, tl, scale);
+        if (range) highlightRangeCacheRef.current.set(id, range.cloneRange());
+      }
       if (!range) return false;
       resizeHighlightRef.current = {
-        id: String(highlight.id || ""),
-        range,
+        id,
+        range: range.cloneRange(),
         original: highlight,
         preview: highlight,
         dragging: false,
         pointerId: null,
         dragState: {}
       };
-      setResizingHighlightId(String(highlight.id || ""));
+      setResizingHighlightId(id);
       return true;
     }, [lastScaleRef, textLayerRef]);
     const deactivateHighlightResize = reactExports.useCallback(() => {
       resizeHighlightRef.current = null;
       setResizingHighlightId(null);
     }, []);
+    const activateHighlightAtClientPoint = reactExports.useCallback((point) => {
+      const wrapper = containerRef.current;
+      if (!wrapper) return false;
+      const highlight = pdfHighlightAtClientPoint(
+        pageHighlights,
+        renderInfo,
+        wrapper.getBoundingClientRect(),
+        Number(point == null ? void 0 : point.clientX),
+        Number(point == null ? void 0 : point.clientY)
+      );
+      if (isResizableTextHighlight(highlight)) return activateHighlightResize(highlight);
+      deactivateHighlightResize();
+      return false;
+    }, [activateHighlightResize, containerRef, deactivateHighlightResize, pageHighlights, renderInfo]);
     const activateHighlightFromPageClick = reactExports.useCallback((event) => {
       var _a, _b, _c;
       if (snapshotMode || (event == null ? void 0 : event.defaultPrevented)) return;
@@ -10668,18 +10708,8 @@
         deactivateHighlightResize();
         return;
       }
-      const wrapper = containerRef.current;
-      if (!wrapper) return;
-      const highlight = pdfHighlightAtClientPoint(
-        pageHighlights,
-        renderInfo,
-        wrapper.getBoundingClientRect(),
-        Number(event == null ? void 0 : event.clientX),
-        Number(event == null ? void 0 : event.clientY)
-      );
-      if (isResizableTextHighlight(highlight)) activateHighlightResize(highlight);
-      else deactivateHighlightResize();
-    }, [activateHighlightResize, containerRef, deactivateHighlightResize, pageHighlights, renderInfo, snapshotMode]);
+      activateHighlightAtClientPoint(event);
+    }, [activateHighlightAtClientPoint, deactivateHighlightResize, snapshotMode]);
     reactExports.useEffect(() => {
       if (!resizingHighlightId) return void 0;
       const dismissHighlightResizeOutside = (event) => {
@@ -10758,6 +10788,7 @@
           highlight: session.preview
         }));
         session.original = session.preview;
+        highlightRangeCacheRef.current.set(session.id, session.range.cloneRange());
       }
       session.pointerId = null;
       resizeHighlightRef.current = null;
@@ -10783,6 +10814,7 @@
       }
       resizeHighlightRef.current = null;
       setResizingHighlightId(null);
+      highlightRangeCacheRef.current.clear();
     }, [page]);
     const makeHighlight = reactExports.useCallback((sel, forcedColor = null) => {
       var _a;
@@ -10808,6 +10840,10 @@
         rects
       };
       setHighlights((prev) => [...prev, hl]);
+      highlightRangeCacheRef.current.set(
+        id,
+        typeof range.cloneRange === "function" ? range.cloneRange() : range
+      );
       resizeHighlightRef.current = null;
       setResizingHighlightId(null);
       window.pycmd("incremento_pdf_hl_add:" + JSON.stringify({ cardId: cardIdRef.current, highlight: hl }));
@@ -11038,6 +11074,7 @@
         setLinkBackHistory([]);
         setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
         resizeHighlightRef.current = null;
+        highlightRangeCacheRef.current.clear();
         setResizingHighlightId(null);
         setNativeHighlightsVisible(window._pdfNativeHighlightsVisible === true);
         window._pdfNativeHighlightsVisible = null;
@@ -12724,7 +12761,15 @@
                     ))
                   }
                 ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(PdfSelectionLayer, { language, textLayerRef, renderInfo }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  PdfSelectionLayer,
+                  {
+                    language,
+                    textLayerRef,
+                    renderInfo,
+                    onTextClick: activateHighlightAtClientPoint
+                  }
+                ),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
                   HighlightLayer,
                   {

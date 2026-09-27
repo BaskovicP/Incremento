@@ -10,7 +10,12 @@ const DEFAULT_LANGUAGE = createReaderLanguage('en');
 
 // Draw the current selection above the PDF as blue rectangles with interactive
 // endpoint handles. Saved annotations remain in HighlightLayer.
-export default function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLayerRef, renderInfo }) {
+export default function PdfSelectionLayer({
+  language = DEFAULT_LANGUAGE,
+  textLayerRef,
+  renderInfo,
+  onTextClick = () => {},
+}) {
   const [rects, setRects] = useState([]);
   const [selectionHandlesVisible, setSelectionHandlesVisible] = useState(false);
   const resizeRef = useRef(null);
@@ -20,12 +25,13 @@ export default function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLay
     const stopObserving = observePdfTextSelection(textLayer, setRects);
     const stopPreciseDrag = installPrecisePdfSelectionDrag(textLayer, {
       onSelectionHandlesChange: setSelectionHandlesVisible,
+      onCollapsedClick: onTextClick,
     });
     return () => {
       stopPreciseDrag();
       stopObserving();
     };
-  }, [textLayerRef, renderInfo]);
+  }, [textLayerRef, renderInfo, onTextClick]);
 
   const beginResize = (endpoint, event) => {
     const textLayer = textLayerRef.current;

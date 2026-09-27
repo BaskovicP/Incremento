@@ -271,6 +271,7 @@ test('initial trackpad drag follows the nearest character instead of accepting n
   const documentListeners = new Map();
   const selected = [];
   const activeStates = [];
+  const collapsedClicks = [];
   let caretNode = textNode;
   const visualTop = offset => ({ 1: 10, 2: 20, 3: 20, 4: 40, 5: 60, 9: 260 }[offset] ?? 20);
   const makeRange = (start = 0, end = start) => ({
@@ -363,6 +364,7 @@ test('initial trackpad drag follows the nearest character instead of accepting n
     document,
     window,
     onSelectionHandlesChange: visible => activeStates.push(visible),
+    onCollapsedClick: point => collapsedClicks.push([point.clientX, point.clientY]),
   });
   const down = event(2, { target: textNode });
   documentListeners.get('pointerdown')(down);
@@ -416,6 +418,7 @@ test('initial trackpad drag follows the nearest character instead of accepting n
 
   documentListeners.get('pointerup')(event(1, { buttons: 0 }));
   assert.equal(capturedPointer, null);
+  assert.deepEqual(collapsedClicks, [], 'a real drag must not be treated as a saved-highlight click');
   assert.equal(activeStates.at(-1), true, 'pins remain available while the live selection is still focused');
   documentListeners.get('pointerdown')({ target: foreignNode });
   assert.equal(activeStates.at(-1), false, 'temporary pins must hide after clicking away');
@@ -427,6 +430,7 @@ test('initial trackpad drag follows the nearest character instead of accepting n
   const blankRight = event(50, { clientY: 20 });
   layerListeners.get('pointerdown')(blankRight);
   documentListeners.get('pointerup')(event(50, { buttons: 0, clientY: 20 }));
+  assert.deepEqual(collapsedClicks, [[50, 20]], 'a simple text click is forwarded to saved-highlight hit testing');
   assert.deepEqual(
     [selected[0].startOffset, selected[0].endOffset],
     [3, 3],

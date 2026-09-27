@@ -427,6 +427,7 @@ export default function PdfViewer() {
   const [autoHighlight, setAutoHighlight] = useState(false);
   const [resizingHighlightId, setResizingHighlightId] = useState(null);
   const resizeHighlightRef = useRef(null);
+  const highlightRangeCacheRef = useRef(new Map());
   const scrollToTopOnPageChangeRef = useRef(true);
   const hlColorRef       = useRef('yellow');
   const pendingHighlightSelectionRef = useRef(null);
@@ -1087,6 +1088,7 @@ export default function PdfViewer() {
   // ── Highlight helpers ──────────────────────────────────────────────────────
   const deleteHighlight = useCallback((id) => {
     setHighlights(prev => prev.filter(h => h.id !== id));
+    highlightRangeCacheRef.current.delete(String(id || ''));
     if (resizeHighlightRef.current?.id === String(id || '')) {
       resizeHighlightRef.current = null;
       setResizingHighlightId(null);
@@ -1108,18 +1110,24 @@ export default function PdfViewer() {
     const tl = textLayerRef.current;
     const scale = Number(lastScaleRef.current || 0);
     if (!highlight || !tl || !scale) return false;
-    const range = textRangeForPdfHighlight(highlight, tl, scale);
+    const id = String(highlight.id || '');
+    let range = highlightRangeCacheRef.current.get(id) || null;
+    if (!range?.commonAncestorContainer || !tl.contains(range.commonAncestorContainer)) {
+      highlightRangeCacheRef.current.delete(id);
+      range = textRangeForPdfHighlight(highlight, tl, scale);
+      if (range) highlightRangeCacheRef.current.set(id, range.cloneRange());
+    }
     if (!range) return false;
     resizeHighlightRef.current = {
-      id: String(highlight.id || ''),
-      range,
+      id,
+      range: range.cloneRange(),
       original: highlight,
       preview: highlight,
       dragging: false,
       pointerId: null,
       dragState: {},
     };
-    setResizingHighlightId(String(highlight.id || ''));
+    setResizingHighlightId(id);
     return true;
   }, [lastScaleRef, textLayerRef]);
 
@@ -1127,6 +1135,21 @@ export default function PdfViewer() {
     resizeHighlightRef.current = null;
     setResizingHighlightId(null);
   }, []);
+
+  const activateHighlightAtClientPoint = useCallback((point) => {
+    const wrapper = containerRef.current;
+    if (!wrapper) return false;
+    const highlight = pdfHighlightAtClientPoint(
+      pageHighlights,
+      renderInfo,
+      wrapper.getBoundingClientRect(),
+      Number(point?.clientX),
+      Number(point?.clientY),
+    );
+    if (isResizableTextHighlight(highlight)) return activateHighlightResize(highlight);
+    deactivateHighlightResize();
+    return false;
+  }, [activateHighlightResize, containerRef, deactivateHighlightResize, pageHighlights, renderInfo]);
 
   const activateHighlightFromPageClick = useCallback((event) => {
     if (snapshotMode || event?.defaultPrevented) return;
@@ -1137,18 +1160,8 @@ export default function PdfViewer() {
       deactivateHighlightResize();
       return;
     }
-    const wrapper = containerRef.current;
-    if (!wrapper) return;
-    const highlight = pdfHighlightAtClientPoint(
-      pageHighlights,
-      renderInfo,
-      wrapper.getBoundingClientRect(),
-      Number(event?.clientX),
-      Number(event?.clientY),
-    );
-    if (isResizableTextHighlight(highlight)) activateHighlightResize(highlight);
-    else deactivateHighlightResize();
-  }, [activateHighlightResize, containerRef, deactivateHighlightResize, pageHighlights, renderInfo, snapshotMode]);
+    activateHighlightAtClientPoint(event);
+  }, [activateHighlightAtClientPoint, deactivateHighlightResize, snapshotMode]);
 
   useEffect(() => {
     if (!resizingHighlightId) return undefined;
@@ -1201,8 +1214,8 @@ export default function PdfViewer() {
   }, [lastScaleRef, textLayerRef]);
 
   const beginHighlightResize = useCallback((highlight, endpoint, event) => {
-    // PDF.js replaces the text spans after zoom/render changes. Reconstruct the
-    // DOM Range at drag start so a visible handle never retains stale nodes.
+    // Prefer the exact saved range, but reconstruct it when PDF.js has replaced
+    // the text spans after a zoom or render change.
     if (!activateHighlightResize(highlight)) return;
     const session = resizeHighlightRef.current;
     if (!session || (endpoint !== 'start' && endpoint !== 'end')) return;
@@ -1233,6 +1246,7 @@ export default function PdfViewer() {
         highlight: session.preview,
       }));
       session.original = session.preview;
+      highlightRangeCacheRef.current.set(session.id, session.range.cloneRange());
     }
     session.pointerId = null;
     resizeHighlightRef.current = null;
@@ -1263,6 +1277,7 @@ export default function PdfViewer() {
     }
     resizeHighlightRef.current = null;
     setResizingHighlightId(null);
+    highlightRangeCacheRef.current.clear();
   }, [page]);
 
   const makeHighlight = useCallback((sel, forcedColor = null) => {
@@ -1293,6 +1308,10 @@ export default function PdfViewer() {
       rects,
     };
     setHighlights(prev => [...prev, hl]);
+    highlightRangeCacheRef.current.set(
+      id,
+      typeof range.cloneRange === 'function' ? range.cloneRange() : range,
+    );
     resizeHighlightRef.current = null;
     setResizingHighlightId(null);
     window.pycmd('incremento_pdf_hl_add:' + JSON.stringify({ cardId: cardIdRef.current, highlight: hl }));
@@ -1567,6 +1586,7 @@ export default function PdfViewer() {
       setLinkBackHistory([]);
       setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
       resizeHighlightRef.current = null;
+      highlightRangeCacheRef.current.clear();
       setResizingHighlightId(null);
       setNativeHighlightsVisible(window._pdfNativeHighlightsVisible === true);
       window._pdfNativeHighlightsVisible = null;
@@ -3155,7 +3175,12 @@ export default function PdfViewer() {
           ))}
         </div>
 
-        <PdfSelectionLayer language={language} textLayerRef={textLayerRef} renderInfo={renderInfo} />
+        <PdfSelectionLayer
+          language={language}
+          textLayerRef={textLayerRef}
+          renderInfo={renderInfo}
+          onTextClick={activateHighlightAtClientPoint}
+        />
 
         <HighlightLayer
           nativeHighlightsVisible={nativeHighlightsVisible}

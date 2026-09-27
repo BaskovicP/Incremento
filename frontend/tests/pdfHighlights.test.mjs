@@ -150,9 +150,35 @@ test('a plain click resolves the saved PDF highlight beneath the text', () => {
   assert.equal(pdfHighlightAtClientPoint([first], renderInfo, wrapperRect, 80, 80), null);
   const viewerSource = readFileSync(new URL('../src/PdfViewer.jsx', import.meta.url), 'utf8');
   assert.match(viewerSource, /onClick=\{activateHighlightFromPageClick\}/);
-  assert.match(viewerSource, /if \(isResizableTextHighlight\(highlight\)\) activateHighlightResize\(highlight\)/);
-  assert.match(viewerSource, /else deactivateHighlightResize\(\)/);
+  assert.match(viewerSource, /onTextClick=\{activateHighlightAtClientPoint\}/);
+  assert.match(viewerSource, /if \(isResizableTextHighlight\(highlight\)\) return activateHighlightResize\(highlight\)/);
+  assert.match(viewerSource, /highlightRangeCacheRef\.current\.get\(id\)/);
+  assert.match(viewerSource, /deactivateHighlightResize\(\);\s*return false/);
   assert.match(viewerSource, /document\.addEventListener\('pointerdown', dismissHighlightResizeOutside, true\)/);
+});
+
+test('click activation reuses the exact saved PDF text range when it is still live', () => {
+  const source = readFileSync(new URL('../src/PdfViewer.jsx', import.meta.url), 'utf8');
+  const start = source.indexOf('  const activateHighlightResize = useCallback(');
+  const finish = source.indexOf('  const deactivateHighlightResize', start);
+  const textNode = {};
+  const makeRange = () => ({ commonAncestorContainer: textNode, cloneRange: makeRange });
+  const resizeHighlightRef = { current: null };
+  const activated = [];
+  const scope = {
+    useCallback: callback => callback,
+    textLayerRef: { current: { contains: node => node === textNode } },
+    lastScaleRef: { current: 1 },
+    highlightRangeCacheRef: { current: new Map([['saved', makeRange()]]) },
+    textRangeForPdfHighlight: () => { throw new Error('cached range should be used'); },
+    resizeHighlightRef,
+    setResizingHighlightId: id => activated.push(id),
+  };
+  vm.runInNewContext(`${source.slice(start, finish)}\nglobalThis.activate = activateHighlightResize;`, scope);
+
+  assert.equal(scope.activate({ id: 'saved', rects: [{ x: 1, y: 2, w: 3, h: 4 }] }), true);
+  assert.equal(resizeHighlightRef.current.id, 'saved');
+  assert.deepEqual(activated, ['saved']);
 });
 
 test('hovering a saved note invokes the custom popup without a second native tooltip', () => {
@@ -378,6 +404,7 @@ test('creating a text highlight saves merged PDF coordinates and preserves text,
     cardIdRef: { current: 42 },
     hlColorRef: { current: 'purple' },
     resizeHighlightRef: { current: null },
+    highlightRangeCacheRef: { current: new Map() },
     setResizingHighlightId: value => activated.push(value),
     setHighlights: update => { displayed = update(displayed); },
     window: { pycmd: command => saved.push(command) },
@@ -409,6 +436,7 @@ test('creating a text highlight saves merged PDF coordinates and preserves text,
   assert.deepEqual(payload.highlight.rects, [{ x: 10, y: 20, w: 70, h: 20 }]);
   assert.deepEqual(JSON.parse(JSON.stringify(displayed)), [payload.highlight]);
   assert.equal(scope.resizeHighlightRef.current, null, 'saving must not leave resize pins active');
+  assert.equal(scope.highlightRangeCacheRef.current.has(payload.highlight.id), true);
   assert.deepEqual(activated, [null], 'saving explicitly leaves saved-highlight pins hidden');
   assert.equal(selectionClears, 1, 'saving clears the live selection and its temporary pins');
 });
@@ -434,6 +462,7 @@ for (const outcome of ['selected', 'cancelled', 'page-changed']) {
       lastScaleRef: { current: 1 }, pageRef: { current: 6 }, cardIdRef: { current: 42 },
       hlColorRef: { current: 'yellow' }, pendingHighlightSelectionRef: { current: null },
       resizeHighlightRef: { current: null },
+      highlightRangeCacheRef: { current: new Map() },
       setHlColor: () => {}, setHighlights: () => {},
       setResizingHighlightId: () => {},
       window: { getSelection: () => selection, pycmd: command => saved.push(command) },

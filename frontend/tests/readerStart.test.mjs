@@ -42,6 +42,7 @@ function registerBridge(pending = null) {
     'pageRef', 'suppressSearchSyncRef', 'pendingHighlightSelectionRef',
     'resizeHighlightRef',
   ]) scope[name] = { current: null };
+  scope.highlightRangeCacheRef = { current: new Map() };
   vm.runInNewContext(source.slice(start, finish), scope);
   return { scope, state };
 }
