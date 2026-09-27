@@ -54,6 +54,25 @@ export function installPrecisePdfSelectionDrag(textLayer, {
 } = {}) {
   if (!textLayer || !document || !window) return () => {};
   let session = null;
+  const usePointerEvents = typeof window.PointerEvent === 'function';
+  const startEvent = usePointerEvents ? 'pointerdown' : 'mousedown';
+  const moveEvent = usePointerEvents ? 'pointermove' : 'mousemove';
+  const endEvent = usePointerEvents ? 'pointerup' : 'mouseup';
+
+  const releasePointer = () => {
+    const pointerId = session?.pointerId;
+    if (pointerId === null || pointerId === undefined
+        || typeof textLayer.releasePointerCapture !== 'function') return;
+    try {
+      textLayer.releasePointerCapture(pointerId);
+    } catch (_error) {
+      // The browser may already have released capture as the pointer ended.
+    }
+  };
+
+  const blockNativeSelection = (event) => {
+    if (session) event.preventDefault?.();
+  };
 
   const update = (event) => {
     if (!session) return false;
@@ -68,11 +87,19 @@ export function installPrecisePdfSelectionDrag(textLayer, {
   const finish = (event) => {
     if (!session) return;
     update(event);
+    releasePointer();
+    session = null;
+  };
+
+  const cancel = () => {
+    if (!session) return;
+    releasePointer();
     session = null;
   };
 
   const start = (event) => {
     if (event.button !== 0 || Number(event.detail || 1) > 1
+        || (usePointerEvents && event.isPrimary === false)
         || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
     const caret = caretRangeAtPoint(document, Number(event.clientX), Number(event.clientY));
     if (!caret?.startContainer || !textLayer.contains(caret.startContainer)) return;
@@ -80,17 +107,34 @@ export function installPrecisePdfSelectionDrag(textLayer, {
     const anchor = typeof caret.cloneRange === 'function' ? caret.cloneRange() : caret;
     anchor.collapse?.(true);
     if (!replaceSelection(window, anchor)) return;
-    session = { anchor };
+    const pointerId = usePointerEvents && Number.isFinite(event.pointerId) ? event.pointerId : null;
+    session = { anchor, pointerId };
+    if (pointerId !== null && typeof textLayer.setPointerCapture === 'function') {
+      try {
+        textLayer.setPointerCapture(pointerId);
+      } catch (_error) {
+        // Document-level listeners still keep the drag active without capture.
+      }
+    }
   };
 
-  textLayer.addEventListener('mousedown', start, true);
-  document.addEventListener('mousemove', update, true);
-  document.addEventListener('mouseup', finish, true);
+  textLayer.addEventListener(startEvent, start, true);
+  document.addEventListener(moveEvent, update, true);
+  document.addEventListener(endEvent, finish, true);
+  if (usePointerEvents) document.addEventListener('pointercancel', cancel, true);
+  document.addEventListener('mousedown', blockNativeSelection, true);
+  document.addEventListener('selectstart', blockNativeSelection, true);
+  document.addEventListener('dragstart', blockNativeSelection, true);
   return () => {
+    releasePointer();
     session = null;
-    textLayer.removeEventListener('mousedown', start, true);
-    document.removeEventListener('mousemove', update, true);
-    document.removeEventListener('mouseup', finish, true);
+    textLayer.removeEventListener(startEvent, start, true);
+    document.removeEventListener(moveEvent, update, true);
+    document.removeEventListener(endEvent, finish, true);
+    if (usePointerEvents) document.removeEventListener('pointercancel', cancel, true);
+    document.removeEventListener('mousedown', blockNativeSelection, true);
+    document.removeEventListener('selectstart', blockNativeSelection, true);
+    document.removeEventListener('dragstart', blockNativeSelection, true);
   };
 }
 

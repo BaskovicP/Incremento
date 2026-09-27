@@ -583,9 +583,9 @@ def test_build_page_script_shows_draggable_handles_on_live_epub_selection(monkey
     assert "selection.addRange(next)" in script
     assert "pointercancel" in script
     assert "window._incrementoEpubPreciseSelectionStart = beginPreciseSelectionDrag" in script
-    assert "document.addEventListener('mousedown', window._incrementoEpubPreciseSelectionStart, true)" in script
-    assert "document.addEventListener('mousemove', window._incrementoEpubPreciseSelectionMove, true)" in script
-    assert "document.addEventListener('mouseup', window._incrementoEpubPreciseSelectionEnd, true)" in script
+    assert "const preciseStartEvent = preciseUsesPointerEvents ? 'pointerdown' : 'mousedown'" in script
+    assert "document.addEventListener(preciseMoveEvent, window._incrementoEpubPreciseSelectionMove, true)" in script
+    assert "document.addEventListener('selectstart', window._incrementoEpubPreciseSelectionBlocker, true)" in script
 
 
 def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(monkeypatch):
@@ -630,10 +630,22 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
           compareBoundaryPoints(_how, source) { return this.startOffset - source.startOffset; },
         });
         const document = { createRange: () => makeRange() };
-        const window = { getSelection: () => ({
-          removeAllRanges: () => selected.splice(0),
-          addRange: range => selected.push(range),
-        }) };
+        const window = {
+          PointerEvent: function PointerEvent() {},
+          getSelection: () => ({
+            removeAllRanges: () => selected.splice(0),
+            addRange: range => selected.push(range),
+          }),
+        };
+        let capturedPointer = null;
+        const dragTarget = {
+          closest: () => null,
+          setPointerCapture: pointerId => { capturedPointer = pointerId; },
+          releasePointerCapture: pointerId => {
+            if (pointerId !== capturedPointer) throw new Error('released the wrong pointer');
+            capturedPointer = null;
+          },
+        };
         const textNodes = () => [textNode];
         const caretRangeAtPoint = x => {
           const range = makeRange(x, x);
@@ -644,12 +656,15 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
         };
         const reportSelection = () => {};
         const event = (x, buttons = 1) => ({
-          button: 0, buttons, clientX: x, clientY: 10, target: {},
+          button: 0, buttons, isPrimary: true, pointerId: 12,
+          clientX: x, clientY: 10, target: dragTarget,
           preventDefault() { this.defaultPrevented = true; },
         });
         eval(code);
         const down = event(2);
         beginPreciseSelectionDrag(down);
+        const nativeSelection = event(2);
+        blockNativeSelectionDuringPreciseDrag(nativeSelection);
         const first = event(3);
         updatePreciseSelectionDrag(first);
         const forward = [selected[0].startOffset, selected[0].endOffset];
@@ -661,8 +676,13 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
         updatePreciseSelectionDrag(event(9));
         const outside = [selected[0].startOffset, selected[0].endOffset];
         finishPreciseSelectionDrag(event(1, 0));
+        const afterRelease = event(1, 0);
+        blockNativeSelectionDuringPreciseDrag(afterRelease);
         process.stdout.write(JSON.stringify({
           downPrevented: !!down.defaultPrevented,
+          nativeSelectionPrevented: !!nativeSelection.defaultPrevented,
+          afterReleasePrevented: !!afterRelease.defaultPrevented,
+          pointerReleased: capturedPointer === null,
           movePrevented: !!first.defaultPrevented,
           forward, later, backward, outside,
         }));
@@ -677,6 +697,9 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == {
         "downPrevented": True,
+        "nativeSelectionPrevented": True,
+        "afterReleasePrevented": False,
+        "pointerReleased": True,
         "movePrevented": True,
         "forward": [2, 3],
         "later": [2, 5],

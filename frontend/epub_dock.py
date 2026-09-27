@@ -2226,8 +2226,23 @@ def _build_page_script(
         selection.addRange(range);
         return true;
       }}
+      function releasePreciseSelectionPointer(session) {{
+        if (!session || session.pointerId === null || session.pointerId === undefined
+            || !session.captureTarget || !session.captureTarget.releasePointerCapture) return;
+        try {{
+          session.captureTarget.releasePointerCapture(session.pointerId);
+        }} catch (err) {{}}
+      }}
+      function blockNativeSelectionDuringPreciseDrag(event) {{
+        if (window._incrementoEpubPreciseSelectionDrag) event.preventDefault();
+      }}
       function beginPreciseSelectionDrag(event) {{
+        if (window._incrementoEpubPreciseSelectionDrag) {{
+          event.preventDefault();
+          return;
+        }}
         if (event.button !== 0 || Number(event.detail || 1) > 1
+            || (typeof window.PointerEvent === 'function' && event.isPrimary === false)
             || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
         const target = event.target;
         if (target && target.closest && target.closest(
@@ -2240,11 +2255,17 @@ def _build_page_script(
         const anchor = typeof caret.cloneRange === 'function' ? caret.cloneRange() : caret;
         if (anchor.collapse) anchor.collapse(true);
         if (!replaceEpubSelection(anchor)) return;
+        const pointerId = Number.isFinite(event.pointerId) ? event.pointerId : null;
         window._incrementoEpubPreciseSelectionDrag = {{
           anchor,
           nodes: new Set(nodes),
           moved: false,
+          pointerId,
+          captureTarget: target || null,
         }};
+        if (pointerId !== null && target && target.setPointerCapture) {{
+          try {{ target.setPointerCapture(pointerId); }} catch (err) {{}}
+        }}
       }}
       function updatePreciseSelectionDrag(event) {{
         const session = window._incrementoEpubPreciseSelectionDrag;
@@ -2262,11 +2283,19 @@ def _build_page_script(
         if (!session) return;
         updatePreciseSelectionDrag(event);
         const moved = session.moved;
+        releasePreciseSelectionPointer(session);
         window._incrementoEpubPreciseSelectionDrag = null;
         if (moved) {{
           window._incrementoEpubSuppressSelectionClick = true;
           setTimeout(function() {{ window._incrementoEpubSuppressSelectionClick = false; }}, 0);
         }}
+        reportSelection();
+      }}
+      function cancelPreciseSelectionDrag() {{
+        const session = window._incrementoEpubPreciseSelectionDrag;
+        if (!session) return;
+        releasePreciseSelectionPointer(session);
+        window._incrementoEpubPreciseSelectionDrag = null;
         reportSelection();
       }}
       function removeSelectionResizeHandles() {{
@@ -2863,15 +2892,34 @@ def _build_page_script(
       document.addEventListener('selectionchange', window._incrementoEpubSelectionListener, true);
 
       document.removeEventListener('mousedown', window._incrementoEpubPreciseSelectionStart, true);
+      document.removeEventListener('pointerdown', window._incrementoEpubPreciseSelectionStart, true);
       document.removeEventListener('mousemove', window._incrementoEpubPreciseSelectionMove, true);
+      document.removeEventListener('pointermove', window._incrementoEpubPreciseSelectionMove, true);
       document.removeEventListener('mouseup', window._incrementoEpubPreciseSelectionEnd, true);
+      document.removeEventListener('pointerup', window._incrementoEpubPreciseSelectionEnd, true);
+      document.removeEventListener('pointercancel', window._incrementoEpubPreciseSelectionCancel, true);
+      document.removeEventListener('mousedown', window._incrementoEpubPreciseSelectionBlocker, true);
+      document.removeEventListener('selectstart', window._incrementoEpubPreciseSelectionBlocker, true);
+      document.removeEventListener('dragstart', window._incrementoEpubPreciseSelectionBlocker, true);
       window._incrementoEpubPreciseSelectionDrag = null;
       window._incrementoEpubPreciseSelectionStart = beginPreciseSelectionDrag;
       window._incrementoEpubPreciseSelectionMove = updatePreciseSelectionDrag;
       window._incrementoEpubPreciseSelectionEnd = finishPreciseSelectionDrag;
-      document.addEventListener('mousedown', window._incrementoEpubPreciseSelectionStart, true);
-      document.addEventListener('mousemove', window._incrementoEpubPreciseSelectionMove, true);
-      document.addEventListener('mouseup', window._incrementoEpubPreciseSelectionEnd, true);
+      window._incrementoEpubPreciseSelectionCancel = cancelPreciseSelectionDrag;
+      window._incrementoEpubPreciseSelectionBlocker = blockNativeSelectionDuringPreciseDrag;
+      const preciseUsesPointerEvents = typeof window.PointerEvent === 'function';
+      const preciseStartEvent = preciseUsesPointerEvents ? 'pointerdown' : 'mousedown';
+      const preciseMoveEvent = preciseUsesPointerEvents ? 'pointermove' : 'mousemove';
+      const preciseEndEvent = preciseUsesPointerEvents ? 'pointerup' : 'mouseup';
+      document.addEventListener(preciseStartEvent, window._incrementoEpubPreciseSelectionStart, true);
+      document.addEventListener(preciseMoveEvent, window._incrementoEpubPreciseSelectionMove, true);
+      document.addEventListener(preciseEndEvent, window._incrementoEpubPreciseSelectionEnd, true);
+      if (preciseUsesPointerEvents) {{
+        document.addEventListener('pointercancel', window._incrementoEpubPreciseSelectionCancel, true);
+      }}
+      document.addEventListener('mousedown', window._incrementoEpubPreciseSelectionBlocker, true);
+      document.addEventListener('selectstart', window._incrementoEpubPreciseSelectionBlocker, true);
+      document.addEventListener('dragstart', window._incrementoEpubPreciseSelectionBlocker, true);
 
       window.removeEventListener('resize', window._incrementoEpubResizeListener, true);
       window._incrementoEpubResizeListener = function() {{

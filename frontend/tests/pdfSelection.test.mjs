@@ -233,12 +233,21 @@ test('initial trackpad drag follows the nearest character instead of accepting n
       documentListeners.delete(name);
     },
   };
-  const window = { getSelection: () => ({
-    removeAllRanges: () => selected.splice(0),
-    addRange: range => selected.push(range),
-  }) };
+  const window = {
+    PointerEvent: function PointerEvent() {},
+    getSelection: () => ({
+      removeAllRanges: () => selected.splice(0),
+      addRange: range => selected.push(range),
+    }),
+  };
+  let capturedPointer = null;
   const textLayer = {
     contains: node => node === textNode,
+    setPointerCapture: pointerId => { capturedPointer = pointerId; },
+    releasePointerCapture: pointerId => {
+      assert.equal(pointerId, capturedPointer);
+      capturedPointer = null;
+    },
     addEventListener: (name, callback) => layerListeners.set(name, callback),
     removeEventListener: (name, callback) => {
       assert.equal(layerListeners.get(name), callback);
@@ -248,6 +257,8 @@ test('initial trackpad drag follows the nearest character instead of accepting n
   const event = (x, overrides = {}) => ({
     button: 0,
     buttons: 1,
+    isPrimary: true,
+    pointerId: 12,
     clientX: x,
     clientY: 20,
     target: {},
@@ -257,27 +268,36 @@ test('initial trackpad drag follows the nearest character instead of accepting n
 
   const stop = installPrecisePdfSelectionDrag(textLayer, { document, window });
   const down = event(2);
-  layerListeners.get('mousedown')(down);
+  layerListeners.get('pointerdown')(down);
   assert.equal(down.defaultPrevented, true);
+  assert.equal(capturedPointer, 12);
   assert.equal(selected[0].collapsed, true);
   assert.equal(selected[0].startOffset, 2);
 
+  const nativeSelection = event(2);
+  documentListeners.get('selectstart')(nativeSelection);
+  assert.equal(nativeSelection.defaultPrevented, true, 'native selection must not overwrite the precise range');
+
   const oneCharacter = event(3);
-  documentListeners.get('mousemove')(oneCharacter);
+  documentListeners.get('pointermove')(oneCharacter);
   assert.equal(oneCharacter.defaultPrevented, true);
   assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [2, 3]);
 
-  documentListeners.get('mousemove')(event(5));
+  documentListeners.get('pointermove')(event(5));
   assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [2, 5]);
 
-  documentListeners.get('mousemove')(event(1));
+  documentListeners.get('pointermove')(event(1));
   assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [1, 2]);
 
   caretNode = foreignNode;
-  documentListeners.get('mousemove')(event(9));
+  documentListeners.get('pointermove')(event(9));
   assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [1, 2]);
 
-  documentListeners.get('mouseup')(event(1, { buttons: 0 }));
+  documentListeners.get('pointerup')(event(1, { buttons: 0 }));
+  assert.equal(capturedPointer, null);
+  const selectionAfterRelease = event(1);
+  documentListeners.get('selectstart')(selectionAfterRelease);
+  assert.equal(selectionAfterRelease.defaultPrevented, undefined);
   stop();
   assert.equal(layerListeners.size, 0);
   assert.equal(documentListeners.size, 0);

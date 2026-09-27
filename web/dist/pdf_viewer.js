@@ -8978,6 +8978,22 @@
     if (!textLayer || !document2 || !window2) return () => {
     };
     let session = null;
+    const usePointerEvents = typeof window2.PointerEvent === "function";
+    const startEvent = usePointerEvents ? "pointerdown" : "mousedown";
+    const moveEvent = usePointerEvents ? "pointermove" : "mousemove";
+    const endEvent = usePointerEvents ? "pointerup" : "mouseup";
+    const releasePointer = () => {
+      const pointerId = session == null ? void 0 : session.pointerId;
+      if (pointerId === null || pointerId === void 0 || typeof textLayer.releasePointerCapture !== "function") return;
+      try {
+        textLayer.releasePointerCapture(pointerId);
+      } catch (_error) {
+      }
+    };
+    const blockNativeSelection = (event) => {
+      var _a;
+      if (session) (_a = event.preventDefault) == null ? void 0 : _a.call(event);
+    };
     const update = (event) => {
       var _a;
       if (!session) return false;
@@ -8991,27 +9007,49 @@
     const finish = (event) => {
       if (!session) return;
       update(event);
+      releasePointer();
+      session = null;
+    };
+    const cancel = () => {
+      if (!session) return;
+      releasePointer();
       session = null;
     };
     const start = (event) => {
       var _a, _b;
-      if (event.button !== 0 || Number(event.detail || 1) > 1 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (event.button !== 0 || Number(event.detail || 1) > 1 || usePointerEvents && event.isPrimary === false || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       const caret = caretRangeAtPoint(document2, Number(event.clientX), Number(event.clientY));
       if (!(caret == null ? void 0 : caret.startContainer) || !textLayer.contains(caret.startContainer)) return;
       (_a = event.preventDefault) == null ? void 0 : _a.call(event);
       const anchor = typeof caret.cloneRange === "function" ? caret.cloneRange() : caret;
       (_b = anchor.collapse) == null ? void 0 : _b.call(anchor, true);
       if (!replaceSelection(window2, anchor)) return;
-      session = { anchor };
+      const pointerId = usePointerEvents && Number.isFinite(event.pointerId) ? event.pointerId : null;
+      session = { anchor, pointerId };
+      if (pointerId !== null && typeof textLayer.setPointerCapture === "function") {
+        try {
+          textLayer.setPointerCapture(pointerId);
+        } catch (_error) {
+        }
+      }
     };
-    textLayer.addEventListener("mousedown", start, true);
-    document2.addEventListener("mousemove", update, true);
-    document2.addEventListener("mouseup", finish, true);
+    textLayer.addEventListener(startEvent, start, true);
+    document2.addEventListener(moveEvent, update, true);
+    document2.addEventListener(endEvent, finish, true);
+    if (usePointerEvents) document2.addEventListener("pointercancel", cancel, true);
+    document2.addEventListener("mousedown", blockNativeSelection, true);
+    document2.addEventListener("selectstart", blockNativeSelection, true);
+    document2.addEventListener("dragstart", blockNativeSelection, true);
     return () => {
+      releasePointer();
       session = null;
-      textLayer.removeEventListener("mousedown", start, true);
-      document2.removeEventListener("mousemove", update, true);
-      document2.removeEventListener("mouseup", finish, true);
+      textLayer.removeEventListener(startEvent, start, true);
+      document2.removeEventListener(moveEvent, update, true);
+      document2.removeEventListener(endEvent, finish, true);
+      if (usePointerEvents) document2.removeEventListener("pointercancel", cancel, true);
+      document2.removeEventListener("mousedown", blockNativeSelection, true);
+      document2.removeEventListener("selectstart", blockNativeSelection, true);
+      document2.removeEventListener("dragstart", blockNativeSelection, true);
     };
   }
   function movePdfSelectionEndpoint(textLayer, currentRange, endpoint, clientX, clientY, {
