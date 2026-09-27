@@ -9175,7 +9175,9 @@
   }
   function installPrecisePdfSelectionDrag(textLayer, {
     document: document2 = globalThis.document,
-    window: window2 = globalThis.window
+    window: window2 = globalThis.window,
+    onSelectionHandlesChange = () => {
+    }
   } = {}) {
     if (!textLayer || !document2 || !window2) return () => {
     };
@@ -9195,6 +9197,12 @@
     const blockNativeSelection = (event) => {
       var _a;
       if (session) (_a = event.preventDefault) == null ? void 0 : _a.call(event);
+    };
+    const hideHandlesOutsideSelection = (event) => {
+      var _a;
+      const target = event == null ? void 0 : event.target;
+      if ((_a = target == null ? void 0 : target.closest) == null ? void 0 : _a.call(target, ".incremento-pdf-selection-resize-handle")) return;
+      if (!target || !textLayer.contains(target)) onSelectionHandlesChange(false);
     };
     const update = (event) => {
       var _a;
@@ -9217,6 +9225,7 @@
       if (!session) return;
       releasePointer();
       session = null;
+      onSelectionHandlesChange(false);
     };
     const start = (event) => {
       var _a, _b;
@@ -9244,6 +9253,7 @@
         textRows,
         activeRow: initialSession.activeRow
       };
+      onSelectionHandlesChange(true);
       if (pointerId !== null && typeof textLayer.setPointerCapture === "function") {
         try {
           textLayer.setPointerCapture(pointerId);
@@ -9252,6 +9262,7 @@
       }
     };
     textLayer.addEventListener(startEvent, start, true);
+    document2.addEventListener(startEvent, hideHandlesOutsideSelection, true);
     document2.addEventListener(moveEvent, update, true);
     document2.addEventListener(endEvent, finish, true);
     if (usePointerEvents) document2.addEventListener("pointercancel", cancel, true);
@@ -9261,7 +9272,9 @@
     return () => {
       releasePointer();
       session = null;
+      onSelectionHandlesChange(false);
       textLayer.removeEventListener(startEvent, start, true);
+      document2.removeEventListener(startEvent, hideHandlesOutsideSelection, true);
       document2.removeEventListener(moveEvent, update, true);
       document2.removeEventListener(endEvent, finish, true);
       if (usePointerEvents) document2.removeEventListener("pointercancel", cancel, true);
@@ -9374,12 +9387,15 @@
   const DEFAULT_LANGUAGE = createReaderLanguage("en");
   function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLayerRef, renderInfo }) {
     const [rects, setRects] = reactExports.useState([]);
+    const [selectionHandlesVisible, setSelectionHandlesVisible] = reactExports.useState(false);
     const resizeRef = reactExports.useRef(null);
     reactExports.useEffect(() => {
       const textLayer = textLayerRef.current;
       if (!textLayer) return;
       const stopObserving = observePdfTextSelection(textLayer, setRects);
-      const stopPreciseDrag = installPrecisePdfSelectionDrag(textLayer);
+      const stopPreciseDrag = installPrecisePdfSelectionDrag(textLayer, {
+        onSelectionHandlesChange: setSelectionHandlesVisible
+      });
       return () => {
         stopPreciseDrag();
         stopObserving();
@@ -9440,7 +9456,7 @@
     if (!rects.length) return null;
     const first = rects[0];
     const last = rects[rects.length - 1];
-    const handles = rects.length ? [
+    const handles = selectionHandlesVisible ? [
       { endpoint: "start", left: first.x - 12, top: first.y - 28, stemTop: 14, dotTop: 2 },
       { endpoint: "end", left: last.x + last.w - 12, top: last.y + last.h, stemTop: 0, dotTop: 14 }
     ] : [];
@@ -10636,13 +10652,20 @@
       setResizingHighlightId(String(highlight.id || ""));
       return true;
     }, [lastScaleRef, textLayerRef]);
+    const deactivateHighlightResize = reactExports.useCallback(() => {
+      resizeHighlightRef.current = null;
+      setResizingHighlightId(null);
+    }, []);
     const activateHighlightFromPageClick = reactExports.useCallback((event) => {
       var _a, _b, _c;
       if (snapshotMode || (event == null ? void 0 : event.defaultPrevented)) return;
       const interactive = (_b = (_a = event == null ? void 0 : event.target) == null ? void 0 : _a.closest) == null ? void 0 : _b.call(_a, 'button,a,input,textarea,select,[contenteditable="true"]');
       if (interactive) return;
       const selection = (_c = window.getSelection) == null ? void 0 : _c.call(window);
-      if (selection && !selection.isCollapsed) return;
+      if (selection && !selection.isCollapsed) {
+        deactivateHighlightResize();
+        return;
+      }
       const wrapper = containerRef.current;
       if (!wrapper) return;
       const highlight = pdfHighlightAtClientPoint(
@@ -10653,7 +10676,20 @@
         Number(event == null ? void 0 : event.clientY)
       );
       if (isResizableTextHighlight(highlight)) activateHighlightResize(highlight);
-    }, [activateHighlightResize, containerRef, pageHighlights, renderInfo, snapshotMode]);
+      else deactivateHighlightResize();
+    }, [activateHighlightResize, containerRef, deactivateHighlightResize, pageHighlights, renderInfo, snapshotMode]);
+    reactExports.useEffect(() => {
+      if (!resizingHighlightId) return void 0;
+      const dismissHighlightResizeOutside = (event) => {
+        var _a, _b;
+        const target = event == null ? void 0 : event.target;
+        if ((_a = target == null ? void 0 : target.closest) == null ? void 0 : _a.call(target, ".incremento-pdf-highlight-resize-handle, .incremento-pdf-highlight-actions")) return;
+        if (target && ((_b = containerRef.current) == null ? void 0 : _b.contains(target))) return;
+        deactivateHighlightResize();
+      };
+      document.addEventListener("pointerdown", dismissHighlightResizeOutside, true);
+      return () => document.removeEventListener("pointerdown", dismissHighlightResizeOutside, true);
+    }, [containerRef, deactivateHighlightResize, resizingHighlightId]);
     const updateHighlightResizePreview = reactExports.useCallback((event) => {
       const session = resizeHighlightRef.current;
       const tl = textLayerRef.current;

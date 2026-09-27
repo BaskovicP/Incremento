@@ -151,6 +151,8 @@ test('a plain click resolves the saved PDF highlight beneath the text', () => {
   const viewerSource = readFileSync(new URL('../src/PdfViewer.jsx', import.meta.url), 'utf8');
   assert.match(viewerSource, /onClick=\{activateHighlightFromPageClick\}/);
   assert.match(viewerSource, /if \(isResizableTextHighlight\(highlight\)\) activateHighlightResize\(highlight\)/);
+  assert.match(viewerSource, /else deactivateHighlightResize\(\)/);
+  assert.match(viewerSource, /document\.addEventListener\('pointerdown', dismissHighlightResizeOutside, true\)/);
 });
 
 test('hovering a saved note invokes the custom popup without a second native tooltip', () => {

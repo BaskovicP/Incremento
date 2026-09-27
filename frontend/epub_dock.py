@@ -2455,6 +2455,7 @@ def _build_page_script(
           lastCaretPoint: preciseCaretVisualPoint(caret),
           activeRow: initialSession.activeRow,
         }};
+        window._incrementoEpubSelectionHandlesRequested = true;
         if (pointerId !== null && target && target.setPointerCapture) {{
           try {{ target.setPointerCapture(pointerId); }} catch (err) {{}}
         }}
@@ -2489,6 +2490,7 @@ def _build_page_script(
         if (!session) return;
         releasePreciseSelectionPointer(session);
         window._incrementoEpubPreciseSelectionDrag = null;
+        window._incrementoEpubSelectionHandlesRequested = false;
         reportSelection();
       }}
       function removeSelectionResizeHandles() {{
@@ -2927,7 +2929,8 @@ def _build_page_script(
         }}
         window._lastEpubSelection = meta.text;
         window._lastEpubSelectionMeta = meta;
-        renderSelectionResizeHandles(meta);
+        if (!window._incrementoEpubSelectionHandlesRequested) removeSelectionResizeHandles();
+        else renderSelectionResizeHandles(meta);
         send('incremento_selection_state:' + JSON.stringify({{ source: 'epub', hasText: true }}));
       }}
       function pageStep() {{
@@ -3118,6 +3121,7 @@ def _build_page_script(
       ensureStyle();
       applyTextScale(STATE.textScale);
       applyClickableLinks(STATE.clickableLinks);
+      window._incrementoEpubSelectionHandlesRequested = false;
       removeSelectionResizeHandles();
       removeHighlightResizeHandles();
       document.querySelectorAll('span.incremento-epub-highlight').forEach(unwrapHighlight);
@@ -3200,10 +3204,17 @@ def _build_page_script(
           event.stopPropagation();
           return;
         }}
+        const resizeHandle = event.target && event.target.closest
+          ? event.target.closest('.incremento-epub-resize-handle, .incremento-epub-selection-resize-handle')
+          : null;
+        if (resizeHandle) return;
         const actionMenu = document.getElementById('incremento-epub-highlight-actions');
         if (actionMenu && actionMenu.contains(event.target)) {{
           return;
         }}
+        window._incrementoEpubSelectionHandlesRequested = false;
+        removeSelectionResizeHandles();
+        removeHighlightResizeHandles();
         const linkTarget = event.target && event.target.closest
           ? event.target.closest('a[href]')
           : null;

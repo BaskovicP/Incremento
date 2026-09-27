@@ -242,6 +242,7 @@ function caretMovementMatchesPointer(document, session, caret, clientY) {
 export function installPrecisePdfSelectionDrag(textLayer, {
   document = globalThis.document,
   window = globalThis.window,
+  onSelectionHandlesChange = () => {},
 } = {}) {
   if (!textLayer || !document || !window) return () => {};
   let session = null;
@@ -263,6 +264,12 @@ export function installPrecisePdfSelectionDrag(textLayer, {
 
   const blockNativeSelection = (event) => {
     if (session) event.preventDefault?.();
+  };
+
+  const hideHandlesOutsideSelection = (event) => {
+    const target = event?.target;
+    if (target?.closest?.('.incremento-pdf-selection-resize-handle')) return;
+    if (!target || !textLayer.contains(target)) onSelectionHandlesChange(false);
   };
 
   const update = (event) => {
@@ -287,6 +294,7 @@ export function installPrecisePdfSelectionDrag(textLayer, {
     if (!session) return;
     releasePointer();
     session = null;
+    onSelectionHandlesChange(false);
   };
 
   const start = (event) => {
@@ -316,6 +324,7 @@ export function installPrecisePdfSelectionDrag(textLayer, {
       textRows,
       activeRow: initialSession.activeRow,
     };
+    onSelectionHandlesChange(true);
     if (pointerId !== null && typeof textLayer.setPointerCapture === 'function') {
       try {
         textLayer.setPointerCapture(pointerId);
@@ -326,6 +335,7 @@ export function installPrecisePdfSelectionDrag(textLayer, {
   };
 
   textLayer.addEventListener(startEvent, start, true);
+  document.addEventListener(startEvent, hideHandlesOutsideSelection, true);
   document.addEventListener(moveEvent, update, true);
   document.addEventListener(endEvent, finish, true);
   if (usePointerEvents) document.addEventListener('pointercancel', cancel, true);
@@ -335,7 +345,9 @@ export function installPrecisePdfSelectionDrag(textLayer, {
   return () => {
     releasePointer();
     session = null;
+    onSelectionHandlesChange(false);
     textLayer.removeEventListener(startEvent, start, true);
+    document.removeEventListener(startEvent, hideHandlesOutsideSelection, true);
     document.removeEventListener(moveEvent, update, true);
     document.removeEventListener(endEvent, finish, true);
     if (usePointerEvents) document.removeEventListener('pointercancel', cancel, true);

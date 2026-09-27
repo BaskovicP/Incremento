@@ -568,10 +568,11 @@ You can highlight text in the current color with:
 Highlights are saved per PDF and reappear whenever you reopen the card.
 As soon as you select text, the blue selection shows a line-and-dot handle at
 each endpoint. Drag either handle before creating the highlight to adjust its
-start or end; copy, extraction, and highlight actions use the adjusted text.
-After a highlight is saved, its endpoint handles remain available for immediate
-fine-tuning. To resize an older text highlight, click its horizontal-arrow
-action first. Snapshot regions and non-highlight PDF annotations are not
+start or end; copy, extraction, and highlight actions use the adjusted text. The
+temporary handles disappear after you click elsewhere. To resize a saved text
+highlight, click its highlighted text (or its horizontal-arrow action) to show
+the endpoints again; finishing the drag or clicking elsewhere hides them.
+Snapshot regions and non-highlight PDF annotations are not
 resizable.
 Use the eight quick swatches or **More colors…** for a larger palette and a custom
 HTML color such as `#123ABC`. Click **OK** to select the color; selected text is

@@ -612,6 +612,13 @@ def test_build_page_script_shows_draggable_handles_on_live_epub_selection(monkey
     assert "incremento-epub-selection-loupe" not in script
     assert "preciseStickyRow" in script
     assert "preciseMagneticWordCaret" in script
+    assert "if (!window._incrementoEpubSelectionHandlesRequested)" in script
+    assert "window._incrementoEpubSelectionHandlesRequested = true;" in script
+    assert "window._incrementoEpubSelectionHandlesRequested = false;" in script
+    click_handler = script[script.index("window._incrementoEpubClickListener = function(event)") :]
+    assert click_handler.index("removeHighlightResizeHandles();") < click_handler.index(
+        "const target = event.target && event.target.closest"
+    )
 
 
 def test_epub_end_handle_stays_on_its_row_in_the_right_margin(monkeypatch):

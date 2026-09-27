@@ -12,12 +12,15 @@ const DEFAULT_LANGUAGE = createReaderLanguage('en');
 // endpoint handles. Saved annotations remain in HighlightLayer.
 export default function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLayerRef, renderInfo }) {
   const [rects, setRects] = useState([]);
+  const [selectionHandlesVisible, setSelectionHandlesVisible] = useState(false);
   const resizeRef = useRef(null);
   useEffect(() => {
     const textLayer = textLayerRef.current;
     if (!textLayer) return;
     const stopObserving = observePdfTextSelection(textLayer, setRects);
-    const stopPreciseDrag = installPrecisePdfSelectionDrag(textLayer);
+    const stopPreciseDrag = installPrecisePdfSelectionDrag(textLayer, {
+      onSelectionHandlesChange: setSelectionHandlesVisible,
+    });
     return () => {
       stopPreciseDrag();
       stopObserving();
@@ -82,7 +85,7 @@ export default function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLay
   if (!rects.length) return null;
   const first = rects[0];
   const last = rects[rects.length - 1];
-  const handles = rects.length ? [
+  const handles = selectionHandlesVisible ? [
     { endpoint: 'start', left: first.x - 12, top: first.y - 28, stemTop: 14, dotTop: 2 },
     { endpoint: 'end', left: last.x + last.w - 12, top: last.y + last.h, stemTop: 0, dotTop: 14 },
   ] : [];

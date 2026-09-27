@@ -1123,12 +1123,20 @@ export default function PdfViewer() {
     return true;
   }, [lastScaleRef, textLayerRef]);
 
+  const deactivateHighlightResize = useCallback(() => {
+    resizeHighlightRef.current = null;
+    setResizingHighlightId(null);
+  }, []);
+
   const activateHighlightFromPageClick = useCallback((event) => {
     if (snapshotMode || event?.defaultPrevented) return;
     const interactive = event?.target?.closest?.('button,a,input,textarea,select,[contenteditable="true"]');
     if (interactive) return;
     const selection = window.getSelection?.();
-    if (selection && !selection.isCollapsed) return;
+    if (selection && !selection.isCollapsed) {
+      deactivateHighlightResize();
+      return;
+    }
     const wrapper = containerRef.current;
     if (!wrapper) return;
     const highlight = pdfHighlightAtClientPoint(
@@ -1139,7 +1147,20 @@ export default function PdfViewer() {
       Number(event?.clientY),
     );
     if (isResizableTextHighlight(highlight)) activateHighlightResize(highlight);
-  }, [activateHighlightResize, containerRef, pageHighlights, renderInfo, snapshotMode]);
+    else deactivateHighlightResize();
+  }, [activateHighlightResize, containerRef, deactivateHighlightResize, pageHighlights, renderInfo, snapshotMode]);
+
+  useEffect(() => {
+    if (!resizingHighlightId) return undefined;
+    const dismissHighlightResizeOutside = (event) => {
+      const target = event?.target;
+      if (target?.closest?.('.incremento-pdf-highlight-resize-handle, .incremento-pdf-highlight-actions')) return;
+      if (target && containerRef.current?.contains(target)) return;
+      deactivateHighlightResize();
+    };
+    document.addEventListener('pointerdown', dismissHighlightResizeOutside, true);
+    return () => document.removeEventListener('pointerdown', dismissHighlightResizeOutside, true);
+  }, [containerRef, deactivateHighlightResize, resizingHighlightId]);
 
   const updateHighlightResizePreview = useCallback((event) => {
     const session = resizeHighlightRef.current;

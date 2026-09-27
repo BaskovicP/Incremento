@@ -270,6 +270,7 @@ test('initial trackpad drag follows the nearest character instead of accepting n
   const layerListeners = new Map();
   const documentListeners = new Map();
   const selected = [];
+  const activeStates = [];
   let caretNode = textNode;
   const visualTop = offset => ({ 1: 10, 2: 20, 3: 20, 4: 40, 5: 60, 9: 260 }[offset] ?? 20);
   const makeRange = (start = 0, end = start) => ({
@@ -358,11 +359,16 @@ test('initial trackpad drag follows the nearest character instead of accepting n
     ...overrides,
   });
 
-  const stop = installPrecisePdfSelectionDrag(textLayer, { document, window });
+  const stop = installPrecisePdfSelectionDrag(textLayer, {
+    document,
+    window,
+    onSelectionHandlesChange: visible => activeStates.push(visible),
+  });
   const down = event(2);
   layerListeners.get('pointerdown')(down);
   assert.equal(down.defaultPrevented, true);
   assert.equal(capturedPointer, 12);
+  assert.equal(activeStates.at(-1), true);
   assert.equal(selected[0].collapsed, true);
   assert.equal(selected[0].startOffset, 2);
 
@@ -408,6 +414,9 @@ test('initial trackpad drag follows the nearest character instead of accepting n
 
   documentListeners.get('pointerup')(event(1, { buttons: 0 }));
   assert.equal(capturedPointer, null);
+  assert.equal(activeStates.at(-1), true, 'pins remain available while the live selection is still focused');
+  documentListeners.get('pointerdown')({ target: foreignNode });
+  assert.equal(activeStates.at(-1), false, 'temporary pins must hide after clicking away');
   const selectionAfterRelease = event(1);
   documentListeners.get('selectstart')(selectionAfterRelease);
   assert.equal(selectionAfterRelease.defaultPrevented, undefined);
@@ -450,7 +459,7 @@ const { code } = await transformWithEsbuild(readFileSync(sourceUrl, 'utf8'), sou
 });
 let previewRects = [];
 const hooks = 'data:text/javascript,' + encodeURIComponent(
-  'export const useState = () => [globalThis.__pdfSelectionTestRects, () => {}]; export const useEffect = () => {}; export const useRef = value => ({ current: value });',
+  'export const useState = initial => Array.isArray(initial) ? [globalThis.__pdfSelectionTestRects, () => {}] : [globalThis.__pdfSelectionTestDragActive ?? initial, () => {}]; export const useEffect = () => {}; export const useRef = value => ({ current: value });',
 );
 const resolvedCode = code.replace(/from (["'])([^"']+)\1/g, (_match, _quote, specifier) => (
   `from ${JSON.stringify(specifier === 'react' ? hooks : specifier.startsWith('.')
@@ -467,6 +476,7 @@ function elements(node) {
 test('the joined live preview replaces native fragmented paint without blocking text selection', () => {
   previewRects = [{ x: 20, y: 40, w: 286, h: 38 }];
   globalThis.__pdfSelectionTestRects = previewRects;
+  globalThis.__pdfSelectionTestDragActive = true;
   try {
     const nodes = elements(PdfSelectionLayer({ textLayerRef: { current: {} }, renderInfo: { tlLeft: 30 } }));
     const overlay = nodes.find(node => node.props?.id === 'pdf-selection-layer');
@@ -492,5 +502,22 @@ test('the joined live preview replaces native fragmented paint without blocking 
     assert.equal(PdfSelectionLayer({ textLayerRef: { current: {} }, renderInfo: { tlLeft: 30 } }), null);
   } finally {
     delete globalThis.__pdfSelectionTestRects;
+    delete globalThis.__pdfSelectionTestDragActive;
+  }
+});
+
+test('temporary PDF selection pins stay hidden after clicking away from the selection', () => {
+  globalThis.__pdfSelectionTestRects = [{ x: 20, y: 40, w: 286, h: 38 }];
+  globalThis.__pdfSelectionTestDragActive = false;
+  try {
+    const nodes = elements(PdfSelectionLayer({ textLayerRef: { current: {} }, renderInfo: { tlLeft: 30 } }));
+    assert.ok(nodes.find(node => node.props?.id === 'pdf-selection-layer'));
+    assert.equal(
+      nodes.filter(node => node.props?.className === 'incremento-pdf-selection-resize-handle').length,
+      0,
+    );
+  } finally {
+    delete globalThis.__pdfSelectionTestRects;
+    delete globalThis.__pdfSelectionTestDragActive;
   }
 });
