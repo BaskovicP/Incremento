@@ -582,6 +582,107 @@ def test_build_page_script_shows_draggable_handles_on_live_epub_selection(monkey
     assert "selection.removeAllRanges()" in script
     assert "selection.addRange(next)" in script
     assert "pointercancel" in script
+    assert "window._incrementoEpubPreciseSelectionStart = beginPreciseSelectionDrag" in script
+    assert "document.addEventListener('mousedown', window._incrementoEpubPreciseSelectionStart, true)" in script
+    assert "document.addEventListener('mousemove', window._incrementoEpubPreciseSelectionMove, true)" in script
+    assert "document.addEventListener('mouseup', window._incrementoEpubPreciseSelectionEnd, true)" in script
+
+
+def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(monkeypatch):
+    import json
+    import subprocess
+
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": "Example section text"}])
+    monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
+    script = epub_dock._build_page_script(
+        card_id=7,
+        section_index=0,
+        scroll_ratio=0.0,
+        text_scale=1.0,
+        read_anchor=None,
+        focus_offset=-1,
+        search_query="",
+        highlights=[],
+        bridge_nonce="private-token",
+    )
+    smooth_drag = script[
+        script.index("      function preciseSelectionRange"):
+        script.index("      function removeSelectionResizeHandles")
+    ]
+    program = r"""
+        const fs = require('node:fs');
+        const code = JSON.parse(fs.readFileSync(0, 'utf8')).code;
+        const textNode = {};
+        const foreignNode = {};
+        let caretNode = textNode;
+        const selected = [];
+        const makeRange = (start = 0, end = start) => ({
+          startContainer: textNode,
+          endContainer: textNode,
+          startOffset: start,
+          endOffset: end,
+          commonAncestorContainer: textNode,
+          get collapsed() { return this.startOffset === this.endOffset; },
+          setStart(node, offset) { this.startContainer = node; this.startOffset = offset; },
+          setEnd(node, offset) { this.endContainer = node; this.endOffset = offset; },
+          collapse() { this.endContainer = this.startContainer; this.endOffset = this.startOffset; },
+          cloneRange() { return makeRange(this.startOffset, this.endOffset); },
+          compareBoundaryPoints(_how, source) { return this.startOffset - source.startOffset; },
+        });
+        const document = { createRange: () => makeRange() };
+        const window = { getSelection: () => ({
+          removeAllRanges: () => selected.splice(0),
+          addRange: range => selected.push(range),
+        }) };
+        const textNodes = () => [textNode];
+        const caretRangeAtPoint = x => {
+          const range = makeRange(x, x);
+          range.startContainer = caretNode;
+          range.endContainer = caretNode;
+          range.commonAncestorContainer = caretNode;
+          return range;
+        };
+        const reportSelection = () => {};
+        const event = (x, buttons = 1) => ({
+          button: 0, buttons, clientX: x, clientY: 10, target: {},
+          preventDefault() { this.defaultPrevented = true; },
+        });
+        eval(code);
+        const down = event(2);
+        beginPreciseSelectionDrag(down);
+        const first = event(3);
+        updatePreciseSelectionDrag(first);
+        const forward = [selected[0].startOffset, selected[0].endOffset];
+        updatePreciseSelectionDrag(event(5));
+        const later = [selected[0].startOffset, selected[0].endOffset];
+        updatePreciseSelectionDrag(event(1));
+        const backward = [selected[0].startOffset, selected[0].endOffset];
+        caretNode = foreignNode;
+        updatePreciseSelectionDrag(event(9));
+        const outside = [selected[0].startOffset, selected[0].endOffset];
+        finishPreciseSelectionDrag(event(1, 0));
+        process.stdout.write(JSON.stringify({
+          downPrevented: !!down.defaultPrevented,
+          movePrevented: !!first.defaultPrevented,
+          forward, later, backward, outside,
+        }));
+    """
+    result = subprocess.run(
+        ["node", "-e", program],
+        input=json.dumps({"code": smooth_drag}),
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {
+        "downPrevented": True,
+        "movePrevented": True,
+        "forward": [2, 3],
+        "later": [2, 5],
+        "backward": [1, 2],
+        "outside": [1, 2],
+    }
 
 
 def test_build_page_script_installs_opt_in_trusted_link_bridge(monkeypatch):

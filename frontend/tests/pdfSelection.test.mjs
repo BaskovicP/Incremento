@@ -2,7 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { transformWithEsbuild } from 'vite';
-import { movePdfSelectionEndpoint, observePdfTextSelection } from '../src/pdfSelection.mjs';
+import {
+  installPrecisePdfSelectionDrag,
+  movePdfSelectionEndpoint,
+  observePdfTextSelection,
+} from '../src/pdfSelection.mjs';
 
 function selectionHarness() {
   const listeners = new Map();
@@ -192,6 +196,91 @@ test('dragging a live selection handle moves only that endpoint and cannot cross
   caretNode = foreignNode;
   assert.equal(movePdfSelectionEndpoint(textLayer, extended, 'end', 11, 10, { document, window }), null);
   assert.equal(selected[0], extended, 'dragging outside the PDF text layer must fail closed');
+});
+
+test('initial trackpad drag follows the nearest character instead of accepting native row jumps', () => {
+  const textNode = {};
+  const foreignNode = {};
+  const layerListeners = new Map();
+  const documentListeners = new Map();
+  const selected = [];
+  let caretNode = textNode;
+  const makeRange = (start = 0, end = start) => ({
+    startContainer: textNode,
+    endContainer: textNode,
+    startOffset: start,
+    endOffset: end,
+    commonAncestorContainer: textNode,
+    get collapsed() { return this.startOffset === this.endOffset; },
+    setStart(node, offset) { this.startContainer = node; this.startOffset = offset; },
+    setEnd(node, offset) { this.endContainer = node; this.endOffset = offset; },
+    collapse() { this.endContainer = this.startContainer; this.endOffset = this.startOffset; },
+    cloneRange() { return makeRange(this.startOffset, this.endOffset); },
+    compareBoundaryPoints(_how, source) { return this.startOffset - source.startOffset; },
+  });
+  const document = {
+    caretRangeFromPoint: x => {
+      const range = makeRange(x, x);
+      range.startContainer = caretNode;
+      range.endContainer = caretNode;
+      range.commonAncestorContainer = caretNode;
+      return range;
+    },
+    createRange: () => makeRange(),
+    addEventListener: (name, callback) => documentListeners.set(name, callback),
+    removeEventListener: (name, callback) => {
+      assert.equal(documentListeners.get(name), callback);
+      documentListeners.delete(name);
+    },
+  };
+  const window = { getSelection: () => ({
+    removeAllRanges: () => selected.splice(0),
+    addRange: range => selected.push(range),
+  }) };
+  const textLayer = {
+    contains: node => node === textNode,
+    addEventListener: (name, callback) => layerListeners.set(name, callback),
+    removeEventListener: (name, callback) => {
+      assert.equal(layerListeners.get(name), callback);
+      layerListeners.delete(name);
+    },
+  };
+  const event = (x, overrides = {}) => ({
+    button: 0,
+    buttons: 1,
+    clientX: x,
+    clientY: 20,
+    target: {},
+    preventDefault() { this.defaultPrevented = true; },
+    ...overrides,
+  });
+
+  const stop = installPrecisePdfSelectionDrag(textLayer, { document, window });
+  const down = event(2);
+  layerListeners.get('mousedown')(down);
+  assert.equal(down.defaultPrevented, true);
+  assert.equal(selected[0].collapsed, true);
+  assert.equal(selected[0].startOffset, 2);
+
+  const oneCharacter = event(3);
+  documentListeners.get('mousemove')(oneCharacter);
+  assert.equal(oneCharacter.defaultPrevented, true);
+  assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [2, 3]);
+
+  documentListeners.get('mousemove')(event(5));
+  assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [2, 5]);
+
+  documentListeners.get('mousemove')(event(1));
+  assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [1, 2]);
+
+  caretNode = foreignNode;
+  documentListeners.get('mousemove')(event(9));
+  assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [1, 2]);
+
+  documentListeners.get('mouseup')(event(1, { buttons: 0 }));
+  stop();
+  assert.equal(layerListeners.size, 0);
+  assert.equal(documentListeners.size, 0);
 });
 
 const sourceUrl = new URL('../src/PdfSelectionLayer.jsx', import.meta.url);

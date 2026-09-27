@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { createReaderLanguage } from './i18n.mjs';
-import { movePdfSelectionEndpoint, observePdfTextSelection } from './pdfSelection.mjs';
+import {
+  installPrecisePdfSelectionDrag,
+  movePdfSelectionEndpoint,
+  observePdfTextSelection,
+} from './pdfSelection.mjs';
 
 const DEFAULT_LANGUAGE = createReaderLanguage('en');
 
@@ -12,7 +16,12 @@ export default function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLay
   useEffect(() => {
     const textLayer = textLayerRef.current;
     if (!textLayer) return;
-    return observePdfTextSelection(textLayer, setRects);
+    const stopObserving = observePdfTextSelection(textLayer, setRects);
+    const stopPreciseDrag = installPrecisePdfSelectionDrag(textLayer);
+    return () => {
+      stopPreciseDrag();
+      stopObserving();
+    };
   }, [textLayerRef, renderInfo]);
 
   const beginResize = (endpoint, event) => {

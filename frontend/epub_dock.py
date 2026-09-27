@@ -2202,6 +2202,73 @@ def _build_page_script(
         }}
         return null;
       }}
+      function preciseSelectionRange(anchor, caret) {{
+        if (!anchor || !caret || typeof caret.compareBoundaryPoints !== 'function') return null;
+        try {{
+          const next = document.createRange();
+          const caretIsBeforeAnchor = caret.compareBoundaryPoints(0, anchor) < 0;
+          if (caretIsBeforeAnchor) {{
+            next.setStart(caret.startContainer, caret.startOffset);
+            next.setEnd(anchor.startContainer, anchor.startOffset);
+          }} else {{
+            next.setStart(anchor.startContainer, anchor.startOffset);
+            next.setEnd(caret.startContainer, caret.startOffset);
+          }}
+          return next;
+        }} catch (err) {{
+          return null;
+        }}
+      }}
+      function replaceEpubSelection(range) {{
+        const selection = window.getSelection ? window.getSelection() : null;
+        if (!selection || !range) return false;
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return true;
+      }}
+      function beginPreciseSelectionDrag(event) {{
+        if (event.button !== 0 || Number(event.detail || 1) > 1
+            || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+        const target = event.target;
+        if (target && target.closest && target.closest(
+          'a[href],button,input,textarea,select,[contenteditable="true"],#incremento-epub-highlight-actions'
+        )) return;
+        const caret = caretRangeAtPoint(Number(event.clientX), Number(event.clientY));
+        const nodes = textNodes();
+        if (!caret || !caret.startContainer || nodes.indexOf(caret.startContainer) < 0) return;
+        event.preventDefault();
+        const anchor = typeof caret.cloneRange === 'function' ? caret.cloneRange() : caret;
+        if (anchor.collapse) anchor.collapse(true);
+        if (!replaceEpubSelection(anchor)) return;
+        window._incrementoEpubPreciseSelectionDrag = {{
+          anchor,
+          nodes: new Set(nodes),
+          moved: false,
+        }};
+      }}
+      function updatePreciseSelectionDrag(event) {{
+        const session = window._incrementoEpubPreciseSelectionDrag;
+        if (!session) return false;
+        event.preventDefault();
+        const caret = caretRangeAtPoint(Number(event.clientX), Number(event.clientY));
+        if (!caret || !caret.startContainer || !session.nodes.has(caret.startContainer)) return false;
+        const next = preciseSelectionRange(session.anchor, caret);
+        if (!next || !replaceEpubSelection(next)) return false;
+        session.moved = session.moved || !next.collapsed;
+        return true;
+      }}
+      function finishPreciseSelectionDrag(event) {{
+        const session = window._incrementoEpubPreciseSelectionDrag;
+        if (!session) return;
+        updatePreciseSelectionDrag(event);
+        const moved = session.moved;
+        window._incrementoEpubPreciseSelectionDrag = null;
+        if (moved) {{
+          window._incrementoEpubSuppressSelectionClick = true;
+          setTimeout(function() {{ window._incrementoEpubSuppressSelectionClick = false; }}, 0);
+        }}
+        reportSelection();
+      }}
       function removeSelectionResizeHandles() {{
         document.querySelectorAll('.incremento-epub-selection-resize-handle').forEach(function(handle) {{
           handle.remove();
@@ -2795,6 +2862,17 @@ def _build_page_script(
       window._incrementoEpubSelectionListener = reportSelection;
       document.addEventListener('selectionchange', window._incrementoEpubSelectionListener, true);
 
+      document.removeEventListener('mousedown', window._incrementoEpubPreciseSelectionStart, true);
+      document.removeEventListener('mousemove', window._incrementoEpubPreciseSelectionMove, true);
+      document.removeEventListener('mouseup', window._incrementoEpubPreciseSelectionEnd, true);
+      window._incrementoEpubPreciseSelectionDrag = null;
+      window._incrementoEpubPreciseSelectionStart = beginPreciseSelectionDrag;
+      window._incrementoEpubPreciseSelectionMove = updatePreciseSelectionDrag;
+      window._incrementoEpubPreciseSelectionEnd = finishPreciseSelectionDrag;
+      document.addEventListener('mousedown', window._incrementoEpubPreciseSelectionStart, true);
+      document.addEventListener('mousemove', window._incrementoEpubPreciseSelectionMove, true);
+      document.addEventListener('mouseup', window._incrementoEpubPreciseSelectionEnd, true);
+
       window.removeEventListener('resize', window._incrementoEpubResizeListener, true);
       window._incrementoEpubResizeListener = function() {{
         setTimeout(renderReadMarker, 40);
@@ -2828,6 +2906,12 @@ def _build_page_script(
       document.removeEventListener('click', window._incrementoEpubClickListener, true);
       window._incrementoEpubClickListener = function(event) {{
         if (!event.isTrusted) return;
+        if (window._incrementoEpubSuppressSelectionClick) {{
+          window._incrementoEpubSuppressSelectionClick = false;
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }}
         const actionMenu = document.getElementById('incremento-epub-highlight-actions');
         if (actionMenu && actionMenu.contains(event.target)) {{
           return;

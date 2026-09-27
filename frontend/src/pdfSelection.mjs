@@ -17,6 +17,83 @@ function caretRangeAtPoint(document, x, y) {
   return null;
 }
 
+function preciseRangeFromAnchor(document, anchor, caret) {
+  if (!document || !anchor || !caret || typeof caret.compareBoundaryPoints !== 'function') return null;
+  try {
+    const next = document.createRange();
+    const caretIsBeforeAnchor = caret.compareBoundaryPoints(0, anchor) < 0;
+    if (caretIsBeforeAnchor) {
+      next.setStart(caret.startContainer, caret.startOffset);
+      next.setEnd(anchor.startContainer, anchor.startOffset);
+    } else {
+      next.setStart(anchor.startContainer, anchor.startOffset);
+      next.setEnd(caret.startContainer, caret.startOffset);
+    }
+    return next;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function replaceSelection(window, range) {
+  const selection = window?.getSelection?.();
+  if (!selection || !range) return false;
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
+}
+
+/**
+ * Replace Chromium's initial text-drag tracking with exact caret hit-testing.
+ * Qt WebEngine can jump several PDF.js rows during a trackpad drag, while
+ * caretRangeFromPoint remains character-accurate (the resize handles use it too).
+ */
+export function installPrecisePdfSelectionDrag(textLayer, {
+  document = globalThis.document,
+  window = globalThis.window,
+} = {}) {
+  if (!textLayer || !document || !window) return () => {};
+  let session = null;
+
+  const update = (event) => {
+    if (!session) return false;
+    event.preventDefault?.();
+    const caret = caretRangeAtPoint(document, Number(event.clientX), Number(event.clientY));
+    if (!caret?.startContainer || !textLayer.contains(caret.startContainer)) return false;
+    const next = preciseRangeFromAnchor(document, session.anchor, caret);
+    if (!next || !textLayer.contains(next.commonAncestorContainer)) return false;
+    return replaceSelection(window, next);
+  };
+
+  const finish = (event) => {
+    if (!session) return;
+    update(event);
+    session = null;
+  };
+
+  const start = (event) => {
+    if (event.button !== 0 || Number(event.detail || 1) > 1
+        || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    const caret = caretRangeAtPoint(document, Number(event.clientX), Number(event.clientY));
+    if (!caret?.startContainer || !textLayer.contains(caret.startContainer)) return;
+    event.preventDefault?.();
+    const anchor = typeof caret.cloneRange === 'function' ? caret.cloneRange() : caret;
+    anchor.collapse?.(true);
+    if (!replaceSelection(window, anchor)) return;
+    session = { anchor };
+  };
+
+  textLayer.addEventListener('mousedown', start, true);
+  document.addEventListener('mousemove', update, true);
+  document.addEventListener('mouseup', finish, true);
+  return () => {
+    session = null;
+    textLayer.removeEventListener('mousedown', start, true);
+    document.removeEventListener('mousemove', update, true);
+    document.removeEventListener('mouseup', finish, true);
+  };
+}
+
 /** Move one endpoint of the real browser selection and retain the other. */
 export function movePdfSelectionEndpoint(textLayer, currentRange, endpoint, clientX, clientY, {
   document = globalThis.document,

@@ -8946,6 +8946,74 @@
     }
     return null;
   }
+  function preciseRangeFromAnchor(document2, anchor, caret) {
+    if (!document2 || !anchor || !caret || typeof caret.compareBoundaryPoints !== "function") return null;
+    try {
+      const next = document2.createRange();
+      const caretIsBeforeAnchor = caret.compareBoundaryPoints(0, anchor) < 0;
+      if (caretIsBeforeAnchor) {
+        next.setStart(caret.startContainer, caret.startOffset);
+        next.setEnd(anchor.startContainer, anchor.startOffset);
+      } else {
+        next.setStart(anchor.startContainer, anchor.startOffset);
+        next.setEnd(caret.startContainer, caret.startOffset);
+      }
+      return next;
+    } catch (_error) {
+      return null;
+    }
+  }
+  function replaceSelection(window2, range) {
+    var _a;
+    const selection = (_a = window2 == null ? void 0 : window2.getSelection) == null ? void 0 : _a.call(window2);
+    if (!selection || !range) return false;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+  }
+  function installPrecisePdfSelectionDrag(textLayer, {
+    document: document2 = globalThis.document,
+    window: window2 = globalThis.window
+  } = {}) {
+    if (!textLayer || !document2 || !window2) return () => {
+    };
+    let session = null;
+    const update = (event) => {
+      var _a;
+      if (!session) return false;
+      (_a = event.preventDefault) == null ? void 0 : _a.call(event);
+      const caret = caretRangeAtPoint(document2, Number(event.clientX), Number(event.clientY));
+      if (!(caret == null ? void 0 : caret.startContainer) || !textLayer.contains(caret.startContainer)) return false;
+      const next = preciseRangeFromAnchor(document2, session.anchor, caret);
+      if (!next || !textLayer.contains(next.commonAncestorContainer)) return false;
+      return replaceSelection(window2, next);
+    };
+    const finish = (event) => {
+      if (!session) return;
+      update(event);
+      session = null;
+    };
+    const start = (event) => {
+      var _a, _b;
+      if (event.button !== 0 || Number(event.detail || 1) > 1 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      const caret = caretRangeAtPoint(document2, Number(event.clientX), Number(event.clientY));
+      if (!(caret == null ? void 0 : caret.startContainer) || !textLayer.contains(caret.startContainer)) return;
+      (_a = event.preventDefault) == null ? void 0 : _a.call(event);
+      const anchor = typeof caret.cloneRange === "function" ? caret.cloneRange() : caret;
+      (_b = anchor.collapse) == null ? void 0 : _b.call(anchor, true);
+      if (!replaceSelection(window2, anchor)) return;
+      session = { anchor };
+    };
+    textLayer.addEventListener("mousedown", start, true);
+    document2.addEventListener("mousemove", update, true);
+    document2.addEventListener("mouseup", finish, true);
+    return () => {
+      session = null;
+      textLayer.removeEventListener("mousedown", start, true);
+      document2.removeEventListener("mousemove", update, true);
+      document2.removeEventListener("mouseup", finish, true);
+    };
+  }
   function movePdfSelectionEndpoint(textLayer, currentRange, endpoint, clientX, clientY, {
     document: document2 = globalThis.document,
     window: window2 = globalThis.window
@@ -9021,7 +9089,12 @@
     reactExports.useEffect(() => {
       const textLayer = textLayerRef.current;
       if (!textLayer) return;
-      return observePdfTextSelection(textLayer, setRects);
+      const stopObserving = observePdfTextSelection(textLayer, setRects);
+      const stopPreciseDrag = installPrecisePdfSelectionDrag(textLayer);
+      return () => {
+        stopPreciseDrag();
+        stopObserving();
+      };
     }, [textLayerRef, renderInfo]);
     const beginResize = (endpoint, event) => {
       var _a, _b;
