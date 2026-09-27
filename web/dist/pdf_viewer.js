@@ -7482,6 +7482,9 @@
   const reader_edit_highlight_note$2 = "Edit highlight note";
   const reader_remove_highlight$2 = "Remove highlight";
   const reader_remove_snapshot_highlight$2 = "Remove snapshot highlight";
+  const reader_resize_highlight$2 = "Resize highlight";
+  const reader_resize_highlight_start$2 = "Drag to change the start of this highlight";
+  const reader_resize_highlight_end$2 = "Drag to change the end of this highlight";
   const reader_page_jump$2 = "Go to page";
   const reader_prev_short$2 = "Prev";
   const reader_next_short$2 = "Next";
@@ -7645,6 +7648,9 @@
     reader_edit_highlight_note: reader_edit_highlight_note$2,
     reader_remove_highlight: reader_remove_highlight$2,
     reader_remove_snapshot_highlight: reader_remove_snapshot_highlight$2,
+    reader_resize_highlight: reader_resize_highlight$2,
+    reader_resize_highlight_start: reader_resize_highlight_start$2,
+    reader_resize_highlight_end: reader_resize_highlight_end$2,
     reader_page_jump: reader_page_jump$2,
     reader_prev_short: reader_prev_short$2,
     reader_next_short: reader_next_short$2,
@@ -7809,6 +7815,9 @@
   const reader_edit_highlight_note$1 = "Uredi bilješku oznake";
   const reader_remove_highlight$1 = "Ukloni oznaku";
   const reader_remove_snapshot_highlight$1 = "Ukloni oznaku snimke";
+  const reader_resize_highlight$1 = "Promijeni raspon oznake";
+  const reader_resize_highlight_start$1 = "Povuci za promjenu početka oznake";
+  const reader_resize_highlight_end$1 = "Povuci za promjenu kraja oznake";
   const reader_page_jump$1 = "Idi na stranicu";
   const reader_prev_short$1 = "Preth.";
   const reader_next_short$1 = "Sljed.";
@@ -7974,6 +7983,9 @@
     reader_edit_highlight_note: reader_edit_highlight_note$1,
     reader_remove_highlight: reader_remove_highlight$1,
     reader_remove_snapshot_highlight: reader_remove_snapshot_highlight$1,
+    reader_resize_highlight: reader_resize_highlight$1,
+    reader_resize_highlight_start: reader_resize_highlight_start$1,
+    reader_resize_highlight_end: reader_resize_highlight_end$1,
     reader_page_jump: reader_page_jump$1,
     reader_prev_short: reader_prev_short$1,
     reader_next_short: reader_next_short$1,
@@ -8137,6 +8149,9 @@
   const reader_edit_highlight_note = "编辑高亮笔记";
   const reader_remove_highlight = "删除高亮";
   const reader_remove_snapshot_highlight = "删除截图高亮";
+  const reader_resize_highlight = "调整高亮范围";
+  const reader_resize_highlight_start = "拖动以更改高亮起点";
+  const reader_resize_highlight_end = "拖动以更改高亮终点";
   const reader_page_jump = "跳转到页面";
   const reader_prev_short = "上一页";
   const reader_next_short = "下一页";
@@ -8298,6 +8313,9 @@
     reader_edit_highlight_note,
     reader_remove_highlight,
     reader_remove_snapshot_highlight,
+    reader_resize_highlight,
+    reader_resize_highlight_start,
+    reader_resize_highlight_end,
     reader_page_jump,
     reader_prev_short,
     reader_next_short,
@@ -8569,9 +8587,14 @@
     if (HL_COLORS[color]) return HL_COLORS[color];
     return `rgba(${[1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16)).join(",")},0.42)`;
   }
-  const DEFAULT_LANGUAGE = createReaderLanguage("en");
+  const DEFAULT_LANGUAGE$1 = createReaderLanguage("en");
   function isSnapshotHighlight(highlight) {
     return String((highlight == null ? void 0 : highlight.color) || "") === "snapshot";
+  }
+  function isResizableTextHighlight(highlight) {
+    var _a;
+    const kind = String(((_a = highlight == null ? void 0 : highlight.pdf_annotation) == null ? void 0 : _a.kind) || "Highlight");
+    return !isSnapshotHighlight(highlight) && kind === "Highlight" && Array.isArray(highlight == null ? void 0 : highlight.rects) && highlight.rects.length > 0;
   }
   function highlightBackground(highlight, nativeHighlightsVisible) {
     if (isSnapshotHighlight(highlight)) return "rgba(37,99,235,0.12)";
@@ -8583,12 +8606,18 @@
     return highlightBackgroundColor(highlight.color);
   }
   function HighlightLayer({
-    language = DEFAULT_LANGUAGE,
+    language = DEFAULT_LANGUAGE$1,
     nativeHighlightsVisible = false,
     pageHighlights,
     renderInfo,
     deleteHighlight,
     editHighlightNote,
+    activateHighlightResize,
+    resizingHighlightId,
+    beginHighlightResize,
+    moveHighlightResize,
+    endHighlightResize,
+    cancelHighlightResize,
     focusedHighlightId,
     showHighlightNote,
     moveHighlightNote,
@@ -8741,6 +8770,31 @@
                   children: renderNoteIcon(hasNote)
                 }
               ),
+              isResizableTextHighlight(h) && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  className: "incremento-pdf-resize-action",
+                  "aria-label": language.tr("reader_resize_highlight"),
+                  title: language.tr("reader_resize_highlight"),
+                  onClick: () => activateHighlightResize == null ? void 0 : activateHighlightResize(h),
+                  style: {
+                    width: 16,
+                    height: 16,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 0,
+                    border: "1px solid rgba(125,211,252,0.9)",
+                    background: h.id === resizingHighlightId ? "rgba(2,132,199,0.98)" : "rgba(55,65,81,0.9)",
+                    color: "#fff",
+                    borderRadius: "50%",
+                    cursor: "ew-resize",
+                    fontSize: 11,
+                    lineHeight: 1
+                  },
+                  children: "↔"
+                }
+              ),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "button",
                 {
@@ -8766,6 +8820,84 @@
           },
           `actions-${h.id}`
         );
+      }),
+      displayHighlights.map((h) => {
+        if (h.id !== resizingHighlightId || !isResizableTextHighlight(h) || !h.rects.length) return null;
+        const first = h.rects[0];
+        const last = h.rects[h.rects.length - 1];
+        const handles = [
+          {
+            endpoint: "start",
+            left: renderInfo.tlLeft + first.x * renderInfo.scale - 12,
+            top: first.y * renderInfo.scale - 28,
+            stemTop: 14,
+            dotTop: 2
+          },
+          {
+            endpoint: "end",
+            left: renderInfo.tlLeft + (last.x + last.w) * renderInfo.scale - 12,
+            top: (last.y + last.h) * renderInfo.scale,
+            stemTop: 0,
+            dotTop: 14
+          }
+        ];
+        return handles.map((handle) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            type: "button",
+            className: "incremento-pdf-highlight-resize-handle",
+            "data-endpoint": handle.endpoint,
+            "aria-label": language.tr(
+              handle.endpoint === "start" ? "reader_resize_highlight_start" : "reader_resize_highlight_end"
+            ),
+            title: language.tr(
+              handle.endpoint === "start" ? "reader_resize_highlight_start" : "reader_resize_highlight_end"
+            ),
+            onPointerDown: (event) => beginHighlightResize == null ? void 0 : beginHighlightResize(h, handle.endpoint, event),
+            onPointerMove: moveHighlightResize,
+            onPointerUp: endHighlightResize,
+            onPointerCancel: cancelHighlightResize,
+            style: {
+              position: "absolute",
+              left: handle.left,
+              top: handle.top,
+              width: 24,
+              height: 28,
+              margin: 0,
+              padding: 0,
+              border: 0,
+              background: "transparent",
+              cursor: "ew-resize",
+              touchAction: "none",
+              zIndex: 14
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "aria-hidden": "true", style: {
+                position: "absolute",
+                left: 11,
+                top: handle.stemTop,
+                width: 2,
+                height: 12,
+                borderRadius: 2,
+                background: "rgb(14,116,144)",
+                boxShadow: "0 0 0 1px rgba(255,255,255,0.78)"
+              } }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "aria-hidden": "true", style: {
+                position: "absolute",
+                left: 6,
+                top: handle.dotTop,
+                width: 12,
+                height: 12,
+                borderRadius: "50%",
+                background: "rgb(14,116,144)",
+                border: "2px solid #fff",
+                boxSizing: "border-box",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.45)"
+              } })
+            ]
+          },
+          `resize-${h.id}-${handle.endpoint}`
+        ));
       }),
       snapshotMode && /* @__PURE__ */ jsxRuntimeExports.jsx(
         "div",
@@ -8797,6 +8929,48 @@
         }
       )
     ] });
+  }
+  function caretRangeAtPoint(document2, x, y) {
+    if (!document2 || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+    if (typeof document2.caretRangeFromPoint === "function") {
+      return document2.caretRangeFromPoint(x, y);
+    }
+    if (typeof document2.caretPositionFromPoint === "function") {
+      const position = document2.caretPositionFromPoint(x, y);
+      if (position == null ? void 0 : position.offsetNode) {
+        const range = document2.createRange();
+        range.setStart(position.offsetNode, position.offset);
+        range.collapse(true);
+        return range;
+      }
+    }
+    return null;
+  }
+  function movePdfSelectionEndpoint(textLayer, currentRange, endpoint, clientX, clientY, {
+    document: document2 = globalThis.document,
+    window: window2 = globalThis.window
+  } = {}) {
+    if (!textLayer || !currentRange || !["start", "end"].includes(endpoint)) return null;
+    const caret = caretRangeAtPoint(document2, Number(clientX), Number(clientY));
+    if (!(caret == null ? void 0 : caret.startContainer) || !textLayer.contains(caret.startContainer)) return null;
+    try {
+      const next = document2.createRange();
+      if (endpoint === "start") {
+        next.setStart(caret.startContainer, caret.startOffset);
+        next.setEnd(currentRange.endContainer, currentRange.endOffset);
+      } else {
+        next.setStart(currentRange.startContainer, currentRange.startOffset);
+        next.setEnd(caret.startContainer, caret.startOffset);
+      }
+      if (next.collapsed || !textLayer.contains(next.commonAncestorContainer)) return null;
+      const selection = window2.getSelection();
+      if (!selection) return null;
+      selection.removeAllRanges();
+      selection.addRange(next);
+      return next;
+    } catch (_error) {
+      return null;
+    }
   }
   function observePdfTextSelection(textLayer, onChange, {
     document: document2 = globalThis.document,
@@ -8840,21 +9014,79 @@
       if (frame !== null) window2.cancelAnimationFrame(frame);
     };
   }
-  function PdfSelectionLayer({ textLayerRef, renderInfo }) {
+  const DEFAULT_LANGUAGE = createReaderLanguage("en");
+  function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLayerRef, renderInfo }) {
     const [rects, setRects] = reactExports.useState([]);
+    const resizeRef = reactExports.useRef(null);
     reactExports.useEffect(() => {
       const textLayer = textLayerRef.current;
       if (!textLayer) return;
       return observePdfTextSelection(textLayer, setRects);
     }, [textLayerRef, renderInfo]);
+    const beginResize = (endpoint, event) => {
+      var _a, _b;
+      const textLayer = textLayerRef.current;
+      const selection = window.getSelection();
+      if (!textLayer || !selection || selection.isCollapsed || !selection.rangeCount) return;
+      const range = selection.getRangeAt(0);
+      if (!textLayer.contains(range.commonAncestorContainer)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      (_b = (_a = event.currentTarget) == null ? void 0 : _a.setPointerCapture) == null ? void 0 : _b.call(_a, event.pointerId);
+      resizeRef.current = {
+        endpoint,
+        range: range.cloneRange(),
+        original: range.cloneRange(),
+        pointerId: Number.isFinite(Number(event.pointerId)) ? Number(event.pointerId) : null
+      };
+    };
+    const moveResize = (event) => {
+      const session = resizeRef.current;
+      const textLayer = textLayerRef.current;
+      if (!session || !textLayer) return;
+      if (session.pointerId !== null && Number(event.pointerId) !== session.pointerId) return;
+      const next = movePdfSelectionEndpoint(
+        textLayer,
+        session.range,
+        session.endpoint,
+        Number(event.clientX),
+        Number(event.clientY)
+      );
+      if (next) session.range = next;
+    };
+    const endResize = (event) => {
+      var _a, _b;
+      if (!resizeRef.current) return;
+      moveResize(event);
+      (_b = (_a = event.currentTarget) == null ? void 0 : _a.releasePointerCapture) == null ? void 0 : _b.call(_a, event.pointerId);
+      resizeRef.current = null;
+    };
+    const cancelResize = (event) => {
+      var _a, _b;
+      const session = resizeRef.current;
+      if (!session) return;
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(session.original);
+      }
+      (_b = (_a = event.currentTarget) == null ? void 0 : _a.releasePointerCapture) == null ? void 0 : _b.call(_a, event.pointerId);
+      resizeRef.current = null;
+    };
     if (!rects.length) return null;
+    const first = rects[0];
+    const last = rects[rects.length - 1];
+    const handles = [
+      { endpoint: "start", left: first.x - 12, top: first.y - 28, stemTop: 14, dotTop: 2 },
+      { endpoint: "end", left: last.x + last.w - 12, top: last.y + last.h, stemTop: 0, dotTop: 14 }
+    ];
     return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: "#pdf-text-layer ::selection { background: transparent; }" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "div",
         {
           id: "pdf-selection-layer",
-          "aria-hidden": true,
+          "aria-hidden": false,
           style: {
             position: "absolute",
             left: renderInfo.tlLeft,
@@ -8863,21 +9095,81 @@
             userSelect: "none",
             zIndex: 3
           },
-          children: rects.map((rect, index) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "div",
-            {
-              style: {
-                position: "absolute",
-                left: rect.x,
-                top: rect.y,
-                width: rect.w,
-                height: rect.h,
-                background: "rgba(0,100,255,0.3)",
-                mixBlendMode: "multiply"
-              }
-            },
-            index
-          ))
+          children: [
+            rects.map((rect, index) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "div",
+              {
+                style: {
+                  position: "absolute",
+                  left: rect.x,
+                  top: rect.y,
+                  width: rect.w,
+                  height: rect.h,
+                  background: "rgba(0,100,255,0.3)",
+                  mixBlendMode: "multiply"
+                }
+              },
+              index
+            )),
+            handles.map((handle) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                className: "incremento-pdf-selection-resize-handle",
+                "data-endpoint": handle.endpoint,
+                "aria-label": language.tr(
+                  handle.endpoint === "start" ? "reader_resize_highlight_start" : "reader_resize_highlight_end"
+                ),
+                title: language.tr(
+                  handle.endpoint === "start" ? "reader_resize_highlight_start" : "reader_resize_highlight_end"
+                ),
+                onPointerDown: (event) => beginResize(handle.endpoint, event),
+                onPointerMove: moveResize,
+                onPointerUp: endResize,
+                onPointerCancel: cancelResize,
+                style: {
+                  position: "absolute",
+                  left: handle.left,
+                  top: handle.top,
+                  width: 24,
+                  height: 28,
+                  margin: 0,
+                  padding: 0,
+                  border: 0,
+                  background: "transparent",
+                  cursor: "ew-resize",
+                  pointerEvents: "auto",
+                  touchAction: "none",
+                  zIndex: 4
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "aria-hidden": "true", style: {
+                    position: "absolute",
+                    left: 11,
+                    top: handle.stemTop,
+                    width: 2,
+                    height: 12,
+                    borderRadius: 2,
+                    background: "rgb(14,116,144)",
+                    boxShadow: "0 0 0 1px rgba(255,255,255,0.78)"
+                  } }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "aria-hidden": "true", style: {
+                    position: "absolute",
+                    left: 6,
+                    top: handle.dotTop,
+                    width: 12,
+                    height: 12,
+                    borderRadius: "50%",
+                    background: "rgb(14,116,144)",
+                    border: "2px solid #fff",
+                    boxSizing: "border-box",
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.45)"
+                  } })
+                ]
+              },
+              handle.endpoint
+            ))
+          ]
         }
       )
     ] });
@@ -9116,6 +9408,64 @@
       h: height
     };
   }
+  function caretRangeAtClientPoint(doc, x, y) {
+    if (!doc || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+    if (typeof doc.caretRangeFromPoint === "function") {
+      return doc.caretRangeFromPoint(x, y);
+    }
+    if (typeof doc.caretPositionFromPoint === "function") {
+      const position = doc.caretPositionFromPoint(x, y);
+      if (position == null ? void 0 : position.offsetNode) {
+        const range = doc.createRange();
+        range.setStart(position.offsetNode, position.offset);
+        range.collapse(true);
+        return range;
+      }
+    }
+    return null;
+  }
+  function textRangeForPdfHighlight(highlight, textLayer, scale) {
+    const rects = normalizePdfHighlightRects(highlight == null ? void 0 : highlight.rects);
+    const doc = textLayer == null ? void 0 : textLayer.ownerDocument;
+    if (!doc || !rects.length || !Number.isFinite(scale) || scale <= 0) return null;
+    const layerRect = textLayer.getBoundingClientRect();
+    const first = rects[0];
+    const last = rects[rects.length - 1];
+    const start = caretRangeAtClientPoint(
+      doc,
+      layerRect.left + first.x * scale + 1,
+      layerRect.top + (first.y + first.h / 2) * scale
+    );
+    const end = caretRangeAtClientPoint(
+      doc,
+      layerRect.left + (last.x + last.w) * scale - 1,
+      layerRect.top + (last.y + last.h / 2) * scale
+    );
+    if (!(start == null ? void 0 : start.startContainer) || !(end == null ? void 0 : end.startContainer)) return null;
+    if (!textLayer.contains(start.startContainer) || !textLayer.contains(end.startContainer)) return null;
+    try {
+      const range = doc.createRange();
+      range.setStart(start.startContainer, start.startOffset);
+      range.setEnd(end.startContainer, end.startOffset);
+      return range.collapsed ? null : range;
+    } catch (_error) {
+      return null;
+    }
+  }
+  function resizedPdfHighlight(highlight, range, textLayer, scale) {
+    if (!highlight || !range || !textLayer || !Number.isFinite(scale) || scale <= 0) return null;
+    const layerRect = textLayer.getBoundingClientRect();
+    const rects = normalizePdfHighlightRects(Array.from(range.getClientRects()).map((rect) => rectToPdfCoords(rect, layerRect, scale)).filter(Boolean));
+    const text = selectionCleaned({ rangeCount: 1, getRangeAt: () => range }, textLayer);
+    if (!rects.length || !text) return null;
+    const next = { ...highlight, text, rects };
+    if (highlight.pdf_annotation && typeof highlight.pdf_annotation === "object") {
+      next.pdf_annotation = { ...highlight.pdf_annotation };
+      delete next.pdf_annotation.quads;
+      delete next.pdf_annotation.xref;
+    }
+    return next;
+  }
   function makeClientHighlightId(prefix = "hl") {
     return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
   }
@@ -9313,6 +9663,8 @@
     const [nativeHighlightsVisible, setNativeHighlightsVisible] = reactExports.useState(false);
     const [hlColor, setHlColor] = reactExports.useState("yellow");
     const [autoHighlight, setAutoHighlight] = reactExports.useState(false);
+    const [resizingHighlightId, setResizingHighlightId] = reactExports.useState(null);
+    const resizeHighlightRef = reactExports.useRef(null);
     const scrollToTopOnPageChangeRef = reactExports.useRef(true);
     const hlColorRef = reactExports.useRef("yellow");
     const pendingHighlightSelectionRef = reactExports.useRef(null);
@@ -9888,7 +10240,12 @@
       }));
     }, [activeCvsRef, canvasARef, canvasBRef, cardIdRef, makeSnapshotHighlight, pageRef]);
     const deleteHighlight = reactExports.useCallback((id) => {
+      var _a;
       setHighlights((prev) => prev.filter((h) => h.id !== id));
+      if (((_a = resizeHighlightRef.current) == null ? void 0 : _a.id) === String(id || "")) {
+        resizeHighlightRef.current = null;
+        setResizingHighlightId(null);
+      }
       window.pycmd("incremento_pdf_hl_del:" + JSON.stringify({ cardId: cardIdRef.current, id }));
     }, [cardIdRef]);
     const editHighlightNote = reactExports.useCallback((id) => {
@@ -9897,6 +10254,108 @@
     const updateHighlightNote = reactExports.useCallback((id, note) => {
       setHighlights((prev) => prev.map((h) => h.id === id ? { ...h, note: String(note || "") } : h));
     }, []);
+    const activateHighlightResize = reactExports.useCallback((highlight) => {
+      const tl = textLayerRef.current;
+      const scale = Number(lastScaleRef.current || 0);
+      if (!highlight || !tl || !scale) return false;
+      const range = textRangeForPdfHighlight(highlight, tl, scale);
+      if (!range) return false;
+      resizeHighlightRef.current = {
+        id: String(highlight.id || ""),
+        range,
+        original: highlight,
+        preview: highlight,
+        dragging: false,
+        pointerId: null
+      };
+      setResizingHighlightId(String(highlight.id || ""));
+      return true;
+    }, [lastScaleRef, textLayerRef]);
+    const updateHighlightResizePreview = reactExports.useCallback((event) => {
+      const session = resizeHighlightRef.current;
+      const tl = textLayerRef.current;
+      const scale = Number(lastScaleRef.current || 0);
+      if (!(session == null ? void 0 : session.dragging) || !tl || !scale) return false;
+      if (session.pointerId !== null && Number(event == null ? void 0 : event.pointerId) !== session.pointerId) return false;
+      const caret = caretRangeAtClientPoint(
+        tl.ownerDocument,
+        Number(event == null ? void 0 : event.clientX),
+        Number(event == null ? void 0 : event.clientY)
+      );
+      if (!(caret == null ? void 0 : caret.startContainer) || !tl.contains(caret.startContainer)) return false;
+      try {
+        const nextRange = tl.ownerDocument.createRange();
+        if (session.endpoint === "start") {
+          nextRange.setStart(caret.startContainer, caret.startOffset);
+          nextRange.setEnd(session.range.endContainer, session.range.endOffset);
+        } else {
+          nextRange.setStart(session.range.startContainer, session.range.startOffset);
+          nextRange.setEnd(caret.startContainer, caret.startOffset);
+        }
+        if (nextRange.collapsed) return false;
+        const nextHighlight = resizedPdfHighlight(session.preview, nextRange, tl, scale);
+        if (!nextHighlight) return false;
+        session.range = nextRange;
+        session.preview = nextHighlight;
+        setHighlights((previous) => previous.map((item) => String(item.id || "") === session.id ? nextHighlight : item));
+        return true;
+      } catch (_error) {
+        return false;
+      }
+    }, [lastScaleRef, textLayerRef]);
+    const beginHighlightResize = reactExports.useCallback((highlight, endpoint, event) => {
+      var _a, _b, _c, _d;
+      if (!activateHighlightResize(highlight)) return;
+      const session = resizeHighlightRef.current;
+      if (!session || endpoint !== "start" && endpoint !== "end") return;
+      (_a = event == null ? void 0 : event.preventDefault) == null ? void 0 : _a.call(event);
+      (_b = event == null ? void 0 : event.stopPropagation) == null ? void 0 : _b.call(event);
+      (_d = (_c = event == null ? void 0 : event.currentTarget) == null ? void 0 : _c.setPointerCapture) == null ? void 0 : _d.call(_c, event.pointerId);
+      session.original = highlight;
+      session.preview = highlight;
+      session.endpoint = endpoint;
+      session.dragging = true;
+      session.pointerId = Number.isFinite(Number(event == null ? void 0 : event.pointerId)) ? Number(event.pointerId) : null;
+      hideHighlightNote();
+    }, [activateHighlightResize, hideHighlightNote]);
+    const moveHighlightResize = reactExports.useCallback((event) => {
+      updateHighlightResizePreview(event);
+    }, [updateHighlightResizePreview]);
+    const endHighlightResize = reactExports.useCallback((event) => {
+      var _a, _b;
+      const session = resizeHighlightRef.current;
+      if (!(session == null ? void 0 : session.dragging)) return;
+      updateHighlightResizePreview(event);
+      session.dragging = false;
+      (_b = (_a = event == null ? void 0 : event.currentTarget) == null ? void 0 : _a.releasePointerCapture) == null ? void 0 : _b.call(_a, event.pointerId);
+      if (session.preview && String(session.preview.id || "") === session.id) {
+        window.pycmd("incremento_pdf_hl_add:" + JSON.stringify({
+          cardId: cardIdRef.current,
+          highlight: session.preview
+        }));
+        session.original = session.preview;
+      }
+      session.pointerId = null;
+    }, [cardIdRef, updateHighlightResizePreview]);
+    const cancelHighlightResize = reactExports.useCallback((event) => {
+      var _a, _b;
+      const session = resizeHighlightRef.current;
+      if (!(session == null ? void 0 : session.dragging)) return;
+      session.dragging = false;
+      (_b = (_a = event == null ? void 0 : event.currentTarget) == null ? void 0 : _a.releasePointerCapture) == null ? void 0 : _b.call(_a, event.pointerId);
+      const original = session.original;
+      setHighlights((previous) => previous.map((item) => String(item.id || "") === session.id ? original : item));
+      session.preview = original;
+      session.pointerId = null;
+    }, []);
+    reactExports.useEffect(() => {
+      const session = resizeHighlightRef.current;
+      if ((session == null ? void 0 : session.dragging) && session.original) {
+        setHighlights((previous) => previous.map((item) => String(item.id || "") === session.id ? session.original : item));
+      }
+      resizeHighlightRef.current = null;
+      setResizingHighlightId(null);
+    }, [page]);
     const makeHighlight = reactExports.useCallback((sel, forcedColor = null) => {
       if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
       const tl = textLayerRef.current;
@@ -9920,6 +10379,15 @@
         rects
       };
       setHighlights((prev) => [...prev, hl]);
+      resizeHighlightRef.current = {
+        id,
+        range: typeof range.cloneRange === "function" ? range.cloneRange() : range,
+        original: hl,
+        preview: hl,
+        dragging: false,
+        pointerId: null
+      };
+      setResizingHighlightId(id);
       window.pycmd("incremento_pdf_hl_add:" + JSON.stringify({ cardId: cardIdRef.current, highlight: hl }));
       return true;
     }, [textLayerRef, lastScaleRef, pageRef, cardIdRef]);
@@ -10146,6 +10614,8 @@
         setAppearanceMode(normalizePdfAppearanceMode(startAppearanceMode));
         setLinkBackHistory([]);
         setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
+        resizeHighlightRef.current = null;
+        setResizingHighlightId(null);
         setNativeHighlightsVisible(window._pdfNativeHighlightsVisible === true);
         window._pdfNativeHighlightsVisible = null;
         window._incPdfHighlights = null;
@@ -11830,7 +12300,7 @@
                     ))
                   }
                 ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(PdfSelectionLayer, { textLayerRef, renderInfo }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(PdfSelectionLayer, { language, textLayerRef, renderInfo }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
                   HighlightLayer,
                   {
@@ -11840,6 +12310,12 @@
                     renderInfo,
                     deleteHighlight,
                     editHighlightNote,
+                    activateHighlightResize,
+                    resizingHighlightId,
+                    beginHighlightResize,
+                    moveHighlightResize,
+                    endHighlightResize,
+                    cancelHighlightResize,
                     focusedHighlightId,
                     showHighlightNote,
                     moveHighlightNote,

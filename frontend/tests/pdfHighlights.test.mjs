@@ -212,6 +212,90 @@ test('annotation note icons are transparent until hover or keyboard focus and st
   }
 });
 
+test('an active text highlight exposes separate draggable start and end handles', () => {
+  const starts = [];
+  const highlight = {
+    id: 'editable',
+    color: 'yellow',
+    rects: [
+      { x: 20, y: 30, w: 90, h: 18 },
+      { x: 10, y: 56, w: 120, h: 18 },
+    ],
+  };
+  const nodes = render([highlight], {
+    resizingHighlightId: 'editable',
+    beginHighlightResize: (value, endpoint, event) => starts.push([value.id, endpoint, event.pointerId]),
+  });
+  const handles = nodes.filter(node => node.props?.className === 'incremento-pdf-highlight-resize-handle');
+
+  assert.equal(handles.length, 2);
+  assert.deepEqual(handles.map(node => node.props['data-endpoint']), ['start', 'end']);
+  assert.equal(handles[0].props.style.left, 8, 'the start handle is centered on the first selected character');
+  assert.equal(handles[1].props.style.left, 118, 'the end handle is centered on the final selected character');
+  assert.equal(handles[0].props.style.touchAction, 'none');
+  handles[0].props.onPointerDown({ pointerId: 4 });
+  handles[1].props.onPointerDown({ pointerId: 5 });
+  assert.deepEqual(starts, [['editable', 'start', 4], ['editable', 'end', 5]]);
+});
+
+test('resize controls are offered only for editable text highlights', () => {
+  const activated = [];
+  const nodes = render([
+    { id: 'text', color: 'yellow', rects: [{ x: 10, y: 20, w: 100, h: 20 }] },
+    { id: 'snapshot', color: 'snapshot', rects: [{ x: 10, y: 50, w: 100, h: 20 }] },
+    { id: 'underline', color: 'yellow', pdf_annotation: { kind: 'Underline' }, rects: [{ x: 10, y: 80, w: 100, h: 20 }] },
+  ], { activateHighlightResize: highlight => activated.push(highlight.id) });
+  const actions = nodes.filter(node => node.props?.className === 'incremento-pdf-resize-action');
+
+  assert.equal(actions.length, 1);
+  actions[0].props.onClick();
+  assert.deepEqual(activated, ['text']);
+});
+
+test('resizing preserves highlight identity and notes while invalidating stale PDF geometry', () => {
+  const source = readFileSync(new URL('../src/PdfViewer.jsx', import.meta.url), 'utf8');
+  const start = source.indexOf('function resizedPdfHighlight(');
+  const finish = source.indexOf('function makeClientHighlightId', start);
+  const scope = {
+    normalizePdfHighlightRects,
+    rectToPdfCoords: (rect, layerRect, scale) => ({
+      x: (rect.left - layerRect.left) / scale,
+      y: (rect.top - layerRect.top) / scale,
+      w: rect.width / scale,
+      h: rect.height / scale,
+    }),
+    selectionCleaned: () => 'Extended passage',
+  };
+  vm.runInNewContext(`${source.slice(start, finish)}\nglobalThis.resize = resizedPdfHighlight;`, scope);
+  const original = {
+    id: 'same-id',
+    page: 4,
+    color: 'yellow',
+    note: 'Keep this note',
+    linked_note_id: 91,
+    text: 'Passage',
+    rects: [{ x: 1, y: 2, w: 3, h: 4 }],
+    pdf_annotation: {
+      name: 'Incremento-stable-name', kind: 'Highlight', opacity: 0.42,
+      quads: [[[1, 2], [4, 2], [1, 6], [4, 6]]], xref: 17,
+    },
+  };
+  const resized = scope.resize(original, {
+    getClientRects: () => [{ left: 120, top: 80, width: 160, height: 40 }],
+  }, { getBoundingClientRect: () => ({ left: 100, top: 40 }) }, 2);
+
+  assert.equal(resized.id, 'same-id');
+  assert.equal(resized.note, 'Keep this note');
+  assert.equal(resized.linked_note_id, 91);
+  assert.equal(resized.text, 'Extended passage');
+  assert.deepEqual(JSON.parse(JSON.stringify(resized.rects)), [{ x: 10, y: 20, w: 80, h: 20 }]);
+  assert.equal(resized.pdf_annotation.name, 'Incremento-stable-name');
+  assert.equal(resized.pdf_annotation.kind, 'Highlight');
+  assert.equal(resized.pdf_annotation.quads, undefined);
+  assert.equal(resized.pdf_annotation.xref, undefined);
+  assert.equal(original.pdf_annotation.xref, 17, 'preview edits must not mutate the saved object');
+});
+
 test('highlight normalization is stable across selection order and repeated display', () => {
   const rects = [
     { x: 10, y: 20, w: 40, h: 20 },
@@ -254,6 +338,8 @@ test('creating a text highlight saves merged PDF coordinates and preserves text,
     pageRef: { current: 6 },
     cardIdRef: { current: 42 },
     hlColorRef: { current: 'purple' },
+    resizeHighlightRef: { current: null },
+    setResizingHighlightId: () => {},
     setHighlights: update => { displayed = update(displayed); },
     window: { pycmd: command => saved.push(command) },
   };
@@ -304,7 +390,9 @@ for (const outcome of ['selected', 'cancelled', 'page-changed']) {
         getBoundingClientRect: () => ({ left: 0, top: 0 }) } },
       lastScaleRef: { current: 1 }, pageRef: { current: 6 }, cardIdRef: { current: 42 },
       hlColorRef: { current: 'yellow' }, pendingHighlightSelectionRef: { current: null },
+      resizeHighlightRef: { current: null },
       setHlColor: () => {}, setHighlights: () => {},
+      setResizingHighlightId: () => {},
       window: { getSelection: () => selection, pycmd: command => saved.push(command) },
     };
     vm.runInNewContext(`${source.slice(start, finish)}\nglobalThis.open = openHighlightColorPicker; globalThis.finish = finishHighlightColorPicker;`, scope);

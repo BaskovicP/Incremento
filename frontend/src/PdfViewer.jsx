@@ -128,6 +128,71 @@ function rectToPdfCoords(rect, layerRect, scale) {
   };
 }
 
+function caretRangeAtClientPoint(doc, x, y) {
+  if (!doc || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (typeof doc.caretRangeFromPoint === 'function') {
+    return doc.caretRangeFromPoint(x, y);
+  }
+  if (typeof doc.caretPositionFromPoint === 'function') {
+    const position = doc.caretPositionFromPoint(x, y);
+    if (position?.offsetNode) {
+      const range = doc.createRange();
+      range.setStart(position.offsetNode, position.offset);
+      range.collapse(true);
+      return range;
+    }
+  }
+  return null;
+}
+
+function textRangeForPdfHighlight(highlight, textLayer, scale) {
+  const rects = normalizePdfHighlightRects(highlight?.rects);
+  const doc = textLayer?.ownerDocument;
+  if (!doc || !rects.length || !Number.isFinite(scale) || scale <= 0) return null;
+  const layerRect = textLayer.getBoundingClientRect();
+  const first = rects[0];
+  const last = rects[rects.length - 1];
+  const start = caretRangeAtClientPoint(
+    doc,
+    layerRect.left + (first.x * scale) + 1,
+    layerRect.top + ((first.y + first.h / 2) * scale),
+  );
+  const end = caretRangeAtClientPoint(
+    doc,
+    layerRect.left + ((last.x + last.w) * scale) - 1,
+    layerRect.top + ((last.y + last.h / 2) * scale),
+  );
+  if (!start?.startContainer || !end?.startContainer) return null;
+  if (!textLayer.contains(start.startContainer) || !textLayer.contains(end.startContainer)) return null;
+  try {
+    const range = doc.createRange();
+    range.setStart(start.startContainer, start.startOffset);
+    range.setEnd(end.startContainer, end.startOffset);
+    return range.collapsed ? null : range;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function resizedPdfHighlight(highlight, range, textLayer, scale) {
+  if (!highlight || !range || !textLayer || !Number.isFinite(scale) || scale <= 0) return null;
+  const layerRect = textLayer.getBoundingClientRect();
+  const rects = normalizePdfHighlightRects(Array.from(range.getClientRects())
+    .map((rect) => rectToPdfCoords(rect, layerRect, scale))
+    .filter(Boolean));
+  const text = selectionCleaned({ rangeCount: 1, getRangeAt: () => range }, textLayer);
+  if (!rects.length || !text) return null;
+  const next = { ...highlight, text, rects };
+  if (highlight.pdf_annotation && typeof highlight.pdf_annotation === 'object') {
+    next.pdf_annotation = { ...highlight.pdf_annotation };
+    // Resizing changes the PDF geometry. Preserve the stable annotation name and
+    // appearance, but let the sync layer rebuild its quads and native xref.
+    delete next.pdf_annotation.quads;
+    delete next.pdf_annotation.xref;
+  }
+  return next;
+}
+
 function makeClientHighlightId(prefix = 'hl') {
   return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -359,6 +424,8 @@ export default function PdfViewer() {
   const [nativeHighlightsVisible, setNativeHighlightsVisible] = useState(false);
   const [hlColor,       setHlColor]       = useState('yellow');
   const [autoHighlight, setAutoHighlight] = useState(false);
+  const [resizingHighlightId, setResizingHighlightId] = useState(null);
+  const resizeHighlightRef = useRef(null);
   const scrollToTopOnPageChangeRef = useRef(true);
   const hlColorRef       = useRef('yellow');
   const pendingHighlightSelectionRef = useRef(null);
@@ -1019,6 +1086,10 @@ export default function PdfViewer() {
   // ── Highlight helpers ──────────────────────────────────────────────────────
   const deleteHighlight = useCallback((id) => {
     setHighlights(prev => prev.filter(h => h.id !== id));
+    if (resizeHighlightRef.current?.id === String(id || '')) {
+      resizeHighlightRef.current = null;
+      setResizingHighlightId(null);
+    }
     window.pycmd('incremento_pdf_hl_del:' + JSON.stringify({ cardId: cardIdRef.current, id }));
   }, [cardIdRef]);
 
@@ -1031,6 +1102,120 @@ export default function PdfViewer() {
       h.id === id ? { ...h, note: String(note || '') } : h
     )));
   }, []);
+
+  const activateHighlightResize = useCallback((highlight) => {
+    const tl = textLayerRef.current;
+    const scale = Number(lastScaleRef.current || 0);
+    if (!highlight || !tl || !scale) return false;
+    const range = textRangeForPdfHighlight(highlight, tl, scale);
+    if (!range) return false;
+    resizeHighlightRef.current = {
+      id: String(highlight.id || ''),
+      range,
+      original: highlight,
+      preview: highlight,
+      dragging: false,
+      pointerId: null,
+    };
+    setResizingHighlightId(String(highlight.id || ''));
+    return true;
+  }, [lastScaleRef, textLayerRef]);
+
+  const updateHighlightResizePreview = useCallback((event) => {
+    const session = resizeHighlightRef.current;
+    const tl = textLayerRef.current;
+    const scale = Number(lastScaleRef.current || 0);
+    if (!session?.dragging || !tl || !scale) return false;
+    if (session.pointerId !== null && Number(event?.pointerId) !== session.pointerId) return false;
+    const caret = caretRangeAtClientPoint(
+      tl.ownerDocument,
+      Number(event?.clientX),
+      Number(event?.clientY),
+    );
+    if (!caret?.startContainer || !tl.contains(caret.startContainer)) return false;
+    try {
+      const nextRange = tl.ownerDocument.createRange();
+      if (session.endpoint === 'start') {
+        nextRange.setStart(caret.startContainer, caret.startOffset);
+        nextRange.setEnd(session.range.endContainer, session.range.endOffset);
+      } else {
+        nextRange.setStart(session.range.startContainer, session.range.startOffset);
+        nextRange.setEnd(caret.startContainer, caret.startOffset);
+      }
+      if (nextRange.collapsed) return false;
+      const nextHighlight = resizedPdfHighlight(session.preview, nextRange, tl, scale);
+      if (!nextHighlight) return false;
+      session.range = nextRange;
+      session.preview = nextHighlight;
+      setHighlights((previous) => previous.map((item) => (
+        String(item.id || '') === session.id ? nextHighlight : item
+      )));
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }, [lastScaleRef, textLayerRef]);
+
+  const beginHighlightResize = useCallback((highlight, endpoint, event) => {
+    // PDF.js replaces the text spans after zoom/render changes. Reconstruct the
+    // DOM Range at drag start so a visible handle never retains stale nodes.
+    if (!activateHighlightResize(highlight)) return;
+    const session = resizeHighlightRef.current;
+    if (!session || (endpoint !== 'start' && endpoint !== 'end')) return;
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    event?.currentTarget?.setPointerCapture?.(event.pointerId);
+    session.original = highlight;
+    session.preview = highlight;
+    session.endpoint = endpoint;
+    session.dragging = true;
+    session.pointerId = Number.isFinite(Number(event?.pointerId)) ? Number(event.pointerId) : null;
+    hideHighlightNote();
+  }, [activateHighlightResize, hideHighlightNote]);
+
+  const moveHighlightResize = useCallback((event) => {
+    updateHighlightResizePreview(event);
+  }, [updateHighlightResizePreview]);
+
+  const endHighlightResize = useCallback((event) => {
+    const session = resizeHighlightRef.current;
+    if (!session?.dragging) return;
+    updateHighlightResizePreview(event);
+    session.dragging = false;
+    event?.currentTarget?.releasePointerCapture?.(event.pointerId);
+    if (session.preview && String(session.preview.id || '') === session.id) {
+      window.pycmd('incremento_pdf_hl_add:' + JSON.stringify({
+        cardId: cardIdRef.current,
+        highlight: session.preview,
+      }));
+      session.original = session.preview;
+    }
+    session.pointerId = null;
+  }, [cardIdRef, updateHighlightResizePreview]);
+
+  const cancelHighlightResize = useCallback((event) => {
+    const session = resizeHighlightRef.current;
+    if (!session?.dragging) return;
+    session.dragging = false;
+    event?.currentTarget?.releasePointerCapture?.(event.pointerId);
+    const original = session.original;
+    setHighlights((previous) => previous.map((item) => (
+      String(item.id || '') === session.id ? original : item
+    )));
+    session.preview = original;
+    session.pointerId = null;
+  }, []);
+
+  useEffect(() => {
+    const session = resizeHighlightRef.current;
+    if (session?.dragging && session.original) {
+      setHighlights((previous) => previous.map((item) => (
+        String(item.id || '') === session.id ? session.original : item
+      )));
+    }
+    resizeHighlightRef.current = null;
+    setResizingHighlightId(null);
+  }, [page]);
 
   const makeHighlight = useCallback((sel, forcedColor = null) => {
     if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
@@ -1060,6 +1245,15 @@ export default function PdfViewer() {
       rects,
     };
     setHighlights(prev => [...prev, hl]);
+    resizeHighlightRef.current = {
+      id,
+      range: typeof range.cloneRange === 'function' ? range.cloneRange() : range,
+      original: hl,
+      preview: hl,
+      dragging: false,
+      pointerId: null,
+    };
+    setResizingHighlightId(id);
     window.pycmd('incremento_pdf_hl_add:' + JSON.stringify({ cardId: cardIdRef.current, highlight: hl }));
     return true;
   }, [textLayerRef, lastScaleRef, pageRef, cardIdRef]);
@@ -1330,6 +1524,8 @@ export default function PdfViewer() {
       setAppearanceMode(normalizePdfAppearanceMode(startAppearanceMode));
       setLinkBackHistory([]);
       setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
+      resizeHighlightRef.current = null;
+      setResizingHighlightId(null);
       setNativeHighlightsVisible(window._pdfNativeHighlightsVisible === true);
       window._pdfNativeHighlightsVisible = null;
       window._incPdfHighlights = null;
@@ -2916,7 +3112,7 @@ export default function PdfViewer() {
           ))}
         </div>
 
-        <PdfSelectionLayer textLayerRef={textLayerRef} renderInfo={renderInfo} />
+        <PdfSelectionLayer language={language} textLayerRef={textLayerRef} renderInfo={renderInfo} />
 
         <HighlightLayer
           nativeHighlightsVisible={nativeHighlightsVisible}
@@ -2925,6 +3121,12 @@ export default function PdfViewer() {
           renderInfo={renderInfo}
           deleteHighlight={deleteHighlight}
           editHighlightNote={editHighlightNote}
+          activateHighlightResize={activateHighlightResize}
+          resizingHighlightId={resizingHighlightId}
+          beginHighlightResize={beginHighlightResize}
+          moveHighlightResize={moveHighlightResize}
+          endHighlightResize={endHighlightResize}
+          cancelHighlightResize={cancelHighlightResize}
           focusedHighlightId={focusedHighlightId}
           showHighlightNote={showHighlightNote}
           moveHighlightNote={moveHighlightNote}

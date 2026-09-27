@@ -34,11 +34,13 @@ function registerBridge(pending = null) {
     'setLimitNotice', 'applyAutoHighlightSetting', 'applyScrollToTopOnPageChangeSetting',
     'limitAwareNav', 'adjustZoom', 'limitAwareMarkRead', 'openFind', 'setPageCards',
     'updateHighlightNote', 'setSearchJumpNonce', 'finishHighlightColorPicker',
+    'setResizingHighlightId',
   ]) scope[name] = () => {};
   for (const name of [
     'pendingExcerptJumpRef', 'pendingHighlightScrollRef', 'pendingReadAnchorScrollRef',
     'pendingPageTopScrollRef', 'pendingResumeScrollRef', 'pendingResumePageRef',
     'pageRef', 'suppressSearchSyncRef', 'pendingHighlightSelectionRef',
+    'resizeHighlightRef',
   ]) scope[name] = { current: null };
   vm.runInNewContext(source.slice(start, finish), scope);
   return { scope, state };

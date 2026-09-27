@@ -15,6 +15,14 @@ function isSnapshotHighlight(highlight) {
   return String(highlight?.color || '') === 'snapshot';
 }
 
+function isResizableTextHighlight(highlight) {
+  const kind = String(highlight?.pdf_annotation?.kind || 'Highlight');
+  return !isSnapshotHighlight(highlight)
+    && kind === 'Highlight'
+    && Array.isArray(highlight?.rects)
+    && highlight.rects.length > 0;
+}
+
 function highlightBackground(highlight, nativeHighlightsVisible) {
   if (isSnapshotHighlight(highlight)) return 'rgba(37,99,235,0.12)';
   const native = highlight.pdf_annotation;
@@ -34,6 +42,12 @@ export default function HighlightLayer({
   renderInfo,
   deleteHighlight,
   editHighlightNote,
+  activateHighlightResize,
+  resizingHighlightId,
+  beginHighlightResize,
+  moveHighlightResize,
+  endHighlightResize,
+  cancelHighlightResize,
   focusedHighlightId,
   showHighlightNote,
   moveHighlightNote,
@@ -180,6 +194,31 @@ export default function HighlightLayer({
             >
               {renderNoteIcon(hasNote)}
             </button>
+            {isResizableTextHighlight(h) && (
+              <button
+                className="incremento-pdf-resize-action"
+                aria-label={language.tr('reader_resize_highlight')}
+                title={language.tr('reader_resize_highlight')}
+                onClick={() => activateHighlightResize?.(h)}
+                style={{
+                  width: 16,
+                  height: 16,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 0,
+                  border: '1px solid rgba(125,211,252,0.9)',
+                  background: h.id === resizingHighlightId ? 'rgba(2,132,199,0.98)' : 'rgba(55,65,81,0.9)',
+                  color: '#fff',
+                  borderRadius: '50%',
+                  cursor: 'ew-resize',
+                  fontSize: 11,
+                  lineHeight: 1,
+                }}
+              >
+                ↔
+              </button>
+            )}
             <button
               title={language.tr(isSnapshotHighlight(h) ? 'reader_remove_snapshot_highlight' : 'reader_remove_highlight')}
               onClick={() => deleteHighlight(h.id)}
@@ -201,6 +240,84 @@ export default function HighlightLayer({
             </button>
           </div>
         );
+      })}
+
+      {/* ── Active text-highlight resize handles — large hit targets for mouse/touch ── */}
+      {displayHighlights.map((h) => {
+        if (h.id !== resizingHighlightId || !isResizableTextHighlight(h) || !h.rects.length) return null;
+        const first = h.rects[0];
+        const last = h.rects[h.rects.length - 1];
+        const handles = [
+          {
+            endpoint: 'start',
+            left: renderInfo.tlLeft + first.x * renderInfo.scale - 12,
+            top: first.y * renderInfo.scale - 28,
+            stemTop: 14,
+            dotTop: 2,
+          },
+          {
+            endpoint: 'end',
+            left: renderInfo.tlLeft + (last.x + last.w) * renderInfo.scale - 12,
+            top: (last.y + last.h) * renderInfo.scale,
+            stemTop: 0,
+            dotTop: 14,
+          },
+        ];
+        return handles.map((handle) => (
+          <button
+            key={`resize-${h.id}-${handle.endpoint}`}
+            type="button"
+            className="incremento-pdf-highlight-resize-handle"
+            data-endpoint={handle.endpoint}
+            aria-label={language.tr(
+              handle.endpoint === 'start' ? 'reader_resize_highlight_start' : 'reader_resize_highlight_end',
+            )}
+            title={language.tr(
+              handle.endpoint === 'start' ? 'reader_resize_highlight_start' : 'reader_resize_highlight_end',
+            )}
+            onPointerDown={(event) => beginHighlightResize?.(h, handle.endpoint, event)}
+            onPointerMove={moveHighlightResize}
+            onPointerUp={endHighlightResize}
+            onPointerCancel={cancelHighlightResize}
+            style={{
+              position: 'absolute',
+              left: handle.left,
+              top: handle.top,
+              width: 24,
+              height: 28,
+              margin: 0,
+              padding: 0,
+              border: 0,
+              background: 'transparent',
+              cursor: 'ew-resize',
+              touchAction: 'none',
+              zIndex: 14,
+            }}
+          >
+            <span aria-hidden="true" style={{
+              position: 'absolute',
+              left: 11,
+              top: handle.stemTop,
+              width: 2,
+              height: 12,
+              borderRadius: 2,
+              background: 'rgb(14,116,144)',
+              boxShadow: '0 0 0 1px rgba(255,255,255,0.78)',
+            }} />
+            <span aria-hidden="true" style={{
+              position: 'absolute',
+              left: 6,
+              top: handle.dotTop,
+              width: 12,
+              height: 12,
+              borderRadius: '50%',
+              background: 'rgb(14,116,144)',
+              border: '2px solid #fff',
+              boxSizing: 'border-box',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.45)',
+            }} />
+          </button>
+        ));
       })}
 
       {/* ── Snapshot selection overlay (z:20) ── */}

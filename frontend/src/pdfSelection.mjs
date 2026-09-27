@@ -1,5 +1,50 @@
 import { normalizePdfHighlightRects } from './pdfHighlightRects.mjs';
 
+function caretRangeAtPoint(document, x, y) {
+  if (!document || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (typeof document.caretRangeFromPoint === 'function') {
+    return document.caretRangeFromPoint(x, y);
+  }
+  if (typeof document.caretPositionFromPoint === 'function') {
+    const position = document.caretPositionFromPoint(x, y);
+    if (position?.offsetNode) {
+      const range = document.createRange();
+      range.setStart(position.offsetNode, position.offset);
+      range.collapse(true);
+      return range;
+    }
+  }
+  return null;
+}
+
+/** Move one endpoint of the real browser selection and retain the other. */
+export function movePdfSelectionEndpoint(textLayer, currentRange, endpoint, clientX, clientY, {
+  document = globalThis.document,
+  window = globalThis.window,
+} = {}) {
+  if (!textLayer || !currentRange || !['start', 'end'].includes(endpoint)) return null;
+  const caret = caretRangeAtPoint(document, Number(clientX), Number(clientY));
+  if (!caret?.startContainer || !textLayer.contains(caret.startContainer)) return null;
+  try {
+    const next = document.createRange();
+    if (endpoint === 'start') {
+      next.setStart(caret.startContainer, caret.startOffset);
+      next.setEnd(currentRange.endContainer, currentRange.endOffset);
+    } else {
+      next.setStart(currentRange.startContainer, currentRange.startOffset);
+      next.setEnd(caret.startContainer, caret.startOffset);
+    }
+    if (next.collapsed || !textLayer.contains(next.commonAncestorContainer)) return null;
+    const selection = window.getSelection();
+    if (!selection) return null;
+    selection.removeAllRanges();
+    selection.addRange(next);
+    return next;
+  } catch (_error) {
+    return null;
+  }
+}
+
 /**
  * Observe the native selection and publish merged geometry for its blue overlay.
  * CSS ::selection paints each PDF.js span separately, leaving word spaces clear;

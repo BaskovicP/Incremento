@@ -531,6 +531,59 @@ def test_build_page_script_includes_highlight_note_action_menu(monkeypatch):
     assert "if (!event.isTrusted) return" in script
 
 
+def test_build_page_script_supports_dragging_both_highlight_endpoints(monkeypatch):
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": "Example section text"}])
+    monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
+
+    script = epub_dock._build_page_script(
+        card_id=7,
+        section_index=0,
+        scroll_ratio=0.0,
+        text_scale=1.0,
+        read_anchor=None,
+        focus_offset=-1,
+        search_query="",
+        highlights=[{"id": "hl-1", "startOffset": 0, "endOffset": 7, "text": "Example"}],
+        bridge_nonce="private-token",
+    )
+
+    assert "incremento-epub-highlight-resize-btn" in script
+    assert "incremento-epub-resize-handle" in script
+    assert "data-endpoint" in script
+    assert "setPointerCapture" in script
+    assert "pointermove" in script
+    assert "pointerup" in script
+    assert "incremento_epub_hl_add:" in script
+    assert "resizeHighlightRange" in script
+    assert "highlight: session.highlight" in script
+    assert "id: String(target.dataset.id || '')" in script
+    assert "if (endOffset <= startOffset) return null" in script
+
+
+def test_build_page_script_shows_draggable_handles_on_live_epub_selection(monkeypatch):
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": "Example section text"}])
+    monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
+
+    script = epub_dock._build_page_script(
+        card_id=7,
+        section_index=0,
+        scroll_ratio=0.0,
+        text_scale=1.0,
+        read_anchor=None,
+        focus_offset=-1,
+        search_query="",
+        highlights=[],
+        bridge_nonce="private-token",
+    )
+
+    assert "incremento-epub-selection-resize-handle" in script
+    assert "renderSelectionResizeHandles(meta)" in script
+    assert "moveSelectionResizeEndpoint" in script
+    assert "selection.removeAllRanges()" in script
+    assert "selection.addRange(next)" in script
+    assert "pointercancel" in script
+
+
 def test_build_page_script_installs_opt_in_trusted_link_bridge(monkeypatch):
     monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": "Example"}])
     monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
@@ -1145,6 +1198,7 @@ def test_epub_hex_selection_survives_picker_and_paints_selected_text(monkeypatch
         const clearSelection = () => { selection = null; };
         const pointFromOffset = offset => ({ node: {nodeValue: 'Selected passage longer'}, offset });
         const updateHighlightNodeNote = () => {};
+        const resizeHighlightRange = () => true;
         const send = command => rows.push(JSON.parse(command.slice('incremento_epub_hl_add:'.length)).highlight);
         const document = {
             createRange: () => ({setStart(){}, setEnd(){}, collapsed: false,

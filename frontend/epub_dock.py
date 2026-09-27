@@ -1674,6 +1674,7 @@ def _build_page_script(
             "addHighlightNote": t("reader_add_highlight_note"),
             "editHighlightNote": t("reader_edit_highlight_note"),
             "deleteHighlight": t("reader_delete_highlight"),
+            "resizeHighlight": t("reader_highlight_actions"),
             "highlightActions": t("reader_highlight_actions"),
             "stoppedAt": t("reader_stopped_at", text="{text}"),
             "stoppingPoint": t("reader_stopping_point"),
@@ -1813,6 +1814,55 @@ def _build_page_script(
             background: rgba(127, 29, 29, 0.96);
             color: #fee2e2;
           }}
+          #incremento-epub-highlight-resize-btn {{
+            background: rgba(3, 105, 161, 0.96);
+            color: #e0f2fe;
+          }}
+          .incremento-epub-resize-handle,
+          .incremento-epub-selection-resize-handle {{
+            position: absolute;
+            z-index: 2147483300;
+            width: 28px;
+            height: 30px;
+            margin: 0;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            cursor: ew-resize;
+            touch-action: none;
+          }}
+          .incremento-epub-resize-handle::before,
+          .incremento-epub-selection-resize-handle::before {{
+            content: '';
+            position: absolute;
+            left: 13px;
+            width: 2px;
+            height: 14px;
+            border-radius: 2px;
+            background: rgb(14, 116, 144);
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.78);
+          }}
+          .incremento-epub-resize-handle::after,
+          .incremento-epub-selection-resize-handle::after {{
+            content: '';
+            position: absolute;
+            left: 7px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-sizing: border-box;
+            background: rgb(14, 116, 144);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.45);
+          }}
+          .incremento-epub-resize-handle[data-endpoint="start"]::before,
+          .incremento-epub-selection-resize-handle[data-endpoint="start"]::before {{ top: 14px; }}
+          .incremento-epub-resize-handle[data-endpoint="start"]::after,
+          .incremento-epub-selection-resize-handle[data-endpoint="start"]::after {{ top: 1px; }}
+          .incremento-epub-resize-handle[data-endpoint="end"]::before,
+          .incremento-epub-selection-resize-handle[data-endpoint="end"]::before {{ top: 0; }}
+          .incremento-epub-resize-handle[data-endpoint="end"]::after,
+          .incremento-epub-selection-resize-handle[data-endpoint="end"]::after {{ top: 14px; }}
           #incremento-epub-read-marker {{
             position: absolute;
             z-index: 2147483000;
@@ -1886,6 +1936,9 @@ def _build_page_script(
               if (!parent) return NodeFilter.FILTER_REJECT;
               if (/^(SCRIPT|STYLE|NOSCRIPT)$/i.test(parent.tagName || '')) return NodeFilter.FILTER_REJECT;
               if (parent.closest && parent.closest('#incremento-epub-read-marker')) return NodeFilter.FILTER_REJECT;
+              if (parent.closest && parent.closest('#incremento-epub-highlight-actions')) return NodeFilter.FILTER_REJECT;
+              if (parent.closest && parent.closest('.incremento-epub-resize-handle')) return NodeFilter.FILTER_REJECT;
+              if (parent.closest && parent.closest('.incremento-epub-selection-resize-handle')) return NodeFilter.FILTER_REJECT;
               return NodeFilter.FILTER_ACCEPT;
             }},
           }}
@@ -1937,6 +1990,13 @@ def _build_page_script(
             '</svg>'
           );
         }}
+        if (kind === 'resize') {{
+          return (
+            '<svg aria-hidden="true" viewBox="0 0 16 16">' +
+            '<path d="M2.5 8h11M2.5 8l2.4-2.4M2.5 8l2.4 2.4M13.5 8l-2.4-2.4M13.5 8l-2.4 2.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>' +
+            '</svg>'
+          );
+        }}
         return (
           '<svg aria-hidden="true" viewBox="0 0 16 16">' +
           '<path d="M3 2.5h6.5L13 6v7a.5.5 0 0 1-.5.5h-9A.5.5 0 0 1 3 13z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>' +
@@ -1971,6 +2031,7 @@ def _build_page_script(
         const menu = document.getElementById('incremento-epub-highlight-actions');
         if (!menu || !target) return;
         const noteButton = document.getElementById('incremento-epub-highlight-note-btn');
+        const resizeButton = document.getElementById('incremento-epub-highlight-resize-btn');
         const deleteButton = document.getElementById('incremento-epub-highlight-delete-btn');
         const hasNote = String(target.dataset.note || '').trim().length > 0;
         if (noteButton) {{
@@ -1981,6 +2042,10 @@ def _build_page_script(
         if (deleteButton) {{
           deleteButton.title = STATE.messages.deleteHighlight;
           deleteButton.setAttribute('aria-label', STATE.messages.deleteHighlight);
+        }}
+        if (resizeButton) {{
+          resizeButton.title = STATE.messages.resizeHighlight;
+          resizeButton.setAttribute('aria-label', STATE.messages.resizeHighlight);
         }}
         positionHighlightActionMenu(target, menu);
       }}
@@ -2012,6 +2077,18 @@ def _build_page_script(
             }}));
             removeHighlightActionMenu();
           }});
+          const resizeButton = document.createElement('button');
+          resizeButton.type = 'button';
+          resizeButton.id = 'incremento-epub-highlight-resize-btn';
+          resizeButton.innerHTML = iconSvg('resize');
+          resizeButton.addEventListener('click', function(event) {{
+            event.preventDefault();
+            event.stopPropagation();
+            const currentTarget = window._incrementoEpubHighlightActionTarget;
+            if (!currentTarget) return;
+            resizeHighlightRange(currentTarget);
+            removeHighlightActionMenu();
+          }});
           const deleteButton = document.createElement('button');
           deleteButton.type = 'button';
           deleteButton.id = 'incremento-epub-highlight-delete-btn';
@@ -2022,11 +2099,16 @@ def _build_page_script(
             const currentTarget = window._incrementoEpubHighlightActionTarget;
             if (!currentTarget) return;
             const id = String(currentTarget.dataset.id || '');
+            if (window._incrementoEpubHighlightResize
+                && window._incrementoEpubHighlightResize.highlight.id === id) {{
+              removeHighlightResizeHandles();
+            }}
             unwrapHighlight(currentTarget);
             removeHighlightActionMenu();
             send('incremento_epub_hl_del:' + JSON.stringify({{ cardId: STATE.cardId, id }}));
           }});
           menu.appendChild(noteButton);
+          menu.appendChild(resizeButton);
           menu.appendChild(deleteButton);
           document.body.appendChild(menu);
         }}
@@ -2054,6 +2136,8 @@ def _build_page_script(
         const wrapper = document.createElement('span');
         wrapper.className = 'incremento-epub-highlight';
         wrapper.dataset.id = String(hl.id || '');
+        wrapper.dataset.startOffset = String(Math.max(0, Number(hl.startOffset) || 0));
+        wrapper.dataset.endOffset = String(Math.max(0, Number(hl.endOffset) || 0));
         const color = normalizeHighlightColor(hl.color) || 'yellow';
         wrapper.dataset.color = color;
         if (color.charAt(0) === '#') {{
@@ -2064,7 +2148,7 @@ def _build_page_script(
         const fragment = range.extractContents();
         wrapper.appendChild(fragment);
         range.insertNode(wrapper);
-        return true;
+        return wrapper;
       }}
       function selectionMeta() {{
         const sel = window.getSelection ? window.getSelection() : null;
@@ -2117,6 +2201,260 @@ def _build_page_script(
           }}
         }}
         return null;
+      }}
+      function removeSelectionResizeHandles() {{
+        document.querySelectorAll('.incremento-epub-selection-resize-handle').forEach(function(handle) {{
+          handle.remove();
+        }});
+        window._incrementoEpubSelectionResize = null;
+      }}
+      function syncSelectionResizeHandles(meta) {{
+        if (!meta) return;
+        const first = rectForOffset(meta.startOffset);
+        const last = rectForOffset(Math.max(meta.startOffset, meta.endOffset - 1));
+        const startHandle = document.querySelector('.incremento-epub-selection-resize-handle[data-endpoint="start"]');
+        const endHandle = document.querySelector('.incremento-epub-selection-resize-handle[data-endpoint="end"]');
+        if (first && startHandle) {{
+          startHandle.style.left = Math.round(window.scrollX + first.left - 14) + 'px';
+          startHandle.style.top = Math.round(window.scrollY + first.top - 30) + 'px';
+        }}
+        if (last && endHandle) {{
+          endHandle.style.left = Math.round(window.scrollX + last.right - 14) + 'px';
+          endHandle.style.top = Math.round(window.scrollY + last.bottom) + 'px';
+        }}
+      }}
+      function moveSelectionResizeEndpoint(event) {{
+        const session = window._incrementoEpubSelectionResize;
+        if (!session) return false;
+        if (session.pointerId !== null && Number(event.pointerId) !== session.pointerId) return false;
+        const caret = caretRangeAtPoint(Number(event.clientX), Number(event.clientY));
+        if (!caret || !caret.startContainer || textNodes().indexOf(caret.startContainer) < 0) return false;
+        try {{
+          const next = document.createRange();
+          if (session.endpoint === 'start') {{
+            next.setStart(caret.startContainer, caret.startOffset);
+            next.setEnd(session.range.endContainer, session.range.endOffset);
+          }} else {{
+            next.setStart(session.range.startContainer, session.range.startOffset);
+            next.setEnd(caret.startContainer, caret.startOffset);
+          }}
+          if (next.collapsed) return false;
+          const selection = window.getSelection ? window.getSelection() : null;
+          if (!selection) return false;
+          selection.removeAllRanges();
+          selection.addRange(next);
+          session.range = next;
+          const meta = selectionMeta();
+          if (meta) syncSelectionResizeHandles(meta);
+          return true;
+        }} catch (err) {{
+          return false;
+        }}
+      }}
+      function beginSelectionResize(event) {{
+        const selection = window.getSelection ? window.getSelection() : null;
+        if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+        const range = selection.getRangeAt(0);
+        event.preventDefault();
+        event.stopPropagation();
+        window._incrementoEpubSelectionResize = {{
+          endpoint: String(event.currentTarget.dataset.endpoint || ''),
+          range: range.cloneRange(),
+          original: range.cloneRange(),
+          pointerId: Number.isFinite(Number(event.pointerId)) ? Number(event.pointerId) : null,
+        }};
+        if (event.currentTarget.setPointerCapture) event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      function finishSelectionResize(event) {{
+        if (!window._incrementoEpubSelectionResize) return;
+        moveSelectionResizeEndpoint(event);
+        if (event.currentTarget && event.currentTarget.releasePointerCapture) {{
+          try {{ event.currentTarget.releasePointerCapture(event.pointerId); }} catch (err) {{}}
+        }}
+        window._incrementoEpubSelectionResize = null;
+        reportSelection();
+      }}
+      function cancelSelectionResize(event) {{
+        const session = window._incrementoEpubSelectionResize;
+        if (!session) return;
+        const selection = window.getSelection ? window.getSelection() : null;
+        if (selection) {{
+          selection.removeAllRanges();
+          selection.addRange(session.original);
+        }}
+        if (event.currentTarget && event.currentTarget.releasePointerCapture) {{
+          try {{ event.currentTarget.releasePointerCapture(event.pointerId); }} catch (err) {{}}
+        }}
+        window._incrementoEpubSelectionResize = null;
+        reportSelection();
+      }}
+      function renderSelectionResizeHandles(meta) {{
+        if (!meta) {{
+          removeSelectionResizeHandles();
+          return;
+        }}
+        let handles = document.querySelectorAll('.incremento-epub-selection-resize-handle');
+        if (handles.length !== 2) {{
+          handles.forEach(function(handle) {{ handle.remove(); }});
+          ['start', 'end'].forEach(function(endpoint) {{
+            const handle = document.createElement('button');
+            handle.type = 'button';
+            handle.className = 'incremento-epub-selection-resize-handle';
+            handle.dataset.endpoint = endpoint;
+            handle.title = STATE.messages.resizeHighlight;
+            handle.setAttribute('aria-label', STATE.messages.resizeHighlight);
+            handle.addEventListener('pointerdown', beginSelectionResize);
+            handle.addEventListener('pointermove', moveSelectionResizeEndpoint);
+            handle.addEventListener('pointerup', finishSelectionResize);
+            handle.addEventListener('pointercancel', cancelSelectionResize);
+            document.body.appendChild(handle);
+          }});
+          handles = document.querySelectorAll('.incremento-epub-selection-resize-handle');
+        }}
+        syncSelectionResizeHandles(meta);
+      }}
+      function highlightNodeById(id) {{
+        const targetId = String(id || '');
+        return Array.from(document.querySelectorAll('span.incremento-epub-highlight')).find(function(node) {{
+          return String(node.dataset.id || '') === targetId;
+        }}) || null;
+      }}
+      function highlightFromNode(target) {{
+        if (!target) return null;
+        const startOffset = Math.max(0, Number(target.dataset.startOffset) || 0);
+        const endOffset = Math.max(0, Number(target.dataset.endOffset) || 0);
+        if (endOffset <= startOffset) return null;
+        return {{
+          id: String(target.dataset.id || ''),
+          sectionIndex: STATE.sectionIndex,
+          color: normalizeHighlightColor(target.dataset.color) || 'yellow',
+          text: normText(target.textContent || ''),
+          note: String(target.dataset.note || ''),
+          startOffset,
+          endOffset,
+        }};
+      }}
+      function removeHighlightResizeHandles() {{
+        document.querySelectorAll('.incremento-epub-resize-handle').forEach(function(handle) {{
+          handle.remove();
+        }});
+        window._incrementoEpubHighlightResize = null;
+      }}
+      function syncHighlightResizeHandles() {{
+        const session = window._incrementoEpubHighlightResize;
+        if (!session) return;
+        const first = rectForOffset(session.highlight.startOffset);
+        const last = rectForOffset(Math.max(session.highlight.startOffset, session.highlight.endOffset - 1));
+        const startHandle = document.querySelector('.incremento-epub-resize-handle[data-endpoint="start"]');
+        const endHandle = document.querySelector('.incremento-epub-resize-handle[data-endpoint="end"]');
+        if (first && startHandle) {{
+          startHandle.style.left = Math.round(window.scrollX + first.left - 14) + 'px';
+          startHandle.style.top = Math.round(window.scrollY + first.top - 30) + 'px';
+        }}
+        if (last && endHandle) {{
+          endHandle.style.left = Math.round(window.scrollX + last.right - 14) + 'px';
+          endHandle.style.top = Math.round(window.scrollY + last.bottom) + 'px';
+        }}
+      }}
+      function applyResizedHighlight(session, nextHighlight) {{
+        const current = session.target || highlightNodeById(nextHighlight.id);
+        if (current) unwrapHighlight(current);
+        const nextTarget = applyHighlight(nextHighlight);
+        if (!nextTarget) return false;
+        session.target = nextTarget;
+        session.highlight = nextHighlight;
+        syncHighlightResizeHandles();
+        return true;
+      }}
+      function updateHighlightResize(event) {{
+        const session = window._incrementoEpubHighlightResize;
+        if (!session || !session.dragging) return false;
+        if (session.pointerId !== null && Number(event.pointerId) !== session.pointerId) return false;
+        const caret = caretRangeAtPoint(Number(event.clientX), Number(event.clientY));
+        if (!caret || !caret.startContainer) return false;
+        const offset = offsetFromPoint(caret.startContainer, caret.startOffset);
+        let startOffset = session.highlight.startOffset;
+        let endOffset = session.highlight.endOffset;
+        if (session.endpoint === 'start') startOffset = offset;
+        else endOffset = offset;
+        if (!Number.isFinite(startOffset) || !Number.isFinite(endOffset) || endOffset <= startOffset) return false;
+        const start = pointFromOffset(startOffset);
+        const end = pointFromOffset(endOffset);
+        if (!start || !end) return false;
+        const range = document.createRange();
+        range.setStart(start.node, Math.min(start.offset, start.node.nodeValue.length));
+        range.setEnd(end.node, Math.min(end.offset, end.node.nodeValue.length));
+        if (range.collapsed) return false;
+        const next = Object.assign({{}}, session.highlight, {{
+          startOffset,
+          endOffset,
+          text: normText(range.toString()),
+        }});
+        if (!next.text) return false;
+        return applyResizedHighlight(session, next);
+      }}
+      function finishHighlightResize(event) {{
+        const session = window._incrementoEpubHighlightResize;
+        if (!session || !session.dragging) return;
+        updateHighlightResize(event);
+        session.dragging = false;
+        session.pointerId = null;
+        if (event.currentTarget && event.currentTarget.releasePointerCapture) {{
+          try {{ event.currentTarget.releasePointerCapture(event.pointerId); }} catch (err) {{}}
+        }}
+        send('incremento_epub_hl_add:' + JSON.stringify({{
+          cardId: STATE.cardId,
+          highlight: session.highlight,
+        }}));
+      }}
+      function cancelHighlightResize(event) {{
+        const session = window._incrementoEpubHighlightResize;
+        if (!session || !session.dragging) return;
+        session.dragging = false;
+        session.pointerId = null;
+        applyResizedHighlight(session, session.original);
+        if (event.currentTarget && event.currentTarget.releasePointerCapture) {{
+          try {{ event.currentTarget.releasePointerCapture(event.pointerId); }} catch (err) {{}}
+        }}
+      }}
+      function beginHighlightResize(event) {{
+        const session = window._incrementoEpubHighlightResize;
+        if (!session) return;
+        event.preventDefault();
+        event.stopPropagation();
+        session.endpoint = String(event.currentTarget.dataset.endpoint || '');
+        session.dragging = true;
+        session.pointerId = Number.isFinite(Number(event.pointerId)) ? Number(event.pointerId) : null;
+        if (event.currentTarget.setPointerCapture) event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      function resizeHighlightRange(target) {{
+        const highlight = highlightFromNode(target);
+        if (!highlight) return false;
+        removeHighlightResizeHandles();
+        const session = {{
+          target,
+          highlight,
+          original: Object.assign({{}}, highlight),
+          endpoint: '',
+          dragging: false,
+          pointerId: null,
+        }};
+        window._incrementoEpubHighlightResize = session;
+        ['start', 'end'].forEach(function(endpoint) {{
+          const handle = document.createElement('button');
+          handle.type = 'button';
+          handle.className = 'incremento-epub-resize-handle';
+          handle.dataset.endpoint = endpoint;
+          handle.title = STATE.messages.resizeHighlight;
+          handle.setAttribute('aria-label', STATE.messages.resizeHighlight);
+          handle.addEventListener('pointerdown', beginHighlightResize);
+          handle.addEventListener('pointermove', updateHighlightResize);
+          handle.addEventListener('pointerup', finishHighlightResize);
+          handle.addEventListener('pointercancel', cancelHighlightResize);
+          document.body.appendChild(handle);
+        }});
+        syncHighlightResizeHandles();
+        return true;
       }}
       function currentCaretRange() {{
         const x = Math.max(24, Math.floor(window.innerWidth * 0.5));
@@ -2247,9 +2585,13 @@ def _build_page_script(
       }}
       function reportSelection() {{
         const meta = selectionMeta();
-        if (!meta) return;
+        if (!meta) {{
+          removeSelectionResizeHandles();
+          return;
+        }}
         window._lastEpubSelection = meta.text;
         window._lastEpubSelectionMeta = meta;
+        renderSelectionResizeHandles(meta);
         send('incremento_selection_state:' + JSON.stringify({{ source: 'epub', hasText: true }}));
       }}
       function pageStep() {{
@@ -2357,8 +2699,10 @@ def _build_page_script(
           endOffset: meta.endOffset,
         }};
         clearSelection();
-        if (!applyHighlight(hl)) return false;
+        const target = applyHighlight(hl);
+        if (!target) return false;
         send('incremento_epub_hl_add:' + JSON.stringify({{ cardId: STATE.cardId, highlight: hl }}));
+        resizeHighlightRange(target);
         window._lastEpubSelectionMeta = meta;
         window._lastEpubSelection = meta.text;
         return true;
@@ -2438,6 +2782,8 @@ def _build_page_script(
       ensureStyle();
       applyTextScale(STATE.textScale);
       applyClickableLinks(STATE.clickableLinks);
+      removeSelectionResizeHandles();
+      removeHighlightResizeHandles();
       document.querySelectorAll('span.incremento-epub-highlight').forEach(unwrapHighlight);
       const highlights = Array.isArray(STATE.highlights) ? STATE.highlights.slice() : [];
       highlights.sort(function(a, b) {{ return Number(a.startOffset || 0) - Number(b.startOffset || 0); }});
@@ -2530,6 +2876,11 @@ def _build_page_script(
         clearTimeout(window._incrementoEpubScrollTimer);
         if (window._incrementoEpubHighlightActionTarget) {{
           syncHighlightActionMenu(window._incrementoEpubHighlightActionTarget);
+        }}
+        syncHighlightResizeHandles();
+        const selection = window.getSelection ? window.getSelection() : null;
+        if (selection && !selection.isCollapsed && selection.rangeCount) {{
+          syncSelectionResizeHandles(selectionMeta());
         }}
         window._incrementoEpubScrollTimer = setTimeout(reportProgress, 140);
       }};

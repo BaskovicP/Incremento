@@ -33766,6 +33766,30 @@
     },
     {
       "component": "reader",
+      "key": "reader_resize_highlight",
+      "form": "",
+      "source": "Resize highlight",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_resize_highlight_end",
+      "form": "",
+      "source": "Drag to change the end of this highlight",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_resize_highlight_start",
+      "form": "",
+      "source": "Drag to change the start of this highlight",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_review",
       "form": "",
       "source": "Review",

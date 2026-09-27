@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { transformWithEsbuild } from 'vite';
-import { observePdfTextSelection } from '../src/pdfSelection.mjs';
+import { movePdfSelectionEndpoint, observePdfTextSelection } from '../src/pdfSelection.mjs';
 
 function selectionHarness() {
   const listeners = new Map();
@@ -144,13 +144,63 @@ test('rapid drag updates share one animation frame and closing cancels pending w
   assert.equal(harness.disconnected, true);
 });
 
+test('dragging a live selection handle moves only that endpoint and cannot cross the other', () => {
+  const textNode = {};
+  const foreignNode = {};
+  let caretNode = textNode;
+  const selected = [];
+  const createRange = () => {
+    let startOffset = 0;
+    let endOffset = 0;
+    return {
+      startContainer: textNode,
+      endContainer: textNode,
+      commonAncestorContainer: textNode,
+      get startOffset() { return startOffset; },
+      get endOffset() { return endOffset; },
+      get collapsed() { return startOffset === endOffset; },
+      setStart(_node, value) {
+        startOffset = value;
+        if (startOffset > endOffset) endOffset = startOffset;
+      },
+      setEnd(_node, value) {
+        endOffset = value;
+        if (endOffset < startOffset) startOffset = endOffset;
+      },
+    };
+  };
+  const document = {
+    caretRangeFromPoint: (x) => ({ startContainer: caretNode, startOffset: x }),
+    createRange,
+  };
+  const window = { getSelection: () => ({
+    removeAllRanges: () => selected.splice(0),
+    addRange: range => selected.push(range),
+  }) };
+  const textLayer = { contains: node => node === textNode };
+  const current = { startContainer: textNode, startOffset: 2, endContainer: textNode, endOffset: 6 };
+
+  const extended = movePdfSelectionEndpoint(textLayer, current, 'end', 9, 10, { document, window });
+  assert.equal(extended.startOffset, 2);
+  assert.equal(extended.endOffset, 9);
+  assert.equal(selected[0], extended);
+
+  const crossed = movePdfSelectionEndpoint(textLayer, extended, 'start', 10, 10, { document, window });
+  assert.equal(crossed, null);
+  assert.equal(selected[0], extended, 'a crossed endpoint must leave the prior selection unchanged');
+
+  caretNode = foreignNode;
+  assert.equal(movePdfSelectionEndpoint(textLayer, extended, 'end', 11, 10, { document, window }), null);
+  assert.equal(selected[0], extended, 'dragging outside the PDF text layer must fail closed');
+});
+
 const sourceUrl = new URL('../src/PdfSelectionLayer.jsx', import.meta.url);
 const { code } = await transformWithEsbuild(readFileSync(sourceUrl, 'utf8'), sourceUrl.pathname, {
   loader: 'jsx', jsx: 'automatic',
 });
 let previewRects = [];
 const hooks = 'data:text/javascript,' + encodeURIComponent(
-  'export const useState = () => [globalThis.__pdfSelectionTestRects, () => {}]; export const useEffect = () => {};',
+  'export const useState = () => [globalThis.__pdfSelectionTestRects, () => {}]; export const useEffect = () => {}; export const useRef = value => ({ current: value });',
 );
 const resolvedCode = code.replace(/from (["'])([^"']+)\1/g, (_match, _quote, specifier) => (
   `from ${JSON.stringify(specifier === 'react' ? hooks : specifier.startsWith('.')
@@ -171,7 +221,7 @@ test('the joined live preview replaces native fragmented paint without blocking 
     const nodes = elements(PdfSelectionLayer({ textLayerRef: { current: {} }, renderInfo: { tlLeft: 30 } }));
     const overlay = nodes.find(node => node.props?.id === 'pdf-selection-layer');
     assert.ok(overlay);
-    assert.equal(overlay.props['aria-hidden'], true);
+    assert.equal(overlay.props['aria-hidden'], false);
     assert.equal(overlay.props.style.pointerEvents, 'none');
     assert.equal(overlay.props.style.left, 30);
     const painted = elements(overlay.props.children).filter(node => node.type === 'div');
@@ -180,6 +230,12 @@ test('the joined live preview replaces native fragmented paint without blocking 
       position: 'absolute', left: 20, top: 40, width: 286, height: 38,
       background: 'rgba(0,100,255,0.3)', mixBlendMode: 'multiply',
     });
+    const handles = nodes.filter(node => node.props?.className === 'incremento-pdf-selection-resize-handle');
+    assert.equal(handles.length, 2);
+    assert.deepEqual(handles.map(node => node.props['data-endpoint']), ['start', 'end']);
+    assert.deepEqual(handles.map(node => [node.props.style.left, node.props.style.top]), [[8, 12], [294, 78]]);
+    assert.ok(handles.every(node => node.props.style.pointerEvents === 'auto'));
+    assert.ok(handles.every(node => node.props.style.touchAction === 'none'));
     assert.match(nodes.find(node => node.type === 'style').props.children,
       /#pdf-text-layer ::selection\s*\{\s*background:\s*transparent/);
     globalThis.__pdfSelectionTestRects = [];
