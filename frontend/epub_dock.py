@@ -1863,34 +1863,6 @@ def _build_page_script(
           .incremento-epub-selection-resize-handle[data-endpoint="end"]::before {{ top: 0; }}
           .incremento-epub-resize-handle[data-endpoint="end"]::after,
           .incremento-epub-selection-resize-handle[data-endpoint="end"]::after {{ top: 14px; }}
-          #incremento-epub-selection-loupe {{
-            position: absolute;
-            z-index: 2147483400;
-            display: flex;
-            align-items: center;
-            min-width: 64px;
-            max-width: 300px;
-            min-height: 34px;
-            padding: 4px 10px;
-            border: 1px solid rgba(255,255,255,0.92);
-            border-radius: 9px;
-            box-sizing: border-box;
-            overflow: hidden;
-            color: #fff;
-            background: rgba(24,31,39,0.94);
-            box-shadow: 0 3px 12px rgba(0,0,0,0.42);
-            font-family: Georgia, 'Times New Roman', serif;
-            font-size: 18px;
-            line-height: 1.25;
-            white-space: pre;
-            pointer-events: none;
-          }}
-          #incremento-epub-selection-loupe-caret {{
-            width: 2px;
-            height: 24px;
-            flex: 0 0 2px;
-            background: rgb(34,211,238);
-          }}
           #incremento-epub-read-marker {{
             position: absolute;
             z-index: 2147483000;
@@ -1965,7 +1937,6 @@ def _build_page_script(
               if (/^(SCRIPT|STYLE|NOSCRIPT)$/i.test(parent.tagName || '')) return NodeFilter.FILTER_REJECT;
               if (parent.closest && parent.closest('#incremento-epub-read-marker')) return NodeFilter.FILTER_REJECT;
               if (parent.closest && parent.closest('#incremento-epub-highlight-actions')) return NodeFilter.FILTER_REJECT;
-              if (parent.closest && parent.closest('#incremento-epub-selection-loupe')) return NodeFilter.FILTER_REJECT;
               if (parent.closest && parent.closest('.incremento-epub-resize-handle')) return NodeFilter.FILTER_REJECT;
               if (parent.closest && parent.closest('.incremento-epub-selection-resize-handle')) return NodeFilter.FILTER_REJECT;
               return NodeFilter.FILTER_ACCEPT;
@@ -2442,39 +2413,6 @@ def _build_page_script(
       function blockNativeSelectionDuringPreciseDrag(event) {{
         if (window._incrementoEpubPreciseSelectionDrag) event.preventDefault();
       }}
-      function removePreciseSelectionLoupe() {{
-        const existing = document.getElementById('incremento-epub-selection-loupe');
-        if (existing && existing.remove) existing.remove();
-      }}
-      function renderPreciseSelectionLoupe(caret, event) {{
-        removePreciseSelectionLoupe();
-        const node = caret && caret.startContainer;
-        const parent = document.body || document.documentElement;
-        if (!node || node.nodeType !== 3 || !parent || !document.createElement) return;
-        const text = String(node.nodeValue || '');
-        const offset = Math.max(0, Math.min(Number(caret.startOffset) || 0, text.length));
-        const loupe = document.createElement('div');
-        loupe.id = 'incremento-epub-selection-loupe';
-        loupe.setAttribute('aria-hidden', 'true');
-        const before = document.createElement('span');
-        before.textContent = text.slice(Math.max(0, offset - 14), offset) || '\u00a0';
-        const marker = document.createElement('span');
-        marker.id = 'incremento-epub-selection-loupe-caret';
-        const after = document.createElement('span');
-        after.textContent = text.slice(offset, Math.min(text.length, offset + 14)) || '\u00a0';
-        loupe.appendChild(before);
-        loupe.appendChild(marker);
-        loupe.appendChild(after);
-        loupe.style.left = Math.round(Number(window.scrollX || 0) + Number(event.clientX)) + 'px';
-        if (Number(event.clientY) < 64) {{
-          loupe.style.top = Math.round(Number(window.scrollY || 0) + Number(event.clientY) + 24) + 'px';
-          loupe.style.transform = 'translate(-50%, 0)';
-        }} else {{
-          loupe.style.top = Math.round(Number(window.scrollY || 0) + Number(event.clientY) - 18) + 'px';
-          loupe.style.transform = 'translate(-50%, -100%)';
-        }}
-        parent.appendChild(loupe);
-      }}
       function beginPreciseSelectionDrag(event) {{
         if (window._incrementoEpubPreciseSelectionDrag) {{
           event.preventDefault();
@@ -2509,7 +2447,6 @@ def _build_page_script(
           lastCaretPoint: preciseCaretVisualPoint(caret),
           activeRow: initialSession.activeRow,
         }};
-        renderPreciseSelectionLoupe(caret, event);
         if (pointerId !== null && target && target.setPointerCapture) {{
           try {{ target.setPointerCapture(pointerId); }} catch (err) {{}}
         }}
@@ -2524,7 +2461,6 @@ def _build_page_script(
         const next = preciseSelectionRange(session.anchor, caret);
         if (!next || !replaceEpubSelection(next)) return false;
         session.moved = session.moved || !next.collapsed;
-        renderPreciseSelectionLoupe(caret, event);
         return true;
       }}
       function finishPreciseSelectionDrag(event) {{
@@ -2534,7 +2470,6 @@ def _build_page_script(
         const moved = session.moved;
         releasePreciseSelectionPointer(session);
         window._incrementoEpubPreciseSelectionDrag = null;
-        removePreciseSelectionLoupe();
         if (moved) {{
           window._incrementoEpubSuppressSelectionClick = true;
           setTimeout(function() {{ window._incrementoEpubSuppressSelectionClick = false; }}, 0);
@@ -2546,7 +2481,6 @@ def _build_page_script(
         if (!session) return;
         releasePreciseSelectionPointer(session);
         window._incrementoEpubPreciseSelectionDrag = null;
-        removePreciseSelectionLoupe();
         reportSelection();
       }}
       function removeSelectionResizeHandles() {{
@@ -3129,7 +3063,6 @@ def _build_page_script(
       ensureStyle();
       applyTextScale(STATE.textScale);
       applyClickableLinks(STATE.clickableLinks);
-      removePreciseSelectionLoupe();
       removeSelectionResizeHandles();
       removeHighlightResizeHandles();
       document.querySelectorAll('span.incremento-epub-highlight').forEach(unwrapHighlight);

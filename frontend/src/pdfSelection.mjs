@@ -185,19 +185,6 @@ function magneticWordCaret(document, caret, clientX) {
   return candidates[0]?.range || caret;
 }
 
-function dragPreview(textLayer, caret, clientX, clientY) {
-  const node = caret?.startContainer;
-  const text = node?.nodeType === 3 ? String(node.nodeValue || '') : '';
-  const offset = Math.max(0, Math.min(Number(caret?.startOffset) || 0, text.length));
-  const layerRect = textLayer.getBoundingClientRect?.() || { left: 0, top: 0 };
-  return {
-    x: Number(clientX) - Number(layerRect.left || 0),
-    y: Number(clientY) - Number(layerRect.top || 0),
-    before: text.slice(Math.max(0, offset - 14), offset),
-    after: text.slice(offset, Math.min(text.length, offset + 14)),
-  };
-}
-
 function caretAtStablePoint(document, root, session, clientX, clientY) {
   const x = Number(clientX);
   const y = Number(clientY);
@@ -254,7 +241,6 @@ function caretMovementMatchesPointer(document, session, caret, clientY) {
 export function installPrecisePdfSelectionDrag(textLayer, {
   document = globalThis.document,
   window = globalThis.window,
-  onDragPreview = () => {},
 } = {}) {
   if (!textLayer || !document || !window) return () => {};
   let session = null;
@@ -286,9 +272,7 @@ export function installPrecisePdfSelectionDrag(textLayer, {
     if (!caretMovementMatchesPointer(document, session, caret, event.clientY)) return false;
     const next = preciseRangeFromAnchor(document, session.anchor, caret);
     if (!next || !textLayer.contains(next.commonAncestorContainer)) return false;
-    const replaced = replaceSelection(window, next);
-    if (replaced) onDragPreview(dragPreview(textLayer, caret, event.clientX, event.clientY));
-    return replaced;
+    return replaceSelection(window, next);
   };
 
   const finish = (event) => {
@@ -296,14 +280,12 @@ export function installPrecisePdfSelectionDrag(textLayer, {
     update(event);
     releasePointer();
     session = null;
-    onDragPreview(null);
   };
 
   const cancel = () => {
     if (!session) return;
     releasePointer();
     session = null;
-    onDragPreview(null);
   };
 
   const start = (event) => {
@@ -333,7 +315,6 @@ export function installPrecisePdfSelectionDrag(textLayer, {
       textRows,
       activeRow: initialSession.activeRow,
     };
-    onDragPreview(dragPreview(textLayer, caret, event.clientX, event.clientY));
     if (pointerId !== null && typeof textLayer.setPointerCapture === 'function') {
       try {
         textLayer.setPointerCapture(pointerId);
@@ -353,7 +334,6 @@ export function installPrecisePdfSelectionDrag(textLayer, {
   return () => {
     releasePointer();
     session = null;
-    onDragPreview(null);
     textLayer.removeEventListener(startEvent, start, true);
     document.removeEventListener(moveEvent, update, true);
     document.removeEventListener(endEvent, finish, true);

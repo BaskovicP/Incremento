@@ -9104,19 +9104,6 @@
     candidates.sort((a, b) => a.distance - b.distance);
     return ((_a = candidates[0]) == null ? void 0 : _a.range) || caret;
   }
-  function dragPreview(textLayer, caret, clientX, clientY) {
-    var _a;
-    const node = caret == null ? void 0 : caret.startContainer;
-    const text = (node == null ? void 0 : node.nodeType) === 3 ? String(node.nodeValue || "") : "";
-    const offset = Math.max(0, Math.min(Number(caret == null ? void 0 : caret.startOffset) || 0, text.length));
-    const layerRect = ((_a = textLayer.getBoundingClientRect) == null ? void 0 : _a.call(textLayer)) || { left: 0, top: 0 };
-    return {
-      x: Number(clientX) - Number(layerRect.left || 0),
-      y: Number(clientY) - Number(layerRect.top || 0),
-      before: text.slice(Math.max(0, offset - 14), offset),
-      after: text.slice(offset, Math.min(text.length, offset + 14))
-    };
-  }
   function caretAtStablePoint(document2, root, session, clientX, clientY) {
     const x = Number(clientX);
     const y = Number(clientY);
@@ -9160,9 +9147,7 @@
   }
   function installPrecisePdfSelectionDrag(textLayer, {
     document: document2 = globalThis.document,
-    window: window2 = globalThis.window,
-    onDragPreview = () => {
-    }
+    window: window2 = globalThis.window
   } = {}) {
     if (!textLayer || !document2 || !window2) return () => {
     };
@@ -9192,22 +9177,18 @@
       if (!caretMovementMatchesPointer(document2, session, caret, event.clientY)) return false;
       const next = preciseRangeFromAnchor(document2, session.anchor, caret);
       if (!next || !textLayer.contains(next.commonAncestorContainer)) return false;
-      const replaced = replaceSelection(window2, next);
-      if (replaced) onDragPreview(dragPreview(textLayer, caret, event.clientX, event.clientY));
-      return replaced;
+      return replaceSelection(window2, next);
     };
     const finish = (event) => {
       if (!session) return;
       update(event);
       releasePointer();
       session = null;
-      onDragPreview(null);
     };
     const cancel = () => {
       if (!session) return;
       releasePointer();
       session = null;
-      onDragPreview(null);
     };
     const start = (event) => {
       var _a, _b;
@@ -9235,7 +9216,6 @@
         textRows,
         activeRow: initialSession.activeRow
       };
-      onDragPreview(dragPreview(textLayer, caret, event.clientX, event.clientY));
       if (pointerId !== null && typeof textLayer.setPointerCapture === "function") {
         try {
           textLayer.setPointerCapture(pointerId);
@@ -9253,7 +9233,6 @@
     return () => {
       releasePointer();
       session = null;
-      onDragPreview(null);
       textLayer.removeEventListener(startEvent, start, true);
       document2.removeEventListener(moveEvent, update, true);
       document2.removeEventListener(endEvent, finish, true);
@@ -9334,15 +9313,12 @@
   const DEFAULT_LANGUAGE = createReaderLanguage("en");
   function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLayerRef, renderInfo }) {
     const [rects, setRects] = reactExports.useState([]);
-    const [dragPreview2, setDragPreview] = reactExports.useState(null);
     const resizeRef = reactExports.useRef(null);
     reactExports.useEffect(() => {
       const textLayer = textLayerRef.current;
       if (!textLayer) return;
       const stopObserving = observePdfTextSelection(textLayer, setRects);
-      const stopPreciseDrag = installPrecisePdfSelectionDrag(textLayer, {
-        onDragPreview: setDragPreview
-      });
+      const stopPreciseDrag = installPrecisePdfSelectionDrag(textLayer);
       return () => {
         stopPreciseDrag();
         stopObserving();
@@ -9398,7 +9374,7 @@
       (_b = (_a = event.currentTarget) == null ? void 0 : _a.releasePointerCapture) == null ? void 0 : _b.call(_a, event.pointerId);
       resizeRef.current = null;
     };
-    if (!rects.length && !dragPreview2) return null;
+    if (!rects.length) return null;
     const first = rects[0];
     const last = rects[rects.length - 1];
     const handles = rects.length ? [
@@ -9436,49 +9412,6 @@
               },
               index
             )),
-            dragPreview2 ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              "div",
-              {
-                className: "incremento-pdf-selection-loupe",
-                "aria-hidden": "true",
-                style: {
-                  position: "absolute",
-                  left: dragPreview2.x,
-                  top: dragPreview2.y < 64 ? dragPreview2.y + 24 : dragPreview2.y - 18,
-                  transform: dragPreview2.y < 64 ? "translate(-50%, 0)" : "translate(-50%, -100%)",
-                  display: "flex",
-                  alignItems: "center",
-                  minWidth: 64,
-                  maxWidth: 300,
-                  minHeight: 34,
-                  padding: "4px 10px",
-                  border: "1px solid rgba(255,255,255,0.92)",
-                  borderRadius: 9,
-                  boxSizing: "border-box",
-                  overflow: "hidden",
-                  color: "#fff",
-                  background: "rgba(24,31,39,0.94)",
-                  boxShadow: "0 3px 12px rgba(0,0,0,0.42)",
-                  fontFamily: "Georgia, Times New Roman, serif",
-                  fontSize: 18,
-                  lineHeight: 1.25,
-                  whiteSpace: "pre",
-                  pointerEvents: "none",
-                  zIndex: 5
-                },
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: dragPreview2.before || " " }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "span",
-                    {
-                      className: "incremento-pdf-selection-loupe-caret",
-                      style: { width: 2, height: 24, flex: "0 0 2px", background: "rgb(34,211,238)" }
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: dragPreview2.after || " " })
-                ]
-              }
-            ) : null,
             handles.map((handle) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "button",
               {

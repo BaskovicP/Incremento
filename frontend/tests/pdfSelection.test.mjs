@@ -204,7 +204,6 @@ test('initial trackpad drag follows the nearest character instead of accepting n
   const layerListeners = new Map();
   const documentListeners = new Map();
   const selected = [];
-  const previews = [];
   let caretNode = textNode;
   const visualTop = offset => ({ 1: 10, 2: 20, 3: 20, 4: 40, 5: 60, 9: 260 }[offset] ?? 20);
   const makeRange = (start = 0, end = start) => ({
@@ -293,18 +292,13 @@ test('initial trackpad drag follows the nearest character instead of accepting n
     ...overrides,
   });
 
-  const stop = installPrecisePdfSelectionDrag(textLayer, {
-    document,
-    window,
-    onDragPreview: preview => previews.push(preview),
-  });
+  const stop = installPrecisePdfSelectionDrag(textLayer, { document, window });
   const down = event(2);
   layerListeners.get('pointerdown')(down);
   assert.equal(down.defaultPrevented, true);
   assert.equal(capturedPointer, 12);
   assert.equal(selected[0].collapsed, true);
   assert.equal(selected[0].startOffset, 2);
-  assert.deepEqual([previews.at(-1).before, previews.at(-1).after], ['he', 'llo world']);
 
   const nativeSelection = event(2);
   documentListeners.get('selectstart')(nativeSelection);
@@ -348,7 +342,6 @@ test('initial trackpad drag follows the nearest character instead of accepting n
 
   documentListeners.get('pointerup')(event(1, { buttons: 0 }));
   assert.equal(capturedPointer, null);
-  assert.equal(previews.at(-1), null, 'the loupe preview must close when dragging ends');
   const selectionAfterRelease = event(1);
   documentListeners.get('selectstart')(selectionAfterRelease);
   assert.equal(selectionAfterRelease.defaultPrevented, undefined);
@@ -391,7 +384,7 @@ const { code } = await transformWithEsbuild(readFileSync(sourceUrl, 'utf8'), sou
 });
 let previewRects = [];
 const hooks = 'data:text/javascript,' + encodeURIComponent(
-  'export const useState = initial => Array.isArray(initial) ? [globalThis.__pdfSelectionTestRects, () => {}] : [globalThis.__pdfSelectionTestDragPreview ?? initial, () => {}]; export const useEffect = () => {}; export const useRef = value => ({ current: value });',
+  'export const useState = () => [globalThis.__pdfSelectionTestRects, () => {}]; export const useEffect = () => {}; export const useRef = value => ({ current: value });',
 );
 const resolvedCode = code.replace(/from (["'])([^"']+)\1/g, (_match, _quote, specifier) => (
   `from ${JSON.stringify(specifier === 'react' ? hooks : specifier.startsWith('.')
@@ -433,28 +426,5 @@ test('the joined live preview replaces native fragmented paint without blocking 
     assert.equal(PdfSelectionLayer({ textLayerRef: { current: {} }, renderInfo: { tlLeft: 30 } }), null);
   } finally {
     delete globalThis.__pdfSelectionTestRects;
-    delete globalThis.__pdfSelectionTestDragPreview;
-  }
-});
-
-test('the PDF drag loupe renders the exact caret boundary even before selection paint appears', () => {
-  globalThis.__pdfSelectionTestRects = [];
-  globalThis.__pdfSelectionTestDragPreview = { x: 75, y: 42, before: 'hello', after: ' world' };
-  try {
-    const nodes = elements(PdfSelectionLayer({ textLayerRef: { current: {} }, renderInfo: { tlLeft: 30 } }));
-    const loupe = nodes.find(node => node.props?.className === 'incremento-pdf-selection-loupe');
-    assert.ok(loupe);
-    assert.equal(loupe.props['aria-hidden'], 'true');
-    assert.equal(loupe.props.style.left, 75);
-    assert.equal(loupe.props.style.top, 66);
-    assert.equal(loupe.props.style.pointerEvents, 'none');
-    const contents = elements(loupe.props.children);
-    assert.equal(contents.find(node => node.props?.className === 'incremento-pdf-selection-loupe-caret').type, 'span');
-    assert.deepEqual(contents.filter(node => node.type === 'span').map(node => node.props.children), [
-      'hello', undefined, ' world',
-    ]);
-  } finally {
-    delete globalThis.__pdfSelectionTestRects;
-    delete globalThis.__pdfSelectionTestDragPreview;
   }
 });

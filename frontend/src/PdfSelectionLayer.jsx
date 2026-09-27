@@ -12,15 +12,12 @@ const DEFAULT_LANGUAGE = createReaderLanguage('en');
 // endpoint handles. Saved annotations remain in HighlightLayer.
 export default function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLayerRef, renderInfo }) {
   const [rects, setRects] = useState([]);
-  const [dragPreview, setDragPreview] = useState(null);
   const resizeRef = useRef(null);
   useEffect(() => {
     const textLayer = textLayerRef.current;
     if (!textLayer) return;
     const stopObserving = observePdfTextSelection(textLayer, setRects);
-    const stopPreciseDrag = installPrecisePdfSelectionDrag(textLayer, {
-      onDragPreview: setDragPreview,
-    });
+    const stopPreciseDrag = installPrecisePdfSelectionDrag(textLayer);
     return () => {
       stopPreciseDrag();
       stopObserving();
@@ -80,7 +77,7 @@ export default function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLay
 
   // Hide native fragmented paint only while we have a replacement to draw.
   // Removing this style with the overlay restores the host's native fallback.
-  if (!rects.length && !dragPreview) return null;
+  if (!rects.length) return null;
   const first = rects[0];
   const last = rects[rects.length - 1];
   const handles = rects.length ? [
@@ -106,44 +103,6 @@ export default function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLay
                      background: 'rgba(0,100,255,0.3)', mixBlendMode: 'multiply' }}
           />
         ))}
-        {dragPreview ? (
-          <div
-            className="incremento-pdf-selection-loupe"
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              left: dragPreview.x,
-              top: dragPreview.y < 64 ? dragPreview.y + 24 : dragPreview.y - 18,
-              transform: dragPreview.y < 64 ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
-              display: 'flex',
-              alignItems: 'center',
-              minWidth: 64,
-              maxWidth: 300,
-              minHeight: 34,
-              padding: '4px 10px',
-              border: '1px solid rgba(255,255,255,0.92)',
-              borderRadius: 9,
-              boxSizing: 'border-box',
-              overflow: 'hidden',
-              color: '#fff',
-              background: 'rgba(24,31,39,0.94)',
-              boxShadow: '0 3px 12px rgba(0,0,0,0.42)',
-              fontFamily: 'Georgia, Times New Roman, serif',
-              fontSize: 18,
-              lineHeight: 1.25,
-              whiteSpace: 'pre',
-              pointerEvents: 'none',
-              zIndex: 5,
-            }}
-          >
-            <span>{dragPreview.before || '\u00a0'}</span>
-            <span
-              className="incremento-pdf-selection-loupe-caret"
-              style={{ width: 2, height: 24, flex: '0 0 2px', background: 'rgb(34,211,238)' }}
-            />
-            <span>{dragPreview.after || '\u00a0'}</span>
-          </div>
-        ) : null}
         {handles.map((handle) => (
           <button
             key={handle.endpoint}

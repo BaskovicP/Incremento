@@ -586,7 +586,7 @@ def test_build_page_script_shows_draggable_handles_on_live_epub_selection(monkey
     assert "const preciseStartEvent = preciseUsesPointerEvents ? 'pointerdown' : 'mousedown'" in script
     assert "document.addEventListener(preciseMoveEvent, window._incrementoEpubPreciseSelectionMove, true)" in script
     assert "document.addEventListener('selectstart', window._incrementoEpubPreciseSelectionBlocker, true)" in script
-    assert "incremento-epub-selection-loupe" in script
+    assert "incremento-epub-selection-loupe" not in script
     assert "preciseStickyRow" in script
     assert "preciseMagneticWordCaret" in script
 
@@ -641,33 +641,9 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
             return {left: this.startOffset, top: visualTop(this.startOffset), width: 0, height: 18};
           },
         });
-        const elements = new Map();
-        const root = {
-          appendChild(element) {
-            element.parentNode = this;
-            elements.set(element.id, element);
-          },
-        };
-        const document = {
-          createRange: () => makeRange(),
-          getElementById: id => elements.get(id) || null,
-          createElement: tagName => ({
-            tagName,
-            id: '',
-            style: {},
-            children: [],
-            attributes: {},
-            setAttribute(name, value) { this.attributes[name] = value; },
-            appendChild(child) { this.children.push(child); },
-            remove() { elements.delete(this.id); },
-          }),
-          body: root,
-          documentElement: root,
-        };
+        const document = { createRange: () => makeRange() };
         const window = {
           PointerEvent: function PointerEvent() {},
-          scrollX: 0,
-          scrollY: 0,
           getSelection: () => ({
             removeAllRanges: () => selected.splice(0),
             addRange: range => selected.push(range),
@@ -709,8 +685,6 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
         const first = event(3, 1, 20);
         updatePreciseSelectionDrag(first);
         const forward = [selected[0].startOffset, selected[0].endOffset];
-        const activeLoupe = document.getElementById('incremento-epub-selection-loupe');
-        const loupeBoundary = activeLoupe.children.map(child => child.textContent || '|').join('');
         updatePreciseSelectionDrag(event(5, 1, 60));
         const later = [selected[0].startOffset, selected[0].endOffset];
         updatePreciseSelectionDrag(event(9, 1, 59));
@@ -725,7 +699,6 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
         updatePreciseSelectionDrag(event(9));
         const outside = [selected[0].startOffset, selected[0].endOffset];
         finishPreciseSelectionDrag(event(1, 0, 10));
-        const loupeRemovedAfterRelease = document.getElementById('incremento-epub-selection-loupe') === null;
         const afterRelease = event(1, 0);
         blockNativeSelectionDuringPreciseDrag(afterRelease);
         caretNode = textNode;
@@ -745,7 +718,7 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
           pointerReleased: capturedPointer === null,
           movePrevented: !!first.defaultPrevented,
           forward, later, interline, changedRow, rejectedJump, backward, outside,
-          blankRight, blankLeft, magneticWordEnd, loupeBoundary, loupeRemovedAfterRelease,
+          blankRight, blankLeft, magneticWordEnd,
         }));
     """
     result = subprocess.run(
@@ -772,8 +745,6 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
         "blankRight": [3, 3],
         "blankLeft": [0, 0],
         "magneticWordEnd": [5, 5],
-        "loupeBoundary": "hel|lo world",
-        "loupeRemovedAfterRelease": True,
     }
 
 
