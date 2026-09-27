@@ -229,7 +229,8 @@ test('initial trackpad drag follows the nearest character instead of accepting n
   });
   const document = {
     caretRangeFromPoint: (x, y) => {
-      const offset = x === 9 && y === 57 ? 4 : x;
+      const offset = x === 9 && y === 57 ? 4
+        : (x === 9 && y === 21 ? 3 : (x === 1 && y === 21 ? 0 : x));
       const range = makeRange(offset, offset);
       range.startContainer = caretNode;
       range.endContainer = caretNode;
@@ -323,17 +324,36 @@ test('initial trackpad drag follows the nearest character instead of accepting n
   );
 
   documentListeners.get('pointermove')(event(1, { clientY: 10 }));
-  assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [1, 2]);
+  assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [0, 2]);
 
   caretNode = foreignNode;
   documentListeners.get('pointermove')(event(9));
-  assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [1, 2]);
+  assert.deepEqual([selected[0].startOffset, selected[0].endOffset], [0, 2]);
 
   documentListeners.get('pointerup')(event(1, { buttons: 0 }));
   assert.equal(capturedPointer, null);
   const selectionAfterRelease = event(1);
   documentListeners.get('selectstart')(selectionAfterRelease);
   assert.equal(selectionAfterRelease.defaultPrevented, undefined);
+
+  caretNode = textNode;
+  const blankRight = event(50, { clientY: 20 });
+  layerListeners.get('pointerdown')(blankRight);
+  documentListeners.get('pointerup')(event(50, { buttons: 0, clientY: 20 }));
+  assert.deepEqual(
+    [selected[0].startOffset, selected[0].endOffset],
+    [3, 3],
+    'a plain click to the right of a line must collapse at that line end',
+  );
+
+  const blankLeft = event(-50, { clientY: 20 });
+  layerListeners.get('pointerdown')(blankLeft);
+  documentListeners.get('pointerup')(event(-50, { buttons: 0, clientY: 20 }));
+  assert.deepEqual(
+    [selected[0].startOffset, selected[0].endOffset],
+    [0, 0],
+    'a plain click to the left of a line must collapse at that line start',
+  );
   stop();
   assert.equal(layerListeners.size, 0);
   assert.equal(documentListeners.size, 0);

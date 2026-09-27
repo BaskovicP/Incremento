@@ -8993,6 +8993,7 @@
       }
       if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) return null;
       return {
+        x: Number(rect.left),
         y: Number(rect.top) + Number(rect.height) / 2,
         height: Number(rect.height)
       };
@@ -9034,7 +9035,7 @@
     const nativeCaret = caretRangeAtPoint(document2, x, y);
     const nativePoint = caretVisualPoint(document2, nativeCaret);
     const nativeIsNearby = nativePoint && Math.abs(nativePoint.y - y) <= Math.max(6, nativePoint.height * 1.5);
-    if (nativeIsNearby || !session.textRows.length) return nativeCaret;
+    if (!session.textRows.length) return nativeCaret;
     let nearest = null;
     let nearestDistance = Infinity;
     for (const row of session.textRows) {
@@ -9047,6 +9048,8 @@
       }
     }
     if (!nearest) return nativeCaret;
+    const pointerInsideNearest = x >= nearest.left && x <= nearest.right && y >= nearest.top && y <= nearest.bottom;
+    if (nativeIsNearby && pointerInsideNearest) return nativeCaret;
     const inset = Math.min(1, Math.max(0, nearest.height / 4));
     const probeX = Math.max(nearest.left + inset, Math.min(x, nearest.right - inset));
     const probeY = Math.max(nearest.top + inset, Math.min(y, nearest.bottom - inset));
@@ -9121,7 +9124,14 @@
     const start = (event) => {
       var _a, _b;
       if (event.button !== 0 || Number(event.detail || 1) > 1 || usePointerEvents && event.isPrimary === false || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-      const caret = caretRangeAtPoint(document2, Number(event.clientX), Number(event.clientY));
+      const textRows = collectTextRowRects(document2, textLayer);
+      const caret = caretAtStablePoint(
+        document2,
+        textLayer,
+        { textRows },
+        event.clientX,
+        event.clientY
+      );
       if (!(caret == null ? void 0 : caret.startContainer) || !textLayer.contains(caret.startContainer)) return;
       (_a = event.preventDefault) == null ? void 0 : _a.call(event);
       const anchor = typeof caret.cloneRange === "function" ? caret.cloneRange() : caret;
@@ -9133,7 +9143,7 @@
         pointerId,
         lastPointerY: Number(event.clientY),
         lastCaretPoint: caretVisualPoint(document2, caret),
-        textRows: collectTextRowRects(document2, textLayer)
+        textRows
       };
       if (pointerId !== null && typeof textLayer.setPointerCapture === "function") {
         try {

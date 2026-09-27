@@ -64,6 +64,7 @@ function caretVisualPoint(document, caret) {
     }
     if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) return null;
     return {
+      x: Number(rect.left),
       y: Number(rect.top) + (Number(rect.height) / 2),
       height: Number(rect.height),
     };
@@ -107,7 +108,7 @@ function caretAtStablePoint(document, root, session, clientX, clientY) {
   const nativePoint = caretVisualPoint(document, nativeCaret);
   const nativeIsNearby = nativePoint
     && Math.abs(nativePoint.y - y) <= Math.max(6, nativePoint.height * 1.5);
-  if (nativeIsNearby || !session.textRows.length) return nativeCaret;
+  if (!session.textRows.length) return nativeCaret;
 
   let nearest = null;
   let nearestDistance = Infinity;
@@ -121,6 +122,9 @@ function caretAtStablePoint(document, root, session, clientX, clientY) {
     }
   }
   if (!nearest) return nativeCaret;
+  const pointerInsideNearest = x >= nearest.left && x <= nearest.right
+    && y >= nearest.top && y <= nearest.bottom;
+  if (nativeIsNearby && pointerInsideNearest) return nativeCaret;
   const inset = Math.min(1, Math.max(0, nearest.height / 4));
   const probeX = Math.max(nearest.left + inset, Math.min(x, nearest.right - inset));
   const probeY = Math.max(nearest.top + inset, Math.min(y, nearest.bottom - inset));
@@ -210,7 +214,14 @@ export function installPrecisePdfSelectionDrag(textLayer, {
     if (event.button !== 0 || Number(event.detail || 1) > 1
         || (usePointerEvents && event.isPrimary === false)
         || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-    const caret = caretRangeAtPoint(document, Number(event.clientX), Number(event.clientY));
+    const textRows = collectTextRowRects(document, textLayer);
+    const caret = caretAtStablePoint(
+      document,
+      textLayer,
+      { textRows },
+      event.clientX,
+      event.clientY,
+    );
     if (!caret?.startContainer || !textLayer.contains(caret.startContainer)) return;
     event.preventDefault?.();
     const anchor = typeof caret.cloneRange === 'function' ? caret.cloneRange() : caret;
@@ -222,7 +233,7 @@ export function installPrecisePdfSelectionDrag(textLayer, {
       pointerId,
       lastPointerY: Number(event.clientY),
       lastCaretPoint: caretVisualPoint(document, caret),
-      textRows: collectTextRowRects(document, textLayer),
+      textRows,
     };
     if (pointerId !== null && typeof textLayer.setPointerCapture === 'function') {
       try {

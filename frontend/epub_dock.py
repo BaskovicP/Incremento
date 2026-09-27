@@ -2240,6 +2240,7 @@ def _build_page_script(
           }}
           if (!rect || !Number.isFinite(rect.top) || !(Number(rect.height) > 0)) return null;
           return {{
+            x: Number(rect.left),
             y: Number(rect.top) + (Number(rect.height) / 2),
             height: Number(rect.height),
           }};
@@ -2277,7 +2278,7 @@ def _build_page_script(
         const nativePoint = preciseCaretVisualPoint(nativeCaret);
         const nativeIsNearby = nativePoint
           && Math.abs(nativePoint.y - y) <= Math.max(6, nativePoint.height * 1.5);
-        if (nativeIsNearby || !session.rows.length) return nativeCaret;
+        if (!session.rows.length) return nativeCaret;
         let nearest = null;
         let nearestDistance = Infinity;
         for (const row of session.rows) {{
@@ -2290,6 +2291,9 @@ def _build_page_script(
           }}
         }}
         if (!nearest) return nativeCaret;
+        const pointerInsideNearest = x >= nearest.left && x <= nearest.right
+          && y >= nearest.top && y <= nearest.bottom;
+        if (nativeIsNearby && pointerInsideNearest) return nativeCaret;
         const inset = Math.min(1, Math.max(0, nearest.height / 4));
         const probeX = Math.max(nearest.left + inset, Math.min(x, nearest.right - inset));
         const probeY = Math.max(nearest.top + inset, Math.min(y, nearest.bottom - inset));
@@ -2348,9 +2352,11 @@ def _build_page_script(
         if (target && target.closest && target.closest(
           'a[href],button,input,textarea,select,[contenteditable="true"],#incremento-epub-highlight-actions'
         )) return;
-        const caret = caretRangeAtPoint(Number(event.clientX), Number(event.clientY));
         const nodes = textNodes();
-        if (!caret || !caret.startContainer || nodes.indexOf(caret.startContainer) < 0) return;
+        const nodeSet = new Set(nodes);
+        const rows = preciseTextRowRects(nodes);
+        const caret = preciseCaretAtPoint({{ nodes: nodeSet, rows }}, event.clientX, event.clientY);
+        if (!caret || !caret.startContainer || !nodeSet.has(caret.startContainer)) return;
         event.preventDefault();
         const anchor = typeof caret.cloneRange === 'function' ? caret.cloneRange() : caret;
         if (anchor.collapse) anchor.collapse(true);
@@ -2358,8 +2364,8 @@ def _build_page_script(
         const pointerId = Number.isFinite(event.pointerId) ? event.pointerId : null;
         window._incrementoEpubPreciseSelectionDrag = {{
           anchor,
-          nodes: new Set(nodes),
-          rows: preciseTextRowRects(nodes),
+          nodes: nodeSet,
+          rows,
           moved: false,
           pointerId,
           captureTarget: target || null,

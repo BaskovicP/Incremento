@@ -657,7 +657,8 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
         };
         const textNodes = () => [textNode];
         const caretRangeAtPoint = (x, y) => {
-          const offset = x === 9 && y === 57 ? 4 : x;
+          const offset = x === 9 && y === 57 ? 4
+            : (x === 9 && y === 21 ? 3 : (x === 1 && y === 21 ? 0 : x));
           const range = makeRange(offset, offset);
           range.startContainer = caretNode;
           range.endContainer = caretNode;
@@ -692,13 +693,20 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
         finishPreciseSelectionDrag(event(1, 0, 10));
         const afterRelease = event(1, 0);
         blockNativeSelectionDuringPreciseDrag(afterRelease);
+        caretNode = textNode;
+        beginPreciseSelectionDrag(event(50, 1, 20));
+        finishPreciseSelectionDrag(event(50, 0, 20));
+        const blankRight = [selected[0].startOffset, selected[0].endOffset];
+        beginPreciseSelectionDrag(event(-50, 1, 20));
+        finishPreciseSelectionDrag(event(-50, 0, 20));
+        const blankLeft = [selected[0].startOffset, selected[0].endOffset];
         process.stdout.write(JSON.stringify({
           downPrevented: !!down.defaultPrevented,
           nativeSelectionPrevented: !!nativeSelection.defaultPrevented,
           afterReleasePrevented: !!afterRelease.defaultPrevented,
           pointerReleased: capturedPointer === null,
           movePrevented: !!first.defaultPrevented,
-          forward, later, interline, rejectedJump, backward, outside,
+          forward, later, interline, rejectedJump, backward, outside, blankRight, blankLeft,
         }));
     """
     result = subprocess.run(
@@ -719,8 +727,10 @@ def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(mon
         "later": [2, 5],
         "interline": [2, 4],
         "rejectedJump": [2, 4],
-        "backward": [1, 2],
-        "outside": [1, 2],
+        "backward": [0, 2],
+        "outside": [0, 2],
+        "blankRight": [3, 3],
+        "blankLeft": [0, 0],
     }
 
 
