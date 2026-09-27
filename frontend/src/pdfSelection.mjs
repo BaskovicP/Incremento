@@ -207,6 +207,7 @@ function caretAtStablePoint(document, root, session, clientX, clientY) {
   const probeY = Math.max(targetRow.top + inset, Math.min(y, targetRow.bottom - inset));
   const snapped = caretRangeAtPoint(document, probeX, probeY);
   const resolved = snapped?.startContainer && root.contains(snapped.startContainer) ? snapped : nativeCaret;
+  if (x < targetRow.left || x > targetRow.right) return resolved;
   return magneticWordCaret(document, resolved, probeX);
 }
 
@@ -348,9 +349,31 @@ export function installPrecisePdfSelectionDrag(textLayer, {
 export function movePdfSelectionEndpoint(textLayer, currentRange, endpoint, clientX, clientY, {
   document = globalThis.document,
   window = globalThis.window,
+  dragState = null,
 } = {}) {
   if (!textLayer || !currentRange || !['start', 'end'].includes(endpoint)) return null;
-  const caret = caretRangeAtPoint(document, Number(clientX), Number(clientY));
+  let caret = null;
+  if (dragState && typeof dragState === 'object') {
+    if (!Array.isArray(dragState.textRows)) {
+      dragState.textRows = collectTextRowRects(document, textLayer);
+    }
+    if (!dragState.activeRow && dragState.textRows.length) {
+      try {
+        const boundary = document.createRange();
+        const container = endpoint === 'start' ? currentRange.startContainer : currentRange.endContainer;
+        const offset = endpoint === 'start' ? currentRange.startOffset : currentRange.endOffset;
+        boundary.setStart(container, offset);
+        boundary.collapse(true);
+        const point = caretVisualPoint(document, boundary);
+        if (point) dragState.activeRow = nearestTextRow(dragState.textRows, point.x, point.y);
+      } catch (_error) {
+        // Fall through to pointer-based row resolution below.
+      }
+    }
+    caret = caretAtStablePoint(document, textLayer, dragState, Number(clientX), Number(clientY));
+  } else {
+    caret = caretRangeAtPoint(document, Number(clientX), Number(clientY));
+  }
   if (!caret?.startContainer || !textLayer.contains(caret.startContainer)) return null;
   try {
     const next = document.createRange();

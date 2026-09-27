@@ -198,6 +198,72 @@ test('dragging a live selection handle moves only that endpoint and cannot cross
   assert.equal(selected[0], extended, 'dragging outside the PDF text layer must fail closed');
 });
 
+test('dragging the PDF end handle into the right margin stays on its row until moving down', () => {
+  const textNode = { nodeType: 3, nodeValue: 'hello world again' };
+  const selected = [];
+  const visualTop = offset => (offset <= 5 ? 20 : (offset <= 11 ? 40 : 200));
+  const makeRange = (start = 0, end = start) => ({
+    startContainer: textNode,
+    endContainer: textNode,
+    startOffset: start,
+    endOffset: end,
+    commonAncestorContainer: textNode,
+    get collapsed() { return this.startOffset === this.endOffset; },
+    setStart(node, offset) { this.startContainer = node; this.startOffset = offset; },
+    setEnd(node, offset) { this.endContainer = node; this.endOffset = offset; },
+    collapse() { this.endContainer = this.startContainer; this.endOffset = this.startOffset; },
+    selectNodeContents(node) { this.selectedNode = node; },
+    getClientRects() {
+      if (!this.selectedNode) return [];
+      return [20, 40].map(top => ({ left: 0, right: 10, top, bottom: top + 18, width: 10, height: 18 }));
+    },
+    getBoundingClientRect() {
+      return { left: this.startOffset, right: this.startOffset, top: visualTop(this.startOffset), height: 18 };
+    },
+  });
+  const document = {
+    caretRangeFromPoint: (x, y) => {
+      const offset = x > 10 ? 15 : (x >= 9 ? (y < 40 ? 5 : 11) : Math.trunc(x));
+      return makeRange(offset, offset);
+    },
+    createRange: () => makeRange(),
+    createTreeWalker: () => {
+      let visited = false;
+      return {
+        currentNode: null,
+        nextNode() {
+          if (visited) return false;
+          visited = true;
+          this.currentNode = textNode;
+          return true;
+        },
+      };
+    },
+  };
+  const window = { getSelection: () => ({
+    removeAllRanges: () => selected.splice(0),
+    addRange: range => selected.push(range),
+  }) };
+  const textLayer = { contains: node => node === textNode };
+  const dragState = {};
+  const current = makeRange(0, 3);
+
+  const sameRow = movePdfSelectionEndpoint(
+    textLayer, current, 'end', 50, 30, { document, window, dragState },
+  );
+  assert.equal(sameRow.endOffset, 5, 'the right margin must resolve to the current row end');
+
+  const stillSameRow = movePdfSelectionEndpoint(
+    textLayer, sameRow, 'end', 50, 39, { document, window, dragState },
+  );
+  assert.equal(stillSameRow.endOffset, 5, 'the interline boundary must retain the active row');
+
+  const nextRow = movePdfSelectionEndpoint(
+    textLayer, stillSameRow, 'end', 50, 45, { document, window, dragState },
+  );
+  assert.equal(nextRow.endOffset, 11, 'vertical movement must deliberately advance to the next row');
+});
+
 test('initial trackpad drag follows the nearest character instead of accepting native row jumps', () => {
   const textNode = { nodeType: 3, nodeValue: 'hello world' };
   const foreignNode = {};

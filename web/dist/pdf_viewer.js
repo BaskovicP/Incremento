@@ -9123,6 +9123,7 @@
     const probeY = Math.max(targetRow.top + inset, Math.min(y, targetRow.bottom - inset));
     const snapped = caretRangeAtPoint(document2, probeX, probeY);
     const resolved = (snapped == null ? void 0 : snapped.startContainer) && root.contains(snapped.startContainer) ? snapped : nativeCaret;
+    if (x < targetRow.left || x > targetRow.right) return resolved;
     return magneticWordCaret(document2, resolved, probeX);
   }
   function caretMovementMatchesPointer(document2, session, caret, clientY) {
@@ -9244,10 +9245,31 @@
   }
   function movePdfSelectionEndpoint(textLayer, currentRange, endpoint, clientX, clientY, {
     document: document2 = globalThis.document,
-    window: window2 = globalThis.window
+    window: window2 = globalThis.window,
+    dragState = null
   } = {}) {
     if (!textLayer || !currentRange || !["start", "end"].includes(endpoint)) return null;
-    const caret = caretRangeAtPoint(document2, Number(clientX), Number(clientY));
+    let caret = null;
+    if (dragState && typeof dragState === "object") {
+      if (!Array.isArray(dragState.textRows)) {
+        dragState.textRows = collectTextRowRects(document2, textLayer);
+      }
+      if (!dragState.activeRow && dragState.textRows.length) {
+        try {
+          const boundary = document2.createRange();
+          const container2 = endpoint === "start" ? currentRange.startContainer : currentRange.endContainer;
+          const offset = endpoint === "start" ? currentRange.startOffset : currentRange.endOffset;
+          boundary.setStart(container2, offset);
+          boundary.collapse(true);
+          const point = caretVisualPoint(document2, boundary);
+          if (point) dragState.activeRow = nearestTextRow(dragState.textRows, point.x, point.y);
+        } catch (_error) {
+        }
+      }
+      caret = caretAtStablePoint(document2, textLayer, dragState, Number(clientX), Number(clientY));
+    } else {
+      caret = caretRangeAtPoint(document2, Number(clientX), Number(clientY));
+    }
     if (!(caret == null ? void 0 : caret.startContainer) || !textLayer.contains(caret.startContainer)) return null;
     try {
       const next = document2.createRange();
@@ -9338,7 +9360,8 @@
         endpoint,
         range: range.cloneRange(),
         original: range.cloneRange(),
-        pointerId: Number.isFinite(Number(event.pointerId)) ? Number(event.pointerId) : null
+        pointerId: Number.isFinite(Number(event.pointerId)) ? Number(event.pointerId) : null,
+        dragState: {}
       };
     };
     const moveResize = (event) => {
@@ -9351,7 +9374,8 @@
         session.range,
         session.endpoint,
         Number(event.clientX),
-        Number(event.clientY)
+        Number(event.clientY),
+        { dragState: session.dragState }
       );
       if (next) session.range = next;
     };

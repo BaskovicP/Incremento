@@ -591,6 +591,97 @@ def test_build_page_script_shows_draggable_handles_on_live_epub_selection(monkey
     assert "preciseMagneticWordCaret" in script
 
 
+def test_epub_end_handle_stays_on_its_row_in_the_right_margin(monkeypatch):
+    import json
+    import subprocess
+
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": "Example section text"}])
+    monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
+    script = epub_dock._build_page_script(
+        card_id=7,
+        section_index=0,
+        scroll_ratio=0.0,
+        text_scale=1.0,
+        read_anchor=None,
+        focus_offset=-1,
+        search_query="",
+        highlights=[],
+        bridge_nonce="private-token",
+    )
+    resize_drag = script[
+        script.index("      function preciseSelectionRange"):
+        script.index("      function cancelSelectionResize")
+    ]
+    program = r"""
+        const fs = require('node:fs');
+        const code = JSON.parse(fs.readFileSync(0, 'utf8')).code;
+        const textNode = {nodeType: 3, nodeValue: 'hello world again'};
+        const selected = [];
+        const visualTop = offset => offset <= 5 ? 20 : (offset <= 11 ? 40 : 200);
+        const makeRange = (start = 0, end = start) => ({
+          startContainer: textNode,
+          endContainer: textNode,
+          startOffset: start,
+          endOffset: end,
+          commonAncestorContainer: textNode,
+          get collapsed() { return this.startOffset === this.endOffset; },
+          setStart(node, offset) { this.startContainer = node; this.startOffset = offset; },
+          setEnd(node, offset) { this.endContainer = node; this.endOffset = offset; },
+          collapse() { this.endContainer = this.startContainer; this.endOffset = this.startOffset; },
+          cloneRange() { return makeRange(this.startOffset, this.endOffset); },
+          selectNodeContents(node) { this.selectedNode = node; },
+          getClientRects() {
+            if (!this.selectedNode) return [];
+            return [20, 40].map(top => ({left: 0, right: 10, top, bottom: top + 18, width: 10, height: 18}));
+          },
+          getBoundingClientRect() {
+            return {left: this.startOffset, right: this.startOffset, top: visualTop(this.startOffset), height: 18};
+          },
+        });
+        let currentRange = makeRange(0, 3);
+        const selection = {
+          isCollapsed: false,
+          rangeCount: 1,
+          getRangeAt: () => currentRange,
+          removeAllRanges: () => selected.splice(0),
+          addRange: range => { selected.push(range); currentRange = range; },
+        };
+        const document = {createRange: () => makeRange()};
+        const window = {getSelection: () => selection};
+        const textNodes = () => [textNode];
+        const caretRangeAtPoint = (x, y) => {
+          const offset = x > 10 ? 15 : (x >= 9 ? (y < 40 ? 5 : 11) : Math.trunc(x));
+          return makeRange(offset, offset);
+        };
+        const selectionMeta = () => null;
+        eval(code);
+        const handle = {
+          dataset: {endpoint: 'end'},
+          setPointerCapture() {},
+        };
+        beginSelectionResize({
+          currentTarget: handle, pointerId: 12,
+          preventDefault() {}, stopPropagation() {},
+        });
+        moveSelectionResizeEndpoint({pointerId: 12, clientX: 50, clientY: 30});
+        const sameRow = selected[0].endOffset;
+        moveSelectionResizeEndpoint({pointerId: 12, clientX: 50, clientY: 39});
+        const boundary = selected[0].endOffset;
+        moveSelectionResizeEndpoint({pointerId: 12, clientX: 50, clientY: 45});
+        const nextRow = selected[0].endOffset;
+        process.stdout.write(JSON.stringify({sameRow, boundary, nextRow}));
+    """
+    result = subprocess.run(
+        ["node", "-e", program],
+        input=json.dumps({"code": resize_drag}),
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"sameRow": 5, "boundary": 5, "nextRow": 11}
+
+
 def test_initial_epub_trackpad_drag_tracks_each_character_in_both_directions(monkeypatch):
     import json
     import subprocess

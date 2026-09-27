@@ -2372,6 +2372,7 @@ def _build_page_script(
         const snapped = caretRangeAtPoint(probeX, probeY);
         const resolved = snapped && snapped.startContainer && session.nodes.has(snapped.startContainer)
           ? snapped : nativeCaret;
+        if (x < targetRow.left || x > targetRow.right) return resolved;
         return preciseMagneticWordCaret(resolved, probeX);
       }}
       function preciseCaretMovementMatchesPointer(session, caret, clientY) {{
@@ -2508,8 +2509,8 @@ def _build_page_script(
         const session = window._incrementoEpubSelectionResize;
         if (!session) return false;
         if (session.pointerId !== null && Number(event.pointerId) !== session.pointerId) return false;
-        const caret = caretRangeAtPoint(Number(event.clientX), Number(event.clientY));
-        if (!caret || !caret.startContainer || textNodes().indexOf(caret.startContainer) < 0) return false;
+        const caret = preciseCaretAtPoint(session, Number(event.clientX), Number(event.clientY));
+        if (!caret || !caret.startContainer || !session.nodes.has(caret.startContainer)) return false;
         try {{
           const next = document.createRange();
           if (session.endpoint === 'start') {{
@@ -2536,6 +2537,20 @@ def _build_page_script(
         const selection = window.getSelection ? window.getSelection() : null;
         if (!selection || selection.isCollapsed || !selection.rangeCount) return;
         const range = selection.getRangeAt(0);
+        const nodes = textNodes();
+        const nodeSet = new Set(nodes);
+        const rows = preciseTextRowRects(nodes);
+        let activeRow = null;
+        try {{
+          const boundary = document.createRange();
+          const endpoint = String(event.currentTarget.dataset.endpoint || '');
+          const container = endpoint === 'start' ? range.startContainer : range.endContainer;
+          const offset = endpoint === 'start' ? range.startOffset : range.endOffset;
+          boundary.setStart(container, offset);
+          boundary.collapse(true);
+          const point = preciseCaretVisualPoint(boundary);
+          if (point) activeRow = preciseNearestRow(rows, point.x, point.y);
+        }} catch (err) {{}}
         event.preventDefault();
         event.stopPropagation();
         window._incrementoEpubSelectionResize = {{
@@ -2543,6 +2558,9 @@ def _build_page_script(
           range: range.cloneRange(),
           original: range.cloneRange(),
           pointerId: Number.isFinite(Number(event.pointerId)) ? Number(event.pointerId) : null,
+          nodes: nodeSet,
+          rows,
+          activeRow,
         }};
         if (event.currentTarget.setPointerCapture) event.currentTarget.setPointerCapture(event.pointerId);
       }}

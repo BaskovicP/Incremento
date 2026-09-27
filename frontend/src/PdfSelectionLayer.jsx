@@ -38,6 +38,7 @@ export default function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLay
       range: range.cloneRange(),
       original: range.cloneRange(),
       pointerId: Number.isFinite(Number(event.pointerId)) ? Number(event.pointerId) : null,
+      dragState: {},
     };
   };
 
@@ -52,6 +53,7 @@ export default function PdfSelectionLayer({ language = DEFAULT_LANGUAGE, textLay
       session.endpoint,
       Number(event.clientX),
       Number(event.clientY),
+      { dragState: session.dragState },
     );
     if (next) session.range = next;
   };
