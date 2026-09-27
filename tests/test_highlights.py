@@ -12,6 +12,7 @@ _spec.loader.exec_module(_mod)
 load_highlights = _mod.load_highlights
 add_highlight = _mod.add_highlight
 update_highlight = _mod.update_highlight
+RESIZE_REVISION_KEY = _mod.RESIZE_REVISION_KEY
 remove_highlight = _mod.remove_highlight
 
 
@@ -107,8 +108,19 @@ class TestUpdateHighlight:
                 "text": "resized",
                 "note": "",
                 "rects": [{"x": 2}],
+                "pdf_annotation": {RESIZE_REVISION_KEY: 1},
             }
         ]
+
+        resized_again = make_hl("hl-1", text="resized again")
+        resized_again["pdf_annotation"] = {"name": "stable-name"}
+        assert update_highlight(
+            str(tmp_path), "TestProfile", 1, resized_again
+        ) is True
+        assert load_highlights(str(tmp_path), "TestProfile", 1)[0]["pdf_annotation"] == {
+            "name": "stable-name",
+            RESIZE_REVISION_KEY: 2,
+        }
 
     def test_missing_highlight_is_not_inserted(self, tmp_path):
         assert update_highlight(

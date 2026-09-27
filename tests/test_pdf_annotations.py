@@ -26,7 +26,13 @@ finally:
 
 import paths
 import pdf_annotations as annotations
-from pdf_highlights import add_highlight, load_highlights, remove_highlight, update_highlight_note
+from pdf_highlights import (
+    add_highlight,
+    load_highlights,
+    remove_highlight,
+    update_highlight,
+    update_highlight_note,
+)
 
 
 PROFILE = 'TestProfile'
@@ -268,6 +274,76 @@ def test_concurrent_note_edits_preserve_both_texts_in_one_annotation(tmp_path):
     assert 'Incremento version' in rows[0]['note']
     assert 'PDF reader version' in rows[0]['note']
     assert load_highlights(str(tmp_path), PROFILE, CARD)[0]['note'] == rows[0]['note']
+
+
+def test_explicit_incremento_resize_wins_without_concurrent_position_duplicate(tmp_path):
+    filename = pdf_file(tmp_path)
+    add_highlight(str(tmp_path), PROFILE, CARD, local_highlight())
+    sync(tmp_path)
+
+    def move_native(doc):
+        page = doc[0]
+        old = next(page.annots())
+        name, color, opacity = old.info['id'], old.colors['stroke'], old.opacity
+        page.delete_annot(old)
+        moved = page.add_highlight_annot(fitz.Rect(190, 65, 270, 83))
+        moved.set_colors(stroke=color)
+        doc.xref_set_key(moved.xref, 'NM', fitz.get_pdf_str(name))
+        moved.update(opacity=opacity)
+
+    change_pdf(filename, move_native)
+    resized = load_highlights(str(tmp_path), PROFILE, CARD)[0]
+    resized['rects'] = [{'x': 90, 'y': 65, 'w': 80, 'h': 18}]
+    resized['pdf_annotation'].pop('quads', None)
+    resized['pdf_annotation'].pop('xref', None)
+    assert update_highlight(str(tmp_path), PROFILE, CARD, resized) is True
+
+    result = sync(tmp_path)
+
+    assert result['conflicts'] == 0
+    assert len(load_highlights(str(tmp_path), PROFILE, CARD)) == 1
+    assert native_rows(filename)[0]['vertices'] == pytest.approx(
+        [(90, 65), (170, 65), (90, 83), (170, 83)]
+    )
+
+
+def test_resizing_original_retires_position_conflict_clones_from_prior_bug(tmp_path):
+    filename = pdf_file(tmp_path)
+    add_highlight(str(tmp_path), PROFILE, CARD, local_highlight())
+    sync(tmp_path)
+
+    local = load_highlights(str(tmp_path), PROFILE, CARD)[0]
+    local['rects'] = [{'x': 90, 'y': 65, 'w': 80, 'h': 18}]
+    local['pdf_annotation'].pop('quads', None)
+    add_highlight(str(tmp_path), PROFILE, CARD, local)
+
+    def move_native(doc):
+        page = doc[0]
+        old = next(page.annots())
+        name, color, opacity = old.info['id'], old.colors['stroke'], old.opacity
+        page.delete_annot(old)
+        moved = page.add_highlight_annot(fitz.Rect(190, 65, 270, 83))
+        moved.set_colors(stroke=color)
+        doc.xref_set_key(moved.xref, 'NM', fitz.get_pdf_str(name))
+        moved.update(opacity=opacity)
+
+    change_pdf(filename, move_native)
+    assert sync(tmp_path)['conflicts'] == 1
+    assert len(load_highlights(str(tmp_path), PROFILE, CARD)) == 2
+
+    original = next(
+        row for row in load_highlights(str(tmp_path), PROFILE, CARD) if row['id'] == 'local'
+    )
+    original['rects'] = [{'x': 120, 'y': 65, 'w': 80, 'h': 18}]
+    original['pdf_annotation'].pop('quads', None)
+    original['pdf_annotation'].pop('xref', None)
+    assert update_highlight(str(tmp_path), PROFILE, CARD, original) is True
+
+    result = sync(tmp_path)
+
+    assert result['conflicts'] == 0
+    assert [row['id'] for row in load_highlights(str(tmp_path), PROFILE, CARD)] == ['local']
+    assert len(native_rows(filename)) == 1
 
 
 @pytest.mark.parametrize('count', [1, 2])

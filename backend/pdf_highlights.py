@@ -8,6 +8,9 @@ except ImportError:
     from db import get_connection  # test environment (backend/ on sys.path)
 
 
+RESIZE_REVISION_KEY = "incremento_resize_revision"
+
+
 def load_highlights(addon_dir: str, profile: str, card_id: int) -> list:
     rows = get_connection(addon_dir, profile).execute(
         "SELECT id, page, color, text, note, rects, annotation_json FROM pdf_highlights WHERE card_id = ?",
@@ -51,6 +54,30 @@ def update_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> bo
     """Update an existing highlight without ever creating a replacement row."""
     color = normalize_highlight_color(hl.get("color", "yellow"), allow_snapshot=True)
     conn = get_connection(addon_dir, profile)
+    existing = conn.execute(
+        "SELECT annotation_json FROM pdf_highlights WHERE id = ? AND card_id = ?",
+        (hl["id"], card_id),
+    ).fetchone()
+    if existing is None:
+        return False
+    try:
+        existing_annotation = json.loads(existing[0])
+    except (TypeError, ValueError):
+        existing_annotation = {}
+    if not isinstance(existing_annotation, dict):
+        existing_annotation = {}
+    incoming_annotation = hl.get("pdf_annotation", {})
+    if not isinstance(incoming_annotation, dict):
+        incoming_annotation = {}
+    annotation = {**existing_annotation, **incoming_annotation}
+    # Resizing invalidates native geometry. The annotation synchronizer will
+    # rebuild it while retaining the stable annotation identity and style.
+    annotation.pop("quads", None)
+    annotation.pop("xref", None)
+    revision = existing_annotation.get(RESIZE_REVISION_KEY, 0)
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+        revision = 0
+    annotation[RESIZE_REVISION_KEY] = revision + 1
     cursor = conn.execute(
         "UPDATE pdf_highlights SET page = ?, color = ?, text = ?, note = ?, "
         "rects = ?, annotation_json = ? WHERE id = ? AND card_id = ?",
@@ -60,7 +87,7 @@ def update_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> bo
             hl.get("text", ""),
             hl.get("note", ""),
             json.dumps(hl.get("rects", [])),
-            json.dumps(hl.get("pdf_annotation", {})),
+            json.dumps(annotation),
             hl["id"],
             card_id,
         ),

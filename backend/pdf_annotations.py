@@ -24,12 +24,12 @@ import uuid
 try:
     from . import paths
     from .db import get_connection
-    from .pdf_highlights import load_highlights
+    from .pdf_highlights import RESIZE_REVISION_KEY, load_highlights
     from .highlight_colors import highlight_appearance, color_from_rgb
 except ImportError:
     import paths
     from db import get_connection
-    from pdf_highlights import load_highlights
+    from pdf_highlights import RESIZE_REVISION_KEY, load_highlights
     from highlight_colors import highlight_appearance, color_from_rgb
 
 
@@ -290,6 +290,24 @@ def _semantic(hl, *, note=True):
                     'opacity': metadata['opacity'], **({'note': hl.get('note', '')} if note else {})})
 
 
+def _resize_revision(row):
+    if not isinstance(row, dict):
+        return 0
+    metadata = row.get('pdf_annotation')
+    if not isinstance(metadata, dict):
+        return 0
+    revision = metadata.get(RESIZE_REVISION_KEY, 0)
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+        return 0
+    return revision
+
+
+def _conflict_id(original_id, row):
+    digest = sha256(json.dumps(_semantic(row), sort_keys=True).encode()).hexdigest()[:24]
+    identity = sha256(f'{original_id}:{digest}'.encode()).hexdigest()[:32]
+    return 'conflict-' + identity
+
+
 def _read_native(doc, known, content_digest, cancel, deadline):
     import pymupdf as fitz
 
@@ -363,7 +381,18 @@ def _read_native(doc, known, content_digest, cancel, deadline):
 def _merge(baseline, local, *pdfs):
     merged = {}
     conflicts = 0
-    for hl_id in sorted(set(baseline) | set(local) | set().union(*(set(pdf) for pdf in pdfs))):
+    all_ids = set(baseline) | set(local) | set().union(*(set(pdf) for pdf in pdfs))
+    locally_resized = {
+        hl_id for hl_id, row in local.items()
+        if _resize_revision(row) > _resize_revision(baseline.get(hl_id))
+    }
+    retired_conflicts = set()
+    for original_id in locally_resized:
+        for rows in (baseline, local, *pdfs):
+            for candidate_id, row in rows.items():
+                if candidate_id.startswith('conflict-') and candidate_id == _conflict_id(original_id, row):
+                    retired_conflicts.add(candidate_id)
+    for hl_id in sorted(all_ids - retired_conflicts):
         old = baseline.get(hl_id)
         candidates = [local.get(hl_id), *(pdf.get(hl_id) for pdf in pdfs)]
         changed = [row for row in candidates if _semantic(row) != _semantic(old)]
@@ -375,6 +404,11 @@ def _merge(baseline, local, *pdfs):
             selected = local.get(hl_id) or old
         elif len(distinct) == 1:
             selected = distinct[0]
+        elif hl_id in locally_resized:
+            # A handle drag is an explicit local position decision. Native PDF
+            # geometry can still be from an earlier coalesced sync pass, so it
+            # must not be preserved as a separate conflict annotation.
+            selected = local[hl_id]
         else:
             conflicts += 1
             surviving = [deepcopy(row) for row in distinct if row is not None]
@@ -384,10 +418,8 @@ def _merge(baseline, local, *pdfs):
                 selected['note'] = '\n\n'.join(dict.fromkeys(row.get('note', '') for row in surviving if row.get('note')))
             elif selected:
                 for row in surviving[1:]:
-                    digest = sha256(json.dumps(_semantic(row), sort_keys=True).encode()).hexdigest()[:24]
-                    identity = sha256(f'{hl_id}:{digest}'.encode()).hexdigest()[:32]
-                    row['id'] = 'conflict-' + identity
-                    row['pdf_annotation']['name'] = 'Incremento-conflict-' + identity
+                    row['id'] = _conflict_id(hl_id, row)
+                    row['pdf_annotation']['name'] = 'Incremento-' + row['id']
                     merged[row['id']] = row
         if selected is not None:
             merged[hl_id] = deepcopy(selected)
