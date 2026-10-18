@@ -32,7 +32,7 @@ import { loadPdfExportSettings, pdfExportPayload, pdfExportSettingsForCapture } 
 import { cardKindLabel } from "../shared/cardKind.js";
 import { createPdfHandoffController, handoffSenderTab } from "./pdfHandoff.js";
 import { captureSnapshotForSender } from "../shared/snapshotCapture.js";
-import { openExtensionShortcutsPage } from "../shared/chromeApi.js";
+import { openExtensionShortcutsPage, triggerBrowserCaptureForTab } from "../shared/chromeApi.js";
 
 const TAB_STATE = new Map();
 const WEB_TRACK_TAB_STATE = new Map();
@@ -867,24 +867,8 @@ async function invokeBrowserCaptureInTab(tabId, mode) {
   if (typeof tabId !== "number") {
     return { ok: false };
   }
-  const sendTriggerMessage = async () => {
-    try {
-      const response = await chrome.tabs.sendMessage(tabId, {
-        type: "TRIGGER_BROWSER_CAPTURE",
-        mode,
-      }, { frameId: 0 });
-      return response || { ok: false };
-    } catch (error) {
-      return { ok: false, error: String(error?.message || t("trigger_capture_failed")) };
-    }
-  };
   try {
-    let response = await sendTriggerMessage();
-    if (!response?.ok && /Receiving end does not exist/i.test(String(response?.error || ""))) {
-      await ensureContentScriptInjected(tabId);
-      response = await sendTriggerMessage();
-    }
-    return response;
+    return await triggerBrowserCaptureForTab(tabId, mode);
   } catch (error) {
     return { ok: false, error: String(error?.message || t("trigger_capture_failed")) };
   }
@@ -892,21 +876,17 @@ async function invokeBrowserCaptureInTab(tabId, mode) {
 
 async function triggerBrowserCapture(mode) {
   const tab = await getActiveTab();
-  if (!tab?.id || !isHttpUrl(getTabUrl(tab))) {
-    return false;
-  }
-
-  await ensureContentScriptInjected(tab.id);
-  const response = await invokeBrowserCaptureInTab(tab.id, mode);
-  return !!response?.ok;
+  return triggerBrowserCaptureOnTab(tab, mode);
 }
 
 async function triggerBrowserCaptureOnTab(tab, mode) {
   if (!tab?.id || !isHttpUrl(getTabUrl(tab))) {
     return false;
   }
-  await ensureContentScriptInjected(tab.id);
   const response = await invokeBrowserCaptureInTab(tab.id, mode);
+  if (!response?.ok && response?.error) {
+    await showToastInTab(tab.id, response.error);
+  }
   return !!response?.ok;
 }
 

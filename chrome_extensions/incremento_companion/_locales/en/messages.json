@@ -1149,7 +1149,7 @@
     }
   },
   "extension_runtime_unavailable": {
-    "message": "Incremento extension runtime is unavailable."
+    "message": "Incremento Companion is disconnected. Reload the extension in Chrome → Extensions, then reload this page and try again."
   },
   "extension_request_failed": {
     "message": "Extension request failed."

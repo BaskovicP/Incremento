@@ -4,6 +4,7 @@ import {
 } from "./browserCaptureModel.js";
 import { t } from "./i18n.js";
 import { readPageContextFromTab } from "./pageContext.js";
+import { isMissingReceiver } from "./runtimeMessaging.js";
 
 export async function getActiveTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -271,55 +272,26 @@ export async function triggerBrowserCaptureForTab(tabId, mode) {
   const normalizedTabId = Number(tabId);
 
   let injectionError = "";
-  const injectContentScript = async () => {
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId: normalizedTabId, allFrames: true },
-        files: ["content-loader.js"],
-      });
-      return "";
-    } catch (error) {
-      return String(
-        error?.message || "Chrome did not allow script injection on this tab."
-      );
-    }
-  };
-  const sendTriggerMessage = () => new Promise((resolve) => {
-    try {
-      chrome.tabs.sendMessage(
-        normalizedTabId,
-        { type: "TRIGGER_BROWSER_CAPTURE", mode },
-        (response) => {
-          const error = chrome.runtime.lastError;
-          if (error) {
-            resolve({ ok: false, error: error.message || "Failed to trigger browser capture." });
-            return;
-          }
-          resolve(response || { ok: false });
-        }
-      );
-    } catch (error) {
-      resolve({
-        ok: false,
-        error: String(error?.message || "Failed to trigger browser capture."),
-      });
-    }
-  });
-
-  injectionError = await injectContentScript();
-  let result = await sendTriggerMessage();
-  if (!result?.ok && /Receiving end does not exist/i.test(String(result?.error || ""))) {
-    injectionError = await injectContentScript() || injectionError;
-    result = await sendTriggerMessage();
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: normalizedTabId, allFrames: true },
+      files: ["content-loader.js"],
+    });
+  } catch (error) {
+    injectionError = String(error?.message || t("trigger_capture_failed"));
   }
-
-  if (!result?.ok && injectionError && !result?.error) {
-    return { ok: false, error: injectionError };
+  try {
+    // Retry only transport failures before delivery, never an application error
+    // returned by a listener that has already opened or submitted capture.
+    const result = await sendMessageToMainFrameWithRetry(
+      normalizedTabId, { type: "TRIGGER_BROWSER_CAPTURE", mode }, 4,
+    );
+    return result || { ok: false, ...(injectionError ? {error: injectionError} : {}) };
+  } catch (error) {
+    return {ok: false, error: isMissingReceiver(error)
+      ? injectionError || t("extension_runtime_unavailable")
+      : String(error?.message || t("trigger_capture_failed"))};
   }
-  if (!result?.ok && /Receiving end does not exist/i.test(String(result?.error || "")) && injectionError) {
-    return { ok: false, error: injectionError };
-  }
-  return result;
 }
 
 export async function loadBookmarksTree() {

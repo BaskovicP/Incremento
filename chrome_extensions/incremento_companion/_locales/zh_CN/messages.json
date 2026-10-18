@@ -1015,7 +1015,7 @@
     }
   },
   "extension_runtime_unavailable": {
-    "message": "Incremento 扩展运行环境不可用。"
+    "message": "Incremento Companion 已断开连接。请在 Chrome → 扩展程序中重新加载扩展，然后重新加载此页面并重试。"
   },
   "extension_request_failed": {
     "message": "扩展请求失败。"

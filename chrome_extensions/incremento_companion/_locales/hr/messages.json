@@ -1149,7 +1149,7 @@
     }
   },
   "extension_runtime_unavailable": {
-    "message": "Runtime ekstenzije Incremento nije dostupan."
+    "message": "Veza s ekstenzijom Incremento Companion je prekinuta. Ponovno učitajte ekstenziju u Chrome → Proširenja, zatim ponovno učitajte ovu stranicu i pokušajte opet."
   },
   "extension_request_failed": {
     "message": "Zahtjev ekstenzije nije uspio."

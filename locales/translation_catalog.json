@@ -33260,7 +33260,7 @@
       "component": "extension",
       "key": "extension_runtime_unavailable",
       "form": "",
-      "source": "Incremento extension runtime is unavailable.",
+      "source": "Incremento Companion is disconnected. Reload the extension in Chrome → Extensions, then reload this page and try again.",
       "tokens": [],
       "markup": []
     },

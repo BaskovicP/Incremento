@@ -33,6 +33,7 @@ import { formatNumber, initializeLanguage, subscribeLanguage, t, tn, watchLangua
 import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
 import { focusCaptureSubmitButton, handleCaptureSubmitKey } from "../shared/captureFormKeyboard.js";
 import { snapshotPageShortcutFallback } from "../shared/snapshotCapture.js";
+import { requestExtensionRuntime } from "../shared/runtimeMessaging.js";
 import { dismissPageToast, showPageToast } from "./toast.js";
 
 (() => {
@@ -518,21 +519,7 @@ import { dismissPageToast, showPageToast } from "./toast.js";
   let browserCaptureState = null;
 
   function runtimeRequest(message) {
-    return new Promise((resolve, reject) => {
-      const rt = getRuntime();
-      if (!rt?.sendMessage) {
-        reject(new Error(t("extension_runtime_unavailable")));
-        return;
-      }
-      rt.sendMessage(message, (response) => {
-        const error = chrome.runtime.lastError;
-        if (error) {
-          reject(new Error(error.message || t("extension_request_failed")));
-          return;
-        }
-        resolve(response || null);
-      });
-    });
+    return requestExtensionRuntime(message, getRuntime());
   }
 
   async function loadBrowserCaptureMeta() {
