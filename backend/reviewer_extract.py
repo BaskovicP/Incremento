@@ -6,9 +6,15 @@ except ImportError:
 
 
 try:
-    from .note_metadata import visible_field_names
+    from .note_metadata import (
+        INCREMENTO_METADATA_FIELDS, INCREMENTO_SOURCE_LINK_FIELD,
+        is_extract_source_field, is_source_url_field, visible_field_names,
+    )
 except ImportError:
-    from note_metadata import visible_field_names  # type: ignore
+    from note_metadata import (  # type: ignore
+        INCREMENTO_METADATA_FIELDS, INCREMENTO_SOURCE_LINK_FIELD,
+        is_extract_source_field, is_source_url_field, visible_field_names,
+    )
 
 
 def visible_note_field_values(note) -> dict[str, str]:
@@ -26,14 +32,46 @@ def visible_note_field_values(note) -> dict[str, str]:
 
 
 def initial_extract_field_values(note, selected_text: str) -> dict[str, str]:
-    visible_values = visible_note_field_values(note)
-    if not visible_values:
-        return {}
-    text = str(selected_text or "")
-    if not text:
-        return visible_values
-    first_field_name = next(iter(visible_values.keys()))
-    return {first_field_name: text}
+    """Keep content empty while retaining the current topic's source fields."""
+    return {
+        name: value for name, value in visible_note_field_values(note).items()
+        if is_extract_source_field(name)
+    }
+
+
+def extract_source_field_values(
+    note, metadata: dict | None, source_field_values: dict | None = None,
+) -> dict[str, str]:
+    """Project provenance into existing draft fields without changing note types."""
+    metadata = metadata or {}
+    source_fields = {
+        str(name).strip().casefold(): str(value or "")
+        for name, value in dict(source_field_values or {}).items()
+        if is_extract_source_field(name)
+    }
+    values = {}
+    for field in list((note.note_type() or {}).get("flds") or []):
+        name = str((field or {}).get("name") or "")
+        if name in INCREMENTO_METADATA_FIELDS:
+            values[name] = str(metadata.get(name) or "")
+        elif is_extract_source_field(name):
+            # Preserve rich Source/Sources citations rather than replacing their
+            # titles, multiple links and formatting with the canonical plain URL.
+            source_value = source_fields.get(name.strip().casefold())
+            if not source_value:
+                source_value = next((
+                    value for source_name, value in source_fields.items()
+                    if value and is_source_url_field(source_name) == is_source_url_field(name)
+                ), "")
+            values[name] = source_value or str(metadata.get(INCREMENTO_SOURCE_LINK_FIELD) or "")
+    return values
+
+
+def has_extract_content(note) -> bool:
+    return any(
+        value.strip() for name, value in visible_note_field_values(note).items()
+        if not is_extract_source_field(name)
+    )
 
 
 def extract_default_notetype_name(

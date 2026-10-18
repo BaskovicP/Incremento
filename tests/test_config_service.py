@@ -3,6 +3,29 @@ import pytest
 
 
 @pytest.mark.parametrize("raw, expected", [
+    ({}, "item"),
+    ({"extract_default_type": "topic"}, "topic"),
+    ({"extract_default_type": " NONE "}, "none"),
+    ({"extract_default_type": []}, "item"),
+    ({"extract_default_type": "invalid"}, "item"),
+    ({"extract_mark_topic": True}, "topic"),
+    ({"extract_mark_topic": False}, "none"),
+    ({"extract_default_type": "item", "extract_mark_topic": True}, "item"),
+])
+def test_extract_default_type_normalizes_and_preserves_other_settings(raw, expected):
+    from copy import deepcopy
+
+    original = {**raw, "future": {"keep": True}}
+    before = deepcopy(original)
+    normalized = config_service.normalize_config(original)
+
+    assert normalized["extract_default_type"] == expected
+    assert normalized["future"] == {"keep": True}
+    assert config_service.normalize_config(normalized) == normalized
+    assert original == before
+
+
+@pytest.mark.parametrize("raw, expected", [
     ({}, True),
     ({"pdf_show_highlight_delete_buttons": False}, False),
     ({"pdf_show_highlight_delete_buttons": "off"}, False),

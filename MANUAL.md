@@ -1158,15 +1158,15 @@ The **Apply to all cards** controls copy one priority, classification, and tag s
 
 ### Extract Card from the current reviewer card
 
-Click **Extract** or press `Alt+X` to open the persistent **Add Card** dock.
+Click **Extract** or press `Alt+X` to open the persistent **Add Card** dock with empty content fields. Opening Extract never copies the source card or selected text into Front automatically. The current source URL and provenance fill immediately in existing source fields. Use the field transfer buttons or `Cmd/Ctrl+1..4` when you want to insert selected text.
 
-Reviewer extraction stays active while you use the dock. Each **Add** attaches the new card to the reviewer topic currently open when you press **Add**. After **Done** or another review action moves to the next topic, you can keep adding cards without pressing **Extract** again. Moving to another topic updates the parent, source metadata, copied source tags, and initial extract priority; your draft text stays in place. An in-progress save keeps the topic captured at the Add click.
+Reviewer extraction stays active while you use the dock. Each **Add** attaches the new card to the reviewer topic currently open when you press **Add**. Whenever the current topic changes—through **More**, **Same**, **Less**, **Done**, postponing, or other navigation—the open extract clears the previous draft content and immediately fills the new topic's source and provenance fields, updates its parent, copied source tags, and initial extract priority. Front stays empty until you type or transfer text. Existing `Source`, `Sources`, `URL`, `Source URL`, `Source_URL`, and `sourceUrl` fields are recognized. **Sources** retains the original clickable titles, multiple references, and HTML formatting. Note types are not changed by this refresh. If the new topic has no source, the old source is cleared. Refreshing the same topic keeps your edits. An in-progress save keeps the topic and text captured at the Add click, then the next draft adopts the current topic's source.
 
 With no active reviewer card, Add creates a standalone note instead of reusing the previous topic. An explicit extraction from a PDF, EPUB, webpage, writing card, or video switches to that source's extraction workflow. Discarding or closing the embedded Add dialog ends reviewer extraction. Restoring a reviewer draft resumes attachment to the current reviewer card.
 
 Reviewer extraction lets you:
 
-- take the currently selected reviewer text
+- explicitly transfer selected reviewer text into the chosen field
 - choose any note type
 - choose any deck
 - create a new note directly
@@ -1176,7 +1176,7 @@ Settings can control:
 - the default extract note type
 - fallback extract priority
 - how strongly source priority influences new extracts
-- whether extracts start as topics
+- the default extraction tag: **Item** (default), **Topic**, or **None**, under **Settings → Extraction → Default extraction tag**; Item and Topic use the configured `I`/`T` tag sets
 - whether source tags are copied
 - whether extraction also creates a highlight
 - which Add Card field PDF highlight cards should prefill

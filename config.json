@@ -15,6 +15,7 @@
     "pdf_context_rows": 5,
     "pdf_citation_page_numbering": "printed",
     "extract_notetype": "",
+    "extract_default_type": "item",
     "extract_copy_source_tags": false,
     "highlight_when_extracting": true,
     "pdf_show_highlight_delete_buttons": true,

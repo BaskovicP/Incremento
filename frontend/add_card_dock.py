@@ -36,9 +36,15 @@ except ImportError:
     from backend.i18n import t  # type: ignore
 
 try:
-    from ..backend.config_service import load_addon_config
+    from ..backend.config_service import (
+        load_addon_config,
+        configured_extract_default_type as _configured_extract_default_type,
+    )
 except ImportError:
-    from config_service import load_addon_config  # type: ignore
+    from config_service import (  # type: ignore
+        load_addon_config,
+        configured_extract_default_type as _configured_extract_default_type,
+    )
 
 try:
     from ..backend.extraction_drafts import (
@@ -74,10 +80,16 @@ except Exception:
         append_missing_tags = None  # type: ignore
 
 try:
-    from ..backend.reviewer_extract import knowledge_tree_link_state
+    from ..backend.reviewer_extract import (
+        knowledge_tree_link_state, initial_extract_field_values,
+        extract_source_field_values, has_extract_content,
+    )
 except Exception:
     try:
-        from reviewer_extract import knowledge_tree_link_state  # type: ignore
+        from reviewer_extract import (  # type: ignore
+            knowledge_tree_link_state, initial_extract_field_values,
+            extract_source_field_values, has_extract_content,
+        )
     except Exception:
         knowledge_tree_link_state = None  # type: ignore
 
@@ -89,6 +101,7 @@ _last_selection_seen = 0.0
 _last_add_mode_editor = None
 _current_extract_priority: float | None = None
 _current_extract_mark_topic: bool | None = None
+_current_extract_mark_item: bool | None = None
 _current_extract_link_to_knowledge_tree: bool | None = None
 _pending_extract_options: dict | None = None
 _suspend_extract_mark_topic_sync_depth = 0
@@ -103,6 +116,7 @@ _draft_autosave_generation = 0
 _restoring_extract_draft = False
 _DRAFT_OWNER_ATTR = "_incremento_add_card_draft_owner"
 _REVIEWER_EXTRACT_SNAPSHOT_ATTR = "_incremento_reviewer_extract_snapshot"
+_REVIEWER_EXTRACT_SOURCE_ATTR = "_incremento_reviewer_extract_source_card_id"
 _WEB_EXTRACT_RECORDS_ATTR = "_incremento_web_extract_records"
 _ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
 _ADDON_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -358,9 +372,12 @@ def calculate_extract_priority(
     return _clamp_priority(source * configured_extract_priority_multiplier(cfg))
 
 
+def configured_extract_default_type(config: dict | None = None) -> str:
+    return _configured_extract_default_type(_config(config))
+
+
 def configured_extract_mark_topic(config: dict | None = None) -> bool:
-    cfg = _config(config)
-    return bool(cfg.get("extract_mark_topic", True))
+    return configured_extract_default_type(config) == "topic"
 
 
 def configured_extract_copy_source_tags(config: dict | None = None) -> bool:
@@ -1116,12 +1133,16 @@ def _replace_auto_extract_tags(
     *,
     source_tags=None,
     mark_topic: bool = False,
+    mark_item: bool = False,
 ) -> bool:
     if note is None:
         return False
 
     source_list = _normalize_tag_list(source_tags or [])
-    classification_tags = configured_add_card_topic_tags() if mark_topic else []
+    classification_tags = (
+        configured_add_card_topic_tags() if mark_topic
+        else configured_add_card_item_tags() if mark_item else []
+    )
     desired_auto_tags = _normalize_tag_list(list(source_list) + list(classification_tags))
     previous_auto_keys = _auto_extract_tag_keys_for_editor(editor, note)
 
@@ -1244,16 +1265,23 @@ def _note_has_any_tags(note, wanted_tags: list[str]) -> bool:
 
 
 def _apply_extract_topic_default_to_editor(editor) -> None:
-    if not _has_recent_selection() or not _extract_mark_topic_for_transfer():
+    if not _has_recent_selection():
+        return
+    mark_topic = _extract_mark_topic_for_transfer()
+    mark_item = _extract_mark_item_for_transfer()
+    if not mark_topic and not mark_item:
         return
     note = getattr(editor, "note", None)
     if note is None:
         return
-    if _note_has_any_tags(note, configured_add_card_item_tags()):
+    tags = configured_add_card_topic_tags() if mark_topic else configured_add_card_item_tags()
+    opposite = configured_add_card_item_tags() if mark_topic else configured_add_card_topic_tags()
+    button_id = _TOPIC_TAG_BUTTON_ID if mark_topic else _ITEM_TAG_BUTTON_ID
+    if _note_has_any_tags(note, opposite):
         return
     before_keys = {tag.lower() for tag in _note_tags(note)}
-    if not add_topic_tags_to_note(note):
-        _set_add_card_tag_button_state(editor, _TOPIC_TAG_BUTTON_ID, True)
+    if not copy_source_tags_to_note(note, tags):
+        _set_add_card_tag_button_state(editor, button_id, True)
         return
     added_keys = {
         tag.lower() for tag in _note_tags(note) if tag.lower() not in before_keys
@@ -1263,7 +1291,7 @@ def _apply_extract_topic_default_to_editor(editor) -> None:
         _set_auto_extract_tag_keys_for_editor(editor, note, owned_keys | added_keys)
     _set_editor_tags(editor, _note_tags(note))
     _schedule_editor_tag_widget_sync(editor)
-    _set_add_card_tag_button_state(editor, _TOPIC_TAG_BUTTON_ID, True)
+    _set_add_card_tag_button_state(editor, button_id, True)
     _schedule_add_card_tag_button_refresh(editor)
 
 
@@ -1744,12 +1772,20 @@ def scratch_priority_for_note(note) -> float:
     return _DEFAULT_SCRATCH_PRIORITY
 
 
-def set_current_extract_options(priority=None, mark_topic=None, link_to_knowledge_tree=None) -> None:
-    global _current_extract_priority, _current_extract_mark_topic, _current_extract_link_to_knowledge_tree
+def set_current_extract_options(priority=None, mark_topic=None, link_to_knowledge_tree=None, *, mark_item=None) -> None:
+    global _current_extract_priority, _current_extract_mark_topic, _current_extract_mark_item
+    global _current_extract_link_to_knowledge_tree
     if priority is not None:
         _current_extract_priority = _clamp_priority(priority)
     if mark_topic is not None:
+        topic_changed = bool(mark_topic) != _extract_mark_topic_for_transfer()
         _current_extract_mark_topic = bool(mark_topic)
+        if topic_changed or _current_extract_mark_item is None:
+            _current_extract_mark_item = (
+                not mark_topic and configured_extract_default_type() == "item"
+            )
+    if mark_item is not None:
+        _current_extract_mark_item = bool(mark_item) and not _extract_mark_topic_for_transfer()
     if link_to_knowledge_tree is not None:
         _current_extract_link_to_knowledge_tree = bool(link_to_knowledge_tree)
 
@@ -1764,6 +1800,12 @@ def _extract_mark_topic_for_transfer() -> bool:
     if _current_extract_mark_topic is not None:
         return bool(_current_extract_mark_topic)
     return configured_extract_mark_topic()
+
+
+def _extract_mark_item_for_transfer() -> bool:
+    if _current_extract_mark_item is not None:
+        return bool(_current_extract_mark_item)
+    return configured_extract_default_type(_config()) == "item"
 
 
 def _extract_link_to_knowledge_tree_for_transfer() -> bool:
@@ -1844,6 +1886,7 @@ def set_pending_extract_options(
     *,
     priority=None,
     mark_topic: bool | None = None,
+    mark_item: bool | None = None,
     link_to_knowledge_tree: bool | None = None,
     source: str = "",
     source_card_id: int | None = None,
@@ -1874,6 +1917,11 @@ def set_pending_extract_options(
         "source_tags": source_tags,
         "seen": time.monotonic(),
     }
+    _pending_extract_options["mark_item"] = (
+        not _pending_extract_options["mark_topic"] and (
+            _extract_mark_item_for_transfer() if mark_item is None else bool(mark_item)
+        )
+    )
     if source_position is not None:
         try:
             normalized_position = float(source_position)
@@ -2689,10 +2737,10 @@ def _capture_extract_draft(editor=None) -> dict | None:
             return None
     except Exception:
         return None
-    fields = [str(value or "") for value in list(getattr(note, "fields", []) or [])]
-    if not fields or not any(value.strip() for value in fields):
+    if not has_extract_content(note):
         return None
     refresh_reviewer_extract_source(refresh_controls=False)
+    fields = [str(value or "") for value in list(getattr(note, "fields", []) or [])]
     try:
         setattr(note, _DRAFT_OWNER_ATTR, True)
     except Exception:
@@ -2775,6 +2823,7 @@ def _restore_extract_draft(editor, draft: dict, *, dialog=None) -> bool:
     global _pending_extract_options, _pending_extract_context
     global _reviewer_extract_session
     global _current_extract_priority, _current_extract_mark_topic
+    global _current_extract_mark_item
     global _current_extract_link_to_knowledge_tree, _restoring_extract_draft
 
     if editor is None or not isinstance(draft, dict):
@@ -2807,6 +2856,7 @@ def _restore_extract_draft(editor, draft: dict, *, dialog=None) -> bool:
             _current_extract_priority = _clamp_priority(options.get("priority"))
         if "mark_topic" in options:
             _current_extract_mark_topic = bool(options.get("mark_topic"))
+        _current_extract_mark_item = bool(options.get("mark_item"))
         if "link_to_knowledge_tree" in options:
             _current_extract_link_to_knowledge_tree = bool(
                 options.get("link_to_knowledge_tree")
@@ -2867,6 +2917,7 @@ def _create_extract_draft_banner(dock, dialog, draft: dict):
 def _clear_discarded_extract_draft() -> None:
     """Drop all transient state owned by an abandoned Add Card draft."""
     global _current_extract_priority, _current_extract_mark_topic
+    global _current_extract_mark_item
     global _current_extract_link_to_knowledge_tree
     global _last_selection_source, _last_selection_text, _last_selection_seen
     global _last_fill_source, _last_fill_seen
@@ -2878,6 +2929,7 @@ def _clear_discarded_extract_draft() -> None:
     clear_pending_extract_context()
     _current_extract_priority = None
     _current_extract_mark_topic = None
+    _current_extract_mark_item = None
     _current_extract_link_to_knowledge_tree = None
     _last_selection_source = ""
     _last_selection_text = ""
@@ -3011,6 +3063,7 @@ def _install_embedded_add_dialog_hooks(dlg) -> None:
                 av_player.stop_and_clear_queue()
                 dlg._load_new_note(sticky_fields_from=note)
                 gui_hooks.add_cards_did_add_note(note)
+                refresh_reviewer_extract_source(getattr(getattr(mw, "reviewer", None), "card", None))
 
             mark_reviewer_extract_note_added(pending_extract_options())
             add_note(parent=dlg, note=note, target_deck_id=target_deck_id).success(
@@ -3063,11 +3116,46 @@ def _set_editor_note_type_and_deck(editor, note_type_name: str, deck_name: str) 
                 pass
 
 
+def _apply_reviewer_extract_source_to_note(
+    note, *, source_field_values: dict | None = None, force: bool = False,
+) -> bool:
+    context = pending_extract_context() or {}
+    parent_card_id = context.get("parent_card_id")
+    if (
+        not force
+        and hasattr(note, _REVIEWER_EXTRACT_SOURCE_ATTR)
+        and getattr(note, _REVIEWER_EXTRACT_SOURCE_ATTR) == parent_card_id
+    ):
+        return False
+    if source_field_values is None:
+        source_field_values = {}
+        if parent_card_id is not None:
+            try:
+                source_note = mw.col.get_card(int(parent_card_id)).note()
+                source_field_values = initial_extract_field_values(source_note, "")
+            except Exception:
+                pass
+    changed = False
+    for name, value in extract_source_field_values(
+        note, context.get("metadata"), source_field_values,
+    ).items():
+        try:
+            if note[name] != value:
+                note[name] = value
+                changed = True
+        except (KeyError, TypeError, ValueError):
+            continue
+    setattr(note, _REVIEWER_EXTRACT_SOURCE_ATTR, parent_card_id)
+    return changed
+
+
 def _prime_editor_note_for_extract(
     editor,
     field_values: dict[str, str],
     mark_topic: bool,
     source_tags=None,
+    *,
+    reset_tags: bool = True,
 ) -> None:
     note = getattr(editor, "note", None)
     if note is None:
@@ -3077,11 +3165,9 @@ def _prime_editor_note_for_extract(
             note.fields[index] = ""
     except Exception:
         pass
-    try:
-        note.tags = []
-    except Exception:
-        pass
-    _set_auto_extract_tag_keys_for_editor(editor, note, [])
+    if reset_tags:
+        _set_note_tags(note, [])
+        _set_auto_extract_tag_keys_for_editor(editor, note, [])
     for field_name, value in dict(field_values or {}).items():
         try:
             if field_name in note:
@@ -3101,7 +3187,9 @@ def _prime_editor_note_for_extract(
         note,
         source_tags=applied_source_tags,
         mark_topic=mark_topic,
+        mark_item=bool((pending_extract_options() or {}).get("mark_item")),
     )
+    _apply_reviewer_extract_source_to_note(note, source_field_values=field_values, force=True)
     try:
         editor.loadNote()
     except Exception:
@@ -3141,6 +3229,7 @@ def _apply_pending_extract_tags_to_editor(
         note,
         source_tags=source_tags,
         mark_topic=mark_topic,
+        mark_item=bool(options.get("mark_item")) and not mark_topic,
     )
 
     if tags_changed:
@@ -3174,6 +3263,7 @@ def prepare_reviewer_extract(
     set_current_extract_options(
         priority=priority,
         mark_topic=mark_topic,
+        mark_item=not mark_topic and configured_extract_default_type() == "item",
         link_to_knowledge_tree=link_to_knowledge_tree,
     )
     set_pending_extract_options(
@@ -3223,14 +3313,18 @@ def _start_reviewer_extract_session(source_card_id: int | None) -> None:
         "collection": getattr(mw, "col", None),
         "profile": _active_profile(),
         "source_card_id": source_card_id,
+        "field_source_card_id": source_card_id,
     }
 
 
 def reset_reviewer_extract_session() -> None:
     """Stop following a reviewer when its profile closes; retain saved drafts."""
     global _reviewer_extract_session, _draft_autosave_generation
+    global _current_extract_mark_topic, _current_extract_mark_item
     global _last_selection_source, _last_selection_text, _last_selection_seen
     _reviewer_extract_session = None
+    _current_extract_mark_topic = None
+    _current_extract_mark_item = None
     _draft_autosave_generation += 1
     if _last_selection_source == "reviewer":
         _last_selection_source = ""
@@ -3268,10 +3362,16 @@ def refresh_reviewer_extract_source(_card=None, *, refresh_controls: bool = True
         session["source_card_id"] = None
         clear_pending_extract_options()
         clear_pending_extract_context()
+        source_fields_changed = _apply_reviewer_extract_source_to_note(editor.note)
         _apply_pending_extract_tags_to_editor(editor)
+        if source_fields_changed and refresh_controls:
+            editor.loadNote()
         return
 
-    if session["source_card_id"] != card_id:
+    if _card is not None and getattr(_card, "id", None) != card_id:
+        return
+    source_changed = session["source_card_id"] != card_id
+    if source_changed:
         set_current_extract_options(priority=source_card_priority_for_card(card_id))
     session["source_card_id"] = card_id
     mark_topic = _extract_mark_topic_for_transfer()
@@ -3288,7 +3388,21 @@ def refresh_reviewer_extract_source(_card=None, *, refresh_controls: bool = True
         link_to_knowledge_tree=True,
         knowledge_tree_tooltip=t("add_card_knowledge_tree_lineage_tooltip"),
     )
-    _apply_pending_extract_tags_to_editor(editor, mark_topic=mark_topic)
+    # Autosave and Add can already have refreshed metadata for this card.
+    # Only question notifications replace text; track that separately.
+    if session["field_source_card_id"] != card_id and _card is not None:
+        session["field_source_card_id"] = card_id
+        update_selection_state("reviewer", text="", has_text=False)
+        _prime_editor_note_for_extract(
+            editor, initial_extract_field_values(_card.note(), ""), mark_topic,
+            (pending_extract_options() or {}).get("source_tags") or [],
+            reset_tags=False,
+        )
+    else:
+        source_fields_changed = _apply_reviewer_extract_source_to_note(editor.note)
+        _apply_pending_extract_tags_to_editor(editor, mark_topic=mark_topic)
+        if source_fields_changed and refresh_controls:
+            editor.loadNote()
     if refresh_controls:
         _inject_transfer_buttons(editor)
 
@@ -3324,6 +3438,14 @@ def _toggle_editor_tag_button(
 
 
 def apply_extract_topic_mark_to_editor(editor, mark_topic: bool) -> bool:
+    if not mark_topic and _extract_mark_item_for_transfer():
+        return _set_editor_tag_selection(
+            editor,
+            configured_add_card_item_tags(),
+            enabled=True,
+            opposite_tags=configured_add_card_topic_tags(),
+            empty_message=t("add_card_no_item_button_tags"),
+        )
     return _set_editor_tag_selection(
         editor,
         configured_add_card_topic_tags(),
@@ -3340,7 +3462,7 @@ def _sync_extract_mark_topic_from_note(note) -> None:
     item_active = _note_has_all_tags(note, configured_add_card_item_tags())
     if item_active:
         mark_topic = False
-    set_current_extract_options(mark_topic=mark_topic)
+    set_current_extract_options(mark_topic=mark_topic, mark_item=item_active)
     sync_pending_extract_options_from_current()
     _refresh_transfer_buttons()
 

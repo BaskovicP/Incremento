@@ -448,6 +448,20 @@ def test_shipped_config_keys_are_explicitly_known() -> None:
     assert set(shipped) <= diagnostics._KNOWN_CONFIG_KEYS
 
 
+def test_extract_default_type_exports_only_safe_choices() -> None:
+    for choice in ("item", "topic", "none"):
+        snapshot = diagnostics.sanitize_config({"extract_default_type": choice})
+        assert snapshot["settings"]["extract_default_type"] == choice
+        assert snapshot["redacted_unknown_setting_count"] == 0
+
+
+def test_extract_default_type_redacts_private_values() -> None:
+    for private in PRIVATE_VALUES:
+        snapshot = diagnostics.sanitize_config({"extract_default_type": private})
+        assert snapshot["settings"]["extract_default_type"]["redacted"] is True
+        assert private not in json.dumps(snapshot)
+
+
 def test_pdf_citation_numbering_exports_safe_choices() -> None:
     for choice in ("printed", "pdf", "both"):
         sanitized = diagnostics.sanitize_config({"pdf_citation_page_numbering": choice})

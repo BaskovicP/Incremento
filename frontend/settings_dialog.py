@@ -33,6 +33,7 @@ try:
         normalize_learning_leech_tag, configured_reviewer_button_visibility,
         configured_reviewer_button_group_visible,
         configured_pdf_citation_page_numbering,
+        configured_extract_default_type,
         configured_topic_done_tag, configured_day_end_time, normalize_pdf_appearance_mode,
         normalize_topic_done_tag,
     )
@@ -49,6 +50,7 @@ except ImportError:
         normalize_learning_leech_tag, configured_reviewer_button_visibility,
         configured_reviewer_button_group_visible,
         configured_pdf_citation_page_numbering,
+        configured_extract_default_type,
         configured_topic_done_tag, configured_day_end_time, normalize_pdf_appearance_mode,
         normalize_topic_done_tag,
     )
@@ -360,7 +362,7 @@ class IncrementoSettingsDialog(QDialog):
         current_extract_notetype: str = "",
         current_extract_priority: float = 40.0,
         current_extract_priority_multiplier: float = 0.98,
-        current_extract_mark_topic: bool = True,
+        current_extract_default_type: str = "item",
         current_extract_copy_source_tags: bool = False,
         current_extract_highlight_when_extracting: bool = True,
         current_pdf_show_highlight_delete_buttons: bool = True,
@@ -618,9 +620,22 @@ class IncrementoSettingsDialog(QDialog):
             self._extract_priority_multiplier_spin,
         )
 
-        self._extract_mark_topic_cb = QCheckBox(t('settings_mark_extracted_cards_as_topics'))
-        self._extract_mark_topic_cb.setChecked(bool(current_extract_mark_topic))
-        extraction_form.addRow("", self._extract_mark_topic_cb)
+        self._extract_default_type_combo = QComboBox()
+        for kind, label in (
+            ("item", t("settings_extract_type_item")),
+            ("topic", t("settings_extract_type_topic")),
+            ("none", t("settings_extract_type_none")),
+        ):
+            self._extract_default_type_combo.addItem(label, kind)
+        self._extract_default_type_combo.setCurrentIndex(
+            self._extract_default_type_combo.findData(configured_extract_default_type(
+                {"extract_default_type": current_extract_default_type}
+            ))
+        )
+        extraction_form.addRow(
+            _label_with_info(t("settings_extract_default_type"), t("settings_extract_default_type_help")),
+            self._extract_default_type_combo,
+        )
 
         self._extract_copy_source_tags_cb = QCheckBox(t('settings_copy_source_card_tags_to_extracted_cards'))
         self._extract_copy_source_tags_cb.setChecked(bool(current_extract_copy_source_tags))
@@ -1891,8 +1906,8 @@ class IncrementoSettingsDialog(QDialog):
         return round(float(self._extract_priority_multiplier_spin.value()), 4)
 
     @property
-    def extract_mark_topic(self) -> bool:
-        return bool(self._extract_mark_topic_cb.isChecked())
+    def extract_default_type(self) -> str:
+        return str(self._extract_default_type_combo.currentData() or "item")
 
     @property
     def extract_copy_source_tags(self) -> bool:

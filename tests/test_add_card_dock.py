@@ -8,6 +8,8 @@ import pytest
 @pytest.fixture(autouse=True)
 def isolate_reviewer_extract_session(monkeypatch):
     monkeypatch.setattr(dock, "_reviewer_extract_session", None)
+    monkeypatch.setattr(dock, "_current_extract_mark_topic", None)
+    monkeypatch.setattr(dock, "_current_extract_mark_item", None)
 
 
 def test_transfer_button_tooltips_translate_and_keep_field_names_literal(monkeypatch):
@@ -409,8 +411,10 @@ def test_source_card_priority_for_card_falls_back_without_source(monkeypatch):
     assert dock.source_card_priority_for_card(123, {"extract_priority": 33}) == 33.0
 
 
-def test_configured_extract_mark_topic_defaults_enabled():
-    assert dock.configured_extract_mark_topic({}) is True
+def test_configured_extract_mark_topic_follows_type_with_legacy_compatibility():
+    assert dock.configured_extract_mark_topic({}) is False
+    assert dock.configured_extract_mark_topic({"extract_default_type": "topic"}) is True
+    assert dock.configured_extract_mark_topic({"extract_mark_topic": True}) is True
     assert dock.configured_extract_mark_topic({"extract_mark_topic": False}) is False
 
 
@@ -544,6 +548,25 @@ def test_pending_extract_options_capture_source_card_id(monkeypatch):
     options = dock.set_pending_extract_options(priority=25, mark_topic=False, source="pdf")
 
     assert options["source_card_id"] == 123
+
+
+@pytest.mark.parametrize("kind, expected", [
+    ("item", ["recall", "learn::item"]), ("topic", ["topic"]), ("none", []),
+])
+def test_reader_transfer_uses_default_type_and_custom_item_tags(monkeypatch, kind, expected):
+    editor = _FakeEditor(_FakeNote(["manual"]), add_mode=True)
+    monkeypatch.setattr(dock, "_config", lambda config=None: {
+        "extract_default_type": kind,
+        "add_card_item_tags": ["recall", "learn::item"],
+    })
+    monkeypatch.setattr(dock, "_source_card_id_for_transfer", lambda source: None)
+    monkeypatch.setattr(dock, "_schedule_editor_tag_widget_sync", lambda editor: None)
+    monkeypatch.setattr(dock, "_schedule_add_card_tag_button_refresh", lambda editor: None)
+
+    options = dock.set_pending_extract_options(source="pdf")
+    dock._apply_pending_extract_tags_to_editor(editor, mark_topic=options["mark_topic"])
+
+    assert editor.note.tags == ["manual", *expected]
 
 
 def test_fill_dock_field_prepares_pdf_extract_parent_context(monkeypatch):
@@ -1196,8 +1219,8 @@ def test_consume_pending_extract_options_copies_source_tags_when_enabled(monkeyp
 
     assert result is not None
     assert result["copied_source_tags"] == ["Source"]
-    assert note.tags == ["existing", "Source"]
-    assert saved == [["existing", "Source"]]
+    assert note.tags == ["existing", "Source", "item"]
+    assert saved == [["existing", "Source", "item"]]
 
 
 def test_consume_pending_extract_options_skips_source_tags_when_disabled(monkeypatch):
@@ -1213,8 +1236,8 @@ def test_consume_pending_extract_options_skips_source_tags_when_disabled(monkeyp
 
     assert result is not None
     assert result["copied_source_tags"] == []
-    assert note.tags == ["existing"]
-    assert saved == []
+    assert note.tags == ["existing", "item"]
+    assert saved == [["existing", "item"]]
 
 
 def test_consume_pending_extract_options_combines_source_and_topic_tags(monkeypatch):
@@ -1385,8 +1408,8 @@ def test_consume_pending_extract_options_ignores_missing_source_card(monkeypatch
 
     assert result is not None
     assert result["copied_source_tags"] == []
-    assert note.tags == ["existing"]
-    assert saved == []
+    assert note.tags == ["existing", "item"]
+    assert saved == [["existing", "item"]]
 
 
 def test_consume_pending_extract_options_prefers_snapshot_source_tags(monkeypatch):
@@ -1955,7 +1978,7 @@ def reviewer_extract_workflow(monkeypatch):
     from note_metadata import INCREMENTO_METADATA_FIELDS
 
     profile = ["TestProfile"]
-    field_names = ["Front", "Back", *INCREMENTO_METADATA_FIELDS]
+    field_names = ["Front", "Back", "Sources", "Source URL", *INCREMENTO_METADATA_FIELDS]
     editor = _FakeEditor(_FakeNote(field_names=field_names), add_mode=True)
     editor.web = _FakeWeb()
     dlg = _FakeAddCardsDialog(editor)
@@ -1966,8 +1989,13 @@ def reviewer_extract_workflow(monkeypatch):
     dlg.addHistory = lambda note: None
     sources = {}
     for card_id, title in [(101, "First topic"), (202, "Second topic"), (303, "Third topic")]:
-        note = _FakeNote(tags=["topic", title.replace(" ", "_")])
+        note = _FakeNote(tags=["topic", title.replace(" ", "_")], field_names=field_names)
         note["Front"] = title
+        note["Source URL"] = f"https://example.test/topic/{card_id}"
+        note["Sources"] = (
+            f'<a href="https://example.test/topic/{card_id}">Video: {title}</a>'
+            f'<br><a href="https://example.test/reference/{card_id}">Reference</a>'
+        )
         sources[card_id] = types.SimpleNamespace(id=card_id, note=lambda note=note: note)
     reviewer = types.SimpleNamespace(card=sources[101])
     col = types.SimpleNamespace(
@@ -1975,6 +2003,7 @@ def reviewer_extract_workflow(monkeypatch):
         models=object(),
         update_note=lambda note: None,
         decks=_BatchFakeDecks(),
+        tags=_FakeCol.tags,
     )
     mw = types.SimpleNamespace(col=col, reviewer=reviewer, state="review")
     fake_dock = _FakeDock(editor)
@@ -2076,9 +2105,9 @@ def test_extract_once_then_add_on_successive_topics_uses_each_current_topic(revi
     assert second["Incremento_Parent_Card_ID"] == "202"
     assert second["Incremento_Parent"] == "Second topic"
     assert second["Front"] == "Excerpt"
-    assert second.tags == ["manual", "Second_topic"]
+    assert second.tags == ["manual", "Second_topic", "item"]
     assert third["Incremento_Parent_Card_ID"] == "303"
-    assert third.tags == ["manual", "Third_topic"]
+    assert third.tags == ["manual", "Third_topic", "item"]
     assert flow.priorities == [70, 80]
     assert [link["source_card_id"] for link in flow.links] == [202, 303]
 
@@ -2228,7 +2257,7 @@ def test_draft_after_successful_add_retains_reviewer_mode_when_restored(reviewer
     assert note["Front"] == "Next draft"
 
 
-def test_reviewer_question_refresh_updates_tags_and_parent_without_replacing_draft(reviewer_extract_workflow):
+def test_new_reviewer_topic_clears_previous_draft_without_copying_source_text(reviewer_extract_workflow):
     flow = reviewer_extract_workflow
     flow.editor.note["Back"] = "Unfinished answer"
     flow.editor.note.tags.append("manual")
@@ -2236,11 +2265,251 @@ def test_reviewer_question_refresh_updates_tags_and_parent_without_replacing_dra
 
     dock.refresh_reviewer_extract_source(flow.reviewer.card)
 
-    assert flow.editor.note["Front"] == "Excerpt"
-    assert flow.editor.note["Back"] == "Unfinished answer"
-    assert flow.editor.note.tags == ["manual", "Second_topic"]
+    assert flow.editor.note["Front"] == ""
+    assert flow.editor.note["Back"] == ""
+    assert flow.editor.note.tags == ["manual", "Second_topic", "item"]
     assert dock.pending_extract_context()["parent_card_id"] == 202
     assert dock.pending_extract_options()["priority"] == 70
+
+
+def test_open_extract_populates_source_url_and_parent_before_any_add(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+
+    assert flow.editor.note["Source URL"] == "https://example.test/topic/101"
+    assert flow.editor.note["Incremento_Source_Link"] == "https://example.test/topic/101"
+    assert flow.editor.note["Incremento_Parent_Card_ID"] == "101"
+    assert flow.operations == []
+
+
+def test_extract_click_copies_sources_html_through_the_actual_entry_point(reviewer_extract_workflow):
+    import ast
+    from pathlib import Path
+    from note_metadata import INCREMENTO_METADATA_FIELDS, build_incremento_metadata, derive_note_source_metadata
+
+    flow = reviewer_extract_workflow
+    # Match the real note shape: a rich Sources field, with no visible URL field.
+    flow.editor.note = _FakeNote(field_names=["Front", "Back", "Explanation", "Sources", "Priority", *INCREMENTO_METADATA_FIELDS])
+    source_note = flow.sources[101].note()
+    source_note["Incremento_Source_Link"] = source_note["Source URL"]
+    source_note["Source URL"] = ""
+    flow.reviewer.web = types.SimpleNamespace(page=lambda: types.SimpleNamespace(
+        runJavaScript=lambda script, callback: callback("Selected paragraph"),
+    ))
+    tree = ast.parse((Path(__file__).resolve().parents[1] / "__init__.py").read_text())
+    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in {"_extract_card", "_on_extract_selection"}]
+    namespace = {
+        "mw": flow.mw, "_add_card_dock_mod": dock,
+        "_initial_extract_field_values": dock.initial_extract_field_values,
+        "derive_note_source_metadata": derive_note_source_metadata,
+        "build_incremento_metadata": build_incremento_metadata,
+        "get_knowledge_tree_node": lambda *args: None,
+        "_knowledge_tree_link_state": dock.knowledge_tree_link_state,
+        "_ADDON_DIR": "/unused-synthetic-addon", "_active_profile": lambda: flow.profile[0],
+    }
+    exec(compile(ast.Module(body=functions, type_ignores=[]), "__init__.py", "exec"), namespace)
+
+    namespace["_extract_card"]()
+
+    assert flow.editor.note["Front"] == ""
+    assert flow.editor.note["Back"] == ""
+    assert flow.editor.note["Sources"] == source_note["Sources"]
+    assert flow.editor.note["Incremento_Source_Link"] == "https://example.test/topic/101"
+    assert flow.operations == []
+
+
+def test_reviewer_question_hook_follows_every_current_card_change(reviewer_extract_workflow):
+    import ast
+    from pathlib import Path
+
+    flow = reviewer_extract_workflow
+    hooks = types.SimpleNamespace(reviewer_did_show_question=[])
+    tree = ast.parse((Path(__file__).resolve().parents[1] / "__init__.py").read_text())
+    registration = next(node for node in tree.body if isinstance(node, ast.Expr) and isinstance(node.value, ast.Call)
+                        and ast.unparse(node.value) == "gui_hooks.reviewer_did_show_question.append(_add_card_dock_mod.refresh_reviewer_extract_source)")
+    exec(compile(ast.Module(body=[registration], type_ignores=[]), "__init__.py", "exec"),
+         {"gui_hooks": hooks, "_add_card_dock_mod": dock})
+
+    for card_id in (202, 303, 101):
+        flow.editor.note["Front"] = "Previous draft"
+        flow.reviewer.card = flow.sources[card_id]
+        for callback in hooks.reviewer_did_show_question:
+            callback(flow.reviewer.card)
+        assert flow.editor.note["Front"] == ""
+        assert flow.editor.note["Sources"] == flow.sources[card_id].note()["Sources"]
+        assert flow.editor.note["Incremento_Parent_Card_ID"] == str(card_id)
+
+
+def test_new_reviewer_card_refreshes_visible_source_url_immediately(reviewer_extract_workflow, monkeypatch):
+    flow = reviewer_extract_workflow
+    def reject_collection_write(_note):
+        pytest.fail("Refreshing a draft must not write to the Anki collection")
+    monkeypatch.setattr(flow.mw.col, "update_note", reject_collection_write)
+    before_loads = flow.editor.load_note_calls
+    flow.reviewer.card = flow.sources[202]
+
+    dock.refresh_reviewer_extract_source(flow.reviewer.card)
+
+    assert flow.editor.note["Front"] == ""
+    assert flow.editor.note["Back"] == ""
+    assert flow.editor.note["Source URL"] == "https://example.test/topic/202"
+    assert flow.editor.note["Sources"] == flow.sources[202].note()["Sources"]
+    assert flow.editor.note["Incremento_Source_Link"] == "https://example.test/topic/202"
+    assert flow.editor.note["Incremento_Parent_Card_ID"] == "202"
+    assert flow.editor.note["Incremento_Parent"] == "Second topic"
+    assert flow.editor.load_note_calls > before_loads
+    assert flow.operations == []
+
+
+def test_new_topic_without_url_clears_previous_source_fields(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.editor.note["Source URL"] = "https://example.test/topic/101"
+    flow.sources[202].note()["Source URL"] = ""
+    flow.reviewer.card = flow.sources[202]
+
+    dock.refresh_reviewer_extract_source(flow.reviewer.card)
+
+    assert flow.editor.note["Source URL"] == ""
+    assert flow.editor.note["Incremento_Source_Link"] == ""
+    assert flow.editor.note["Incremento_Parent_Card_ID"] == "202"
+
+
+def test_next_blank_note_keeps_current_source_url_after_add(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.dialog._add_current_note()
+    saved = flow.operations[-1].complete()
+
+    assert saved["Incremento_Parent_Card_ID"] == "101"
+    assert flow.editor.note["Front"] == ""
+    assert flow.editor.note["Source URL"] == "https://example.test/topic/101"
+    assert flow.editor.note["Incremento_Parent_Card_ID"] == "101"
+
+
+def test_source_metadata_alone_does_not_create_an_empty_extract_draft(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.editor.note["Front"] = ""
+
+    assert dock._capture_extract_draft(flow.editor) is None
+
+
+def test_autosave_after_topic_change_captures_the_new_source_url(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.reviewer.card = flow.sources[202]
+
+    draft = dock._capture_extract_draft(flow.editor)
+
+    assert draft["fields"][flow.editor.note._field_map["Source URL"]] == "https://example.test/topic/202"
+    assert draft["extract_context"]["parent_card_id"] == 202
+
+
+def test_same_reviewer_question_refresh_preserves_current_edits(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.editor.note["Back"] = "Unfinished answer"
+    before_loads = flow.editor.load_note_calls
+
+    dock.refresh_reviewer_extract_source(flow.reviewer.card)
+
+    assert flow.editor.note["Front"] == "Excerpt"
+    assert flow.editor.note["Back"] == "Unfinished answer"
+    assert flow.editor.load_note_calls == before_loads
+
+
+def test_question_refresh_clears_fields_even_if_controls_already_follow_new_topic(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.reviewer.card = flow.sources[202]
+    dock.sync_pending_extract_options_from_current()
+
+    dock.refresh_reviewer_extract_source(flow.reviewer.card)
+
+    assert flow.editor.note["Front"] == ""
+
+
+def test_topic_change_during_add_refreshes_next_draft_after_save(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.dialog._add_current_note()
+    flow.reviewer.card = flow.sources[202]
+    dock.refresh_reviewer_extract_source(flow.reviewer.card)
+    assert flow.editor.note["Front"] == "Excerpt"
+
+    saved = flow.operations[-1].complete()
+
+    assert saved["Front"] == "Excerpt"
+    assert saved["Incremento_Parent_Card_ID"] == "101"
+    assert saved["Source URL"] == "https://example.test/topic/101"
+    assert saved["Incremento_Source_Link"] == "https://example.test/topic/101"
+    assert flow.editor.note["Front"] == ""
+    assert flow.editor.note["Source URL"] == "https://example.test/topic/202"
+    assert dock.pending_extract_context()["parent_card_id"] == 202
+
+
+def test_late_reviewer_question_cannot_replace_current_extract(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.reviewer.card = flow.sources[202]
+    dock.refresh_reviewer_extract_source(flow.reviewer.card)
+    flow.editor.note["Back"] = "Current answer"
+
+    dock.refresh_reviewer_extract_source(flow.sources[101])
+
+    assert flow.editor.note["Front"] == ""
+    assert flow.editor.note["Back"] == "Current answer"
+    assert dock.pending_extract_context()["parent_card_id"] == 202
+
+
+@pytest.mark.parametrize("boundary", ["profile", "closed"])
+def test_question_refresh_does_not_modify_retired_extract(reviewer_extract_workflow, boundary):
+    flow = reviewer_extract_workflow
+    if boundary == "profile":
+        flow.profile[0] = "OtherProfile"
+    else:
+        flow.dialog._close()
+    flow.reviewer.card = flow.sources[202]
+
+    dock.refresh_reviewer_extract_source(flow.reviewer.card)
+
+    assert flow.editor.note["Front"] == "Excerpt"
+    assert flow.editor.note["Source URL"] == "https://example.test/topic/101"
+    assert dock.pending_extract_options() is None
+
+
+def test_item_toggle_off_stays_untagged_on_following_topic(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    dock._on_item_tag_button(flow.editor)
+    assert flow.editor.note.tags == ["First_topic"]
+    # The composer echoes its unchecked Topic control when its strip refreshes.
+    dock.set_current_extract_options(priority=21, mark_topic=False)
+    dock.sync_pending_extract_options_from_current()
+    flow.reviewer.card = flow.sources[202]
+
+    dock.refresh_reviewer_extract_source(flow.reviewer.card)
+    flow.dialog._add_current_note()
+    saved = flow.operations[-1].complete()
+
+    assert saved.tags == ["Second_topic"]
+
+
+@pytest.mark.parametrize("kind, expected", [
+    ("item", ["item"]), ("topic", ["topic"]), ("none", []),
+])
+def test_reviewer_extract_starts_blank_and_saves_configured_type(
+    reviewer_extract_workflow, monkeypatch, kind, expected,
+):
+    flow = reviewer_extract_workflow
+    monkeypatch.setattr(dock, "_config", lambda config=None: {"extract_default_type": kind})
+    dock.prepare_reviewer_extract(
+        selected_text="Selection", note_type_name="", deck_name="",
+        field_values=dock.initial_extract_field_values(flow.sources[101].note(), "Selection"),
+        metadata={}, parent_card_id=101,
+        priority=30, mark_topic=(kind == "topic"),
+        knowledge_tree_link_enabled=False, link_to_knowledge_tree=True,
+    )
+
+    assert flow.editor.note.tags == ["First_topic", *expected]
+    assert flow.editor.note["Front"] == ""
+    assert flow.editor.note["Back"] == ""
+    flow.editor.note["Front"] = "User question"
+    flow.dialog._add_current_note()
+    note = flow.operations[-1].complete()
+    assert note["Front"] == "User question"
+    assert note.tags == ["First_topic", *expected]
 
 
 def test_same_topic_repeated_adds_keep_user_priority_override(reviewer_extract_workflow):
@@ -3216,7 +3485,7 @@ def test_apply_extract_topic_mark_to_editor_adds_topic_and_removes_item(monkeypa
     assert editor.tags.text_value == "keep topic"
 
 
-def test_apply_extract_topic_mark_to_editor_removes_topic(monkeypatch):
+def test_apply_extract_topic_mark_to_editor_switches_to_default_item(monkeypatch):
     editor = _FakeEditor(_FakeNote(["keep", "topic"], note_id=9), add_mode=True)
     monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda editor: None)
     monkeypatch.setattr(dock, "mw", type("MW", (), {"col": _FakeCol()})())
@@ -3231,5 +3500,5 @@ def test_apply_extract_topic_mark_to_editor_removes_topic(monkeypatch):
     changed = dock.apply_extract_topic_mark_to_editor(editor, False)
 
     assert changed is True
-    assert editor.note.tags == ["keep"]
-    assert editor.tags.text_value == "keep"
+    assert editor.note.tags == ["keep", "item"]
+    assert editor.tags.text_value == "keep item"

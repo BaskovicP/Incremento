@@ -212,6 +212,9 @@ class _ComboBox(_BaseWidget):
     def itemData(self, index):
         return self._items[index][1]
 
+    def findData(self, data):
+        return next((i for i, (_, value) in enumerate(self._items) if value == data), -1)
+
     def setCurrentIndex(self, index):
         self._current_index = int(index)
 
@@ -887,6 +890,34 @@ class TestIncrementoSettingsDialogPdfLinkHoverPreview:
             "_pdf_dock_mod.configured_pdf_context_rows(cfg)"
         ) in function_source
         assert 'cfg["pdf_context_rows"] = dlg.pdf_context_rows' in function_source
+
+
+class TestIncrementoSettingsDialogExtractDefaultType:
+    def test_new_extracts_default_to_item(self):
+        assert IncrementoSettingsDialog({}).extract_default_type == "item"
+
+    @pytest.mark.parametrize("kind", ["item", "topic", "none"])
+    def test_selected_classification_round_trips(self, kind):
+        dialog = IncrementoSettingsDialog({}, current_extract_default_type=kind)
+        assert dialog.extract_default_type == kind
+        combo = dialog._extract_default_type_combo
+        combo.setCurrentIndex(combo.findData("none"))
+        assert dialog.extract_default_type == "none"
+
+    def test_settings_entry_point_loads_and_saves_default_type(self):
+        import ast
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "__init__.py").read_text()
+        function = next(
+            node for node in ast.parse(source).body
+            if isinstance(node, ast.FunctionDef) and node.name == "openSettingsFunction"
+        )
+        settings_source = ast.get_source_segment(source, function)
+        assert (
+            "current_extract_default_type=_add_card_dock_mod.configured_extract_default_type(cfg)"
+        ) in settings_source
+        assert 'cfg["extract_default_type"] = dlg.extract_default_type' in settings_source
 
 
 class TestIncrementoSettingsDialogExtractCopySourceTags:

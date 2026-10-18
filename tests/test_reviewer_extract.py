@@ -1,5 +1,8 @@
+import pytest
+
 from reviewer_extract import (
     extract_default_notetype_name,
+    extract_source_field_values,
     initial_extract_field_values,
     knowledge_tree_link_state,
     parse_batch_qa_text,
@@ -41,21 +44,45 @@ def test_visible_note_field_values_skip_hidden_incremento_fields():
     }
 
 
-def test_initial_extract_field_values_use_selected_text_only_for_first_visible_field():
+def test_extract_with_selected_text_starts_without_automatic_field_content():
     note = _FakeNote()
 
-    assert initial_extract_field_values(note, "Chosen excerpt") == {
-        "Front": "Chosen excerpt",
+    assert initial_extract_field_values(note, "Chosen excerpt") == {}
+
+
+def test_extract_without_selection_does_not_clone_the_source_fields():
+    note = _FakeNote()
+
+    assert initial_extract_field_values(note, "") == {}
+
+
+@pytest.mark.parametrize("field_name", ["Source URL", "Source_URL", "sourceUrl", "URL", "Source", "Sources"])
+@pytest.mark.parametrize("selected_text", ["", "Chosen excerpt"])
+def test_extract_prefills_only_source_url_without_copying_question_or_answer(field_name, selected_text):
+    note = _FakeNote()
+    note._fields[field_name] = "https://example.test/topic/1"
+    note._note_type["flds"].append({"name": field_name})
+
+    assert initial_extract_field_values(note, selected_text) == {
+        field_name: "https://example.test/topic/1",
     }
 
 
-def test_initial_extract_field_values_clone_visible_fields_when_no_selection():
+@pytest.mark.parametrize("field_name", ["Source", "Sources"])
+def test_extract_preserves_rich_sources_instead_of_replacing_them_with_a_plain_url(field_name):
     note = _FakeNote()
+    rich_source = '<a href="https://example.test/video">Video title</a><br>Reference chapter 3'
+    note._fields[field_name] = rich_source
+    note._note_type["flds"].append({"name": field_name})
+    metadata = {"Incremento_Source_Link": "https://example.test/video"}
 
-    assert initial_extract_field_values(note, "") == {
-        "Front": "Visible front",
-        "Back": "Visible back",
-    }
+    source_fields = initial_extract_field_values(note, "Selected paragraph")
+    draft_fields = extract_source_field_values(note, metadata, source_fields)
+
+    assert source_fields == {field_name: rich_source}
+    assert draft_fields[field_name] == rich_source
+    assert "Front" not in draft_fields
+    assert "Back" not in draft_fields
 
 
 def test_extract_default_notetype_uses_parent_for_empty_selection():

@@ -64,6 +64,17 @@ def is_incremento_hidden_field(field_name: str) -> bool:
     return str(field_name or "").strip().casefold() in _HIDDEN_FIELD_SET
 
 
+def is_source_url_field(field_name: str) -> bool:
+    normalized = re.sub(r"[\s_-]+", "", str(field_name or "")).casefold()
+    return normalized in {"url", "sourceurl"}
+
+
+def is_extract_source_field(field_name: str) -> bool:
+    return is_source_url_field(field_name) or str(field_name or "").strip().casefold() in {
+        "source", "sources",
+    }
+
+
 def matches_hidden_field_reference(field_name: str) -> bool:
     raw = str(field_name or "").strip()
     if not raw:
@@ -262,6 +273,23 @@ def _note_value(note, field_name: str) -> str:
         return ""
 
 
+def _note_source_url(note) -> str:
+    url = _note_value(note, "URL")
+    if url:
+        return url
+    try:
+        source_fields = list((note.note_type() or {}).get("flds") or [])
+    except Exception:
+        source_fields = []
+    for field in source_fields:
+        name = str((field or {}).get("name") or "")
+        if is_source_url_field(name):
+            url = _note_value(note, name)
+            if url:
+                return url
+    return ""
+
+
 def derive_note_source_metadata(note) -> dict[str, str]:
     title = ""
     try:
@@ -280,7 +308,7 @@ def derive_note_source_metadata(note) -> dict[str, str]:
         return {
             "source_type": source_type,
             "source_title": source_title,
-            "source_link": source_link,
+            "source_link": source_link or _note_source_url(note),
             "source_author": source_author,
         }
 
@@ -311,7 +339,7 @@ def derive_note_source_metadata(note) -> dict[str, str]:
             "source_author": "",
         }
 
-    url = _note_value(note, "URL")
+    url = _note_source_url(note)
     if url:
         return {
             "source_type": "Web",

@@ -362,6 +362,7 @@ _KNOWN_CONFIG_KEYS = {
     "deps_notified",
     "dialog",
     "extract_copy_source_tags",
+    "extract_default_type",
     "extract_mark_topic",
     "extract_notetype",
     "extract_priority",
@@ -1179,6 +1180,8 @@ def _sanitize_config_value(value: object, path: tuple[str, ...], default: object
             return _sanitize_shortcut(text)
         if _key_is_sensitive(key):
             return _redacted("private_string", text)
+        if key == "extract_default_type":
+            return text if text in {"item", "topic", "none"} else _redacted("free_text", text)
         if text.casefold() in _SAFE_ENUM_STRINGS:
             return text
         if _SAFE_TIME_RE.fullmatch(text):

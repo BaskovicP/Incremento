@@ -4870,7 +4870,7 @@ def exportSupportBundleFunction() -> None:
 
 
 def _extract_card() -> None:
-    """Option+X: grab the reviewer's selected text, open the extract-card dialog."""
+    """Option+X: open an empty extract, retaining selection for explicit transfer."""
     reviewer = getattr(mw, "reviewer", None)
     card = getattr(reviewer, "card", None) if reviewer else None
     if card is None:
@@ -4915,7 +4915,7 @@ def _on_extract_selection(selected_text: str, parent_card) -> None:
         priority=_add_card_dock_mod.source_card_priority_for_card(
             getattr(parent_card, "id", None)
         ),
-        mark_topic=False,
+        mark_topic=_add_card_dock_mod.configured_extract_mark_topic(),
         knowledge_tree_link_enabled=bool(tree_link_state.get("enabled")),
         link_to_knowledge_tree=bool(tree_link_state.get("checked")),
         knowledge_tree_tooltip=str(tree_link_state.get("tooltip") or ""),
@@ -6916,7 +6916,7 @@ def openSettingsFunction() -> None:
         current_extract_notetype=_add_card_dock_mod.configured_extract_notetype_name(cfg),
         current_extract_priority=_add_card_dock_mod.configured_extract_priority(cfg),
         current_extract_priority_multiplier=_add_card_dock_mod.configured_extract_priority_multiplier(cfg),
-        current_extract_mark_topic=_add_card_dock_mod.configured_extract_mark_topic(cfg),
+        current_extract_default_type=_add_card_dock_mod.configured_extract_default_type(cfg),
         current_extract_copy_source_tags=_add_card_dock_mod.configured_extract_copy_source_tags(cfg),
         current_extract_highlight_when_extracting=_pdf_dock_mod.configured_highlight_when_extracting(cfg),
         current_pdf_show_highlight_delete_buttons=_pdf_dock_mod.configured_pdf_show_highlight_delete_buttons(cfg),
@@ -6992,7 +6992,11 @@ def openSettingsFunction() -> None:
     cfg["extract_notetype"] = dlg.extract_notetype_name
     cfg["extract_priority"] = dlg.extract_priority
     cfg["extract_priority_multiplier"] = dlg.extract_priority_multiplier
-    cfg["extract_mark_topic"] = dlg.extract_mark_topic
+    extract_default_type_changed = (
+        _add_card_dock_mod.configured_extract_default_type(cfg) != dlg.extract_default_type
+    )
+    cfg["extract_default_type"] = dlg.extract_default_type
+    cfg.pop("extract_mark_topic", None)
     cfg["extract_copy_source_tags"] = dlg.extract_copy_source_tags
     cfg["highlight_when_extracting"] = dlg.extract_highlight_when_extracting
     cfg["pdf_show_highlight_delete_buttons"] = dlg.pdf_show_highlight_delete_buttons
@@ -7059,6 +7063,11 @@ def openSettingsFunction() -> None:
     except Exception:
         showInfo(_t("settings_save_failed"))
         return
+    if extract_default_type_changed:
+        _add_card_dock_mod.set_current_extract_options(
+            mark_topic=dlg.extract_default_type == "topic",
+            mark_item=dlg.extract_default_type == "item",
+        )
     try:
         if mw.state == "deckBrowser":
             mw.deckBrowser.refresh()

@@ -27540,7 +27540,7 @@
       "component": "addon",
       "key": "settings_choose_how_extracted_content_opens_by_default_how_its",
       "form": "",
-      "source": "Choose how extracted content opens by default, how its priority is derived, whether extracts should start as topics, and which provenance links should be saved with new extracts.",
+      "source": "Choose how extracted content opens by default, how its priority is derived, its default tag, and which provenance links are saved with new extracts.",
       "tokens": [],
       "markup": []
     },
@@ -27749,6 +27749,46 @@
       "key": "settings_extract",
       "form": "",
       "source": "Extract",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_extract_default_type",
+      "form": "",
+      "source": "Default extraction tag",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_extract_default_type_help",
+      "form": "",
+      "source": "Choose Item, Topic, or None for new extracts. Item and Topic use your configured I/T tag sets.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_extract_type_item",
+      "form": "",
+      "source": "Item",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_extract_type_none",
+      "form": "",
+      "source": "None",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_extract_type_topic",
+      "form": "",
+      "source": "Topic",
       "tokens": [],
       "markup": []
     },

@@ -87,7 +87,7 @@ msgid "settings_card_types"
 msgstr "Card types:"
 
 msgid "settings_choose_how_extracted_content_opens_by_default_how_its"
-msgstr "Choose how extracted content opens by default, how its priority is derived, whether extracts should start as topics, and which provenance links should be saved with new extracts."
+msgstr "Choose how extracted content opens by default, how its priority is derived, its default tag, and which provenance links are saved with new extracts."
 
 msgid "settings_choose_the_default_behavior_for_markdown_writing_cards_after"
 msgstr "Choose the default behavior for markdown writing cards. After a card is opened once, its own saved editor state takes over. The progress widget shows per-card word progress for today, the current card-open session, or all time."
@@ -763,3 +763,18 @@ msgstr "Printed label and PDF page"
 
 msgid "settings_pdf_citation_numbering_hint"
 msgstr "Applies to PDF extraction, highlight cards, and Copy Link to This Place. Missing printed labels fall back to PDF page numbers. Links always open the physical PDF page."
+
+msgid "settings_extract_default_type"
+msgstr "Default extraction tag"
+
+msgid "settings_extract_default_type_help"
+msgstr "Choose Item, Topic, or None for new extracts. Item and Topic use your configured I/T tag sets."
+
+msgid "settings_extract_type_item"
+msgstr "Item"
+
+msgid "settings_extract_type_topic"
+msgstr "Topic"
+
+msgid "settings_extract_type_none"
+msgstr "None"

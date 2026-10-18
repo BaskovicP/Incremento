@@ -87,7 +87,7 @@ msgid "settings_card_types"
 msgstr "Vrste kartica:"
 
 msgid "settings_choose_how_extracted_content_opens_by_default_how_its"
-msgstr "Odaberite kako se izdvojeni sadržaj otvara, kako se određuje njegov prioritet, označava li se kao tema i koje se poveznice na izvor spremaju."
+msgstr "Odaberite kako se izdvojeni sadržaj otvara, kako se određuje njegov prioritet, zadanu oznaku i koje se poveznice na izvor spremaju."
 
 msgid "settings_choose_the_default_behavior_for_markdown_writing_cards_after"
 msgstr "Odaberite zadano ponašanje kartica za pisanje u Markdownu. Nakon prvog otvaranja prednost ima spremljeno stanje pojedine kartice. Pokazivač napretka prikazuje riječi napisane danas, u trenutačnoj sesiji ili ukupno."
@@ -763,3 +763,18 @@ msgstr "Tiskana oznaka i PDF stranica"
 
 msgid "settings_pdf_citation_numbering_hint"
 msgstr "Vrijedi za izdvajanje iz PDF-a, kartice iz istaknutog teksta i Kopiraj poveznicu na ovo mjesto. Ako tiskana oznaka nedostaje, koristi se broj PDF stranice. Poveznice uvijek otvaraju fizičku PDF stranicu."
+
+msgid "settings_extract_default_type"
+msgstr "Zadana oznaka izvatka"
+
+msgid "settings_extract_default_type_help"
+msgstr "Odaberite Stavka, Tema ili Bez oznake za nove izvatke. Stavka i Tema koriste vaše skupove oznaka I/T."
+
+msgid "settings_extract_type_item"
+msgstr "Stavka"
+
+msgid "settings_extract_type_topic"
+msgstr "Tema"
+
+msgid "settings_extract_type_none"
+msgstr "Bez oznake"

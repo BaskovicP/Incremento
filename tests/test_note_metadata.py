@@ -28,6 +28,50 @@ def test_visible_field_names_filters_incremento_metadata_fields():
     assert result == ["Front", "Back"]
 
 
+def test_derive_note_source_metadata_accepts_source_url_field_aliases():
+    class Note(dict):
+        fields = ["Topic title"]
+
+        def note_type(self):
+            return {"flds": [{"name": name} for name in self]}
+
+    for name in ("Source URL", "Source_URL", "sourceUrl", "URL"):
+        source = derive_note_source_metadata(Note({name: "https://example.test/topic"}))
+        assert source["source_link"] == "https://example.test/topic"
+        assert source["source_type"] == "Web"
+
+
+def test_canonical_source_link_takes_precedence_over_legacy_source_url():
+    class Note(dict):
+        fields = ["Topic title"]
+
+        def note_type(self):
+            return {"flds": [{"name": name} for name in self]}
+
+    note = Note({
+        "Source URL": "https://example.test/legacy",
+        INCREMENTO_SOURCE_LINK_FIELD: "https://example.test/canonical",
+    })
+
+    assert derive_note_source_metadata(note)["source_link"] == "https://example.test/canonical"
+
+
+def test_incomplete_canonical_metadata_retains_the_existing_source_url():
+    class Note(dict):
+        fields = ["Topic title"]
+
+        def note_type(self):
+            return {"flds": [{"name": name} for name in self]}
+
+    note = Note({
+        "Source URL": "https://example.test/topic",
+        INCREMENTO_SOURCE_TYPE_FIELD: "Extract",
+        INCREMENTO_SOURCE_LINK_FIELD: "",
+    })
+
+    assert derive_note_source_metadata(note)["source_link"] == "https://example.test/topic"
+
+
 def test_build_incremento_metadata_uses_explicit_values():
     result = build_incremento_metadata(
         source_type="Web",

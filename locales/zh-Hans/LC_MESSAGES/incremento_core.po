@@ -87,7 +87,7 @@ msgid "settings_card_types"
 msgstr "卡片类型："
 
 msgid "settings_choose_how_extracted_content_opens_by_default_how_its"
-msgstr "选择摘录内容的默认打开方式、优先级计算方式、是否标记为主题，以及需要保存的来源链接。"
+msgstr "选择摘录内容的默认打开方式、优先级计算方式、默认标签，以及需要保存的来源链接。"
 
 msgid "settings_choose_the_default_behavior_for_markdown_writing_cards_after"
 msgstr "选择 Markdown 写作卡片的默认行为。卡片首次打开后，将使用其自身保存的编辑器状态。进度显示该卡片今天、当前打开会话或全部时间的字数。"
@@ -763,3 +763,18 @@ msgstr "印刷页码和 PDF 页码"
 
 msgid "settings_pdf_citation_numbering_hint"
 msgstr "适用于 PDF 提取、高亮卡片和“复制此处链接”。没有印刷页码时使用 PDF 页码。链接始终打开对应的 PDF 实际页面。"
+
+msgid "settings_extract_default_type"
+msgstr "默认摘录标签"
+
+msgid "settings_extract_default_type_help"
+msgstr "为新摘录选择条目、主题或无。条目和主题使用您配置的 I/T 标签组。"
+
+msgid "settings_extract_type_item"
+msgstr "条目"
+
+msgid "settings_extract_type_topic"
+msgstr "主题"
+
+msgid "settings_extract_type_none"
+msgstr "无"

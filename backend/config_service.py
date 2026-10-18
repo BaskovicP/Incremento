@@ -93,6 +93,15 @@ def _number(value: Any, default, minimum, maximum, cast):
     return cast(bounded)
 
 
+def configured_extract_default_type(config: Mapping[str, Any] | None = None) -> str:
+    config = config or {}
+    if "extract_default_type" not in config and "extract_mark_topic" in config:
+        return "topic" if _bool(config["extract_mark_topic"], False) else "none"
+    value = config.get("extract_default_type")
+    kind = value.strip().casefold() if isinstance(value, str) else ""
+    return kind if kind in {"item", "topic", "none"} else "item"
+
+
 def normalize_document_mix(raw: Any) -> dict:
     """Migrate the old whole-session document share to a share within Topics.
 
@@ -282,6 +291,7 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     config["day_end_time"] = configured_day_end_time(config)
     config["ui_language"] = normalize_language_choice(config.get("ui_language"))
     config["config_schema_version"] = CONFIG_SCHEMA_VERSION
+    config["extract_default_type"] = configured_extract_default_type(config)
     config["topic_done_tag"] = configured_topic_done_tag(config)
     (
         config["learning_leech_enabled"],
