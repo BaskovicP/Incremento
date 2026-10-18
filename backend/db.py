@@ -23,6 +23,7 @@ writing_word_stats — per-card writing word-count baselines and totals
 stats           — daily and lifetime review statistics (JSON blobs per scope)
 stats_daily_history — normalized per-logical-day count/time snapshots for trends
 reading_page_history — unique PDF/EPUB pages viewed per logical day
+video_watch_history — observed video playback time per card and logical day
 priorities      — card priority values
 pdf_card_sources — notes created while reading a PDF page (for per-page card preview)
 epub_card_sources — notes created while reading an EPUB section
@@ -35,6 +36,7 @@ reviewer_recent_tags — latest reviewer-added tags for quick reuse
 browser_recent_tag_groups — latest Browser tag sets used for quick reuse
 browser_tag_colors — persistent unique color indexes for Browser quick tags
 browser_quick_tag_settings — automatic/fixed picker mode and nine fixed slots
+browser_website_tags — opt-in companion popup tag sets per exact website hostname
 topic_schedule  — current per-card topic A-factor and interval state
 topic_review_history — original More/Same/Less topic choices and resulting schedule
 topic_postpones — timed postpone expiry timestamps per topic card
@@ -632,6 +634,35 @@ def _migration_11_pdf_appearance(conn: sqlite3.Connection) -> None:
         )
 
 
+def _migration_12_video_watch_history(conn: sqlite3.Connection) -> None:
+    _begin_migration_script(
+        conn,
+        """
+        CREATE TABLE video_watch_history (
+            logical_date TEXT NOT NULL
+                CHECK (
+                    length(logical_date) = 10
+                    AND logical_date GLOB
+                        '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+                ),
+            card_id INTEGER NOT NULL CHECK (card_id > 0),
+            watched_seconds REAL NOT NULL DEFAULT 0
+                CHECK (watched_seconds >= 0 AND watched_seconds <= 86400),
+            PRIMARY KEY (logical_date, card_id)
+        );
+        """,
+    )
+
+
+def _migration_13_website_tags(conn: sqlite3.Connection) -> None:
+    _begin_migration_script(conn, """
+        CREATE TABLE browser_website_tags (
+            site TEXT PRIMARY KEY NOT NULL CHECK (length(site) BETWEEN 1 AND 253),
+            tags_json TEXT NOT NULL CHECK (length(tags_json) <= 125000)
+        );
+    """)
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
@@ -643,6 +674,8 @@ _SCHEMA_MIGRATIONS = (
     (9, "pdf_annotation_sync", _migration_9_pdf_annotation_sync),
     (10, "reader_custom_colors", _migration_10_reader_custom_colors),
     (11, "pdf_appearance", _migration_11_pdf_appearance),
+    (12, "video_watch_history", _migration_12_video_watch_history),
+    (13, "website_tags", _migration_13_website_tags),
 )
 
 
@@ -652,6 +685,50 @@ def _initialize_database(conn: sqlite3.Connection) -> None:
         bootstrap=_create_tables,
         migrations=_SCHEMA_MIGRATIONS,
     )
+
+
+MAX_REMEMBERED_WEBSITES = 1000
+
+
+def get_website_tags(addon_dir: str, profile: str, url: str) -> dict:
+    """Load only the current hostname's opt-in preference in this profile."""
+    try:
+        from .website_tags import normalize_website_tags, website_key
+    except ImportError:
+        from website_tags import normalize_website_tags, website_key
+    site = website_key(url)
+    row = get_connection(addon_dir, profile).execute(
+        "SELECT tags_json FROM browser_website_tags WHERE site = ?", (site,),
+    ).fetchone()
+    tags = normalize_website_tags(json.loads(row[0])) if row else []
+    return {"site": site, "enabled": row is not None, "tags": tags}
+
+
+def set_website_tags(addon_dir: str, profile: str, url: str, enabled: bool, tags: list) -> dict:
+    """Replace one saved set atomically; disabling forgets that website."""
+    try:
+        from .website_tags import normalize_website_tags, website_key
+    except ImportError:
+        from website_tags import normalize_website_tags, website_key
+    site = website_key(url)
+    if not isinstance(enabled, bool):
+        raise ValueError("Remember website tags must be a boolean.")
+    normalized = normalize_website_tags(tags)
+    conn = get_connection(addon_dir, profile)
+    with conn:
+        # Serialize the quota check with the insert, including other bridge workers.
+        conn.execute("BEGIN IMMEDIATE")
+        if enabled:
+            exists = conn.execute("SELECT 1 FROM browser_website_tags WHERE site = ?", (site,)).fetchone()
+            count = conn.execute("SELECT count(*) FROM browser_website_tags").fetchone()[0]
+            if not exists and count >= MAX_REMEMBERED_WEBSITES:
+                raise ValueError("Remembered website limit reached. Disable an existing website first.")
+            conn.execute("INSERT INTO browser_website_tags(site, tags_json) VALUES (?, ?) "
+                         "ON CONFLICT(site) DO UPDATE SET tags_json=excluded.tags_json",
+                         (site, json.dumps(normalized, ensure_ascii=False)))
+        else:
+            conn.execute("DELETE FROM browser_website_tags WHERE site = ?", (site,))
+    return {"site": site, "enabled": enabled, "tags": normalized if enabled else []}
 
 
 def get_reader_custom_colors(addon_dir: str, profile: str) -> list[str] | None:

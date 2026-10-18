@@ -1,9 +1,10 @@
 import { availableLanguages, formatNumber, t } from "../shared/i18n.js";
 
-export function LanguageSettingsPanel({languageDraft, pendingPacks, busy, error, preview, fileInputRef, onSelect, onExportTemplate, onExportSelected, onImport, onSave, onCancel}) {
+export function LanguageSettingsPanel({languageDraft, pendingPacks, busy, error, preview, fileInputRef, onSelect, onExportTemplate, onExportSelected, onImport, onSave, onCancel, children}) {
   return (
     <section className="panel" aria-label={t("settings")}>
       <div className="eyebrow">{t("settings")}</div>
+      {children}
       <h1>{t("language")}</h1>
       <p className="note">{t("language_description")}</p>
       <label className="field" htmlFor="ui-language">

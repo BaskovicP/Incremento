@@ -1,4 +1,5 @@
-import { formatBridgeError, importIntoIncremento, loadBrowserMediaRef } from "../shared/bridge.js";
+import { formatBridgeError, importIntoIncremento, loadBrowserMediaRef, loadWebsiteTags } from "../shared/bridge.js";
+import { websiteOrigin } from "../shared/websiteTags.js";
 import { bridgeFetch } from "../shared/bridgeAuth.js";
 import { ankiConnectClient } from "../shared/ankiConnect.js";
 import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
@@ -27,7 +28,11 @@ import {
   pageContextOptionsForImport,
   readPageContextFromTab,
 } from "../shared/pageContext.js";
+import { loadPdfExportSettings, pdfExportPayload, pdfExportSettingsForCapture } from "../shared/pdfExportSettings.js";
 import { cardKindLabel } from "../shared/cardKind.js";
+import { createPdfHandoffController, handoffSenderTab } from "./pdfHandoff.js";
+import { captureSnapshotForSender } from "../shared/snapshotCapture.js";
+import { openExtensionShortcutsPage } from "../shared/chromeApi.js";
 
 const TAB_STATE = new Map();
 const WEB_TRACK_TAB_STATE = new Map();
@@ -49,6 +54,7 @@ const CONTENT_SCRIPT_FILE = "content-loader.js";
 const COMMAND_BROWSER_CAPTURE_SELECTION = "browser-capture-selection";
 const COMMAND_BROWSER_CAPTURE_SNAPSHOT = "browser-capture-snapshot";
 const COMMAND_ADD_CURRENT_PAGE_AS_PDF = "add-current-page-as-pdf";
+const COMMAND_CAPTURE_OPENED_PAGE_AS_PDF = "capture-opened-page-as-pdf";
 const COMMAND_ADD_CURRENT_PAGE_AS_VIDEO = "add-current-page-as-video";
 const COMMAND_ADD_CURRENT_PAGE_AS_WEBPAGE = "add-current-page-as-webpage";
 const COMMAND_ADD_SELECTION_TO_MARKDOWN = "add-selection-to-markdown";
@@ -63,6 +69,14 @@ let lastActionState = null;
 // Start loading the saved preference immediately, without delaying MV3 listener
 // registration. Every feedback-producing action waits on this same read.
 const languageReady = initializeLanguage().catch(() => {});
+const pdfHandoffController = createPdfHandoffController({api: chrome, readPage: capturePageContext, rpc: async body => {
+  const response = await bridgeFetch("http://127.0.0.1:8766/incremento/webpage-pdf-handoff", {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body),
+  }, {safeToRetry: body.action === "describe"});
+  const result = await response.json();
+  if (!response.ok || !result.ok) throw new Error("handoff_expired");
+  return result;
+}});
 
 function captureValidationMessage(result) {
   if (!result?.errorCode) return String(result?.error || "");
@@ -90,11 +104,17 @@ async function parseBridgeResponse(response) {
   return data;
 }
 
-async function loadBrowserCaptureMeta() {
+async function loadBrowserCaptureMeta(pageUrl = "") {
   const response = await bridgeFetch(BROWSER_CAPTURE_META_URL, {
-    method: "GET",
-  });
-  return parseBridgeResponse(response);
+    // Chromium may omit Origin on privileged GETs; the bridge requires the
+    // browser-authenticated extension origin for this read-only metadata RPC.
+    method: "POST",
+  }, { safeToRetry: true });
+  const meta = await parseBridgeResponse(response);
+  const origin = websiteOrigin(pageUrl);
+  if (!origin) return meta;
+  const {site, enabled, tags} = await loadWebsiteTags(origin);
+  return {...meta, websiteTags: {site, enabled, tags}};
 }
 
 async function submitBrowserCapture(payload) {
@@ -890,6 +910,27 @@ async function triggerBrowserCaptureOnTab(tab, mode) {
   return !!response?.ok;
 }
 
+async function triggerSnapshotShortcut(tab) {
+  if (typeof tab?.id === "number") {
+    try {
+      await chrome.action?.setTitle?.({tabId: tab.id, title: t("extension_name")});
+    } catch (_error) { /* feedback must not prevent an authorized capture */ }
+    return triggerBrowserCaptureOnTab(tab, "snapshot");
+  }
+  // Chrome omits the tab for Global commands and does not grant activeTab.
+  // Querying the current tab cannot replace that grant. Explain the scope
+  // setting before asking the user to draw a region that we cannot capture.
+  const currentTab = await getActiveTab();
+  if (typeof currentTab?.id === "number") {
+    const text = t("snapshot_shortcut_scope");
+    try {
+      await chrome.action?.setTitle?.({tabId: currentTab.id, title: text});
+    } catch (_error) { /* the page toast remains available */ }
+    await showToastInTab(currentTab.id, text, "open_shortcut_settings");
+  }
+  return false;
+}
+
 async function capturePageContext(tabId, options = {}) {
   await languageReady;
   if (!chrome.scripting?.executeScript || typeof tabId !== "number") {
@@ -899,6 +940,7 @@ async function capturePageContext(tabId, options = {}) {
   const contextOptions = {
     includeHtml: options?.includeHtml !== false,
     htmlScope: String(options?.htmlScope || "full").toLowerCase() === "main" ? "main" : "full",
+    ...(options?.preserveStyles === true ? {preserveStyles: true} : {}),
   };
   try {
     const response = await chrome.tabs.sendMessage(
@@ -955,6 +997,7 @@ function buildImportPayload(kind, context, options = {}) {
   if (kind === "pdf" && context?.html) {
     payload.html = String(context.html);
   }
+  if (kind === "pdf") Object.assign(payload, pdfExportPayload(options.pdfOptions, {openedPage: options.openedPage === true}));
 
   if (kind === "webpage") {
     const mediaSeconds = Math.max(0, Math.floor(Number(options.mediaSeconds) || 0));
@@ -1148,8 +1191,18 @@ async function addCurrentPageToIncremento(command) {
   }
 
   let contextOptions = pageContextOptionsForImport("webpage");
-  if (command === COMMAND_ADD_CURRENT_PAGE_AS_PDF) {
-    contextOptions = pageContextOptionsForImport("pdf");
+  let pdfSettings = null;
+  if (command === COMMAND_ADD_CURRENT_PAGE_AS_PDF || command === COMMAND_CAPTURE_OPENED_PAGE_AS_PDF) {
+    try {
+      pdfSettings = pdfExportSettingsForCapture(await loadPdfExportSettings(), {
+        openedPage: command === COMMAND_CAPTURE_OPENED_PAGE_AS_PDF,
+      });
+    } catch (_error) {
+      const error = t("settings_load_error");
+      await showToastInTab(tab.id, error);
+      return {ok: false, error};
+    }
+    contextOptions = pageContextOptionsForImport("pdf", {pdfOptions: pdfSettings});
   } else if (command === COMMAND_ADD_PAGE_TO_MARKDOWN) {
     contextOptions = pageContextOptionsForImport("writing", {
       writingMode: "webpage_markdown",
@@ -1166,6 +1219,11 @@ async function addCurrentPageToIncremento(command) {
   const selectionText = String(context?.selectionText || "");
   const html = String(context?.html || "");
 
+  if (command === COMMAND_CAPTURE_OPENED_PAGE_AS_PDF && !html.trim()) {
+    const error = t("web_content_failed");
+    await showToastInTab(tab.id, error);
+    return {ok: false, error};
+  }
   if (!isHttpUrl(pageUrl)) {
     return {ok: false, error: t("only_http_pages")};
   }
@@ -1173,10 +1231,12 @@ async function addCurrentPageToIncremento(command) {
   let payload = null;
   let progressMessage = "";
 
-  if (command === COMMAND_ADD_CURRENT_PAGE_AS_PDF) {
-    payload = buildImportPayload("pdf", {url: pageUrl, title: pageTitle, selectionText, html});
+  if (command === COMMAND_ADD_CURRENT_PAGE_AS_PDF || command === COMMAND_CAPTURE_OPENED_PAGE_AS_PDF) {
+    payload = buildImportPayload("pdf", {url: pageUrl, title: pageTitle, selectionText, html}, {
+      pdfOptions: pdfSettings, openedPage: command === COMMAND_CAPTURE_OPENED_PAGE_AS_PDF,
+    });
     progressMessage = t("adding_pdf");
-    const pdfPayload = await getPdfPayloadForUrl(pageUrl);
+    const pdfPayload = command === COMMAND_CAPTURE_OPENED_PAGE_AS_PDF ? null : await getPdfPayloadForUrl(pageUrl);
     if (pdfPayload) {
       payload.pdfBase64 = pdfPayload.pdfBase64;
       payload.pdfFilename = pdfPayload.pdfFilename;
@@ -1379,12 +1439,13 @@ async function copyText(text) {
   return false;
 }
 
-async function showToastInTab(tabId, text) {
+async function showToastInTab(tabId, text, action = "") {
   if (typeof tabId !== "number") {
     return;
   }
   try {
-    await chrome.tabs.sendMessage(tabId, { type: "SHOW_TOAST", text: String(text || "") });
+    await chrome.tabs.sendMessage(tabId, { type: "SHOW_TOAST", text: String(text || ""),
+      ...(action === "open_shortcut_settings" ? {action} : {}) });
   } catch (_err) {
     // tab may be gone
   }
@@ -1483,9 +1544,7 @@ async function copyLatestStoredTime(showFeedback) {
 }
 
 async function captureVisibleTabForSender(sender) {
-  const windowId = Number(sender?.tab?.windowId);
-  const captureWindowId = Number.isFinite(windowId) && windowId >= 0 ? windowId : undefined;
-  const dataUrl = await chrome.tabs.captureVisibleTab(captureWindowId, { format: "png" });
+  const dataUrl = await captureSnapshotForSender(chrome, sender);
   const validation = validateBrowserCaptureScreenshotDataUrl(dataUrl, {
     maxBytes: MAX_BROWSER_CAPTURE_SCREENSHOT_BYTES,
   });
@@ -1498,6 +1557,19 @@ async function captureVisibleTabForSender(sender) {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || !msg.type) {
     return false;
+  }
+
+  if (["PDF_HANDOFF_READY", "PDF_HANDOFF_INFO", "PDF_HANDOFF_BEGIN"].includes(msg.type)) {
+    const tabId = handoffSenderTab(msg, sender, chrome);
+    if (tabId === null) return false;
+    const operation = msg.type === "PDF_HANDOFF_READY" ? pdfHandoffController.ready(tabId, msg.ticket, sender.frameId)
+      : msg.type === "PDF_HANDOFF_INFO" ? pdfHandoffController.info(tabId, msg.ticket)
+        : pdfHandoffController.begin(tabId, msg.ticket);
+    void operation.then(result => sendResponse?.(result || {ok: true})).catch(async () => {
+      if (msg.type === "PDF_HANDOFF_READY") await pdfHandoffController.closed(tabId).catch(() => {});
+      sendResponse?.({ok: false, errorCode: "handoff_capture_failed"});
+    });
+    return true;
   }
 
   if (msg.type === "heartbeat") {
@@ -1634,7 +1706,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     void (async () => {
       await languageReady;
       try {
-        const result = await loadBrowserCaptureMeta();
+        const result = await loadBrowserCaptureMeta(String(sender?.url || sender?.tab?.url || ""));
         sendResponse?.(result);
       } catch (error) {
         sendResponse?.({ ok: false, error: String(error?.message || t("load_capture_meta_failed")) });
@@ -1687,8 +1759,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const dataUrl = await captureVisibleTabForSender(sender);
         sendResponse?.({ ok: true, dataUrl });
       } catch (error) {
-        sendResponse?.({ ok: false, error: String(error?.message || t("failed_capture_tab")) });
+        const errorCode = ["snapshot_permission_required", "snapshot_tab_changed"].includes(error?.code)
+          ? error.code : "";
+        sendResponse?.({ ok: false, ...(errorCode ? {errorCode} : {}),
+          error: errorCode ? t(errorCode) : String(error?.message || t("failed_capture_tab")) });
       }
+    })();
+    return true;
+  }
+
+  if (msg.type === "OPEN_SHORTCUT_SETTINGS") {
+    void (async () => {
+      try {
+        await openExtensionShortcutsPage();
+        sendResponse?.({ok: true});
+      } catch (_error) {
+        await languageReady;
+        sendResponse?.({ok: false, error: t("open_shortcuts_failed")});
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === "SNAPSHOT_SHORTCUT_HELP") {
+    void (async () => {
+      await languageReady;
+      let shortcut = "";
+      try {
+        const commands = await chrome.commands.getAll();
+        shortcut = commands.find(command => command.name === COMMAND_BROWSER_CAPTURE_SNAPSHOT)?.shortcut || "";
+      } catch (_error) { /* fall back to the shortcut settings guidance */ }
+      sendResponse?.({ok: true, message: shortcut
+        ? t("snapshot_registered_shortcut", {shortcut}) : t("snapshot_shortcut_unassigned")});
     })();
     return true;
   }
@@ -1711,6 +1813,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  void pdfHandoffController.closed(tabId).catch(() => {});
   const state = TAB_STATE.get(tabId);
   TAB_STATE.delete(tabId);
   void clearTrackedWebState(tabId);
@@ -1729,6 +1832,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (!nextUrl) {
     return;
   }
+  void pdfHandoffController.navigate(tabId, nextUrl).catch(() => {});
+  if (changeInfo?.status === "complete") void pdfHandoffController.loaded(tabId, nextUrl).catch(() => {});
   void registerLinkedCardContextFromUrl(tabId, nextUrl);
   void maybeSyncTrackedWebTab(tabId, nextUrl, String(tab?.title || ""));
 });
@@ -1738,6 +1843,8 @@ if (chrome.webNavigation?.onCommitted) {
     if (details?.frameId !== 0) {
       return;
     }
+    void pdfHandoffController.navigate(Number(details.tabId), String(details.url || "")).catch(() => {});
+    void pdfHandoffController.loaded(Number(details.tabId), String(details.url || "")).catch(() => {});
     void registerLinkedCardContextFromUrl(
       Number(details.tabId),
       String(details.url || ""),
@@ -1820,12 +1927,13 @@ chrome.commands.onCommand.addListener((command, tab) => {
       return;
     }
     if (command === COMMAND_BROWSER_CAPTURE_SNAPSHOT) {
-      void (tab ? triggerBrowserCaptureOnTab(tab, "snapshot") : triggerBrowserCapture("snapshot"));
+      void triggerSnapshotShortcut(tab);
       return;
     }
     if (command !== "copy-last-video-time") {
       if (
         command === COMMAND_ADD_CURRENT_PAGE_AS_PDF
+        || command === COMMAND_CAPTURE_OPENED_PAGE_AS_PDF
         || command === COMMAND_ADD_CURRENT_PAGE_AS_VIDEO
         || command === COMMAND_ADD_CURRENT_PAGE_AS_WEBPAGE
         || command === COMMAND_ADD_SELECTION_TO_MARKDOWN

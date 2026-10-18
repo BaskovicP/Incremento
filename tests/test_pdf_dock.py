@@ -52,6 +52,89 @@ def test_due_review_details_escape_card_content():
     assert "&lt;script&gt;" in rendered
 
 
+def test_pdf_extract_renders_emphasis_and_paragraphs_without_trusting_markup():
+    payload = {
+        "text": "The goal: The goal explains why.\n\nThe process: <img src=x>",
+        "runs": [
+            {"text": "The goal:", "bold": True},
+            {"text": " The ", "bold": False},
+            {"text": "goal", "italic": True},
+            {"text": " explains why.\n\n"},
+            {"text": "The process:", "bold": True},
+            {"text": " <img src=x>"},
+        ],
+    }
+
+    assert pdf_dock._pdf_extract_html(payload) == (
+        "<strong>The goal:</strong> The <em>goal</em> explains why.<br><br>"
+        "<strong>The process:</strong> &lt;img src=x&gt;"
+    )
+
+
+def test_pdf_extract_rejects_mismatched_formatting_payload():
+    assert pdf_dock._pdf_extract_html({
+        "text": "Safe text",
+        "runs": [{"text": "<script>unsafe</script>", "bold": True}],
+    }) == "Safe text"
+
+
+def test_pdf_extract_bridge_fills_field_with_safe_rich_html(monkeypatch):
+    fills = []
+    monkeypatch.setattr(
+        pdf_dock,
+        "_cb_fill_dock_field",
+        lambda idx, html, **options: fills.append((idx, html, options)),
+    )
+
+    pdf_dock._handle_pdf_js_message(pdf_dock._MSG_FILL_FIELD + json.dumps({
+        "idx": 0,
+        "text": "The goal: <unsafe>",
+        "runs": [
+            {"text": "The goal:", "bold": True, "italic": False},
+            {"text": " <unsafe>", "bold": False, "italic": False},
+        ],
+    }))
+
+    assert fills == [(0, "<strong>The goal:</strong> &lt;unsafe&gt;", {"mark_topic": True})]
+
+
+@pytest.mark.parametrize("field_index", [0, 3])
+def test_pdf_shortcut_marks_extracted_note_as_topic_immediately(monkeypatch, field_index):
+    fills = []
+    monkeypatch.setattr(
+        pdf_dock,
+        "_cb_fill_dock_field",
+        lambda idx, html, **options: fills.append((idx, html, options)),
+    )
+
+    pdf_dock._handle_pdf_js_message(pdf_dock._MSG_FILL_FIELD + json.dumps({
+        "idx": field_index,
+        "text": "Selected passage",
+    }))
+
+    assert fills == [(field_index, "Selected passage", {"mark_topic": True})]
+
+
+def test_pdf_command_one_fallback_marks_extracted_note_as_topic_immediately(monkeypatch):
+    fills = []
+    monkeypatch.setattr(
+        pdf_dock,
+        "_cb_fill_dock_field",
+        lambda idx, html, **options: fills.append((idx, html, options)),
+    )
+    monkeypatch.setattr(pdf_dock.QTimer, "singleShot", lambda _delay, callback: callback())
+
+    pdf_dock._handle_pdf_js_message(pdf_dock._MSG_CMD1 + "Selected passage")
+
+    assert fills == [(0, "Selected passage", {"mark_topic": True})]
+
+
+def test_pdf_citation_excerpt_does_not_add_spaces_at_emphasis_boundaries():
+    assert pdf_dock._normalize_pdf_reference_excerpt(
+        "<strong>The</strong>goal<br><em>matters</em>."
+    ) == "Thegoal matters."
+
+
 def test_pdf_limit_summary_uses_translated_mode_code(monkeypatch):
     messages = {
         "reader_pdf_limit_summary": "Danas: {used}/{limit} stranica, preostaje {remaining}. Način: {mode}.",
@@ -672,6 +755,298 @@ def test_pdf_citation_can_embed_an_exact_scroll_anchor(monkeypatch):
     assert "scroll_ratio\\&quot;: 0.625" in html
 
 
+@pytest.mark.parametrize("mode, display_page", [
+    ("printed", "v"), ("pdf", "7"), ("both", "v (PDF 7)"),
+])
+def test_extraction_and_copy_use_configured_numbering_from_current_pdf_metadata(monkeypatch, mode, display_page):
+    from reader_links import reader_anchor_command_from_html
+
+    copied = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "physics.pdf")
+    monkeypatch.setattr(pdf_dock, "_current_pdf_page_labels", (), raising=False)
+    monkeypatch.setattr(pdf_dock, "_config", lambda config=None: {"pdf_citation_page_numbering": mode})
+    monkeypatch.setattr(pdf_dock, "get_page", lambda *args: 7)
+    monkeypatch.setattr(pdf_dock, "pdf_display_label_from_filename", lambda *args, **kwargs: "Physics")
+    monkeypatch.setattr(pdf_dock, "set_reader_anchor_clipboard", lambda html, plain: copied.append((html, plain)) or True)
+    monkeypatch.setattr(pdf_dock, "tooltip", lambda _text: None)
+    payload = {"cardId": 55, "filename": "physics.pdf", "labels": ["", "", "i", "ii", "iii", "iv", "v"]}
+    bridge = types.SimpleNamespace(_bridge_nonce="private", _bridge_card_id=55)
+
+    pdf_dock._dispatch_pdf_bridge_message(
+        bridge, pdf_dock._PYCMD_BRIDGE + "private:incremento_pdf_page_labels:" + json.dumps(payload),
+    )
+    html = pdf_dock.pdf_citation("An extracted paragraph")
+    assert pdf_dock._copy_pdf_context_anchor({"cardId": 55, "page": 7, "scrollRatio": 0.25})
+
+    assert f">Page {display_page}. of Physics</a>" in html
+    assert f">Page {display_page}. of Physics</a>" in copied[0][0]
+    assert copied[0][1] == f"Physics — page {display_page}"
+    command = reader_anchor_command_from_html(html)
+    assert json.loads(command.removeprefix("incremento_open_pdf_ref:"))["page"] == 7
+
+
+def test_bulk_highlight_extraction_uses_each_highlights_printed_page(monkeypatch):
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "physics.pdf")
+    monkeypatch.setattr(pdf_dock, "_current_pdf_page_labels", ("i", "ii", "iii"), raising=False)
+    monkeypatch.setattr(pdf_dock, "_config", lambda config=None: {})
+    monkeypatch.setattr(pdf_dock, "pdf_display_label_from_filename", lambda *args, **kwargs: "Physics")
+    monkeypatch.setattr(pdf_dock, "_add_card_dock_module", lambda: types.SimpleNamespace(should_add_extract_source_link=lambda kind: True))
+    monkeypatch.setattr(pdf_dock, "pdf_reference_html_for_citation", lambda *args: "")
+
+    html = pdf_dock._pdf_highlight_bulk_generated_text({"text": "Excerpt", "page": 2, "id": "h2"})
+
+    assert ">Page ii. of Physics</a>" in html
+    assert "Excerpt<br>" in html
+
+
+@pytest.mark.parametrize("payload", [
+    {"cardId": 99, "filename": "physics.pdf", "labels": ["v"]},
+    {"cardId": 55, "filename": "other.pdf", "labels": ["v"]},
+    {"cardId": 55, "filename": "physics.pdf", "labels": "v"},
+    {"cardId": 55, "filename": "physics.pdf", "labels": [7]},
+    {"cardId": 55, "filename": "physics.pdf", "labels": ["v\x00"]},
+    {"cardId": 55, "filename": "physics.pdf", "labels": ["x" * 129]},
+], ids=["stale-card", "stale-file", "wrong-shape", "not-text", "control", "long-label"])
+def test_pdf_page_label_bridge_rejects_stale_or_malformed_metadata(monkeypatch, payload):
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "physics.pdf")
+    monkeypatch.setattr(pdf_dock, "_current_pdf_page_labels", ("i",), raising=False)
+
+    pdf_dock._handle_pdf_js_message("incremento_pdf_page_labels:" + json.dumps(payload))
+
+    assert pdf_dock._current_pdf_page_labels == ("i",)
+
+
+@pytest.mark.parametrize("labels", [[], [""] * 20_001, ["x" * 128] * 10_000], ids=["empty", "too-many-pages", "message-budget"])
+def test_pdf_page_label_bridge_rejects_oversized_or_empty_metadata(monkeypatch, labels):
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "physics.pdf")
+    monkeypatch.setattr(pdf_dock, "_current_pdf_page_labels", ("i",))
+
+    pdf_dock._handle_pdf_js_message("incremento_pdf_page_labels:" + json.dumps({
+        "cardId": 55, "filename": "physics.pdf", "labels": labels,
+    }))
+
+    assert pdf_dock._current_pdf_page_labels == ("i",)
+
+
+@pytest.mark.parametrize("mode", ["printed", "pdf", "both"])
+def test_pdf_citation_falls_back_to_pdf_page_when_printed_label_is_missing(monkeypatch, mode):
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "physics.pdf")
+    monkeypatch.setattr(pdf_dock, "_current_pdf_page_labels", ("",))
+    monkeypatch.setattr(pdf_dock, "_config", lambda config=None: {"pdf_citation_page_numbering": mode})
+    monkeypatch.setattr(pdf_dock, "pdf_display_label_from_filename", lambda *args, **kwargs: "Physics")
+
+    assert ">Page 1. of Physics</a>" in pdf_dock.pdf_citation(page=1)
+
+
+def test_clearing_pdf_context_discards_printed_labels(monkeypatch):
+    for name in ("_current_pdf_filename", "_current_pdf_search_query", "_current_pdf_search_hits",
+                 "_current_pdf_search_hit_index", "_pdf_via_link", "_pdf_preserve_history",
+                 "_pdf_showing_missing_screen", "_pdf_annotation_generation"):
+        monkeypatch.setattr(pdf_dock, name, getattr(pdf_dock, name))
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_page_labels", ("v",), raising=False)
+
+    pdf_dock._clear_current_pdf_context()
+
+    assert pdf_dock._current_pdf_page_labels == ()
+
+
+def test_pdf_context_html_for_citation_reads_bounded_page_and_configured_rows(monkeypatch):
+    calls = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "writer-guide.pdf")
+    monkeypatch.setattr(pdf_dock, "pdf_display_label_from_filename", lambda filename: "Writer Guide")
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "configured_pdf_context_rows", lambda config=None: 2)
+    monkeypatch.setattr(
+        pdf_dock,
+        "_pdf_page_text",
+        lambda addon_dir, profile, card_id, page, max_chars=None: (
+            calls.append((addon_dir, profile, card_id, page, max_chars))
+            or "\n".join(f"row {number}" for number in range(1, 13))
+        ),
+    )
+    citation = pdf_dock.pdf_citation("row 6", page=3)
+
+    context = pdf_dock.pdf_context_html_for_citation(citation, excerpt_text="row 6")
+
+    assert calls == [("/tmp/addon", "TestProfile", 55, 3, 250_000)]
+    assert 'data-incremento-pdf-context="1"' in context
+    assert "row 4" in context and "row 8" in context
+    assert "row 3" not in context and "row 9" not in context
+
+
+def test_pdf_reference_html_for_citation_renders_real_page_snapshot_and_uses_highlight_rects(monkeypatch):
+    calls = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "writer-guide.pdf")
+    monkeypatch.setattr(pdf_dock, "pdf_display_label_from_filename", lambda filename: "Writer Guide")
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "configured_pdf_context_rows", lambda config=None: 5)
+    monkeypatch.setattr(
+        pdf_dock,
+        "pdf_storage_abspath",
+        lambda filename, profile=None: f"/managed/{profile}/{filename}",
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "load_highlights",
+        lambda addon_dir, profile, card_id: [
+            {"id": "hl-7", "page": 3, "rects": [{"x": 1, "y": 2, "w": 3, "h": 4}]}
+        ],
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "render_pdf_context_snapshot",
+        lambda path, **kwargs: calls.append((path, kwargs)) or b"png",
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "add_snapshot_to_anki_media",
+        lambda collection, image: "incremento-pdf-context-abc.png",
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "pdf_snapshot_reference_html",
+        lambda excerpt, citation, media, preview_label: (
+            f"SNAPSHOT:{excerpt}:{citation}:{media}:{preview_label}"
+        ),
+    )
+    citation = pdf_dock.pdf_citation("Exact excerpt", highlight_id="hl-7", page=3)
+
+    rendered = pdf_dock.pdf_reference_html_for_citation("Exact excerpt", citation)
+
+    assert calls == [
+        (
+            "/managed/TestProfile/writer-guide.pdf",
+            {
+                "page_number": 3,
+                "excerpt": "Exact excerpt",
+                "context_rows": 5,
+                "highlight_rects": [{"x": 1, "y": 2, "w": 3, "h": 4}],
+            },
+        )
+    ]
+    assert rendered.startswith("SNAPSHOT:Exact excerpt:")
+    assert ":incremento-pdf-context-abc.png:" in rendered
+
+
+def test_pdf_reference_html_for_citation_uses_entire_multiline_selection_for_snapshot(monkeypatch):
+    selected = " ".join(f"Selected row {number}." for number in range(1, 35))
+    calls = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "writer-guide.pdf")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(
+        pdf_dock,
+        "pdf_storage_abspath",
+        lambda filename, profile=None: f"/managed/{profile}/{filename}",
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "render_pdf_context_snapshot",
+        lambda path, **kwargs: calls.append(kwargs) or b"png",
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "add_snapshot_to_anki_media",
+        lambda collection, image: "incremento-pdf-context-abc.png",
+    )
+    citation = pdf_dock.pdf_citation(selected, page=3)
+
+    pdf_dock.pdf_reference_html_for_citation(selected, citation)
+
+    assert len(selected) > 320
+    assert calls[0]["excerpt"] == selected
+
+
+@pytest.mark.parametrize("failure", ["render_empty", "render_error", "media_empty", "media_error"])
+def test_pdf_extract_keeps_closed_context_control_when_snapshot_fails(monkeypatch, failure):
+    """An optional screenshot failure must not hide available source context."""
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "writer-guide.pdf")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "configured_pdf_context_rows", lambda: 1)
+    monkeypatch.setattr(pdf_dock, "pdf_storage_abspath", lambda *args, **kwargs: "/managed/source.pdf")
+    page_reads = []
+    monkeypatch.setattr(
+        pdf_dock,
+        "_pdf_page_text",
+        lambda addon_dir, profile, card_id, page, max_chars=None: (
+            page_reads.append((profile, card_id, page, max_chars))
+            or "Outside before\nBefore <script>unsafe()</script>\nExact excerpt\nAfter context\nOutside after"
+        ),
+    )
+
+    def render(*args, **kwargs):
+        if failure == "render_error":
+            raise RuntimeError("optional renderer unavailable")
+        return b"" if failure == "render_empty" else b"png"
+
+    def store(collection, image):
+        if failure == "media_error":
+            raise RuntimeError("media unavailable")
+        return ""
+
+    monkeypatch.setattr(pdf_dock, "render_pdf_context_snapshot", render)
+    monkeypatch.setattr(pdf_dock, "add_snapshot_to_anki_media", store)
+    citation = pdf_dock.pdf_citation("Exact excerpt", page=3)
+
+    rendered = pdf_dock.pdf_reference_html_for_citation("<b>Exact</b> excerpt", citation)
+
+    assert rendered.startswith("<b>Exact</b> excerpt<br>" + citation + "<br>")
+    assert '<details' in rendered and '<summary' in rendered
+    assert '>Source page preview</summary>' in rendered
+    assert ' open' not in rendered
+    assert 'data-incremento-pdf-context="1"' in rendered
+    assert "Before &lt;script&gt;unsafe()&lt;/script&gt;" in rendered
+    assert "After context" in rendered
+    assert "Outside before" not in rendered and "Outside after" not in rendered
+    assert "<script>" not in rendered and "<img" not in rendered
+    assert page_reads == [("TestProfile", 55, 3, 250_000)]
+
+
+@pytest.mark.parametrize("page_text", ["", "Unrelated page text"])
+def test_pdf_extract_without_snapshot_or_matching_context_keeps_citation_fallback(monkeypatch, page_text):
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "writer-guide.pdf")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "pdf_storage_abspath", lambda *args, **kwargs: "/managed/source.pdf")
+    monkeypatch.setattr(pdf_dock, "render_pdf_context_snapshot", lambda *args, **kwargs: b"")
+    monkeypatch.setattr(pdf_dock, "add_snapshot_to_anki_media", lambda *args: "")
+    monkeypatch.setattr(pdf_dock, "_pdf_page_text", lambda *args, **kwargs: page_text)
+    citation = pdf_dock.pdf_citation("Exact excerpt", page=3, scroll_ratio=0.5)
+
+    assert pdf_dock.pdf_reference_html_for_citation("Exact excerpt", citation) == ""
+
+
+def test_pdf_highlight_bulk_generated_text_embeds_mobile_snapshot(monkeypatch):
+    monkeypatch.setattr(pdf_dock, "pdf_citation", lambda *args, **kwargs: "Citation")
+    monkeypatch.setattr(
+        pdf_dock,
+        "pdf_reference_html_for_citation",
+        lambda excerpt, citation: '<span data-incremento-pdf-snapshot="1">Snapshot</span>',
+    )
+    monkeypatch.setattr(
+        pdf_dock,
+        "_add_card_dock_module",
+        lambda: types.SimpleNamespace(should_add_extract_source_link=lambda kind: True),
+    )
+
+    generated = pdf_dock._pdf_highlight_bulk_generated_text(
+        {"id": "hl-1", "page": 3, "text": "Excerpt"}
+    )
+
+    assert generated == '<span data-incremento-pdf-snapshot="1">Snapshot</span>'
+
+
 @pytest.mark.parametrize("locale,citation,plain", [
     ("en", "Page 7. of Writer &amp; Guide", "Writer & Guide — page 7"),
     ("hr", "Stranica 7. iz Writer &amp; Guide", "Writer & Guide — stranica 7"),
@@ -694,6 +1069,66 @@ def test_pdf_copied_citation_translates_generated_labels_and_preserves_title(mon
     assert copied[0][1] == plain
     assert "writer-guide.pdf" in copied[0][0]
     assert "scroll_ratio\\&quot;: 0.25" in copied[0][0]
+
+
+@pytest.mark.parametrize("page_label", ["v", "551", "A-12"])
+def test_copy_pdf_place_uses_printed_label_but_opens_physical_page(monkeypatch, page_label):
+    from reader_links import reader_anchor_command_from_html
+
+    copied = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "physics.pdf")
+    monkeypatch.setattr(pdf_dock, "pdf_display_label_from_filename", lambda *args, **kwargs: "Physics")
+    monkeypatch.setattr(pdf_dock, "set_reader_anchor_clipboard", lambda html, plain: copied.append((html, plain)) or True)
+    monkeypatch.setattr(pdf_dock, "tooltip", lambda _text: None)
+
+    assert pdf_dock._copy_pdf_context_anchor({
+        "cardId": 55, "page": 7, "pageLabel": page_label, "scrollRatio": 0.25,
+    })
+
+    html, plain = copied[0]
+    assert f">Page {page_label}. of Physics</a>" in html
+    assert plain == f"Physics — page {page_label}"
+    command = reader_anchor_command_from_html(html)
+    assert command is not None
+    assert json.loads(command.removeprefix("incremento_open_pdf_ref:")) == {
+        "card_id": 55, "filename": "physics.pdf", "page": 7, "scroll_ratio": 0.25,
+    }
+
+
+@pytest.mark.parametrize("page_label", [None, "", "  ", 7, True, {}, "v" * 129, "v\x00", "v\n", "v\x7f"])
+def test_copy_pdf_place_falls_back_to_physical_page_for_invalid_label(monkeypatch, page_label):
+    copied = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "physics.pdf")
+    monkeypatch.setattr(pdf_dock, "pdf_display_label_from_filename", lambda *args, **kwargs: "Physics")
+    monkeypatch.setattr(pdf_dock, "set_reader_anchor_clipboard", lambda html, plain: copied.append((html, plain)) or True)
+    monkeypatch.setattr(pdf_dock, "tooltip", lambda _text: None)
+
+    assert pdf_dock._copy_pdf_context_anchor({
+        "cardId": 55, "page": 7, "pageLabel": page_label, "scrollRatio": 0.25,
+    })
+
+    assert ">Page 7. of Physics</a>" in copied[0][0]
+    assert copied[0][1] == "Physics — page 7"
+
+
+def test_pdf_citation_escapes_printed_label_without_putting_it_in_navigation(monkeypatch):
+    from reader_links import reader_anchor_command_from_html
+
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "physics.pdf")
+    monkeypatch.setattr(pdf_dock, "pdf_display_label_from_filename", lambda *args, **kwargs: "Physics")
+
+    html = pdf_dock.pdf_citation(page=7, page_label='  <img src=x>&"  ')
+
+    assert ">Page &lt;img src=x&gt;&amp;&quot;. of Physics</a>" in html
+    assert "<img" not in html
+    command = reader_anchor_command_from_html(html)
+    assert command is not None
+    assert json.loads(command.removeprefix("incremento_open_pdf_ref:")) == {
+        "card_id": 55, "filename": "physics.pdf", "page": 7,
+    }
 
 
 def test_pdf_context_anchor_rejects_stale_cards_and_clamps_scroll_ratio(monkeypatch):
@@ -1277,6 +1712,7 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     monkeypatch.setattr(pdf_dock, "get_zoom", lambda *args, **kwargs: 1.0)
     monkeypatch.setattr(pdf_dock, "get_pdf_appearance_mode", lambda *args, **kwargs: "night")
     monkeypatch.setattr(pdf_dock, "configured_highlight_when_extracting", lambda *args, **kwargs: False)
+    monkeypatch.setattr(pdf_dock, "configured_pdf_show_highlight_delete_buttons", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "configured_scroll_to_top_on_page_change", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "_consume_due_review_prompt_suppression", lambda card_id: False)
     monkeypatch.setattr(pdf_dock, "_show_missing_pdf_screen", lambda filename: events.append(("missing", filename)))
@@ -1336,10 +1772,11 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     assert "scrollRatio: 0.73" in js_calls[0]
     assert "scrollToReadAnchor: false" in js_calls[0]
     assert "scrollToTopOnPageChange: false" in js_calls[0]
+    assert "showHighlightDeleteButtons: false" in js_calls[0]
     assert f'locale: {json.dumps(reader_locale)}' in js_calls[0]
     assert f'customLanguage: {json.dumps(custom_language)}' in js_calls[0]
     assert (
-        f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}, "night"));'
+        f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}, "night", false));'
         in js_calls[0]
     )
     assert 'appearanceMode: "night"' in js_calls[0]
@@ -1368,6 +1805,36 @@ def test_current_card_pdf_search_hits_orders_pages_and_builds_snippets(monkeypat
     assert [hit["page"] for hit in hits] == [2, 5]
     assert "target phrase" in hits[0]["snippet"].lower()
     assert "excerpt" in hits[0]
+
+
+def test_pdf_find_preserves_trailing_space_while_searching_trimmed_query(monkeypatch):
+    searched = []
+    scripts = []
+
+    class _Page:
+        def runJavaScript(self, script):
+            scripts.append(script)
+
+    class _View:
+        def page(self):
+            return _Page()
+
+    fake_dock = types.SimpleNamespace(_view=_View())
+    monkeypatch.setattr(pdf_dock, "_pdf_dock", fake_dock)
+    monkeypatch.setattr(pdf_dock, "current_pdf_card_id", lambda: 77)
+    monkeypatch.setattr(
+        pdf_dock,
+        "current_card_pdf_search_hits",
+        lambda card_id, query: searched.append((card_id, query)) or [],
+    )
+
+    pdf_dock._update_pdf_search("target ")
+
+    assert searched == [(77, "target")]
+    assert pdf_dock._current_pdf_search_query == "target "
+    assert scripts
+    payload = json.loads(scripts[-1].split("(", 1)[1].rsplit(");", 1)[0])
+    assert payload["query"] == "target "
 
 
 def test_current_pdf_search_context_uses_filename_label(monkeypatch):
@@ -1464,9 +1931,13 @@ def test_repair_legacy_pdf_reference_links_html_fixes_broken_anchor():
     )
 
     repaired = pdf_dock.repair_legacy_pdf_reference_links_html(html)
+    anchor = repaired.removeprefix("Before ").removesuffix(" After")
+    command = pdf_dock.reader_anchor_command_from_html(anchor)
 
     assert 'onclick="pycmd(&quot;incremento_open_pdf_ref:' in repaired
     assert "write-a-must-read.pdf" in repaired
+    assert command is not None
+    assert json.loads(command.split(":", 1)[1])["filename"] == "write-a-must-read.pdf"
     assert "Page 42. of write a must read</a>" in repaired
     assert '=""' not in repaired
     assert repaired.startswith("Before ")

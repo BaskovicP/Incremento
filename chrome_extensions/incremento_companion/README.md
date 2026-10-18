@@ -40,9 +40,14 @@ If the popup says it cannot reach Incremento or falls back to the Topics deck, s
 
 Open the Companion popup on a normal webpage. Before importing, you can edit the title and choose the deck, tags, and priority. Tags may be separated by spaces or commas. Focus the tag field or start typing to see matching tags from the active Anki profile; click a suggestion, or use the arrow keys with Enter/Tab, to complete only the tag currently being typed. You can still enter a new tag normally. The same autocomplete is available in the full text/snapshot capture form.
 
-The popup provides five import actions:
+Enable **Remember tags for this website** below Tags to reuse the popup's tag set on later visits. Enabling it saves the current tags immediately; later edits save automatically. Wait for **Saving website tags…** to disappear before closing the popup. All pages with the same hostname share the set across HTTP/HTTPS and ports; subdomains remain separate. Turning the checkbox off forgets that website's saved set without clearing the current input. This option starts off for every website and stores only explicitly remembered hostnames and tags in the active Anki profile's `incremento.db`, included in normal backups. Anki must be open. Save/load failures appear beside the checkbox with **Retry**. There is a limit of 1,000 remembered websites per profile and 100 tags of up to 200 characters per website.
+
+Remembered website tags also prefill text and snapshot capture, including snapshot **Extract now**, replacing the capture form's older tag defaults. An explicitly saved empty set leaves Tags blank. Other capture choices, such as note type, deck, priority, and field mappings, keep their saved defaults. Triggering capture from the popup waits for pending website-tag saves before opening the form.
+
+The popup provides six import actions:
 
 - **Add as PDF** creates an Incremento PDF card. A direct PDF URL is downloaded when possible; a normal webpage is rendered to PDF by Incremento.
+- **Capture opened page as PDF** sends the already-loaded page directly to Anki and creates the PDF automatically. Use this after completing a CAPTCHA or signing in: there is no Print dialog, saved file, or file picker. Content already added by JavaScript is included. It keeps your layout/link-appendix preferences while avoiding a reload in a different browser. Choose the title, deck, tags, and priority in this popup, or use the shortcut for the page title and standard import defaults.
 - **Add as Video** creates an Incremento Video card from the current YouTube or Vimeo URL. It is enabled only on supported video pages.
 - **Add as Webpage** creates a live Incremento Web card. If the page contains playing media, its detected position can be stored with the new card.
 - **Add Selection to Markdown** creates an Incremento Writing card from the text currently selected on the page.
@@ -54,6 +59,22 @@ When a browser tab was opened from an Incremento card, new content created from 
 
 Only normal HTTP(S) pages are supported. Browser-internal pages such as `chrome://extensions`, `brave://extensions`, and browser store pages do not allow extension capture.
 
+### Webpage-to-PDF settings
+
+Open **Settings → Webpage to PDF** in the popup, choose your defaults, and click **Save**. **Cancel** discards changes. These preferences are saved in the current Chrome/Brave profile and apply to both **Add as PDF** and its keyboard shortcut:
+
+- **Website appearance** keeps the site's screen layout.
+- **Clean article** removes navigation and sharing controls for a simpler reading layout.
+- **Website print layout (Wikipedia PDF)** uses the site's print styling and Wikipedia's official PDF service when available. This remains the default until you change it.
+- **Load content added by JavaScript** reloads the public page in a disposable browser. First use **Set up browser component…** in Anki's **Incremento → Add Content → Webpage to PDF** dialog. Chrome sign-in and cookies are not transferred.
+- **Include a list of link destinations** adds a deduplicated appendix of external links.
+
+Direct PDF downloads are imported unchanged. These preferences are separate from the choices in Anki's own Webpage to PDF dialog. After updating the add-on, restart Anki and reload the extension on your browser's extensions page.
+
+When **Webpage to PDF → Import** in Anki encounters HTTP 403/429 or a recognized CAPTCHA/login page, it automatically opens a browser verification handoff. Keep Companion installed in the default Chrome/Brave browser. On first use, allow capture of that site; archive.is also asks for its known archive aliases so verification redirects continue to work. This is optional site access under the existing optional HTTP(S) permissions, not a new required browsing permission. On later imports, just finish verification: Companion waits for readable, stable page content, returns the rendered HTML to that one waiting import, and Anki saves the PDF, activates its window, and shows a success message. The original Anki title, tags, layout, links setting, and source URL are preserved. No capture click, shortcut, file save, or import confirmation is required. Closing the tab cancels the handoff; the Anki dialog also drops late responses after cancellation/profile changes. Pending requests expire after ten minutes. The handoff uses an opaque, single-import identifier and the authenticated protocol-2 bridge; it never transfers browser cookies. The temporary tab association survives service-worker restarts in session storage and is removed after completion or tab closure. Unexpected redirects to another article cannot complete the import.
+
+Alternatively, start directly in your normal browser, finish verification, then press **Alt+Shift+P** (**Option+Shift+P** on macOS), or choose **Capture opened page as PDF** in the popup. The opened-page action always uses the current tab's rendered HTML, even if **Load content added by JavaScript** is selected for ordinary exports. It does not change that saved preference or require Incremento's separate browser component. Anki must be open. Scripts and embedded frames are removed, and optional images/styles/fonts still use the guarded public downloader; resources requiring sign-in may be missing.
+
 ## Capture text into any Anki note type
 
 Text capture creates a normal Anki note using field mappings that you choose.
@@ -62,15 +83,21 @@ Text capture creates a normal Anki note using field mappings that you choose.
 2. Press the assigned **Text capture** shortcut (default `Alt+X`; `Option+X` on macOS), or click **Trigger text capture** in the popup.
 3. In **Send capture to Anki**, choose a note type, deck, tags, and priority.
 4. Map the page title, selected text, and source URL to the desired note fields. Choose **Do not insert** for anything you do not want.
-5. Edit the selected text if needed, then click **Create note**.
+5. Press **Enter** to create the note, or click **Create note**. The form initially focuses **Create note**, so you can select text, press **Option/Alt+X**, then **Enter** using saved settings. Enter adds a newline while editing selected text, and accepts a tag suggestion while that menu is open; press Enter again afterward to submit.
 
 Field mappings are remembered separately for each note type. Incremento also keeps browser-capture provenance in its dedicated metadata fields when those fields are available.
+
+The **Source URL field** now receives a clickable page-title link. **Link to the original passage** is enabled by default and uses the original selected text, even after you edit the excerpt. Supporting browsers scroll to the passage; changed pages or browsers without passage-link support still open the source page. Turn this option off to keep a normal page link. Existing captures with browser-source metadata also show a clickable source during Anki review, without changing their note templates.
+
+Capture preserves safe paragraphs, lists, emphasis, and code formatting while removing page styling, navigation, scripts, and remote images. You can edit **Page title** and **Selected text** before saving; editing the excerpt uses cleaned plain text. **Preview** shows the saved content for each mapped field, snapshots, and a clickable source. It does not create a note. Your Anki template controls the final card layout, and first-field title mappings receive their unique label only when saved.
+
+If the same passage from the same page already exists, capture offers **Open existing note** in Anki's Browser or **Create another** to save it deliberately. The check ignores whitespace/formatting differences, verifies that the existing card is still present, and stays inside the current Anki profile. It also recognizes older captures that retain their source metadata. Ordinary capture never adds fields to an existing note type; keep a Source URL field mapping when the chosen type has no Incremento metadata fields.
 
 ## Capture page snapshots
 
 Snapshot mode creates one Anki note containing one or more selected regions of the visible browser page.
 
-1. Press the assigned **Snapshot capture** shortcut (default `Alt+Shift+X`), or click **Trigger snapshot capture** in the popup.
+1. Press Chrome's assigned **Snapshot capture** shortcut (default `Alt+Shift+X`, **Option+Shift+X** on macOS), or click **Trigger snapshot capture** in the popup.
 2. Draw a rectangle around the first region. The region is captured immediately.
 3. Scroll and draw more rectangles if desired.
 4. Use **Undo** to remove the latest capture or **Clear** to remove all captures.
@@ -81,6 +108,10 @@ Snapshot mode creates one Anki note containing one or more selected regions of t
 Use **Continue** at least once before relying on **Extract now**, so a valid snapshot field and destination note type are saved. In the full form, **Capture more** returns to region selection, and individual preview images can be removed before creating the note.
 
 Snapshots are limited to the current viewport, but you can scroll between captures to collect multiple parts of a long page. One capture note can contain up to 12 snapshots; each image is limited to 8 MB and the combined decoded image data to 32 MB. The extension reports a local error instead of silently truncating an oversized capture.
+
+Snapshot shortcuts must be registered in **Chrome → Extensions → Keyboard shortcuts**, with **Scope** set to **In Chrome**, so Chrome grants temporary capture access to the page. **Global** commands do not receive that grant, even when pressed inside Chrome. Companion detects a command without an authorized tab and shows the scope instructions instead of opening the snapshot overlay; the popup also explains this setting. The warning's **Open shortcut settings** button opens Chrome's shortcut settings in a new tab. Snapshot permission errors and old page-only shortcut hints provide the same button. These warnings stay visible until you open settings or choose **Dismiss warning**; if opening settings fails, the warning remains available for retry. The old page-only **Option+Command+X** combination shows your actual registered shortcut. If no shortcut is assigned, assign **Snapshot capture** there. You can also click the Companion toolbar icon on the page and choose **Trigger snapshot capture**. If you switch tabs while drawing a region, capture is rejected; return to the original tab and try again. These actions do not require all-sites access.
+
+New installations explicitly default both text and snapshot capture shortcuts to **In Chrome**. Chrome preserves user-customized assignments across updates and does not expose an extension API to change their scope. If an existing installation uses **Global**, change it once in Chrome's shortcut settings; reloading or updating Companion cannot reset it automatically. Chrome may leave a shortcut unassigned if another extension already uses those keys; use the popup's **Open shortcut settings** button to resolve that conflict.
 
 ## Save links while browsing
 
@@ -155,11 +186,12 @@ Default assignments:
 |---|---|
 | Capture selected text | `Alt+X` |
 | Capture snapshots | `Alt+Shift+X` |
+| Capture opened page as PDF | `Alt+Shift+P` (`Option+Shift+P` on macOS) |
 | Copy the latest video time | `Alt+Shift+V` |
 
 The extension also exposes commands for adding the current page as PDF, Video, or Webpage, adding the selection to Markdown, and adding the page to Markdown. These commands are unassigned by default; assign any of them from the browser shortcut page.
 
-The popup displays the active Text capture and Snapshot capture assignments. A shortcut may be unavailable if the browser or another extension already uses it.
+The popup displays the active Text capture, Snapshot capture, and opened-page PDF capture assignments. A shortcut may be unavailable if the browser or another extension already uses it.
 
 ## Privacy and permissions
 
@@ -205,6 +237,8 @@ Multiple open tabs are supported. The popup loads Anki decks and tags independen
 - For text capture, select some text before triggering it.
 - Check the assignment and conflicts on the browser's extension shortcut page.
 - Extensions cannot inject into browser settings, the Chrome/Brave Web Store, or other protected pages.
+
+If text/snapshot capture reports **This Companion copy is not authorized** while the popup can load decks and tags, update and reload Companion. Capture metadata now uses the same origin-preserving authenticated POST as the popup; Chromium can omit the extension origin from the older GET request. After reloading the extension, refresh the page and retry capture. A remaining authorization error can still mean another Companion copy owns the running Anki bridge; restart Anki in that case.
 
 ### Snapshot **Extract now** reports that fields are not configured
 

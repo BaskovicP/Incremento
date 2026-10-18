@@ -10,6 +10,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { resolvePdfAnnotationLink } from './pdfLinks.mjs';
+import { normalizePdfPageLabels, pdfPageLabelsMessage } from './pdfPageLabels.mjs';
+import { annotatePdfTextStyles } from './pdfTextSelection.mjs';
 
 const DEFAULT_WORKER_SRC = '/_addons/incremento/web/pdfjs/pdf.worker.min.js';
 const ZOOM_STEP = 0.1;
@@ -34,6 +36,7 @@ function resolveWorkerSrc(rawWorkerSrc) {
 export function usePdfRender() {
   const [page,       setPage]       = useState(1);
   const [totalPages, setTotalPages] = useState(0);
+  const [pageLabels, setPageLabels] = useState(null);
   const [zoom,       setZoom]       = useState(1.0);
   const [error,      setError]      = useState('');
   const [renderInfo, setRenderInfo] = useState({ scale: 1, tlLeft: 0 });
@@ -85,10 +88,18 @@ export function usePdfRender() {
     try {
       const stream = pg.streamTextContent();
       const task = new lib.TextLayer({ textContentSource: stream, container: tl, viewport });
-      tl._cancelTextLayer = () => { try { task.cancel(); } catch (_) {} };
+      const cancelTextLayer = () => { try { task.cancel(); } catch (_) {} };
+      tl._cancelTextLayer = cancelTextLayer;
       // Spaces and narrow/compressed glyphs are real PDF text. Removing them
       // breaks native copying and drops punctuation/letters from OCR selections.
-      task.render().catch(() => {});
+      task.render()
+        .then(() => pg.getTextContent())
+        .then(content => {
+          if (tl._cancelTextLayer === cancelTextLayer) {
+            annotatePdfTextStyles(task.textDivs, content, pg.commonObjs);
+          }
+        })
+        .catch(() => {});
     } catch (_) {}
   }, []);
 
@@ -174,6 +185,10 @@ export function usePdfRender() {
   /* ── PDF loading ──────────────────────────────────────────────────────────── */
   const doStart = useCallback(() => {
     const sequence = ++loadSequenceRef.current;
+    const cardId = Number(cardIdRef.current);
+    const filename = filenameRef.current;
+    setPageLabels(null);
+    setTotalPages(0);
     ++renderSequenceRef.current;
     busyRef.current = false;
     pdfDocRef.current = null;
@@ -200,8 +215,18 @@ export function usePdfRender() {
         const total     = doc.numPages;
         const startPage = Math.min(Math.max(pageRef.current, 1), total);
         setTotalPages(total);
+        setPage(startPage);
         pageRef.current = startPage;
         renderPage(startPage);
+        // Metadata is optional and must not hold up the first page render.
+        Promise.resolve().then(() => doc.getPageLabels()).then(labels => {
+          if (sequence === loadSequenceRef.current) {
+            const normalized = normalizePdfPageLabels(labels, total);
+            setPageLabels(normalized);
+            const message = pdfPageLabelsMessage(cardId, filename, normalized);
+            if (message && typeof window.pycmd === 'function') window.pycmd(message);
+          }
+        }).catch(() => {});
       })
       .catch(() => {
         if (sequence === loadSequenceRef.current) setError('reader_load_error');
@@ -307,7 +332,7 @@ export function usePdfRender() {
 
   return {
     // State (read-only)
-    page, totalPages, zoom, error, renderInfo, readPage, linkAnnotations,
+    page, totalPages, pageLabels, zoom, error, renderInfo, readPage, linkAnnotations,
     // Refs attached to DOM elements in JSX
     canvasARef, canvasBRef, containerRef, textLayerRef,
     // Refs read by PdfViewer for keyboard/snapshot/highlight logic

@@ -176,6 +176,12 @@ msgstr "摘录的备用优先级："
 msgid "settings_focus_timer"
 msgstr "专注计时器"
 
+msgid "settings_statistics"
+msgstr "统计"
+
+msgid "settings_show_daily_topic_item_tag_charts_on_deck_screen"
+msgstr "在牌组界面显示按标签统计的每日主题/知识项图表"
+
 msgid "settings_for_example_10_schedules_110_of_the_normal_next"
 msgstr "例如，10% 会将下次间隔设为正常值的 110%，并将持久 A 因子乘以 1.1。"
 
@@ -299,6 +305,9 @@ msgstr "可选的附加筛选条件。填写后，自动计时器仅为同时符
 msgid "settings_parent_cards_in_extract_card"
 msgstr "摘录卡片中的父卡片"
 
+msgid "settings_pdf_context_rows_before_and_after"
+msgstr "PDF 上下文前后行数："
+
 msgid "settings_pdf_highlight_card_target_field"
 msgstr "PDF 高亮卡片的目标字段："
 
@@ -400,6 +409,12 @@ msgstr "在浏览器和笔记编辑器中显示 Incremento 元数据 / OCR 字�
 
 msgid "settings_show_markdown_preview_in_writing_cards"
 msgstr "在写作卡片中显示 Markdown 预览"
+
+msgid "settings_show_pdf_context_when_hovering_page_links"
+msgstr "悬停在页面链接上时显示 PDF 上下文"
+
+msgid "settings_show_pdf_highlight_delete_buttons"
+msgstr "在 PDF 高亮上显示删除 X 按钮"
 
 msgid "settings_show_priority_dialog_after_each_card_is_done_before"
 msgstr "每张卡片完成后，在继续前显示优先级对话框"
@@ -715,3 +730,36 @@ msgstr "CSV 表格 (*.csv *.tsv);;所有文件 (*)"
 
 msgid "settings_language_profile_changed"
 msgstr "当前用户配置已更改。请重新打开设置，将译文导入目标用户配置。"
+
+msgid "settings_learning_leech"
+msgstr "学习困难卡片"
+
+msgid "settings_learning_leech_enabled"
+msgstr "为学习困难的卡片添加标签"
+
+msgid "settings_learning_leech_threshold"
+msgstr "重来次数阈值："
+
+msgid "settings_learning_leech_tag"
+msgstr "标签："
+
+msgid "settings_learning_leech_hint"
+msgstr "累计每张卡片在初次学习期间的重来次数，包括首次作答和之后各天的学习。达到阈值时，为笔记添加此标签，不暂停卡片。复习、重新学习和预览不计入。撤销/重做也会恢复新添加的标签。"
+
+msgid "settings_learning_leech_tag_invalid"
+msgstr "请输入一个标签，最多 255 个字符，不能包含空格或空的 :: 层级。"
+
+msgid "settings_pdf_citation_numbering"
+msgstr "PDF 引用页码"
+
+msgid "settings_pdf_citation_numbering_printed"
+msgstr "印刷页码（默认）"
+
+msgid "settings_pdf_citation_numbering_pdf"
+msgstr "PDF 页码"
+
+msgid "settings_pdf_citation_numbering_both"
+msgstr "印刷页码和 PDF 页码"
+
+msgid "settings_pdf_citation_numbering_hint"
+msgstr "适用于 PDF 提取、高亮卡片和“复制此处链接”。没有印刷页码时使用 PDF 页码。链接始终打开对应的 PDF 实际页面。"

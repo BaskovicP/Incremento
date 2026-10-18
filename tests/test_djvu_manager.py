@@ -326,6 +326,17 @@ def test_compression_choice_reaches_decoder_and_preserves_positioned_text(monkey
         assert tuple(doc[0].search_for("Hello")[0]) == pytest.approx((15, 35, 60, 50), abs=0.2)
 
 
+@pytest.mark.parametrize("compression", ["original", "balanced", "compact_color", "small", "black_white"])
+def test_same_decoded_document_has_repeatable_pdf_bytes(monkeypatch, tmp_path, compression):
+    source, _, _ = fake_decoder(monkeypatch, tmp_path, [TEXT])
+    first, second = tmp_path / "first.pdf", tmp_path / "second.pdf"
+
+    manager().convert_djvu_to_pdf(str(source), str(first), compression=compression)
+    manager().convert_djvu_to_pdf(str(source), str(second), compression=compression)
+
+    assert first.read_bytes() == second.read_bytes()
+
+
 def test_mrc_uses_jpeg_background_and_compact_black_masked_foreground(monkeypatch, tmp_path):
     source = tmp_path / "layered.djvu"
     source.write_bytes(b"AT&TFORM\x00\x00\x00\x04DJVU")

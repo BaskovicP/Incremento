@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from backend import i18n, language_packs
+from backend import config_service, i18n, language_packs
 
 
 def root_function(name, namespace):
@@ -98,7 +98,7 @@ def test_settings_profile_switch_rejects_the_import_before_any_persistence(tmp_p
         return SimpleNamespace(exec=lambda: True)
     namespace.update({
         '_current_profile_name': lambda: next(profiles), '_ADDON_DIR': str(tmp_path),
-        '_load_addon_config': lambda *_: {}, 'copy': copy,
+        '_load_addon_config': lambda *_: config_service.normalize_config({}), 'copy': copy,
         'mw': SimpleNamespace(addonManager=object(), col=SimpleNamespace(models=SimpleNamespace(all_names_and_ids=lambda: []))),
         'IncrementoSettingsDialog': open_dialog, '_t': i18n.t,
     })

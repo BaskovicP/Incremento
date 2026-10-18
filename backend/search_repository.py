@@ -69,11 +69,26 @@ def pdf_candidate_card_ids(addon_dir: str, profile: str) -> set[int]:
     return card_ids
 
 
-def pdf_page_text(addon_dir: str, profile: str, card_id: int, page: int) -> str:
-    row = get_connection(addon_dir, profile).execute(
-        "SELECT text FROM pdf_text_index WHERE card_id=? AND page=?",
-        (int(card_id), int(page)),
-    ).fetchone()
+def pdf_page_text(
+    addon_dir: str,
+    profile: str,
+    card_id: int,
+    page: int,
+    *,
+    max_chars: int | None = None,
+) -> str:
+    conn = get_connection(addon_dir, profile)
+    if max_chars is None:
+        row = conn.execute(
+            "SELECT text FROM pdf_text_index WHERE card_id=? AND page=?",
+            (int(card_id), int(page)),
+        ).fetchone()
+    else:
+        bounded_chars = max(1, min(int(max_chars), 1_000_000))
+        row = conn.execute(
+            "SELECT substr(text, 1, ?) FROM pdf_text_index WHERE card_id=? AND page=?",
+            (bounded_chars, int(card_id), int(page)),
+        ).fetchone()
     return str((row[0] or "") if row else "")
 
 

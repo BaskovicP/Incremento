@@ -72,6 +72,10 @@ msgstr "<span style=\"color: #e05050;\">Automatska instalacija nije uspjela. Pog
 msgid "backend_deps_install_pymupdf"
 msgstr "Automatski instaliraj PyMuPDF"
 
+#. Incremento UI: deps install ffmpeg
+msgid "backend_deps_install_ffmpeg"
+msgstr "Instaliraj FFmpeg"
+
 #. Incremento UI: deps installed
 msgid "backend_deps_installed"
 msgstr "<span style=\"color: gray; font-size: small;\">Instalirano — nije potrebna dodatna radnja.</span>"
@@ -92,9 +96,13 @@ msgstr "Instaliranje…"
 msgid "backend_deps_installing_pymupdf"
 msgstr "<span style=\"color: gray; font-size: small;\">Instaliranje PyMuPDF-a — pričekajte…</span>"
 
+#. Incremento UI: deps installing ffmpeg
+msgid "backend_deps_installing_ffmpeg"
+msgstr "Instaliranje FFmpega — može potrajati nekoliko minuta…"
+
 #. Incremento UI: deps intro
 msgid "backend_deps_intro"
-msgstr "Incremento koristi neobvezne komponente za PDF OCR i sinkronizaciju s proširenjem preglednika. Osnovne funkcije rade i bez njih."
+msgstr "Incremento koristi neobvezne komponente za PDF OCR, obradu videa i sinkronizaciju s proširenjem preglednika. Osnovne funkcije rade i bez njih."
 
 #. Incremento UI: deps manual install
 msgid "backend_deps_manual_install"
@@ -115,6 +123,26 @@ msgstr "Incremento može automatski instalirati PyMuPDF u svoju lokalnu mapu ovi
 #. Incremento UI: deps restart notice
 msgid "backend_deps_restart_notice"
 msgstr "PyMuPDF je instaliran — ponovno pokrenite Anki za korištenje."
+
+#. Incremento UI: deps ffmpeg
+msgid "backend_deps_ffmpeg"
+msgstr "FFmpeg  (kodiranje i sažimanje videa te mobilni isječci)"
+
+#. Incremento UI: deps ffmpeg ready
+msgid "backend_deps_ffmpeg_ready"
+msgstr "FFmpeg je instaliran i spreman za korištenje."
+
+#. Incremento UI: deps ffmpeg mac
+msgid "backend_deps_ffmpeg_mac"
+msgstr "Instalirajte FFmpeg putem Homebrewa. Ako je Homebrew dostupan, kliknite gumb Instaliraj FFmpeg ispod.\n\nRučna naredba:  brew install ffmpeg\n\nAko gumb nije prikazan, instalirajte Homebrew sa https://brew.sh, ponovno otvorite ovaj dijalog i pokušajte ponovno."
+
+#. Incremento UI: deps ffmpeg windows
+msgid "backend_deps_ffmpeg_windows"
+msgstr "Instalirajte FFmpeg putem upravitelja paketa sustava Windows. Ako je winget dostupan, kliknite gumb Instaliraj FFmpeg ispod.\n\nRučna naredba:  winget install --id Gyan.FFmpeg --exact\n\nNakon ručne instalacije ponovno pokrenite Anki."
+
+#. Incremento UI: deps ffmpeg linux
+msgid "backend_deps_ffmpeg_linux"
+msgstr "Instalirajte FFmpeg upraviteljem paketa:\n\n    Ubuntu / Debian:  sudo apt install ffmpeg\n    Fedora:           sudo dnf install ffmpeg\n    Arch:             sudo pacman -S ffmpeg\n    openSUSE:         sudo zypper install ffmpeg\n\nZatim ponovno pokrenite Anki."
 
 #. Incremento UI: deps tesseract
 msgid "backend_deps_tesseract"

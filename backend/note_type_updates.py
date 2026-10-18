@@ -39,6 +39,7 @@ class NoteTypeSpec:
     question_template: str
     answer_template: str
     normalize_field_ordinals: bool = False
+    model_type: int = 0
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,12 @@ def inspect_note_type(model: Any, spec: NoteTypeSpec) -> tuple[str, ...]:
     }
     missing = [field for field in spec.fields if field not in existing_fields]
     changes: list[str] = []
+    try:
+        model_type = int(model.get("type", 0))
+    except (AttributeError, TypeError, ValueError):
+        model_type = 0
+    if model_type != int(spec.model_type):
+        changes.append("change note type kind")
     if missing:
         changes.append("add fields: " + ", ".join(missing))
 
@@ -126,6 +133,7 @@ def ensure_note_type(
     model = models.by_name(spec.name)
     if model is None:
         model = models.new(spec.name)
+        model["type"] = int(spec.model_type)
         for field_name in spec.fields:
             field = models.new_field(field_name)
             models.add_field(model, field)
@@ -163,6 +171,8 @@ def ensure_note_type(
             if isinstance(field, dict):
                 field["ord"] = ordinal
 
+    model["type"] = int(spec.model_type)
+
     templates = _model_templates(model)
     if not templates or not isinstance(templates[0], dict):
         template = models.new_template("Card 1")
@@ -181,12 +191,13 @@ def incremento_note_type_specs() -> tuple[NoteTypeSpec, ...]:
     """Return all Incremento-owned note-type specifications lazily."""
     try:
         from . import audio_manager, epub_manager, local_file_manager, pdf_manager
-        from . import video_manager, web_manager, writing_manager
+        from . import supermemo_import, video_manager, web_manager, writing_manager
     except ImportError:
         import audio_manager  # type: ignore
         import epub_manager  # type: ignore
         import local_file_manager  # type: ignore
         import pdf_manager  # type: ignore
+        import supermemo_import  # type: ignore
         import video_manager  # type: ignore
         import web_manager  # type: ignore
         import writing_manager  # type: ignore
@@ -199,6 +210,8 @@ def incremento_note_type_specs() -> tuple[NoteTypeSpec, ...]:
         web_manager.web_note_type_spec(),
         writing_manager.writing_note_type_spec(),
         local_file_manager.local_file_note_type_spec(),
+        supermemo_import.supermemo_note_type_spec(),
+        supermemo_import.supermemo_cloze_note_type_spec(),
     )
 
 

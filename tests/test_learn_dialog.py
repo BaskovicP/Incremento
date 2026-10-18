@@ -15,7 +15,7 @@ def _dummy_class(name):
 _qt_module = types.ModuleType("aqt.qt")
 for _name in (
     "QDialog", "QDialogButtonBox", "QVBoxLayout", "QHBoxLayout", "QFormLayout",
-    "QLabel", "QSlider", "QCheckBox", "QComboBox", "QPushButton", "QWidget",
+    "QLabel", "QSlider", "QCheckBox", "QComboBox", "QCompleter", "QPushButton", "QWidget",
     "QTimeEdit", "QTime", "QSpinBox", "QLineEdit", "QMessageBox", "QFileDialog",
     "QFrame", "QInputDialog", "QScrollArea", "QObject", "QEvent",
     "QGraphicsOpacityEffect", "QSplitter", "QTextBrowser", "QTableWidget",
@@ -43,7 +43,7 @@ _utils_module.showInfo = lambda *args, **kwargs: None
 _utils_module.tooltip = lambda *args, **kwargs: None
 
 _aqt_module = types.ModuleType("aqt")
-_aqt_module.mw = SimpleNamespace(addonManager=None)
+_aqt_module.mw = SimpleNamespace(addonManager=None, col=None)
 _aqt_module.qt = _qt_module
 
 _original_modules = {
@@ -119,6 +119,24 @@ def test_chinese_live_preview_summary_translates_metadata_not_user_tag(monkeypat
     assert 'EnglishTag' in text[0] and 'Scheduled' not in text[0]
 
 
+def test_live_preview_summary_uses_the_same_content_groups_as_the_estimate_table(monkeypatch):
+    from backend.i18n import Translator
+    monkeypatch.setattr(_MOD, 't', Translator('en').t)
+    summary = []
+    dialog = object.__new__(_MOD._LiveSchedulerPreviewDialog)
+    dialog._summary_lbl = SimpleNamespace(setText=summary.append)
+    metadata = {
+        1: {'card_type': 'pdf'}, 2: {'card_type': 'epub', 'study_kind': 'items'},
+        3: {'card_type': 'topics'}, 4: {'card_type': 'items'},
+    }
+
+    dialog._update_summary(list(metadata), metadata, 500)
+
+    assert 'Documents (Topics): 1' in summary[0]
+    assert 'Other Topics: 1' in summary[0]
+    assert 'Items: 2' in summary[0]
+
+
 def test_branch_scope_label_uses_croatian_plural_without_changing_user_title(monkeypatch):
     from backend.i18n import Translator
     translator = Translator('hr')
@@ -140,14 +158,16 @@ def test_heatmap_localizes_synthetic_other_without_renaming_real_other_tag(monke
     dialog._tag_content_table = SimpleNamespace(setRowCount=lambda value: None,
                                                 setItem=lambda row, col, item: items.update({(row, col): item.text}))
     dialog._tag_content_note_lbl = SimpleNamespace(setText=notes.append)
+    dialog._linked_rows = [{'tag': 'Other'}]
     dialog._set_heatmap_cell = lambda *args: None
     dialog._update_tag_content_heatmap(
-        rows=[('Other', 0.5)], tag_shares_for_content={'Other': 0.5, _MOD.NO_TAGS_KEY: 0.5},
-        tags_normalized=True, cc={'pdf': 2, 'topics': 0, 'items': 0})
+        selected_ids=[1, 2], picked_meta={
+            1: {'card_type': 'pdf', 'tag': 'Other'},
+            2: {'card_type': 'pdf', 'tag': _MOD.NO_TAGS_KEY}})
     assert items[(0, 0)] == 'Ukupno'
     assert items[(1, 0)] == 'Other' and items[(2, 0)] == 'Ostalo'
     assert items[(1, 4)] == '1' and items[(2, 4)] == '1'
-    assert 'Ćelije' in notes[0] and '100%' in notes[0]
+    assert 'Ćelije' in notes[0]
 
 
 def test_heatmap_adds_localized_column_totals_row(monkeypatch):
@@ -170,21 +190,268 @@ def test_heatmap_adds_localized_column_totals_row(monkeypatch):
         setItem=lambda row, col, item: items.update({(row, col): item.text}),
     )
     dialog._tag_content_note_lbl = SimpleNamespace(setText=lambda _text: None)
+    dialog._linked_rows = [{'tag': 'law'}, {'tag': 'data'}]
 
     def _capture_heatmap_cell(table, row, col, count, _content_total):
         table.setItem(row, col, SimpleNamespace(text=str(count)))
 
     dialog._set_heatmap_cell = _capture_heatmap_cell
+    picked_meta = {
+        cid: {'card_type': kind, 'tag': 'law' if cid % 4 == 0 else 'data'}
+        for kind, ids in [('pdf', range(1, 5)), ('topics', range(5, 13)), ('items', range(13, 25))]
+        for cid in ids
+    }
     dialog._update_tag_content_heatmap(
-        rows=[('law', 0.25), ('data', 0.75)],
-        tag_shares_for_content={'law': 0.25, 'data': 0.75},
-        tags_normalized=False,
-        cc={'pdf': 4, 'topics': 8, 'items': 12},
+        selected_ids=list(picked_meta), picked_meta=picked_meta,
     )
 
-    assert row_counts == [3]
+    assert row_counts == [4]  # Total, both configured tags, and the Other bucket.
     assert items[(0, 0)] == 'Ukupno'
     assert [items[(0, col)] for col in range(1, 5)] == ['4', '8', '12', '24']
+
+
+def _availability_preview_dialog(monkeypatch, target=500):
+    """Keep collection operations deferred while exercising the visible summary."""
+    from backend.i18n import Translator
+
+    monkeypatch.setattr(_MOD, 't', Translator('en').t)
+    monkeypatch.setattr(_MOD, '_active_profile', lambda: 'PreviewProfile')
+    monkeypatch.setattr(_MOD, 'QTableWidgetItem', lambda text: SimpleNamespace(
+        text=text, setTextAlignment=lambda value: None))
+    monkeypatch.setattr(_MOD, 'Qt', SimpleNamespace(
+        AlignmentFlag=SimpleNamespace(AlignRight=1, AlignVCenter=2)))
+    monkeypatch.setattr(_MOD, 'load_addon_config', lambda *_args: {})
+    monkeypatch.setattr(_MOD, 'mw', SimpleNamespace(addonManager=object(), col=object()))
+    monkeypatch.setattr(_MOD._card_utils, 'resolve_topic_card_classifier',
+                        lambda *_args, **_kwargs: 'classifier')
+    labels = {}
+    items = {}
+    row_counts = []
+    requests = []
+    timer_starts = []
+    dialog = object.__new__(SchedulerConfigDialog)
+    for name in ('_expected_mix_lbl', '_expected_counts_lbl',
+                 '_tag_content_title_lbl', '_tag_content_note_lbl'):
+        setattr(dialog, name, SimpleNamespace(
+            setText=lambda value, key=name: labels.update({key: value})))
+    dialog._tag_content_table = SimpleNamespace(
+        setRowCount=row_counts.append,
+        setItem=lambda row, col, item: items.update({(row, col): item.text}))
+    dialog._set_heatmap_cell = lambda table, row, col, count, total: table.setItem(
+        row, col, SimpleNamespace(text=str(count)))
+    dialog._count_spin = _FakeValueWidget(target)
+    dialog._topics_slider = _FakeValueWidget(54)
+    dialog._pdf_slider = _FakeValueWidget(100)
+    dialog._random_slider = _FakeValueWidget(15)
+    dialog._linked_rows = [
+        {'tag': 'blockchain', 'slider': _FakeValueWidget(100)},
+        {'tag': _MOD.NO_TAGS_KEY, 'slider': _FakeValueWidget(0)},
+    ]
+    dialog._live_preview_dialog = None
+    dialog._selected_profile_name = None
+    dialog._profiles = {}
+    dialog._live_preview_cache = None
+    dialog._live_preview_signature = None
+    dialog._live_preview_entries = None
+    dialog._preview_details_requested = False
+    dialog._selection_signature = lambda: 'same-settings'
+    dialog._mix_preview_ready = True
+    dialog._mix_preview_closed = False
+    dialog._mix_preview_running = False
+    dialog._mix_preview_generation = 0
+    dialog._mix_preview_timer = SimpleNamespace(
+        start=lambda: timer_starts.append(True), stop=lambda: None)
+    dialog._preview_refresh_timer = SimpleNamespace(stop=lambda: None)
+    dialog._branch_scope = {'root_card_id': 1, 'card_ids': [1, 2]}
+    dialog.to_config = lambda: SimpleNamespace(session_card_count=target)
+    monkeypatch.setattr(_MOD, '_run_session_preview_query',
+                        lambda **kwargs: requests.append(kwargs), raising=False)
+    return dialog, labels, items, row_counts, requests, timer_starts
+
+
+def _preview_selection(selected_ids, picked_meta):
+    return {
+        'selected_ids': selected_ids, 'picked_meta': picked_meta,
+        'session_counts': {}, 'session_time': {}, 'picker_snapshot': None,
+    }
+
+
+def _preview_response(selected_ids, picked_meta):
+    return {'selection': _preview_selection(selected_ids, picked_meta), 'entries': None}
+
+
+def test_500_card_target_shows_only_20_selected_cards_in_summary_and_heatmap(monkeypatch):
+    dialog, labels, items, row_counts, requests, timer_starts = _availability_preview_dialog(monkeypatch)
+    selected_ids = list(range(1, 21))
+    picked_meta = {cid: {'card_type': 'topics' if cid <= 7 else 'items',
+                         'tag': 'blockchain'} for cid in selected_ids}
+    calls = []
+
+    def select(cfg, addon_dir, **kwargs):
+        calls.append((cfg.session_card_count, kwargs))
+        return _preview_selection(selected_ids, picked_meta)
+
+    monkeypatch.setattr(_MOD, 'select_session_cards', select)
+    dialog._refresh_expected_mix_preview()
+    # A target is never presented as an available count, including while loading.
+    assert labels['_expected_counts_lbl'] == '…'
+    assert row_counts[-1] == 0
+    dialog._schedule_live_preview_refresh()
+    assert timer_starts
+    assert not calls, 'Collection selection must wait for the background operation'
+    dialog._refresh_available_mix()
+    assert len(requests) == 1
+    collection = _MOD.mw.col
+    result = requests[0]['op'](collection)
+    requests[0]['success'](result)
+
+    assert calls == [(500, {'col': collection, 'profile': 'PreviewProfile',
+                            'branch_scope': {'root_card_id': 1, 'card_ids': [1, 2]},
+                            'topic_classifier': 'classifier', 'session_deck_name': 'Incremento Session'})]
+    assert '20 / 500' in labels['_expected_counts_lbl']
+    assert 'Limited by current availability' in labels['_expected_counts_lbl']
+    assert [items[(0, col)] for col in range(1, 5)] == ['0', '7', '13', '20']
+    assert items[(1, 4)] == '20'
+    assert dialog._count_spin.value() == 500
+
+
+@pytest.mark.parametrize('selected_count', [0, 1, 500])
+def test_available_mix_renders_empty_single_and_full_sessions(monkeypatch, selected_count):
+    dialog, labels, items, _rows, requests, _starts = _availability_preview_dialog(monkeypatch)
+    dialog._refresh_available_mix()
+    ids = list(range(selected_count))
+    requests[0]['success'](_preview_response(ids, {cid: {'card_type': 'items'} for cid in ids}))
+
+    assert f'{selected_count} / 500' in labels['_expected_counts_lbl']
+    assert ('Limited by current availability' in labels['_expected_counts_lbl']) == (selected_count < 500)
+    assert [items[(0, col)] for col in range(1, 5)] == ['0', '0', str(selected_count), str(selected_count)]
+
+
+def test_available_heatmap_keeps_document_items_out_of_document_topic_column(monkeypatch):
+    dialog, _labels, items, *_rest = _availability_preview_dialog(monkeypatch)
+    picked_meta = {
+        1: {'card_type': 'pdf', 'tag': 'blockchain'},
+        2: {'card_type': 'epub', 'tag': 'blockchain'},
+        3: {'card_type': 'pdf', 'study_kind': 'items', 'tag': 'blockchain'},
+        4: {'card_type': 'epub', 'study_kind': 'items'},
+        5: {'card_type': 'youtube'},
+        6: {'card_type': 'topics'},
+    }
+    dialog._update_tag_content_heatmap(list(picked_meta), picked_meta)
+
+    assert [items[(0, col)] for col in range(1, 5)] == ['2', '2', '2', '6']
+    assert [items[(1, col)] for col in range(1, 5)] == ['2', '0', '1', '3']
+    assert [items[(2, col)] for col in range(1, 5)] == ['0', '2', '1', '3']
+
+
+def test_available_mix_discards_old_results_and_coalesces_changes_during_selection(monkeypatch):
+    dialog, labels, items, _rows, requests, timer_starts = _availability_preview_dialog(monkeypatch)
+    dialog._schedule_live_preview_refresh()
+    dialog._refresh_available_mix()
+    dialog._schedule_live_preview_refresh()
+    dialog._schedule_live_preview_refresh()
+    dialog._refresh_available_mix()
+    assert len(requests) == 1
+    requests[0]['success'](_preview_response([1], {1: {'card_type': 'items'}}))
+    assert labels['_expected_counts_lbl'] == '…'
+    assert not items
+    assert len(timer_starts) == 4  # Three edits, then one replacement query.
+
+    dialog._refresh_available_mix()
+    assert len(requests) == 2
+    requests[1]['success'](_preview_response([2, 3], {cid: {'card_type': 'topics'} for cid in [2, 3]}))
+    assert '2 / 500' in labels['_expected_counts_lbl']
+    assert items[(0, 4)] == '2'
+
+
+@pytest.mark.parametrize('stale_reason', ['profile-switch', 'dialog-close'])
+@pytest.mark.parametrize('outcome', ['success', 'failure'])
+def test_available_mix_callbacks_are_harmless_after_profile_switch_or_close(monkeypatch, stale_reason, outcome):
+    dialog, labels, items, _rows, requests, _starts = _availability_preview_dialog(monkeypatch)
+    dialog._schedule_live_preview_refresh()
+    dialog._refresh_available_mix()
+    if stale_reason == 'profile-switch':
+        monkeypatch.setattr(_MOD, '_active_profile', lambda: 'AnotherProfile')
+    else:
+        dialog._stop_mix_preview()
+    if outcome == 'success':
+        requests[0]['success'](_preview_response([1], {1: {'card_type': 'topics'}}))
+    else:
+        requests[0]['failure'](RuntimeError('query failed'))
+
+    assert labels['_expected_counts_lbl'] == '…'
+    assert not items
+
+
+def test_failed_available_mix_does_not_present_target_as_available(monkeypatch):
+    dialog, labels, items, _rows, requests, _starts = _availability_preview_dialog(monkeypatch)
+    dialog._schedule_live_preview_refresh()
+    dialog._refresh_available_mix()
+    requests[0]['failure'](RuntimeError('query failed'))
+
+    assert labels['_expected_counts_lbl'] == 'Unavailable'
+    assert not items
+    assert not dialog._mix_preview_running
+
+
+@pytest.mark.parametrize('stale_reason', ['profile-switch', 'dialog-close', 'collection-replaced'])
+def test_queued_available_mix_drops_stale_work_before_reading_collection(monkeypatch, stale_reason):
+    dialog, _labels, _items, _rows, requests, _starts = _availability_preview_dialog(monkeypatch)
+    calls = []
+    def select(*args, **kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(selected_ids=[], picked_meta={})
+    monkeypatch.setattr(_MOD, 'select_session_cards', select)
+    dialog._refresh_available_mix()
+    if stale_reason == 'profile-switch':
+        monkeypatch.setattr(_MOD, '_active_profile', lambda: 'AnotherProfile')
+    elif stale_reason == 'dialog-close':
+        dialog._stop_mix_preview()
+    else:
+        monkeypatch.setattr(_MOD.mw, 'col', object())
+
+    requests[0]['op'](_MOD.mw.col)
+    assert not calls, 'A queued preview must not inspect a different or closed profile'
+
+
+def test_available_mix_uses_non_modal_collection_query(monkeypatch):
+    submitted = []
+
+    class Query:
+        def __init__(self, **kwargs):
+            submitted.append(kwargs)
+
+        def failure(self, callback):
+            submitted[-1]['failure'] = callback
+            return self
+
+        def run_in_background(self):
+            submitted[-1]['background'] = True
+
+    monkeypatch.setitem(sys.modules, 'aqt.operations', SimpleNamespace(QueryOp=Query))
+    callbacks = dict(parent=object(), op=object(), success=object(), failure=object())
+    _MOD._run_session_preview_query(**callbacks)
+    assert submitted == [{**callbacks, 'background': True}]
+
+
+def test_normal_start_reuses_current_preview_instead_of_drawing_a_new_sample(monkeypatch):
+    dialog, _labels, _items, _rows, _requests, _starts = _availability_preview_dialog(monkeypatch)
+    dialog._selection_signature = lambda: 'same-settings'
+    dialog._use_live_preview_enabled = False
+    result = SimpleNamespace(
+        selected_ids=[101, 102],
+        picked_meta={101: {'card_type': 'topics'}, 102: {'card_type': 'items'}},
+        stats=SimpleNamespace(session={'type': {'topics': 1, 'items': 1}}, session_time={}),
+        picker_snapshot=SimpleNamespace(selected_ids=[101, 102]),
+    )
+    dialog._cache_live_preview_result(result)
+
+    preview = dialog.get_preview_override()
+
+    assert preview is not None, 'Normal start must preserve the displayed sample too'
+    assert preview['selected_ids'] == [101, 102]
+    preview['selected_ids'].clear()
+    assert dialog.get_preview_override()['selected_ids'] == [101, 102]
 
 
 def test_session_debug_translates_enums_and_preserves_note_content(monkeypatch):
@@ -244,19 +511,21 @@ def test_preset_action_buttons_use_theme_aware_natural_widths():
     assert "setFixedWidth" not in profile_source
 
 
-def test_session_day_end_labels_are_resolved_lazily_through_i18n(monkeypatch):
+def test_session_uses_settings_cutoff_even_with_legacy_preset_widgets(monkeypatch):
     monkeypatch.setattr(
         _MOD,
-        "t",
-        lambda message_id, **_values: "Prilagođeno…"
-        if message_id == "common_custom"
-        else message_id,
+        "load_addon_config",
+        lambda *_args: {"day_end_time": "02:15", "dialog": {"day_end_time": "06:00"}},
     )
+    dialog = SimpleNamespace(_day_end_preset=SimpleNamespace(currentData=lambda: "06:00"))
 
-    presets = _MOD._day_end_presets()
+    assert SchedulerConfigDialog._get_day_end_time(dialog) == "02:15"
 
-    assert presets[-1] == (None, "Prilagođeno…")
-    assert presets[0][0] == "00:00"
+
+def test_session_presets_do_not_save_shared_cutoff():
+    dialog = _build_dialog_for_state_tests()
+
+    assert "day_end_time" not in dialog._build_current_dict()
 
 
 def test_session_dialog_help_and_confirmation_copy_use_shipped_locales():
@@ -566,7 +835,6 @@ def _build_dialog_for_state_tests():
     dialog._auto_refill_session_cb = _FakeCheckBox(True)
     dialog._allow_content_tag_fallback_cb = _FakeCheckBox(False)
     dialog._scope_combo = _FakeDataCombo([("Session", "session"), ("Daily", "daily")], current_data="daily")
-    dialog._day_end_preset = _FakeDataCombo([("04:00", "04:00"), ("Custom", None)], current_data="04:00")
     dialog._priority_order_cb = _FakeCheckBox(True)
     dialog._funnel = _FakeFunnel(order=["tags", "mode"], enabled={"tags": True, "mode": False})
     dialog._topics_filter_edit = _FakeLineEdit("deck:Science")
@@ -1358,9 +1626,6 @@ class TestSchedulerConfigDialogState:
         dialog._auto_refill_session_cb = _FakeCheckBox()
         dialog._allow_content_tag_fallback_cb = _FakeCheckBox()
         dialog._scope_combo = _FakeDataCombo([("Session", "session"), ("Daily", "daily")], current_data="session")
-        dialog._day_end_preset = _FakeDataCombo([("04:00", "04:00"), ("Custom", None)], current_data="04:00")
-        dialog._day_end_edit = SimpleNamespace(setTime=lambda _time: None)
-        dialog._update_day_end_visibility = lambda: None
         dialog._saved_priority_order_map = {}
         dialog._priority_order_cb = _FakeCheckBox()
         dialog._funnel = _FakeFunnel()

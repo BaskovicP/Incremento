@@ -26,6 +26,9 @@ msgstr "活动中心…"
 msgid "root_menu_add_content"
 msgstr "添加内容"
 
+msgid "root_menu_import_supermemo"
+msgstr "导入 SuperMemo 集合…"
+
 #. Menu or action: Add Audio
 msgid "root_menu_add_audio"
 msgstr "添加音频"
@@ -66,9 +69,9 @@ msgstr "清理孤立 PDF 文件…"
 msgid "root_menu_cleanup_orphan_videos"
 msgstr "清理孤立视频文件…"
 
-#. Menu or action: Clean Non-Active Profile Data…
+#. Menu or action: Clean Up Unused Incremento Data…
 msgid "root_menu_cleanup_profile_data"
-msgstr "清理非活动配置文件数据…"
+msgstr "清理未使用的 Incremento 数据…"
 
 #. Menu or action: Clean Up Stale Progress / Search Index / OCR Rows…
 msgid "root_menu_cleanup_stale_rows"
@@ -145,6 +148,10 @@ msgstr "重建 OCR 搜索缓存（从隐藏字段）"
 #. Menu or action: Reindex PDF Text (Existing Cards)
 msgid "root_menu_reindex_pdf_text"
 msgstr "重建 PDF 文本索引（现有卡片）"
+
+#. Menu or action: Rebuild PDF Context on Cards…
+msgid "root_menu_rebuild_pdf_card_contexts"
+msgstr "为卡片创建 PDF 截图预览…"
 
 #. Menu or action: Restore Full Backup…
 msgid "root_menu_restore_full_backup"
@@ -1099,21 +1106,21 @@ msgstr[0] "Incremento 设置已更新。已反转 {count} 项保存的优先级�
 msgid "root_cleanup_stale_failed"
 msgstr "无法清理过期的 Incremento 记录：\n{error}"
 
-#. Cleanup UI: Could not scan non-active profile artifacts:
+#. Cleanup UI: Could not scan unused Incremento data:
 msgid "root_cleanup_profile_scan_failed"
-msgstr "无法扫描非活动配置文件的资料：\n{error}"
+msgstr "无法扫描未使用的 Incremento 数据：\n{error}"
 
-#. Cleanup UI: No deletable cross-profile artifacts detected.
+#. Cleanup UI: No files or records can be safely cleaned.
 msgid "root_cleanup_profile_none"
-msgstr "未检测到可删除的跨配置文件资料。\n\n没有任何内容可以在不影响某个配置文件的情况下安全删除。"
+msgstr "没有可以安全清理的文件或记录。"
 
 #. Cleanup UI: Active profile: {profile}
 msgid "root_cleanup_active_profile"
 msgstr "活动配置文件：{profile}"
 
-#. Cleanup UI: The following data is not referenced by this profile and may belong to another profile (or be truly orphaned):
+#. Cleanup UI: The following unused Incremento files and stale records can be cleaned:
 msgid "root_cleanup_profile_explanation"
-msgstr "以下数据未被此配置文件引用，可能属于其他配置文件，也可能确实已成为孤立数据："
+msgstr "可以清理以下未使用的 Incremento 文件和过期记录："
 
 #. Cleanup UI: • PDF files: {count}
 msgid "root_cleanup_pdf_files"
@@ -1122,6 +1129,14 @@ msgstr "• PDF 文件：{count}"
 #. Cleanup UI: • Video files: {count}
 msgid "root_cleanup_video_files"
 msgstr "• 视频文件：{count}"
+
+#. Cleanup UI: • Unused PDF screenshots in Anki media: {count} ({size})
+msgid "root_cleanup_snapshot_files"
+msgstr "• Anki 媒体中未使用的 PDF 截图：{count}（{size}）"
+
+#. Cleanup UI: PDF screenshots move to Anki's media trash.
+msgid "root_cleanup_snapshot_trash_note"
+msgstr "PDF 截图会移至 Anki 媒体回收站。稍后清空回收站即可释放磁盘空间。"
 
 #. Cleanup UI: • Progress rows: {count} (PDF {pdf}, Video {video}, Web {web})
 msgid "root_cleanup_progress_rows"
@@ -1167,9 +1182,9 @@ msgstr "已跳过的视频（保留）："
 msgid "root_cleanup_file_profiles"
 msgstr "  - {filename}  （配置文件：{profiles}）"
 
-#. Cleanup UI: Delete these now?
+#. Cleanup UI: Clean up the items listed above?
 msgid "root_cleanup_delete_now"
-msgstr "现在删除这些内容吗？"
+msgstr "现在清理上述项目吗？"
 
 #. Cleanup UI: Rows: {error}
 msgid "root_cleanup_rows_error"
@@ -1282,3 +1297,52 @@ msgstr "导出保护隐私的 Incremento 支持包"
 #. Item reviewer action; the command remains incremento_item_skip.
 msgid "root_reviewer_skip"
 msgstr "跳过"
+
+#. Bulk PDF card-context maintenance UI.
+msgid "root_pdf_context_rebuild_confirm"
+msgstr "是否使用前后各 {rows} 行，为每个匹配引用创建带高亮的 PDF 截图？\n\n图片会添加到 Anki 媒体，笔记字段也会更新，两者都将同步到其他设备。您可以在 Anki 中撤销笔记更改。"
+
+msgid "root_pdf_context_rebuild_progress"
+msgstr "正在为卡片创建 PDF 截图预览…"
+
+msgid "root_pdf_context_rebuild_undo"
+msgstr "创建 PDF 卡片截图"
+
+msgid "root_pdf_context_rebuild_stale"
+msgstr "当前 Anki 配置文件已更改。未创建任何 PDF 截图。"
+
+msgid "root_pdf_context_rebuild_complete"
+msgstr "PDF 截图创建完成。\n\n候选笔记：{scanned}\n已更改笔记：{changed}\n已更新预览：{updated}\n已跳过预览：{skipped}"
+
+msgid "root_pdf_context_rebuild_failed"
+msgstr "无法创建 PDF 截图预览：\n{error}"
+
+msgid "root_pdf_context_source_preview"
+msgstr "源页面预览"
+
+msgid "root_menu_cleanup_pdf_snapshots"
+msgstr "清理未使用的 PDF 截图…"
+
+msgid "root_pdf_snapshot_cleanup_close_add"
+msgstr "清理 PDF 截图前请关闭添加卡片窗口，以免删除尚未保存的图片。"
+
+msgid "root_pdf_snapshot_cleanup_invalid_draft"
+msgstr "无法安全读取已保存的摘录草稿。清理已取消。"
+
+msgid "root_pdf_snapshot_cleanup_stale"
+msgstr "当前 Anki 配置已切换。未删除任何 PDF 截图。"
+
+msgid "root_pdf_snapshot_cleanup_none"
+msgstr "Anki 媒体中没有未使用的 Incremento PDF 截图。"
+
+msgid "root_pdf_snapshot_cleanup_more"
+msgstr "…以及另外 {count} 个文件"
+
+msgid "root_pdf_snapshot_cleanup_confirm"
+msgstr "将 {count} 张未使用的 Incremento PDF 截图（{size}）移至 Anki 媒体回收站吗？这些图片未被已保存的笔记或摘录草稿引用。\n\n{files}"
+
+msgid "root_pdf_snapshot_cleanup_complete"
+msgstr "已将 {count} 张 PDF 截图（{size}）移至 Anki 媒体回收站。"
+
+msgid "root_pdf_snapshot_cleanup_failed"
+msgstr "无法清理 PDF 截图：\n{error}"

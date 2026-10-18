@@ -1593,6 +1593,60 @@ msgstr "Osvježi"
 msgid "reader_video_add_card_here"
 msgstr "+ Dodaj karticu na ovom mjestu"
 
+msgid "reader_video_create_mobile_clip"
+msgstr "Izradi isječak za mobilne uređaje…"
+
+msgid "reader_video_clip_hint"
+msgstr "Izrađuje skraćeni H.264/AAC isječak u Anki mediju. Za udaljene videozapise preuzima se samo odabrani raspon."
+
+msgid "reader_video_clip_download_first"
+msgstr "Preuzmite lokalnu kopiju ovog videozapisa prije izrade isječka za mobilne uređaje."
+
+msgid "reader_video_clip_title"
+msgstr "Izradi mobilni videoisječak"
+
+msgid "reader_video_clip_intro"
+msgstr "Odaberite točan početak i kraj. Ako nema lokalne kopije, Incremento preuzima samo taj raspon. Isječak se dodaje u skicu Dodaj karticu."
+
+msgid "reader_video_clip_no_source"
+msgstr "Ova kartica nema lokalnu kopiju videozapisa ni podržanu YouTube ili Vimeo poveznicu."
+
+msgid "reader_video_clip_start"
+msgstr "Početak"
+
+msgid "reader_video_clip_end"
+msgstr "Kraj"
+
+msgid "reader_video_clip_source_duration"
+msgstr "Trajanje izvora: {duration}"
+
+msgid "reader_video_clip_invalid_time"
+msgstr "Unesite vrijeme poput 7:55 ili 1:02:03."
+
+msgid "reader_video_clip_invalid_range"
+msgstr "Odaberite završno vrijeme nakon početka, unutar videozapisa i najviše 10 minuta kasnije."
+
+msgid "reader_video_clip_local_missing"
+msgstr "Lokalna kopija videozapisa nedostaje. Preuzmite je ponovno i pokušajte još jednom."
+
+msgid "reader_video_clip_activity"
+msgstr "Izrada mobilnog videoisječka"
+
+msgid "reader_video_clip_encoding"
+msgstr "Kodiranje H.264/AAC isječka…"
+
+msgid "reader_video_clip_failed"
+msgstr "Nije moguće izraditi mobilni videoisječak.\n\n{error}"
+
+msgid "reader_video_clip_stale"
+msgstr "Videozapis ili Anki profil promijenio se prije dovršetka isječka pa je isječak odbačen."
+
+msgid "reader_video_clip_add_card_failed"
+msgstr "Isječak je izrađen, ali Incremento ga nije mogao dodati u skicu Dodaj karticu."
+
+msgid "reader_video_clip_ready"
+msgstr "Mobilni videoisječak dodan je u skicu Dodaj karticu."
+
 msgid "reader_video_bookmark_comment"
 msgstr "Komentar video oznake"
 
@@ -3342,6 +3396,15 @@ msgstr "Sadržaj PDF stranica je promijenjen ili odabrani izvornik nije isti dok
 msgid "reader_pdf_sync_protected"
 msgstr "Potpisani PDF-ovi, PDF-ovi zaštićeni lozinkom ili s ograničenim bilješkama ne mogu se sinkronizirati. Vaše Incremento bilješke ostaju spremljene."
 
+msgid "reader_pdf_sync_password"
+msgstr "Ovaj PDF zahtijeva lozinku i ne može se sinkronizirati dok se ne otključa. Vaše Incremento bilješke ostaju spremljene."
+
+msgid "reader_pdf_sync_signed"
+msgstr "Ovaj PDF označen je kao digitalno potpisan. Sinkronizacija bi ponovno zapisala datoteku i mogla poništiti valjanost potpisa. Vaše Incremento bilješke ostaju spremljene."
+
+msgid "reader_pdf_sync_restricted"
+msgstr "Dozvole ovog PDF-a zabranjuju promjene bilješki, pa je sinkronizacija bilješki blokirana. Vaše Incremento bilješke ostaju spremljene."
+
 msgid "reader_pdf_sync_file_changed"
 msgstr "PDF se promijenio tijekom sinkronizacije. Novije promjene su spremljene; pokušajte ponovno putem Sinkroniziraj sada."
 
@@ -3376,3 +3439,10 @@ msgstr "Više boja…"
 #. Annotation palette and hex color picker.
 msgid "reader_choose_annotation_color"
 msgstr "Odaberite boju bilješke"
+
+#. Saved card screenshot shown on desktop hover and mobile tap.
+msgid "reader_pdf_source_preview"
+msgstr "Pregled izvorne stranice"
+
+msgid "reader_pdf_citation_page_both"
+msgstr "{label} (PDF {page})"

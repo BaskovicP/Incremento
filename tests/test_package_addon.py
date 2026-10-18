@@ -38,6 +38,8 @@ def make_fake_repo(tmp_path: Path) -> Path:
     write_file(repo, "PLAN.md")
     write_file(repo, ".DS_Store")
     write_file(repo, "dist/old.zip")
+    write_file(repo, ".dependencies/webpage-browser/runtime.json", '{"local": true}')
+    write_file(repo, ".dependencies/webpage-browser/browsers/chrome-headless-shell")
 
     for relpath in (
         "backend/__init__.py",
@@ -51,8 +53,15 @@ def make_fake_repo(tmp_path: Path) -> Path:
         "backend/web_extract_anchors.py",
         "backend/network_safety.py",
         "backend/webpage_snapshot.py",
+        "backend/webpage_resources.py",
+        "backend/webpage_export.py",
+        "backend/webpage_browser.py",
         "backend/anki_compat.py",
         "backend/note_type_updates.py",
+        "backend/supermemo_format.py",
+        "backend/supermemo_import.py",
+        "backend/pdf_context_cards.py",
+        "backend/pdf_context_snapshot.py",
         "backend/search_indexer.py",
         "backend/search_repository.py",
         "backend/browser_bridge.py",
@@ -71,6 +80,7 @@ def make_fake_repo(tmp_path: Path) -> Path:
         "frontend/web_dock.py",
         "frontend/webpage_dialog.py",
         "frontend/stats_dialog.py",
+        "frontend/video_watch_meter.py",
         "frontend/src/App.jsx",
         "frontend/tests/ui.test.js",
         "frontend/node_modules/lib/index.js",
@@ -193,6 +203,9 @@ def test_package_addon_writes_root_ankiaddon_manifest_and_runtime_files(tmp_path
     assert "build_manifest.json" not in names
 
     required = {
+        "backend/webpage_resources.py",
+        "backend/webpage_export.py",
+        "backend/webpage_browser.py",
         "backend/db.py",
         "backend/db_connection.py",
         "backend/db_schema.py",
@@ -205,6 +218,10 @@ def test_package_addon_writes_root_ankiaddon_manifest_and_runtime_files(tmp_path
         "backend/webpage_snapshot.py",
         "backend/anki_compat.py",
         "backend/note_type_updates.py",
+        "backend/supermemo_format.py",
+        "backend/supermemo_import.py",
+        "backend/pdf_context_cards.py",
+        "backend/pdf_context_snapshot.py",
         "backend/search_indexer.py",
         "backend/search_repository.py",
         "backend/browser_bridge.py",
@@ -244,6 +261,8 @@ def test_package_addon_excludes_private_and_dev_artifacts_by_default(tmp_path: P
     names = archive_names(artifact)
 
     absent = {
+        ".dependencies/webpage-browser/runtime.json",
+        ".dependencies/webpage-browser/browsers/chrome-headless-shell",
         "meta.json",
         "user_files/TestProfile/incremento.db",
         "user_files/TestProfile/pdfs/private.pdf",

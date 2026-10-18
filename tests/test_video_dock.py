@@ -142,6 +142,256 @@ def test_do_video_add_card_uses_last_known_position_when_player_reports_zero(mon
     ]
 
 
+def test_fill_mobile_video_clip_card_stages_playable_media_in_extract_draft(monkeypatch):
+    fill_calls = []
+    pending_calls = []
+    staged_media = []
+    completion_calls = []
+
+    monkeypatch.setattr(video_dock, "_current_video_card_id", 321)
+    monkeypatch.setattr(
+        video_dock,
+        "mobile_video_clip_html",
+        lambda *args, **kwargs: '<video src="clip.mp4"></video>',
+        raising=False,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "add_card_dock",
+        types.SimpleNamespace(
+            fill_dock_field=lambda *args, **kwargs: (
+                fill_calls.append((args, dict(kwargs))),
+                kwargs["on_complete"](True),
+            )[-1],
+            register_pending_extract_media=lambda name, **kwargs: staged_media.append(
+                (name, dict(kwargs))
+            )
+            or True,
+            set_pending_extract_options=lambda **kwargs: pending_calls.append(dict(kwargs)),
+            source_relative_extract_priority_for_source=lambda source: 42.5,
+        ),
+    )
+
+    video_dock._fill_mobile_video_clip_card(
+        "incremento-video-clip-example.mp4",
+        start_sec=475,
+        end_sec=513,
+        source_title="Example",
+        on_complete=lambda success: completion_calls.append(success),
+    )
+
+    assert '<video src="clip.mp4"></video>' in fill_calls[0][0][1]
+    assert "incremento_open_video:321:475.0" in fill_calls[0][0][1]
+    assert fill_calls[0][1]["source_link_kind"] == "video"
+    assert pending_calls == [
+        {
+            "priority": 42.5,
+            "mark_topic": False,
+            "source": "video",
+            "source_card_id": 321,
+            "source_position": 475.0,
+        }
+    ]
+    assert staged_media == [
+        ("incremento-video-clip-example.mp4", {"source_card_id": 321})
+    ]
+    assert completion_calls == [True]
+
+
+def test_mobile_clip_can_start_from_remote_video_without_local_copy(monkeypatch):
+    messages = []
+    opened = []
+
+    class _Page:
+        def runJavaScript(self, _script, callback):
+            callback(475.0)
+
+    class _View:
+        def page(self):
+            return _Page()
+
+    monkeypatch.setattr(video_dock, "_current_video_card_id", 321)
+    monkeypatch.setattr(video_dock, "_current_local_relpath", "")
+    monkeypatch.setattr(
+        video_dock,
+        "_current_video_url",
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    )
+    monkeypatch.setattr(video_dock, "_video_dock", types.SimpleNamespace(_view=_View()))
+    monkeypatch.setattr(video_dock, "_using_local_qt_player", False)
+    monkeypatch.setattr(video_dock, "is_supported_video_url", lambda _url: True)
+    monkeypatch.setattr(
+        video_dock,
+        "_open_mobile_video_clip_dialog",
+        lambda position: opened.append(position),
+    )
+    monkeypatch.setattr(video_dock, "showInfo", lambda message: messages.append(message))
+    monkeypatch.setattr(video_dock, "_tr", lambda key, **_kwargs: key)
+
+    video_dock._create_mobile_video_clip()
+
+    assert opened == [475.0]
+    assert messages == []
+
+
+def test_remote_mobile_clip_download_is_used_when_local_copy_is_absent(
+    tmp_path, monkeypatch
+):
+    remote_calls = []
+    filled = []
+    activity = []
+    collection_changes = []
+
+    class _Future:
+        def __init__(self, value=None, error=None):
+            self._value = value
+            self._error = error
+
+        def result(self):
+            if self._error is not None:
+                raise self._error
+            return self._value
+
+    class _Taskman:
+        def run_in_background(self, task, done, **_kwargs):
+            try:
+                done(_Future(value=task()))
+            except Exception as exc:
+                done(_Future(error=exc))
+
+        def run_on_main(self, callback):
+            callback()
+
+    class _Progress:
+        def start(self, **_kwargs):
+            pass
+
+        def update(self, **_kwargs):
+            pass
+
+        def finish(self):
+            pass
+
+    class _CollectionOp:
+        def __init__(self, _parent, operation):
+            self._operation = operation
+            self._success = None
+            self._failure = None
+
+        def success(self, callback):
+            self._success = callback
+            return self
+
+        def failure(self, callback):
+            self._failure = callback
+            return self
+
+        def run_in_background(self):
+            try:
+                result = self._operation(object())
+            except Exception as exc:
+                self._failure(exc)
+            else:
+                self._success(result)
+                collection_changes.append(result.changes)
+
+    fake_mw = types.SimpleNamespace(taskman=_Taskman(), progress=_Progress())
+    monkeypatch.setattr(video_dock, "mw", fake_mw)
+    monkeypatch.setitem(
+        sys.modules,
+        "aqt.operations",
+        types.SimpleNamespace(CollectionOp=_CollectionOp),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "anki.collection",
+        types.SimpleNamespace(OpChanges=type("OpChanges", (), {})),
+    )
+    monkeypatch.setattr(video_dock, "_ADDON_DIR", str(tmp_path))
+    monkeypatch.setattr(video_dock, "_active_profile", lambda: "Profile")
+    monkeypatch.setattr(video_dock, "_current_video_card_id", 321)
+    monkeypatch.setattr(video_dock, "_current_local_relpath", "")
+    monkeypatch.setattr(
+        video_dock,
+        "_current_video_url",
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    )
+    monkeypatch.setattr(video_dock, "is_supported_video_url", lambda _url: True)
+    monkeypatch.setattr(
+        video_dock,
+        "_set_mobile_clip_button_enabled",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(video_dock, "start_activity", lambda *_args, **_kwargs: 7)
+    monkeypatch.setattr(
+        video_dock,
+        "update_activity",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        video_dock,
+        "finish_activity",
+        lambda *args, **kwargs: activity.append(("finished", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        video_dock,
+        "fail_activity",
+        lambda *args, **kwargs: activity.append(("failed", args, kwargs)),
+    )
+    monkeypatch.setattr(video_dock, "tooltip", lambda *_args: None)
+    monkeypatch.setattr(video_dock, "showInfo", lambda *_args: None)
+    monkeypatch.setattr(video_dock, "_tr", lambda key, **_kwargs: key)
+
+    def remote_clip(addon, profile, url, destination, start, end, **_kwargs):
+        remote_calls.append((addon, profile, url, start, end))
+        destination.write_bytes(b"clip")
+        return destination
+
+    monkeypatch.setattr(video_dock, "download_remote_mobile_video_clip", remote_clip)
+    monkeypatch.setattr(
+        video_dock,
+        "add_mobile_video_clip_to_anki_media",
+        lambda *_args, **_kwargs: "incremento-video-clip-example.mp4",
+    )
+    monkeypatch.setattr(
+        video_dock,
+        "_fill_mobile_video_clip_card",
+        lambda media_name, **kwargs: (
+            filled.append((media_name, dict(kwargs))),
+            kwargs["on_complete"](True),
+        ),
+    )
+
+    video_dock._render_mobile_video_clip_to_draft(475, 513, "Example")
+
+    assert remote_calls == [
+        (
+            str(tmp_path),
+            "Profile",
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            475,
+            513,
+        )
+    ]
+    assert filled[0][0] == "incremento-video-clip-example.mp4"
+    assert len(collection_changes) == 1
+    assert activity[0][0] == "finished"
+
+
+def test_remote_mobile_clip_context_rejects_changed_video_url(monkeypatch):
+    monkeypatch.setattr(video_dock, "_active_profile", lambda: "Profile")
+    monkeypatch.setattr(video_dock, "_current_video_card_id", 321)
+    monkeypatch.setattr(video_dock, "_current_local_relpath", "")
+    monkeypatch.setattr(video_dock, "_current_video_url", "https://youtu.be/changed")
+
+    assert not video_dock._mobile_clip_context_is_current(
+        "Profile",
+        321,
+        "",
+        "https://youtu.be/original",
+    )
+
+
 def test_on_video_question_shown_preserves_live_position_for_same_active_card(monkeypatch):
     shown = []
     fake_note = _FakeNote()
@@ -337,6 +587,42 @@ def test_position_lock_seeks_back_when_remote_player_reports_zero(monkeypatch):
 
     assert seek_calls == [84.0]
     assert seek_ui_calls == [(84.0, None)]
+
+
+def test_video_status_counts_only_current_card_playback_and_flushes_on_save(monkeypatch):
+    observed, flushed = [], []
+    meter = types.SimpleNamespace(
+        observe=lambda *args, **kwargs: observed.append((args, kwargs)),
+        flush=lambda: flushed.append(True),
+    )
+    monkeypatch.setattr(video_dock, "_watch_meter", meter, raising=False)
+    monkeypatch.setattr(video_dock, "_watch_profile", "Synthetic", raising=False)
+    monkeypatch.setattr(video_dock, "_watch_day_end_time", "04:00", raising=False)
+    monkeypatch.setattr(video_dock, "_effective_date", lambda _cutoff: "2026-10-14", raising=False)
+    monkeypatch.setattr(video_dock, "_video_dock", object())
+    monkeypatch.setattr(video_dock, "_current_video_card_id", 321)
+    monkeypatch.setattr(video_dock, "_position_lock_card_id", None)
+    monkeypatch.setattr(video_dock, "_current_local_relpath", "")
+    monkeypatch.setattr(video_dock, "_remote_resume_target", 0.0)
+    monkeypatch.setattr(video_dock, "_using_local_qt_player", False)
+    monkeypatch.setattr(video_dock, "_browser_sync_pending", False)
+    monkeypatch.setattr(video_dock, "_video_tick_count", 0)
+    monkeypatch.setattr(video_dock, "_last_known_position", 0.0)
+    monkeypatch.setattr(video_dock, "_set_seek_ui", lambda *_args: None)
+    monkeypatch.setattr(video_dock, "set_video_position", lambda *_args: None)
+
+    status = {"currentTime": 12.0, "hasVideo": True, "paused": False}
+    video_dock._on_video_time(status, expected_card_id=999)
+    assert observed == []
+    video_dock._on_video_time(status, expected_card_id=321, expected_profile="Old")
+    assert observed == []
+    video_dock._on_video_time(status, expected_card_id=321, expected_dock=object())
+    assert observed == []
+    video_dock._on_video_time(status, expected_card_id=321)
+    assert observed[0][0][:4] == ("Synthetic", 321, "2026-10-14", 12.0)
+    assert observed[0][1] == {"paused": False, "has_video": True}
+    video_dock._persist_position_now()
+    assert flushed == [True]
 
 
 def test_recent_video_extract_child_does_not_clear_source_video(monkeypatch):
@@ -595,6 +881,26 @@ def test_video_extract_records_position_for_each_created_child(monkeypatch):
         701: 40.0,
         702: 84.0,
     }
+
+
+def test_mobile_video_clip_records_its_start_for_created_child(monkeypatch):
+    monkeypatch.setattr(video_dock, "_recent_video_extract_source_card_id", 321)
+    monkeypatch.setattr(video_dock, "_recent_video_extract_child_card_ids", set())
+    monkeypatch.setattr(video_dock, "_recent_video_extract_child_positions", {})
+    monkeypatch.setattr(
+        video_dock,
+        "_arm_video_extract_position_protection",
+        lambda *_args, **_kwargs: 513.0,
+    )
+    monkeypatch.setattr(
+        video_dock,
+        "_schedule_video_extract_position_restores",
+        lambda *_args, **_kwargs: None,
+    )
+
+    video_dock.on_video_extract_note_added(321, [702], source_position=475.0)
+
+    assert video_dock._recent_video_extract_child_positions == {702: 475.0}
 
 
 def test_profile_switch_clears_recent_video_extract_links(monkeypatch):

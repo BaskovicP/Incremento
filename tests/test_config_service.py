@@ -2,6 +2,70 @@ import config_service
 import pytest
 
 
+@pytest.mark.parametrize("raw, expected", [
+    ({}, True),
+    ({"pdf_show_highlight_delete_buttons": False}, False),
+    ({"pdf_show_highlight_delete_buttons": "off"}, False),
+    ({"pdf_show_highlight_delete_buttons": "invalid"}, True),
+])
+def test_pdf_highlight_delete_button_setting_normalizes_without_touching_other_keys(raw, expected):
+    config = {**raw, "future": {"keep": True}}
+    normalized = config_service.normalize_config(config)
+    assert normalized.get("pdf_show_highlight_delete_buttons", True) is expected
+    assert normalized["future"] == {"keep": True}
+    assert config_service.normalize_config(normalized) == normalized
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ({}, "04:00"),
+    ({"dialog": {"day_end_time": "05:30"}}, "05:30"),
+    ({"day_end_time": None, "dialog": {"day_end_time": "05:30"}}, "05:30"),
+    ({"day_end_time": "00:00", "dialog": {"day_end_time": "05:30"}}, "00:00"),
+    ({"day_end_time": " 23:59 "}, "23:59"),
+    ({"day_end_time": "24:00"}, "04:00"),
+    ({"day_end_time": []}, "04:00"),
+    ({"dialog": {"day_end_time": "bad"}}, "04:00"),
+])
+def test_shared_day_cutoff_migrates_legacy_dialog_and_prefers_settings(raw, expected):
+    from copy import deepcopy
+
+    original = deepcopy(raw)
+    normalized = config_service.normalize_config(raw)
+
+    assert normalized["day_end_time"] == expected
+    assert config_service.normalize_config(normalized) == normalized
+    assert raw == original
+
+
+def test_shipped_defaults_preserve_legacy_cutoff_when_anki_merges_user_config():
+    import json
+    from pathlib import Path
+
+    merged = json.loads((Path(__file__).resolve().parents[1] / "config.json").read_text())
+    merged.update({"dialog": {"day_end_time": "02:45"}})
+
+    assert config_service.normalize_config(merged)["day_end_time"] == "02:45"
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ({}, (False, 5, "learning_leech")),
+    ({"learning_leech_enabled": "yes", "learning_leech_threshold": "8",
+      "learning_leech_tag": " needs::rewrite "}, (True, 8, "needs::rewrite")),
+    ({"learning_leech_threshold": 0, "learning_leech_tag": "two tags"}, (False, 1, "learning_leech")),
+    ({"learning_leech_threshold": 10000, "learning_leech_tag": "::"}, (False, 9999, "learning_leech")),
+    ({"learning_leech_threshold": "bad", "learning_leech_tag": []}, (False, 5, "learning_leech")),
+])
+def test_learning_leech_settings_are_bounded_and_keep_other_config(raw, expected):
+    original = {**raw, "future": {"keep": True}}
+    normalized = config_service.normalize_config(original)
+    assert tuple(normalized[key] for key in (
+        "learning_leech_enabled", "learning_leech_threshold", "learning_leech_tag",
+    )) == expected
+    assert normalized["future"] == {"keep": True}
+    assert original == {**raw, "future": {"keep": True}}
+    assert config_service.normalize_config(normalized) == normalized
+
+
 def test_legacy_document_mix_migrates_current_state_and_presets_once_without_mutating_input():
     from copy import deepcopy
     raw = {
@@ -127,6 +191,54 @@ def test_pdf_snapshot_field_preferences_default_to_asking_each_time():
 
     assert normalized["pdf_snapshot_auto_field_enabled"] is False
     assert normalized["pdf_snapshot_auto_fields"] == {}
+
+
+@pytest.mark.parametrize("raw, expected", [("yes", True), ("off", False)])
+def test_pdf_link_hover_preview_preference_is_normalized(raw, expected):
+    normalized = config_service.normalize_config(
+        {"pdf_link_hover_preview_enabled": raw}
+    )
+
+    assert normalized["pdf_link_hover_preview_enabled"] is expected
+
+
+def test_retired_deck_browser_chart_flag_is_not_a_default_but_legacy_value_survives():
+    import json
+    from pathlib import Path
+
+    shipped = json.loads((Path(__file__).resolve().parents[1] / "config.json").read_text())
+    assert "show_deck_browser_tag_charts" not in shipped
+    assert "show_deck_browser_tag_charts" not in config_service.normalize_config({})
+    legacy = config_service.normalize_config({"show_deck_browser_tag_charts": False})
+    assert legacy["show_deck_browser_tag_charts"] is False
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [(None, 5), ("9", 9), (-4, 1), (999, 20), ("invalid", 5)],
+)
+def test_pdf_context_rows_are_bounded(raw, expected):
+    config = {} if raw is None else {"pdf_context_rows": raw}
+
+    assert config_service.configured_pdf_context_rows(config) == expected
+    if raw is not None:
+        assert config_service.normalize_config(config)["pdf_context_rows"] == expected
+
+
+@pytest.mark.parametrize("raw, expected", [
+    (None, "printed"), ("printed", "printed"), ("pdf", "pdf"),
+    ("both", "both"), (" PDF ", "pdf"), ("unknown", "printed"),
+    (False, "printed"), ({}, "printed"),
+])
+def test_pdf_citation_numbering_defaults_to_printed_and_accepts_pdf_or_both(raw, expected):
+    config = {"pdf_citation_page_numbering": raw, "future_key": {"keep": True}}
+
+    normalized = config_service.normalize_config(config)
+
+    assert normalized["pdf_citation_page_numbering"] == expected
+    assert config_service.configured_pdf_citation_page_numbering(config) == expected
+    assert normalized["future_key"] == {"keep": True}
+    assert config["pdf_citation_page_numbering"] == raw
 
 
 @pytest.mark.parametrize("raw, expected", [

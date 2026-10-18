@@ -13,10 +13,16 @@ import {
   MAX_BROWSER_CAPTURE_SCREENSHOT_BYTES,
   MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS,
   MAX_BROWSER_CAPTURE_SNAPSHOTS,
+  buildBrowserCapturePayload,
+  normalizeFieldMappings,
+  normalizeBrowserCaptureSettings,
+  updateMappingsForNoteType,
   normalizeBrowserCaptureSelectedText,
   validateBrowserCapturePayload,
   validateBrowserCaptureScreenshotDataUrl,
 } from "../shared/browserCaptureModel.js";
+import { readCaptureSelection } from "../shared/captureSelection.js";
+import { capturePreviewDocument, captureResultKind } from "../shared/captureReview.js";
 import { readPageContextFromTab } from "../shared/pageContext.js";
 import {
   applyTagSuggestion,
@@ -25,9 +31,12 @@ import {
 } from "../shared/tagAutocomplete.js";
 import { formatNumber, initializeLanguage, subscribeLanguage, t, tn, watchLanguageStorage } from "../shared/i18n.js";
 import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
+import { focusCaptureSubmitButton, handleCaptureSubmitKey } from "../shared/captureFormKeyboard.js";
+import { snapshotPageShortcutFallback } from "../shared/snapshotCapture.js";
+import { dismissPageToast, showPageToast } from "./toast.js";
 
 (() => {
-  const CONTENT_SCRIPT_VERSION = "browser-capture-v10";
+  const CONTENT_SCRIPT_VERSION = "browser-capture-v13";
   const BROWSER_CAPTURE_ROOT_ID = "incremento-browser-capture-root";
   const scriptState = (
     window.__incrementoContentScriptState
@@ -45,8 +54,6 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
 
   const BROWSER_CAPTURE_SETTINGS_KEY = "incremento_browser_capture_settings";
   const DEFAULT_PRIORITY = 50;
-  const PRIORITY_MIN = 0;
-  const PRIORITY_MAX = 100;
   let linkSaveSettings = DEFAULT_LINK_SAVE_SETTINGS;
   let lastContextLinkInfo = null;
   let lastSavedBrowserMediaReference = null;
@@ -68,138 +75,36 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
     return String(globalThis.__incrementoLastSelectedText || "").trim();
   }
 
-  function clampPriority(value) {
-    const numeric = Number(value);
-    if (!Number.isFinite(numeric)) {
-      return DEFAULT_PRIORITY;
+  function rememberSelection() {
+    if (isBrowserCaptureOpen()) return;
+    const selection = window.getSelection?.();
+    const text = String(selection?.toString() || "").trim();
+    if (!text) return;
+    globalThis.__incrementoLastSelectedText = text;
+    try {
+      const captured = readCaptureSelection(selection);
+      globalThis.__incrementoLastSelection = { ...captured, url: window.location.href };
+      globalThis.__incrementoSelectionError = "";
+    } catch (error) {
+      globalThis.__incrementoLastSelection = null;
+      globalThis.__incrementoSelectionError = error.message;
     }
-    return Math.min(PRIORITY_MAX, Math.max(PRIORITY_MIN, Number(numeric.toFixed(4))));
   }
 
-  function parseTags(rawValue) {
-    return Array.from(
-      new Set(
-        String(rawValue || "")
-          .replaceAll(",", " ")
-          .split(/\s+/)
-          .map((tag) => tag.trim())
-          .filter(Boolean)
-      )
-    );
-  }
-
-  function normalizeFieldMappings(rawMappings, fields) {
-    const fieldNames = Array.isArray(fields) ? fields.filter(Boolean) : [];
-    const firstField = fieldNames[0] || "";
-    const pick = (value) => {
-      if (value === "") {
-        return "";
-      }
-      if (fieldNames.includes(value)) {
-        return value;
-      }
-      return firstField;
-    };
-    return {
-      titleField: pick(String(rawMappings?.titleField || "")),
-      selectedTextField: pick(String(rawMappings?.selectedTextField || "")),
-      urlField: pick(String(rawMappings?.urlField || "")),
-      snapshotField: pick(String(rawMappings?.snapshotField || "")),
-    };
-  }
-
-  function normalizeBrowserCaptureSettings(rawSettings, meta) {
-    const noteTypes = Array.isArray(meta?.noteTypes) ? meta.noteTypes : [];
-    const deckNames = Array.isArray(meta?.deckNames) ? meta.deckNames.filter(Boolean) : [];
-    const preferredNoteType = String(rawSettings?.noteTypeName || "");
-    const noteType = noteTypes.find((item) => item?.name === preferredNoteType) || noteTypes[0] || null;
-    const noteTypeName = noteType?.name || "";
-    const fields = Array.isArray(noteType?.fields) ? noteType.fields : [];
-    const mappingsByNoteType = rawSettings?.mappingsByNoteType && typeof rawSettings.mappingsByNoteType === "object"
-      ? rawSettings.mappingsByNoteType
-      : {};
-    const fieldMappings = normalizeFieldMappings(mappingsByNoteType[noteTypeName], fields);
-    const preferredDeck = String(rawSettings?.deckName || "");
-    const deckName = deckNames.includes(preferredDeck) ? preferredDeck : (deckNames[0] || "Default");
-    return {
-      noteTypeName,
-      deckName,
-      priority: clampPriority(rawSettings?.priority),
-      tagsText: String(rawSettings?.tagsText || ""),
-      fieldMappings,
-      mappingsByNoteType,
-    };
-  }
-
-  function updateMappingsForNoteType(settings, noteTypeName, fieldMappings) {
-    return {
-      ...settings,
-      noteTypeName,
-      fieldMappings: { ...fieldMappings },
-      mappingsByNoteType: {
-        ...(settings?.mappingsByNoteType || {}),
-        [noteTypeName]: { ...fieldMappings },
-      },
-    };
-  }
-
-  function buildBrowserCapturePayload(context, formState) {
-    return {
-      url: String(context?.url || "").trim(),
-      title: String(context?.title || "").trim() || String(context?.url || "").trim() || "Untitled",
-      selectedText: String(context?.selectedText || "").trim(),
-      noteTypeName: String(formState?.noteTypeName || "").trim(),
-      deckName: String(formState?.deckName || "").trim(),
-      tags: parseTags(formState?.tagsText),
-      priority: clampPriority(formState?.priority),
-      fieldMappings: {
-        titleField: String(formState?.fieldMappings?.titleField || "").trim(),
-        selectedTextField: String(formState?.fieldMappings?.selectedTextField || "").trim(),
-        urlField: String(formState?.fieldMappings?.urlField || "").trim(),
-        snapshotField: String(formState?.fieldMappings?.snapshotField || "").trim(),
-      },
-      snapshots: Array.isArray(context?.snapshots)
-        ? context.snapshots.map((snapshot, index) => ({
-          mimeType: "image/png",
-          filename: String(snapshot?.filename || `browser-capture-${index + 1}.png`),
-          base64: String(snapshot?.base64 || "").trim(),
-        })).filter((snapshot) => snapshot.base64)
-        : [],
-    };
-  }
-
-  function showToast(text) {
-    const existing = document.getElementById("incremento-video-time-toast");
-    if (existing) {
-      existing.remove();
+  function selectionContext(selectedText) {
+    const previous = globalThis.__incrementoLastSelection;
+    if (globalThis.__incrementoSelectionError && !previous) {
+      throw new Error(t("selected_text_too_large", {count: MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS}));
     }
-    const toast = document.createElement("div");
-    toast.id = "incremento-video-time-toast";
-    toast.textContent = String(text || "");
-    Object.assign(toast.style, {
-      position: "fixed",
-      zIndex: 2147483647,
-      top: "10px",
-      right: "10px",
-      maxWidth: "320px",
-      padding: "10px 14px",
-      background: "rgba(0, 0, 0, 0.86)",
-      color: "#fff",
-      fontSize: "13px",
-      fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      borderRadius: "6px",
-      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.4)",
-      opacity: "0",
-      transition: "opacity 0.2s ease",
-    });
-    document.documentElement.appendChild(toast);
-    requestAnimationFrame(() => {
-      toast.style.opacity = "1";
-    });
-    setTimeout(() => {
-      toast.style.opacity = "0";
-      setTimeout(() => toast.remove(), 220);
-    }, 2400);
+    return {
+      originalSelectedText: selectedText,
+      selectedHtml: previous?.selectedText === selectedText && previous?.url === window.location.href
+        ? previous.selectedHtml : "",
+    };
+  }
+
+  function showToast(text, options = {}) {
+    return showPageToast(text, {...options, request: runtimeRequest});
   }
 
   async function loadLinkSaveSettings() {
@@ -521,7 +426,7 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
         return false;
       }
       if (msg.type === "SHOW_TOAST") {
-        showToast(msg.text || "");
+        showToast(msg.text || "", {action: msg.action});
         sendResponse?.({ ok: true });
         return false;
       }
@@ -555,6 +460,7 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
           {
             includeHtml: msg.includeHtml !== false,
             htmlScope: msg.htmlScope,
+            preserveStyles: msg.preserveStyles === true,
           },
         );
         if (!context.ok) {
@@ -648,7 +554,9 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
   async function captureVisibleTabPng() {
     const response = await runtimeRequest({ type: "CAPTURE_VISIBLE_TAB" });
     if (!response?.ok || !response?.dataUrl) {
-      throw new Error(String(response?.error || t("failed_capture_tab")));
+      const error = new Error(String(response?.error || t("failed_capture_tab")));
+      error.code = response?.errorCode || "";
+      throw error;
     }
     return response.dataUrl;
   }
@@ -673,6 +581,7 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
           priority: Number(settings?.priority ?? DEFAULT_PRIORITY),
           tagsText: String(settings?.tagsText || ""),
           mappingsByNoteType: settings?.mappingsByNoteType || {},
+          linkToPassage: settings?.linkToPassage !== false,
         },
       });
     } catch (_err) {
@@ -697,6 +606,7 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
         url: window.location.href || "",
         title: document.title || "",
         selectedText: normalizeBrowserCaptureSelectedText("snapshot", selectedText, getTrackedSelectionText()),
+        profileToken: meta.profileToken || "",
       },
       snapshots: Array.isArray(snapshots) ? snapshots : [],
       statusKind: "",
@@ -725,6 +635,7 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
       );
     }
     const result = await submitBrowserCapture(payload);
+    if (captureResultKind(result) === "duplicate") throw new Error(t("capture_duplicate_found"));
     await saveBrowserCaptureSettings(state.form);
     return result;
   }
@@ -762,6 +673,13 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
       event.preventDefault();
       event.stopPropagation();
       closeBrowserCaptureUi();
+      return;
+    }
+    if (event.type === "keydown" && handleCaptureSubmitKey(event, {
+      form: browserCaptureUi.form,
+      submitting: browserCaptureState?.submitting,
+    })) {
+      event.stopPropagation();
       return;
     }
     event.stopPropagation();
@@ -1074,6 +992,7 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
   function clearShell() {
     const ui = ensureBrowserCaptureUiRoot();
     ui.handleTagAutocompleteKeyDown = null;
+    ui.form = null;
     ui.shell.textContent = "";
   }
 
@@ -1276,6 +1195,9 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
 
     const panel = document.createElement("section");
     panel.className = "panel";
+    panel.setAttribute("role", "dialog");
+    panel.setAttribute("aria-modal", "true");
+    panel.setAttribute("aria-labelledby", "incremento-capture-title");
     shell.appendChild(panel);
 
     const eyebrow = document.createElement("p");
@@ -1284,6 +1206,7 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
     panel.appendChild(eyebrow);
 
     const title = document.createElement("h2");
+    title.id = "incremento-capture-title";
     title.textContent = t("send_capture_anki");
     panel.appendChild(title);
 
@@ -1296,6 +1219,7 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
 
     const form = document.createElement("form");
     form.noValidate = true;
+    ui.form = form;
     const grid = document.createElement("div");
     grid.className = "grid";
     form.appendChild(grid);
@@ -1305,6 +1229,11 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
       field.className = `field${full ? " full" : ""}`;
       const label = document.createElement("label");
       label.textContent = labelText;
+      const labelledControl = control.matches("input,textarea,select,button")
+        ? control : (control.querySelector("input,textarea,select,button") || control);
+      const controlId = labelledControl.id || `incremento-capture-field-${grid.children.length}`;
+      labelledControl.id = controlId;
+      label.htmlFor = controlId;
       field.appendChild(label);
       field.appendChild(control);
       if (noteText) {
@@ -1376,6 +1305,7 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
     prioritySlider.value = String(state.form.priority ?? DEFAULT_PRIORITY);
     const priorityValue = document.createElement("input");
     priorityValue.type = "number";
+    priorityValue.setAttribute("aria-label", t("priority"));
     priorityValue.min = "0";
     priorityValue.max = "100";
     priorityValue.step = "0.1";
@@ -1462,6 +1392,20 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
       state.snapshots.length > 0 ? tn("snapshots_selected", state.snapshots.length) : t("no_snapshots")
     ));
 
+    const pageTitleInput = document.createElement("input");
+    pageTitleInput.type = "text";
+    pageTitleInput.maxLength = 1000;
+    pageTitleInput.value = state.context.title;
+    pageTitleInput.addEventListener("input", () => {state.context.title = pageTitleInput.value;});
+    grid.appendChild(createField(t("capture_edit_title"), pageTitleInput, true));
+
+    const passageToggle = document.createElement("input");
+    passageToggle.type = "checkbox";
+    passageToggle.checked = state.form.linkToPassage !== false;
+    passageToggle.style.width = "auto";
+    passageToggle.addEventListener("change", () => {state.form.linkToPassage = passageToggle.checked;});
+    grid.appendChild(createField(t("capture_link_passage"), passageToggle, true, t("capture_passage_hint")));
+
     const selectedTextInput = document.createElement("textarea");
     selectedTextInput.value = state.context.selectedText;
     selectedTextInput.placeholder = state.mode === "snapshot"
@@ -1487,7 +1431,73 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
       grid.appendChild(snapshotWrap);
     }
 
+    const previewContainer = document.createElement("section");
+    previewContainer.dataset.capturePreview = "true";
+    previewContainer.tabIndex = -1;
+    previewContainer.setAttribute("aria-label", t("capture_field_preview"));
+    previewContainer.hidden = !state.preview;
+    if (state.preview) {
+      const heading = document.createElement("h3");
+      heading.textContent = t("capture_field_preview");
+      previewContainer.appendChild(heading);
+      const hint = document.createElement("p");
+      hint.className = "field-note";
+      hint.textContent = t(state.preview.uniqueTitle ? "capture_preview_unique_title" : "capture_preview_hint");
+      previewContainer.appendChild(hint);
+      const frame = document.createElement("iframe");
+      frame.title = t("capture_field_preview");
+      frame.setAttribute("sandbox", "");
+      frame.setAttribute("referrerpolicy", "no-referrer");
+      frame.srcdoc = capturePreviewDocument(state.preview.fields);
+      frame.style.cssText = "width:100%;height:300px;border:1px solid #d6cbb9;border-radius:12px;background:white";
+      previewContainer.appendChild(frame);
+      const source = document.createElement("a");
+      // Backend URL normalization is authoritative; fail closed in the page too.
+      try {
+        const url = new URL(state.preview.sourceLink);
+        if (!/^https?:$/.test(url.protocol) || url.username || url.password) throw new Error();
+        source.href = url.href;
+        source.target = "_blank";
+        source.rel = "noopener noreferrer";
+        source.textContent = t("capture_source_link", {title: state.preview.sourceTitle});
+        previewContainer.appendChild(source);
+      } catch (_error) { /* omit invalid source */ }
+    }
+    form.appendChild(previewContainer);
+
+    const duplicateContainer = document.createElement("div");
+    duplicateContainer.hidden = !state.duplicate;
+    duplicateContainer.setAttribute("role", "status");
+    const duplicateNotice = document.createElement("p");
+    duplicateNotice.textContent = t("capture_duplicate_found");
+    duplicateContainer.appendChild(duplicateNotice);
+    const openExisting = document.createElement("button");
+    openExisting.dataset.captureOpenExisting = "true";
+    openExisting.type = "button";
+    openExisting.className = "secondary-btn";
+    openExisting.textContent = t("capture_open_existing");
+    openExisting.addEventListener("click", () => void sendCapture("open_existing"));
+    duplicateContainer.appendChild(openExisting);
+    const createAnother = document.createElement("button");
+    createAnother.type = "button";
+    createAnother.className = "secondary-btn";
+    createAnother.textContent = t("capture_create_another");
+    createAnother.addEventListener("click", () => void sendCapture("create", true));
+    duplicateContainer.appendChild(createAnother);
+    form.appendChild(duplicateContainer);
+
+    const invalidateReview = () => {
+      state.preview = null;
+      state.duplicate = null;
+      previewContainer.hidden = true;
+      duplicateContainer.hidden = true;
+    };
+    form.addEventListener("input", invalidateReview);
+    form.addEventListener("change", invalidateReview);
+
     const status = document.createElement("p");
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
     status.className = `status${state.statusKind ? ` ${state.statusKind}` : ""}`;
     status.textContent = state.statusValidation
       ? captureValidationMessage(state.statusValidation)
@@ -1506,6 +1516,14 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
       actions.appendChild(addMoreButton);
     }
 
+    const previewButton = document.createElement("button");
+    previewButton.type = "button";
+    previewButton.className = "secondary-btn";
+    previewButton.textContent = t("capture_preview");
+    previewButton.disabled = !!state.submitting;
+    previewButton.addEventListener("click", () => void sendCapture("preview"));
+    actions.appendChild(previewButton);
+
     const cancelButton = document.createElement("button");
     cancelButton.type = "button";
     cancelButton.className = "secondary-btn";
@@ -1515,17 +1533,18 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
 
     const submitButton = document.createElement("button");
     submitButton.type = "submit";
+    submitButton.setAttribute("aria-keyshortcuts", "Enter");
     submitButton.className = "primary-btn";
     submitButton.textContent = state.submitting ? t("saving") : t("create_note");
     submitButton.disabled = !!state.submitting;
     actions.appendChild(submitButton);
 
     form.appendChild(actions);
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
+    async function sendCapture(action = "create", allowDuplicate = false) {
       if (state.submitting) {
         return;
       }
+      syncPriority(priorityValue.value);
       const payload = buildBrowserCapturePayload(
         {
           ...state.context,
@@ -1536,6 +1555,8 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
         },
         state.form
       );
+      payload.action = action;
+      payload.allowDuplicate = allowDuplicate;
       const validation = validateBrowserCapturePayload(payload);
       if (!validation.ok) {
         state.statusKind = "error";
@@ -1549,15 +1570,35 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
       state.submitting = true;
       state.statusKind = "";
       state.statusValidation = null;
-      state.statusCode = "creating_note";
-      state.statusText = t("creating_note");
+      state.statusCode = action === "preview" ? "capture_preview_loading"
+        : (action === "open_existing" ? "capture_opening_existing" : "creating_note");
+      state.statusText = t(state.statusCode);
       renderBrowserCaptureDialog();
       try {
         const result = await submitBrowserCapture(payload);
+        if (browserCaptureState !== state || !browserCaptureUi) return;
+        const resultKind = captureResultKind(result);
+        if (resultKind === "preview" || resultKind === "duplicate") {
+          state.submitting = false;
+          state.statusCode = "";
+          state.statusText = "";
+          state.preview = resultKind === "preview" ? result : null;
+          state.duplicate = resultKind === "preview" ? result.duplicate : result;
+          await renderBrowserCaptureDialog();
+          const reviewTarget = browserCaptureUi?.shadow.querySelector(
+            resultKind === "preview" ? "[data-capture-preview]" : "[data-capture-open-existing]"
+          );
+          reviewTarget?.focus();
+          return;
+        }
+        if (resultKind === "error") throw new Error(t("create_note_failed"));
         await saveBrowserCaptureSettings(state.form);
-        showToast(t("created_note", { type: result.noteTypeName, deck: result.deckName }));
+        if (browserCaptureState !== state || !browserCaptureUi) return;
+        showToast(resultKind === "opened" ? t("capture_existing_opened")
+          : t("created_note", { type: result.noteTypeName, deck: result.deckName }));
         closeBrowserCaptureUi();
       } catch (error) {
+        if (browserCaptureState !== state || !browserCaptureUi) return;
         state.submitting = false;
         state.statusKind = "error";
         state.statusValidation = null;
@@ -1565,9 +1606,18 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
         state.statusText = error?.message || t("create_note_failed");
         renderBrowserCaptureDialog();
       }
+    }
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      void sendCapture();
     });
+    if (state.submitting) {
+      for (const control of form.querySelectorAll("input,select,textarea,button")) control.disabled = true;
+      cancelButton.disabled = false;
+    }
 
     panel.appendChild(form);
+    focusCaptureSubmitButton(ui, submitButton);
   }
 
   function loadImage(dataUrl) {
@@ -1693,6 +1743,7 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
       throw new Error(t("too_many_snapshots", { count: MAX_BROWSER_CAPTURE_SNAPSHOTS }));
     }
     const ui = ensureBrowserCaptureUiRoot();
+    dismissPageToast();
     ui.shell.style.display = "none";
     try {
       await waitForNextPaint(2);
@@ -1717,8 +1768,6 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
         dataUrl: croppedDataUrl,
         base64: dataUrlToBase64(croppedDataUrl),
       };
-    } catch (error) {
-      throw new Error(error?.message || t("failed_capture_tab"));
     } finally {
       if (browserCaptureUi?.shell) {
         browserCaptureUi.shell.style.display = "";
@@ -1932,7 +1981,9 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
           const snapshot = await captureSnapshotRegion(normalized, snapshots);
           snapshots.push(snapshot);
         } catch (error) {
-          showToast(error?.message || t("failed_capture_tab"));
+          showToast(error?.message || t("failed_capture_tab"), {
+            action: error?.code === "snapshot_permission_required" ? "open_shortcut_settings" : "",
+          });
         }
       } else {
         rectToRemove.remove();
@@ -1954,6 +2005,8 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
   }
 
   async function openBrowserCaptureDialog({ mode, selectedText = "", snapshots = [] }) {
+    rememberSelection();
+    const captured = mode === "snapshot" ? {} : selectionContext(selectedText || getTrackedSelectionText());
     if (mode === "snapshot") {
       await loadSnapshotCaptureState(selectedText, snapshots);
     } else {
@@ -1973,6 +2026,8 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
           url: window.location.href || "",
           title: document.title || "",
           selectedText: normalizeBrowserCaptureSelectedText(mode, selectedText, getTrackedSelectionText()),
+          ...captured,
+          profileToken: meta.profileToken || "",
         },
         snapshots: Array.isArray(snapshots) ? snapshots : [],
         statusKind: "",
@@ -2015,7 +2070,11 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
     if (event.metaKey) {
       event.preventDefault();
       event.stopPropagation();
-      void startSnapshotCapture();
+      // Page keydown handlers cannot grant Chrome's activeTab permission.
+      // The commands API's registered shortcut owns keyboard snapshot capture.
+      void snapshotPageShortcutFallback(runtimeRequest, showToast).catch(() => {
+        showToast(t("snapshot_shortcut_unassigned"), {action: "open_shortcut_settings"});
+      });
       return;
     }
 
@@ -2076,26 +2135,9 @@ import { refreshTrackingBadgeLanguage } from "../shared/trackingBadge.js";
     );
   }, true);
 
-  document.addEventListener("selectionchange", () => {
-    const selectedText = String(window.getSelection?.().toString() || "").trim();
-    if (selectedText) {
-      globalThis.__incrementoLastSelectedText = selectedText;
-    }
-  }, true);
-
-  document.addEventListener("mouseup", () => {
-    const selectedText = String(window.getSelection?.().toString() || "").trim();
-    if (selectedText) {
-      globalThis.__incrementoLastSelectedText = selectedText;
-    }
-  }, true);
-
-  document.addEventListener("keyup", () => {
-    const selectedText = String(window.getSelection?.().toString() || "").trim();
-    if (selectedText) {
-      globalThis.__incrementoLastSelectedText = selectedText;
-    }
-  }, true);
+  document.addEventListener("selectionchange", rememberSelection, true);
+  document.addEventListener("mouseup", rememberSelection, true);
+  document.addEventListener("keyup", rememberSelection, true);
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && isBrowserCaptureOpen()) {

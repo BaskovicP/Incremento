@@ -117,6 +117,23 @@ def test_missing_note_type_is_created_only_when_explicit_feature_uses_it():
     ) == ()
 
 
+def test_missing_cloze_note_type_is_created_with_cloze_kind():
+    col = _Collection()
+    spec = ntu.NoteTypeSpec(
+        "Incremento Cloze Example",
+        ("Text", "Back Extra"),
+        "{{cloze:Text}}",
+        "{{cloze:Text}}{{Back Extra}}",
+        model_type=1,
+    )
+
+    ntu.ensure_note_type(col, spec)
+
+    model = col.models.by_name("Incremento Cloze Example")
+    assert model["type"] == 1
+    assert ntu.inspect_note_type(model, spec) == ()
+
+
 def test_detector_skips_absent_types_and_does_not_save(monkeypatch):
     stale = {
         "name": "Incremento Example",
@@ -208,5 +225,7 @@ def test_shipped_specs_do_not_require_internal_content_id_field():
         "Incremento Web",
         "Incremento Writing",
         "Incremento Local File",
+        "Incremento SuperMemo",
+        "Incremento SuperMemo Cloze",
     }
     assert all("Incremento_Content_ID" not in spec.fields for spec in specs)

@@ -121,6 +121,89 @@ class TestHasTesseract:
 
 
 # ---------------------------------------------------------------------------
+# ffmpeg_path / has_ffmpeg / installation
+# ---------------------------------------------------------------------------
+
+
+class TestFfmpegPath:
+    def test_returns_homebrew_binary_when_gui_path_does_not_include_it(self):
+        target = "/opt/homebrew/bin/ffmpeg"
+
+        with patch("shutil.which", return_value=None), \
+             patch("os.path.isfile", side_effect=lambda path: path == target), \
+             patch("os.access", side_effect=lambda path, _mode: path == target):
+            assert deps.ffmpeg_path() == target
+
+    def test_returns_none_when_no_executable_candidate_exists(self):
+        with patch("shutil.which", return_value=None), \
+             patch("os.path.isfile", return_value=False):
+            assert deps.ffmpeg_path() is None
+
+
+class TestHasFfmpeg:
+    def test_reflects_the_shared_binary_detector(self):
+        with patch("deps.ffmpeg_path", return_value="/usr/bin/ffmpeg"):
+            assert deps.has_ffmpeg() is True
+        with patch("deps.ffmpeg_path", return_value=None):
+            assert deps.has_ffmpeg() is False
+
+
+class TestInstallFfmpeg:
+    def test_macos_installer_uses_homebrew_without_a_shell(self):
+        with patch("deps._platform", return_value="Darwin"), \
+             patch("deps._executable_path", return_value="/opt/homebrew/bin/brew"):
+            assert deps.ffmpeg_install_command() == [
+                "/opt/homebrew/bin/brew", "install", "ffmpeg",
+            ]
+
+    def test_windows_installer_uses_exact_winget_package(self):
+        with patch("deps._platform", return_value="Windows"), \
+             patch("deps._executable_path", return_value=r"C:\Windows\winget.exe"):
+            assert deps.ffmpeg_install_command() == [
+                r"C:\Windows\winget.exe",
+                "install",
+                "--id",
+                "Gyan.FFmpeg",
+                "--exact",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+                "--silent",
+            ]
+
+    def test_linux_keeps_privileged_package_install_manual(self):
+        with patch("deps._platform", return_value="Linux"):
+            assert deps.ffmpeg_install_command() is None
+
+    def test_background_install_requires_both_success_exit_and_detected_binary(self):
+        mw = MagicMock()
+        deps.install_ffmpeg(mw)
+        task, _done = mw.taskman.run_in_background.call_args[0]
+        command = ["/opt/homebrew/bin/brew", "install", "ffmpeg"]
+        with patch("deps.ffmpeg_install_command", return_value=command), \
+             patch("deps.subprocess.run", return_value=SimpleNamespace(returncode=0)) as run, \
+             patch("deps.ffmpeg_path", return_value="/opt/homebrew/bin/ffmpeg"):
+            assert task() is True
+        assert run.call_args.args[0] == command
+        assert run.call_args.kwargs["timeout"] == 900
+        assert run.call_args.kwargs["capture_output"] is True
+
+        with patch("deps.ffmpeg_install_command", return_value=command), \
+             patch("deps.subprocess.run", return_value=SimpleNamespace(returncode=0)), \
+             patch("deps.ffmpeg_path", return_value=None):
+            assert task() is False
+
+    def test_completion_callback_fails_closed_on_background_exception(self):
+        mw = MagicMock()
+        results = []
+        deps.install_ffmpeg(mw, on_done=results.append)
+        _task, done = mw.taskman.run_in_background.call_args[0]
+        future = MagicMock()
+        future.result.side_effect = RuntimeError("package manager failed")
+        done(future)
+        assert results == [False]
+
+
+# ---------------------------------------------------------------------------
 # tesseract_instructions
 # ---------------------------------------------------------------------------
 
@@ -172,11 +255,13 @@ class TestTesseractInstructions:
 class TestStatus:
     def test_status_returns_dict_with_expected_keys(self):
         with patch("deps.has_pymupdf", return_value=True), \
-             patch("deps.has_tesseract", return_value=False):
+             patch("deps.has_tesseract", return_value=False), \
+             patch("deps.has_ffmpeg", return_value=True):
             result = deps.status()
-        assert set(result.keys()) == {"pymupdf", "tesseract"}
+        assert set(result.keys()) == {"pymupdf", "tesseract", "ffmpeg"}
         assert result["pymupdf"] is True
         assert result["tesseract"] is False
+        assert result["ffmpeg"] is True
 
 
 # ---------------------------------------------------------------------------

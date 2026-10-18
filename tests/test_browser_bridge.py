@@ -964,8 +964,9 @@ def test_sanitize_media_filename_truncates_long_stem_before_uuid_suffix():
     assert len(suffix) == 32
 
 
-def test_create_browser_capture_note_populates_mapped_fields(monkeypatch):
+def test_create_browser_capture_note_populates_mapped_fields(monkeypatch, tmp_path):
     image_b64 = base64.b64encode(b"\x89PNG\r\n\x1a\nfake").decode("ascii")
+    monkeypatch.setattr(browser_bridge, "_addon_dir", str(tmp_path))
     normalized = normalize_browser_capture_payload(
         {
             "type": "browser_capture",
@@ -1026,7 +1027,7 @@ def test_create_browser_capture_note_populates_mapped_fields(monkeypatch):
     priority_module.set_priority.side_effect = lambda addon_dir, profile, card_id, priority: priority_calls.append(
         (addon_dir, card_id, priority)
     )
-    monkeypatch.setattr("browser_bridge._addon_dir", "/tmp/incremento-test")
+    monkeypatch.setattr("browser_bridge._addon_dir", str(tmp_path))
     monkeypatch.setitem(sys.modules, "priority_manager", priority_module)
 
     result = _create_browser_capture_note_on_main(normalized)
@@ -1042,10 +1043,11 @@ def test_create_browser_capture_note_populates_mapped_fields(monkeypatch):
     assert note[INCREMENTO_SOURCE_TITLE_FIELD] == "Example"
     assert note[INCREMENTO_SOURCE_LINK_FIELD] == "https://example.com/article"
     assert note.tags == ["Incremento", "alpha"]
-    assert priority_calls == [("/tmp/incremento-test", 321, 12.5)]
+    assert priority_calls == [(str(tmp_path), 321, 12.5)]
 
 
-def test_create_browser_capture_note_can_insert_only_source_url(monkeypatch):
+def test_create_browser_capture_note_can_insert_only_source_url(monkeypatch, tmp_path):
+    monkeypatch.setattr(browser_bridge, "_addon_dir", str(tmp_path))
     normalized = normalize_browser_capture_payload(
         {
             "type": "browser_capture",
@@ -1089,16 +1091,17 @@ def test_create_browser_capture_note_can_insert_only_source_url(monkeypatch):
 
     priority_module = MagicMock()
     monkeypatch.setitem(sys.modules, "priority_manager", priority_module)
-    monkeypatch.setattr("browser_bridge._addon_dir", "/tmp/incremento-test")
+    monkeypatch.setattr("browser_bridge._addon_dir", str(tmp_path))
 
     result = _create_browser_capture_note_on_main(normalized)
 
     assert result["ok"] is True
-    assert note["Back"] == "https://example.com/article"
+    assert note["Back"] == '<a href="https://example.com/article" target="_blank" rel="noopener noreferrer">Example</a>'
     assert note[INCREMENTO_SOURCE_LINK_FIELD] == "https://example.com/article"
 
 
-def test_create_browser_capture_note_records_parent_and_syncs_tree(monkeypatch):
+def test_create_browser_capture_note_records_parent_and_syncs_tree(monkeypatch, tmp_path):
+    monkeypatch.setattr(browser_bridge, "_addon_dir", str(tmp_path))
     normalized = normalize_browser_capture_payload(
         {
             "type": "browser_capture",
@@ -1141,7 +1144,7 @@ def test_create_browser_capture_note_records_parent_and_syncs_tree(monkeypatch):
     fake_aqt.mw = mw
     monkeypatch.setitem(sys.modules, "aqt", fake_aqt)
     monkeypatch.setitem(sys.modules, "priority_manager", MagicMock())
-    monkeypatch.setattr("browser_bridge._addon_dir", "/tmp/incremento-test")
+    monkeypatch.setattr("browser_bridge._addon_dir", str(tmp_path))
 
     sync_calls = []
     monkeypatch.setattr(
@@ -1164,7 +1167,7 @@ def test_create_browser_capture_note_records_parent_and_syncs_tree(monkeypatch):
     assert result["knowledgeTree"] == {"linked_count": 2}
 
 
-def test_browser_capture_meta_hides_incremento_metadata_fields(monkeypatch):
+def test_browser_capture_meta_hides_incremento_metadata_fields(monkeypatch, tmp_path):
     col = MagicMock()
     col.models.all.return_value = [
         {
@@ -1192,7 +1195,8 @@ def test_browser_capture_meta_hides_incremento_metadata_fields(monkeypatch):
     assert result["tagNames"] == ["Spiritual", "spiritual::prayer"]
 
 
-def test_create_browser_capture_note_uses_unique_title_for_first_field(monkeypatch):
+def test_create_browser_capture_note_uses_unique_title_for_first_field(monkeypatch, tmp_path):
+    monkeypatch.setattr(browser_bridge, "_addon_dir", str(tmp_path))
     normalized = normalize_browser_capture_payload(
         {
             "type": "browser_capture",
@@ -1237,7 +1241,7 @@ def test_create_browser_capture_note_uses_unique_title_for_first_field(monkeypat
 
     priority_module = MagicMock()
     monkeypatch.setitem(sys.modules, "priority_manager", priority_module)
-    monkeypatch.setattr("browser_bridge._addon_dir", "/tmp/incremento-test")
+    monkeypatch.setattr("browser_bridge._addon_dir", str(tmp_path))
 
     result = _create_browser_capture_note_on_main(normalized)
 
@@ -1245,7 +1249,8 @@ def test_create_browser_capture_note_uses_unique_title_for_first_field(monkeypat
     assert note["Front"] == "Example [snapshot 20260405-120000-abcd1234]"
 
 
-def test_create_browser_capture_note_raises_clear_duplicate_error(monkeypatch):
+def test_create_browser_capture_note_raises_clear_duplicate_error(monkeypatch, tmp_path):
+    monkeypatch.setattr(browser_bridge, "_addon_dir", str(tmp_path))
     normalized = normalize_browser_capture_payload(
         {
             "type": "browser_capture",

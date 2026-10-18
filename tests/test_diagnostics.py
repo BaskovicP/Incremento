@@ -448,6 +448,36 @@ def test_shipped_config_keys_are_explicitly_known() -> None:
     assert set(shipped) <= diagnostics._KNOWN_CONFIG_KEYS
 
 
+def test_pdf_citation_numbering_exports_safe_choices() -> None:
+    for choice in ("printed", "pdf", "both"):
+        sanitized = diagnostics.sanitize_config({"pdf_citation_page_numbering": choice})
+        assert sanitized["settings"]["pdf_citation_page_numbering"] == choice
+        assert sanitized["redacted_unknown_setting_count"] == 0
+
+
+def test_pdf_citation_numbering_redacts_private_values() -> None:
+    for private in PRIVATE_VALUES:
+        sanitized = diagnostics.sanitize_config({"pdf_citation_page_numbering": private})
+        assert sanitized["settings"]["pdf_citation_page_numbering"]["redacted"] is True
+        assert private not in json.dumps(sanitized)
+
+
+def test_learning_leech_settings_export_behavior_and_redact_the_tag() -> None:
+    sanitized = diagnostics.sanitize_config({
+        "day_end_time": "05:30",
+        "learning_leech_enabled": True,
+        "learning_leech_threshold": 7,
+        "learning_leech_tag": "Private::Learning",
+    })
+
+    settings = sanitized["settings"]
+    assert settings["day_end_time"] == "05:30"
+    assert settings["learning_leech_enabled"] is True
+    assert settings["learning_leech_threshold"] == 7
+    assert settings["learning_leech_tag"]["redacted"] is True
+    assert "Private::Learning" not in json.dumps(sanitized)
+
+
 def test_automatic_backup_destinations_and_profile_names_are_redacted():
     sanitized = diagnostics.sanitize_config(
         {"automatic_backups": {

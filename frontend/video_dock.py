@@ -18,7 +18,10 @@ import mimetypes
 import os
 import re
 import secrets
+import shutil
+import tempfile
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from aqt import mw
@@ -51,6 +54,15 @@ except ImportError:
     from paths import get_active_profile as _active_profile  # type: ignore
 
 try:
+    from ..backend.scheduler_config import load_scheduler_config
+    from ..backend.statistics import _effective_date, record_video_watch
+    from .video_watch_meter import VideoWatchMeter
+except ImportError:
+    from backend.scheduler_config import load_scheduler_config
+    from backend.statistics import _effective_date, record_video_watch
+    from video_watch_meter import VideoWatchMeter
+
+try:
     from ..backend.activity_log import (
         fail_activity,
         finish_activity,
@@ -68,7 +80,9 @@ except ImportError:
 try:
     from ..backend.video_manager import (
         VIDEO_NOTE_TYPE,
+        add_mobile_video_clip_to_anki_media,
         build_remote_video_watch_url,
+        download_remote_mobile_video_clip,
         detect_video_provider,
         resolve_video_url_for_embed,
         is_supported_video_url,
@@ -82,6 +96,9 @@ try:
         load_subtitle_cues,
         ensure_video_note_type,
         local_video_abspath,
+        mobile_video_clip_html,
+        render_mobile_video_clip,
+        validate_mobile_video_clip_range,
         TARGET_SUBTITLE_FILE_FIELD,
         TARGET_SUBTITLE_LABEL_FIELD,
         REFERENCE_SUBTITLE_FILE_FIELD,
@@ -103,7 +120,9 @@ try:
 except ImportError:
     from video_manager import (
         VIDEO_NOTE_TYPE,
+        add_mobile_video_clip_to_anki_media,
         build_remote_video_watch_url,
+        download_remote_mobile_video_clip,
         detect_video_provider,
         resolve_video_url_for_embed,
         is_supported_video_url,
@@ -117,6 +136,9 @@ except ImportError:
         load_subtitle_cues,
         ensure_video_note_type,
         local_video_abspath,
+        mobile_video_clip_html,
+        render_mobile_video_clip,
+        validate_mobile_video_clip_range,
         TARGET_SUBTITLE_FILE_FIELD,
         TARGET_SUBTITLE_LABEL_FIELD,
         REFERENCE_SUBTITLE_FILE_FIELD,
@@ -138,10 +160,23 @@ except ImportError:
 
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
+
+@dataclass(frozen=True)
+class _MobileVideoClipMediaResult:
+    media_name: str
+    changes: object
+
 _video_dock            = None
 _current_video_card_id = None
 _video_timer           = None
 _video_tick_count      = 0
+_watch_profile         = ""
+_watch_day_end_time    = "04:00"
+_watch_meter = VideoWatchMeter(
+    lambda profile, card_id, logical_date, seconds: record_video_watch(
+        _ADDON_DIR, profile, card_id, seconds, logical_date=logical_date,
+    )
+)
 _video_profile         = None  # module-level singleton — avoids use-after-free on exit
 _current_video_url     = ""
 _current_local_relpath = ""
@@ -176,6 +211,7 @@ _current_target_subtitle_relpath = ""
 _current_target_subtitle_label = ""
 _current_reference_subtitle_relpath = ""
 _current_reference_subtitle_label = ""
+_mobile_clip_generation = 0
 
 _PLAYBACK_STATUS_JS = (
     "(function(){"
@@ -183,13 +219,13 @@ _PLAYBACK_STATUS_JS = (
     "try{return window.__incrementoGetStatus();}catch(_e){}"
     "}"
     "var v=document.querySelector('video');"
-    "if(!v){return {hasVideo:false,currentTime:0,readyState:0,networkState:0,duration:null,errorCode:0};}"
+    "if(!v){return {hasVideo:false,currentTime:0,readyState:0,networkState:0,duration:null,errorCode:0,paused:true};}"
     "var t=Number.isFinite(v.currentTime)?v.currentTime:0;"
     "var d=Number.isFinite(v.duration)?v.duration:null;"
     "var rs=(typeof v.readyState==='number')?v.readyState:0;"
     "var ns=(typeof v.networkState==='number')?v.networkState:0;"
     "var ec=(v.error&&typeof v.error.code==='number')?v.error.code:0;"
-    "return {hasVideo:true,currentTime:t,readyState:rs,networkState:ns,duration:d,errorCode:ec};"
+    "return {hasVideo:true,currentTime:t,readyState:rs,networkState:ns,duration:d,errorCode:ec,paused:!!v.paused};"
     "})()"
 )
 _CURRENT_TIME_JS = (
@@ -318,6 +354,12 @@ def _build_video_dock():
     extract_btn.setObjectName("incremento_video_extract_button")
     toolbar_layout.addWidget(extract_btn)
 
+    clip_btn = QPushButton(_tr("reader_video_create_mobile_clip"), toolbar)
+    clip_btn.setObjectName("incremento_video_clip_button")
+    clip_btn.setAccessibleName(_tr("reader_video_create_mobile_clip"))
+    clip_btn.setToolTip(_tr("reader_video_clip_hint"))
+    toolbar_layout.addWidget(clip_btn)
+
     bookmark_group = QWidget(toolbar)
     bookmark_group.setObjectName("incremento_video_bookmark_group")
     bookmark_layout = QHBoxLayout(bookmark_group)
@@ -395,6 +437,14 @@ def _build_video_dock():
         "}"
         "QPushButton#incremento_video_extract_button:hover {"
         " border-color: palette(text);"
+        "}"
+        "QPushButton#incremento_video_clip_button {"
+        " border: 1px solid palette(midlight); border-radius: 9px;"
+        " background: palette(base); color: palette(text);"
+        " padding: 7px 13px; font-weight: 600;"
+        "}"
+        "QPushButton#incremento_video_clip_button:hover {"
+        " border-color: palette(highlight); background: palette(alternate-base);"
         "}"
         "QPushButton#incremento_video_bookmark_button,"
         " QPushButton#incremento_video_bookmark_count_button {"
@@ -491,6 +541,7 @@ def _build_video_dock():
     captions_action.setText(f"CC  {captions_action.text()}")
     review_all_action.setText(f"\u2637  {review_all_action.text()}")
     extract_btn.setText(f"\u2702  {extract_btn.text()}")
+    clip_btn.setText(f"\u25a3  {clip_btn.text()}")
     bookmark_btn.setText(f"\u2606  {bookmark_btn.text()}")
     overflow_btn.setText("\u2022\u2022\u2022")
     back_action.setToolTip(_tr("reader_video_jump_back_ten"))
@@ -543,6 +594,7 @@ def _build_video_dock():
     dock._local_rate_combo = rate_combo
     dock._local_vol_slider = vol_slider
     dock._browser_btn = browser_action
+    dock._clip_btn = clip_btn
     dock._bookmark_btn = bookmark_btn
     dock._bookmarks_btn = bookmarks_btn
     dock._bookmarks_panel = bookmarks_panel
@@ -559,6 +611,7 @@ def _build_video_dock():
     dock._reference_cc_btn = reference_cc_btn
     dock._caption_status = caption_status
     qconnect(extract_btn.clicked, _video_add_card_at_point)
+    qconnect(clip_btn.clicked, _create_mobile_video_clip)
     qconnect(
         back_action.triggered,
         lambda _checked=False: _seek_to_seconds(
@@ -774,6 +827,20 @@ def _set_review_all_button_enabled(enabled: bool) -> None:
         btn.setEnabled(bool(enabled))
     except Exception:
         pass
+
+
+def _set_mobile_clip_button_enabled(enabled: bool, *, has_local_copy: bool = False) -> None:
+    if _video_dock is None:
+        return
+    button = getattr(_video_dock, "_clip_btn", None)
+    if button is None:
+        return
+    try:
+        button.setEnabled(bool(enabled))
+        button.setToolTip(_tr("reader_video_clip_hint"))
+    except Exception:
+        pass
+    del has_local_copy
 
 
 def _set_download_button_enabled(enabled: bool, *, has_local_copy: bool = False) -> None:
@@ -1393,6 +1460,7 @@ def _on_local_media_status_changed(status) -> None:
 
 
 def _persist_position_now() -> None:
+    _watch_meter.flush()
     if _current_video_card_id is None:
         return
     t = max(0.0, float(_last_known_position or 0.0))
@@ -1417,16 +1485,20 @@ def reset_for_profile_switch() -> None:
     Must be called before migrate_to_profile_dir so the new profile is created
     with the correct per-profile storage path on next dock open.
     """
-    global _video_profile, _video_dock
+    global _video_profile, _video_dock, _watch_profile
     global _recent_video_extract_source_card_id
     global _recent_video_extract_child_card_ids, _recent_video_extract_child_positions
     global _recent_video_extract_until, _recent_video_extract_position_sec
+    global _mobile_clip_generation
+    _watch_meter.reset()
+    _watch_profile = ""
     _video_profile = None
     _recent_video_extract_source_card_id = None
     _recent_video_extract_child_card_ids = set()
     _recent_video_extract_child_positions = {}
     _recent_video_extract_until = 0.0
     _recent_video_extract_position_sec = 0.0
+    _mobile_clip_generation += 1
     if _video_dock is not None:
         try:
             _video_dock.hide()
@@ -1523,6 +1595,7 @@ def show_video_in_dock(
         bool(is_supported_video_url(_current_video_url)),
         has_local_copy=bool(local_video_file),
     )
+    _set_mobile_clip_button_enabled(True, has_local_copy=bool(local_video_file))
     _set_captions_button_enabled(True)
     _refresh_video_bookmarks_panel()
 
@@ -1969,7 +2042,12 @@ def _should_preserve_for_recent_video_extract(non_video_card_id: int | None) -> 
         return False
 
 
-def on_video_extract_note_added(source_card_id, created_card_ids=None) -> None:
+def on_video_extract_note_added(
+    source_card_id,
+    created_card_ids=None,
+    *,
+    source_position=None,
+) -> None:
     global _recent_video_extract_child_card_ids, _recent_video_extract_child_positions
     try:
         source_id = int(source_card_id)
@@ -1980,6 +2058,14 @@ def on_video_extract_note_added(source_card_id, created_card_ids=None) -> None:
         float(_recent_video_extract_position_sec or _last_known_position or 0.0),
         ttl_sec=60.0,
     )
+    child_position = max(0.0, float(target or 0.0))
+    if source_position is not None:
+        try:
+            requested_position = float(source_position)
+        except (TypeError, ValueError):
+            requested_position = -1.0
+        if math.isfinite(requested_position) and requested_position >= 0:
+            child_position = requested_position
     children = set(_recent_video_extract_child_card_ids or set())
     child_positions = dict(_recent_video_extract_child_positions or {})
     for raw_card_id in list(created_card_ids or []):
@@ -1988,7 +2074,7 @@ def on_video_extract_note_added(source_card_id, created_card_ids=None) -> None:
         except Exception:
             continue
         children.add(child_card_id)
-        child_positions[child_card_id] = max(0.0, float(target or 0.0))
+        child_positions[child_card_id] = child_position
     _recent_video_extract_child_card_ids = children
     _recent_video_extract_child_positions = child_positions
     if target > 0.0:
@@ -1996,7 +2082,13 @@ def on_video_extract_note_added(source_card_id, created_card_ids=None) -> None:
 
 
 def _start_video_timer() -> None:
-    global _video_timer, _video_tick_count
+    global _video_timer, _video_tick_count, _watch_profile, _watch_day_end_time
+    _watch_meter.reset()
+    _watch_profile = _active_profile()
+    try:
+        _watch_day_end_time = load_scheduler_config().day_end_time
+    except Exception:
+        _watch_day_end_time = "04:00"
     _video_tick_count = 0
     if _video_timer is not None:
         try:
@@ -2031,6 +2123,13 @@ def _video_timer_tick() -> None:
                     dur_ms = int(player.duration())
                 except Exception:
                     dur_ms = 0
+                try:
+                    paused = (
+                        player.playbackState() != QMediaPlayer.PlaybackState.PlayingState
+                        if QMediaPlayer is not None else True
+                    )
+                except Exception:
+                    paused = True
                 _on_video_time(
                     {
                         "currentTime": float(pos_ms) / 1000.0,
@@ -2039,6 +2138,7 @@ def _video_timer_tick() -> None:
                         "readyState": 4,
                         "networkState": 1,
                         "errorCode": 0,
+                        "paused": paused,
                     }
                 )
             except Exception:
@@ -2052,18 +2152,34 @@ def _video_timer_tick() -> None:
             pass
         _remote_resume_attempts += 1
     try:
-        _video_dock._view.page().runJavaScript(_PLAYBACK_STATUS_JS, _on_video_time)
+        card_id = _current_video_card_id
+        profile = _watch_profile
+        dock = _video_dock
+        _video_dock._view.page().runJavaScript(
+            _PLAYBACK_STATUS_JS,
+            lambda status, expected=card_id, expected_profile=profile, expected_dock=dock: _on_video_time(
+                status, expected_card_id=expected,
+                expected_profile=expected_profile,
+                expected_dock=expected_dock,
+            ),
+        )
     except (RuntimeError, AttributeError):
         pass
 
 
-def _on_video_time(t) -> None:
+def _on_video_time(t, *, expected_card_id=None, expected_profile=None, expected_dock=None) -> None:
     global _video_tick_count, _local_fallback_done, _last_known_position
     global _local_resume_pending, _local_resume_attempts, _browser_sync_pending
     global _last_known_duration, _position_lock_card_id
     global _position_lock_until, _position_lock_sec
     global _remote_resume_target, _remote_resume_attempts
-    if _video_dock is None:
+    if _video_dock is None or (
+        expected_card_id is not None and expected_card_id != _current_video_card_id
+    ) or (
+        expected_profile is not None and expected_profile != _watch_profile
+    ) or (
+        expected_dock is not None and expected_dock is not _video_dock
+    ):
         return
     status = t if isinstance(t, dict) else {}
     current_time = status.get("currentTime", t if not isinstance(t, dict) else 0)
@@ -2071,6 +2187,20 @@ def _on_video_time(t) -> None:
         t = float(current_time or 0)
     except Exception:
         t = 0.0
+    if _current_video_card_id is not None and _watch_profile:
+        try:
+            paused = status.get("paused")
+            _watch_meter.observe(
+                _watch_profile,
+                _current_video_card_id,
+                _effective_date(_watch_day_end_time),
+                t,
+                time.monotonic(),
+                paused=paused if isinstance(paused, bool) else None,
+                has_video=bool(status.get("hasVideo", True)),
+            )
+        except Exception:
+            pass
     if (
         _position_lock_card_id is not None
         and _current_video_card_id == _position_lock_card_id
@@ -2160,6 +2290,447 @@ def _video_add_card_at_point() -> None:
         _video_dock._view.page().runJavaScript(_CURRENT_TIME_JS, _do_video_add_card)
     except (RuntimeError, AttributeError):
         pass
+
+
+def _show_mobile_video_clip_dialog(
+    current_sec: float,
+    duration_sec: float | None,
+) -> tuple[bool, float, float]:
+    duration = max(0.0, float(duration_sec or 0.0))
+    start_default = max(0.0, float(current_sec or 0.0))
+    if duration > 0:
+        start_default = min(start_default, max(0.0, duration - 1.0))
+        end_default = min(duration, start_default + 30.0)
+    else:
+        end_default = start_default + 30.0
+
+    dialog = QDialog(mw)
+    dialog.setWindowTitle(_tr("reader_video_clip_title"))
+    dialog.setMinimumWidth(390)
+    layout = QVBoxLayout(dialog)
+
+    intro = QLabel(_tr("reader_video_clip_intro"), dialog)
+    intro.setWordWrap(True)
+    layout.addWidget(intro)
+
+    start_row = QHBoxLayout()
+    start_row.addWidget(QLabel(_tr("reader_video_clip_start"), dialog))
+    start_input = QLineEdit(fmt_time(start_default), dialog)
+    start_input.setPlaceholderText(_tr("reader_video_time_placeholder"))
+    start_input.setAccessibleName(_tr("reader_video_clip_start"))
+    start_row.addWidget(start_input, 1)
+    layout.addLayout(start_row)
+
+    end_row = QHBoxLayout()
+    end_row.addWidget(QLabel(_tr("reader_video_clip_end"), dialog))
+    end_input = QLineEdit(fmt_time(end_default), dialog)
+    end_input.setPlaceholderText(_tr("reader_video_time_placeholder"))
+    end_input.setAccessibleName(_tr("reader_video_clip_end"))
+    end_row.addWidget(end_input, 1)
+    layout.addLayout(end_row)
+
+    if duration > 0:
+        duration_label = QLabel(
+            _tr("reader_video_clip_source_duration", duration=fmt_time(duration)),
+            dialog,
+        )
+        duration_label.setStyleSheet("color: palette(placeholder-text);")
+        layout.addWidget(duration_label)
+
+    error_label = QLabel("", dialog)
+    error_label.setWordWrap(True)
+    error_label.setStyleSheet("color: #c62828;")
+    layout.addWidget(error_label)
+
+    buttons = QDialogButtonBox(
+        QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
+        parent=dialog,
+    )
+    buttons.button(QDialogButtonBox.StandardButton.Ok).setText(
+        _tr("reader_video_create_mobile_clip")
+    )
+    buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(_tr("reader_cancel"))
+    layout.addWidget(buttons)
+
+    chosen: list[tuple[float, float]] = []
+
+    def _accept() -> None:
+        start = _parse_manual_time(start_input.text())
+        end = _parse_manual_time(end_input.text())
+        if start is None or end is None:
+            error_label.setText(_tr("reader_video_clip_invalid_time"))
+            return
+        try:
+            normalized = validate_mobile_video_clip_range(
+                start,
+                end,
+                duration if duration > 0 else None,
+            )
+        except Exception:
+            error_label.setText(_tr("reader_video_clip_invalid_range"))
+            return
+        chosen.append(normalized)
+        dialog.accept()
+
+    qconnect(buttons.accepted, _accept)
+    qconnect(buttons.rejected, dialog.reject)
+    qconnect(start_input.returnPressed, _accept)
+    qconnect(end_input.returnPressed, _accept)
+    if dialog.exec() != QDialog.DialogCode.Accepted or not chosen:
+        return False, start_default, end_default
+    return True, chosen[0][0], chosen[0][1]
+
+
+def _current_video_source_title() -> str:
+    note = _current_video_note()
+    if note is None:
+        return ""
+    try:
+        return str(note["Title"] or "").strip()
+    except Exception:
+        try:
+            return str(note.fields[0] or "").strip()
+        except Exception:
+            return ""
+
+
+def _trash_mobile_clip_media(media_name: str) -> None:
+    name = str(media_name or "").strip()
+    if not name.startswith("incremento-video-clip-") or Path(name).name != name:
+        return
+    try:
+        mw.col.media.trash_files([name])
+    except Exception:
+        pass
+
+
+def _fill_mobile_video_clip_card(
+    media_name: str,
+    *,
+    start_sec: float,
+    end_sec: float,
+    source_title: str,
+    on_complete=None,
+) -> None:
+    if _current_video_card_id is None:
+        _trash_mobile_clip_media(media_name)
+        if on_complete is not None:
+            on_complete(False)
+        return
+    source_card_id = int(_current_video_card_id)
+    clip_html = mobile_video_clip_html(
+        media_name,
+        start_sec=start_sec,
+        end_sec=end_sec,
+        source_title=source_title,
+    )
+    label = f"&#9654; {fmt_time(start_sec)}" + (
+        f" – {html.escape(source_title[:60])}" if source_title else ""
+    )
+    link = (
+        f'<a href="#" onclick="pycmd(\'incremento_open_video:{source_card_id}:{float(start_sec)}\')" '
+        f'style="color:#4a90d9;">{label}</a>'
+    )
+    content = f"{clip_html}<br>{link}"
+
+    try:
+        from .add_card_dock import (
+            fill_dock_field,
+            register_pending_extract_media,
+            set_pending_extract_options,
+            source_relative_extract_priority_for_source,
+        )
+    except Exception:
+        from add_card_dock import (  # type: ignore
+            fill_dock_field,
+            register_pending_extract_media,
+            set_pending_extract_options,
+            source_relative_extract_priority_for_source,
+        )
+
+    completion = {"ready": False, "result": None, "handled": False}
+
+    def _finish_fill(success: bool) -> None:
+        completion["result"] = bool(success)
+        if not completion["ready"] or completion["handled"]:
+            return
+        completion["handled"] = True
+        if not success:
+            _trash_mobile_clip_media(media_name)
+            tooltip(_tr("reader_video_clip_add_card_failed"))
+            if on_complete is not None:
+                on_complete(False)
+            return
+        registered = register_pending_extract_media(
+            media_name,
+            source_card_id=source_card_id,
+        )
+        if not registered:
+            tooltip(_tr("reader_video_clip_add_card_failed"))
+            if on_complete is not None:
+                on_complete(False)
+            return
+        if on_complete is not None:
+            on_complete(True)
+
+    fill_result = fill_dock_field(
+        0,
+        content,
+        include_pdf_citation=False,
+        source_link_kind="video",
+        on_complete=_finish_fill,
+    )
+    if fill_result is not False:
+        set_pending_extract_options(
+            priority=source_relative_extract_priority_for_source("video"),
+            mark_topic=False,
+            source="video",
+            source_card_id=source_card_id,
+            source_position=float(start_sec),
+        )
+    completion["ready"] = True
+    if completion["result"] is not None:
+        _finish_fill(bool(completion["result"]))
+    elif fill_result is False:
+        _finish_fill(False)
+
+
+def _mobile_clip_context_is_current(
+    expected_profile: str,
+    expected_card_id: int,
+    expected_local_relpath: str,
+    expected_video_url: str,
+) -> bool:
+    try:
+        return (
+            str(_active_profile() or "") == str(expected_profile or "")
+            and _current_video_card_id is not None
+            and int(_current_video_card_id) == int(expected_card_id)
+            and str(_current_local_relpath or "") == str(expected_local_relpath or "")
+            and str(_current_video_url or "") == str(expected_video_url or "")
+        )
+    except Exception:
+        return False
+
+
+def _render_mobile_video_clip_to_draft(
+    start_sec: float,
+    end_sec: float,
+    source_title: str,
+) -> None:
+    global _mobile_clip_generation
+    if _current_video_card_id is None:
+        showInfo(_tr("reader_video_no_active_card"))
+        return
+    expected_profile = str(_active_profile() or "")
+    expected_card_id = int(_current_video_card_id)
+    expected_local_relpath = str(_current_local_relpath)
+    expected_video_url = str(_current_video_url or "").strip()
+    source_path = ""
+    if expected_local_relpath:
+        source_path = local_video_abspath(
+            _ADDON_DIR,
+            expected_profile,
+            expected_local_relpath,
+        )
+        if not source_path or not os.path.isfile(source_path):
+            source_path = ""
+    has_remote_source = bool(is_supported_video_url(expected_video_url))
+    if not source_path and not has_remote_source:
+        showInfo(_tr("reader_video_clip_no_source"))
+        return
+
+    _mobile_clip_generation += 1
+    generation = _mobile_clip_generation
+    _set_mobile_clip_button_enabled(False, has_local_copy=True)
+    activity_id = start_activity(
+        _tr("reader_video_clip_activity"),
+        category=_tr("reader_video_name"),
+        detail=_tr("reader_video_clip_encoding"),
+        progress=0,
+    )
+    try:
+        mw.progress.start(
+            label=_tr("reader_video_clip_encoding"),
+            immediate=True,
+            value=0,
+            max=100,
+        )
+    except TypeError:
+        mw.progress.start(label=_tr("reader_video_clip_encoding"), immediate=True)
+
+    def _progress_main(percent: int, label: str) -> None:
+        try:
+            mw.progress.update(label=label, value=int(percent), max=100)
+        except TypeError:
+            mw.progress.update(label=label)
+
+    def _progress(percent: int, label: str) -> None:
+        update_activity(
+            activity_id,
+            progress=max(0, min(100, int(percent))) / 100,
+            detail=str(label or _tr("reader_video_clip_encoding")),
+        )
+        mw.taskman.run_on_main(
+            lambda value=percent, text=label: _progress_main(value, text)
+        )
+
+    def _task():
+        temp_dir = tempfile.mkdtemp(prefix="incremento_mobile_video_clip_")
+        destination = Path(temp_dir) / "clip.mp4"
+        try:
+            if source_path:
+                render_mobile_video_clip(
+                    source_path,
+                    destination,
+                    start_sec,
+                    end_sec,
+                    progress_cb=_progress,
+                )
+            else:
+                download_remote_mobile_video_clip(
+                    _ADDON_DIR,
+                    expected_profile,
+                    expected_video_url,
+                    destination,
+                    start_sec,
+                    end_sec,
+                    progress_cb=_progress,
+                )
+        except Exception:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            raise
+        return temp_dir, str(destination)
+
+    def _rendered(future) -> None:
+        try:
+            temp_dir, rendered_path = future.result()
+        except Exception as exc:
+            mw.progress.finish()
+            _set_mobile_clip_button_enabled(True, has_local_copy=True)
+            fail_activity(activity_id, _tr("reader_video_clip_failed", error=exc))
+            showInfo(_tr("reader_video_clip_failed", error=exc))
+            return
+        if (
+            generation != _mobile_clip_generation
+            or not _mobile_clip_context_is_current(
+                expected_profile,
+                expected_card_id,
+                expected_local_relpath,
+                expected_video_url,
+            )
+        ):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            mw.progress.finish()
+            _set_mobile_clip_button_enabled(True, has_local_copy=True)
+            fail_activity(activity_id, _tr("reader_video_clip_stale"))
+            return
+
+        try:
+            from aqt.operations import CollectionOp
+        except Exception:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            mw.progress.finish()
+            _set_mobile_clip_button_enabled(True, has_local_copy=True)
+            fail_activity(activity_id, _tr("reader_video_clip_add_card_failed"))
+            return
+
+        def _store(col):
+            from anki.collection import OpChanges
+
+            return _MobileVideoClipMediaResult(
+                media_name=add_mobile_video_clip_to_anki_media(
+                    col,
+                    rendered_path,
+                    source_title=source_title,
+                    start_sec=start_sec,
+                    end_sec=end_sec,
+                ),
+                changes=OpChanges(),
+            )
+
+        def _stored(result: _MobileVideoClipMediaResult) -> None:
+            media_name = result.media_name
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            mw.progress.finish()
+            _set_mobile_clip_button_enabled(True, has_local_copy=True)
+            if not _mobile_clip_context_is_current(
+                expected_profile,
+                expected_card_id,
+                expected_local_relpath,
+                expected_video_url,
+            ):
+                _trash_mobile_clip_media(media_name)
+                fail_activity(activity_id, _tr("reader_video_clip_stale"))
+                return
+            def _draft_ready(success: bool) -> None:
+                if not success:
+                    fail_activity(
+                        activity_id,
+                        _tr("reader_video_clip_add_card_failed"),
+                    )
+                    return
+                finish_activity(activity_id, detail=_tr("reader_video_clip_ready"))
+                tooltip(_tr("reader_video_clip_ready"))
+
+            _fill_mobile_video_clip_card(
+                media_name,
+                start_sec=start_sec,
+                end_sec=end_sec,
+                source_title=source_title,
+                on_complete=_draft_ready,
+            )
+
+        def _store_failed(exc: Exception) -> None:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            mw.progress.finish()
+            _set_mobile_clip_button_enabled(True, has_local_copy=True)
+            fail_activity(activity_id, _tr("reader_video_clip_failed", error=exc))
+            showInfo(_tr("reader_video_clip_failed", error=exc))
+
+        CollectionOp(mw, _store).success(_stored).failure(_store_failed).run_in_background()
+
+    mw.taskman.run_in_background(_task, _rendered, uses_collection=False)
+
+
+def _open_mobile_video_clip_dialog(current_sec: float) -> None:
+    accepted, start_sec, end_sec = _show_mobile_video_clip_dialog(
+        max(0.0, float(current_sec or _last_known_position or 0.0)),
+        _last_known_duration if _last_known_duration > 0 else None,
+    )
+    if not accepted:
+        return
+    _render_mobile_video_clip_to_draft(
+        start_sec,
+        end_sec,
+        _current_video_source_title(),
+    )
+
+
+def _create_mobile_video_clip() -> None:
+    if _current_video_card_id is None:
+        showInfo(_tr("reader_video_no_active_card"))
+        return
+    if not _current_local_relpath and not is_supported_video_url(_current_video_url):
+        showInfo(_tr("reader_video_clip_no_source"))
+        return
+    if _using_local_qt_player and _video_dock is not None:
+        player = getattr(_video_dock, "_local_player", None)
+        if player is not None:
+            try:
+                _open_mobile_video_clip_dialog(float(player.position()) / 1000.0)
+                return
+            except Exception:
+                pass
+    if _video_dock is None:
+        return
+    try:
+        _video_dock._view.page().runJavaScript(
+            _CURRENT_TIME_JS,
+            _open_mobile_video_clip_dialog,
+        )
+    except (RuntimeError, AttributeError):
+        _open_mobile_video_clip_dialog(_last_known_position)
 
 
 def _on_local_player_error(*_args) -> None:
@@ -3026,6 +3597,7 @@ def on_video_reviewer_will_end() -> None:
     global _current_target_subtitle_relpath, _current_target_subtitle_label
     global _current_reference_subtitle_relpath, _current_reference_subtitle_label
     _persist_position_now()
+    _watch_meter.reset()
     _current_local_relpath = ""
     _current_video_url = ""
     _local_fallback_done = False

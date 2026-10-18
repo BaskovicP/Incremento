@@ -72,6 +72,10 @@ msgstr "<span style=\"color: #e05050;\">Automatic install failed. See instructio
 msgid "backend_deps_install_pymupdf"
 msgstr "Install PyMuPDF automatically"
 
+#. Incremento UI: deps install ffmpeg
+msgid "backend_deps_install_ffmpeg"
+msgstr "Install FFmpeg"
+
 #. Incremento UI: deps installed
 msgid "backend_deps_installed"
 msgstr "<span style=\"color: gray; font-size: small;\">Installed — no action needed.</span>"
@@ -92,9 +96,13 @@ msgstr "Installing…"
 msgid "backend_deps_installing_pymupdf"
 msgstr "<span style=\"color: gray; font-size: small;\">Installing PyMuPDF — please wait…</span>"
 
+#. Incremento UI: deps installing ffmpeg
+msgid "backend_deps_installing_ffmpeg"
+msgstr "Installing FFmpeg — this may take several minutes…"
+
 #. Incremento UI: deps intro
 msgid "backend_deps_intro"
-msgstr "Incremento uses optional setup components for PDF OCR and browser companion sync. Core features work without them."
+msgstr "Incremento uses optional setup components for PDF OCR, video processing, and browser companion sync. Core features work without them."
 
 #. Incremento UI: deps manual install
 msgid "backend_deps_manual_install"
@@ -115,6 +123,26 @@ msgstr "PyMuPDF can be installed automatically into Incremento's local dependenc
 #. Incremento UI: deps restart notice
 msgid "backend_deps_restart_notice"
 msgstr "PyMuPDF installed — restart Anki to use it."
+
+#. Incremento UI: deps ffmpeg
+msgid "backend_deps_ffmpeg"
+msgstr "FFmpeg  (video encoding, compression, and mobile clips)"
+
+#. Incremento UI: deps ffmpeg ready
+msgid "backend_deps_ffmpeg_ready"
+msgstr "FFmpeg is installed and ready to use."
+
+#. Incremento UI: deps ffmpeg mac
+msgid "backend_deps_ffmpeg_mac"
+msgstr "Install FFmpeg with Homebrew. If Homebrew is available, use the Install FFmpeg button below.\n\nManual command:  brew install ffmpeg\n\nIf the button is not shown, install Homebrew from https://brew.sh, reopen this dialog, and try again."
+
+#. Incremento UI: deps ffmpeg windows
+msgid "backend_deps_ffmpeg_windows"
+msgstr "Install FFmpeg with Windows Package Manager. If winget is available, use the Install FFmpeg button below.\n\nManual command:  winget install --id Gyan.FFmpeg --exact\n\nAfter a manual install, restart Anki."
+
+#. Incremento UI: deps ffmpeg linux
+msgid "backend_deps_ffmpeg_linux"
+msgstr "Install FFmpeg with your package manager:\n\n    Ubuntu / Debian:  sudo apt install ffmpeg\n    Fedora:           sudo dnf install ffmpeg\n    Arch:             sudo pacman -S ffmpeg\n    openSUSE:         sudo zypper install ffmpeg\n\nThen restart Anki."
 
 #. Incremento UI: deps tesseract
 msgid "backend_deps_tesseract"

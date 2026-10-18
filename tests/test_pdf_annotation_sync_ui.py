@@ -6,6 +6,19 @@ import pytest
 import pdf_annotation_sync as ui
 
 
+@pytest.mark.parametrize(('reason', 'message'), [
+    ('password_protected', 'This PDF requires a password'),
+    ('digitally_signed', 'This PDF is marked as digitally signed'),
+    ('annotation_restricted', "This PDF's permissions prohibit annotation changes"),
+])
+def test_sync_warning_explains_the_specific_protection_and_preserves_saved_annotations(reason, message):
+    text = ui.sync_error_text(ui.PdfAnnotationSyncError(reason))
+
+    assert text.startswith(message)
+    assert text.endswith('Your Incremento annotations remain saved.')
+    assert 'Signed, password-protected or annotation-restricted' not in text
+
+
 class Runner:
     def __init__(self):
         self.tasks = []

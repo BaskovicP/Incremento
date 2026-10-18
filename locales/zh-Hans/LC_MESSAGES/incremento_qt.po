@@ -10,6 +10,80 @@ msgstr ""
 "Language: zh-Hans\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "stats_progress_heading"
+msgstr "{scope}概览"
+
+msgid "stats_progress_daily"
+msgstr "每日活动"
+
+msgid "stats_progress_weekly"
+msgstr "每周活动"
+
+msgid "stats_progress_cumulative"
+msgstr "累计进度"
+
+msgid "stats_progress_cumulative_caption"
+msgstr "本图{metric}：{value}"
+
+msgid "stats_progress_chart_accessible"
+msgstr "使用左右方向键查看日期，Home 跳至首日，End 跳至最近日期。\n{details}"
+
+msgid "stats_progress_day_detail"
+msgstr "{date} · {pages} 页（PDF {pdf} / EPUB {epub}）· 学习 {duration} · {cards} 张卡片\n本图累计{metric}：{total}"
+
+msgid "stats_progress_goal_line"
+msgstr "当前每日目标：{value}"
+
+msgid "stats_progress_empty"
+msgstr "此时段暂无活动。\n您的进度将在此显示。"
+
+msgid "stats_progress_formats"
+msgstr "PDF {pdf} · EPUB {epub}"
+
+msgid "stats_progress_time_hint"
+msgstr "记录的学习与阅读时间"
+
+msgid "stats_progress_cards_hint"
+msgstr "Incremento 记录的卡片"
+
+msgid "stats_progress_no_baseline"
+msgstr "上一时段无活动"
+
+msgid "stats_progress_comparison"
+msgstr "较前 {days} 天 {change}"
+
+msgid "stats_progress_graph_window"
+msgstr "活动 · {period}"
+
+msgid "stats_progress_show_metric"
+msgstr "显示{metric}图表"
+
+msgid "stats_progress_interaction_hint"
+msgstr "点击图表或使用方向键查看某天。每篇文档的每页每天只计一次；累计总数包含日后的重读。"
+
+msgid "stats_progress_streak_hint"
+msgstr "记录中连续阅读 PDF 或 EPUB 的天数。今天尚未阅读时，保留截至昨天的连续天数。"
+
+msgid "stats_progress_refresh"
+msgstr "刷新"
+
+msgid "stats_progress_streak"
+msgid_plural "stats_progress_streak_plural"
+msgstr[0] "连续阅读 · {count} 天"
+
+msgid "stats_progress_last_days"
+msgid_plural "stats_progress_last_days_plural"
+msgstr[0] "最近 {count} 天"
+
+msgid "stats_progress_chart_title"
+msgstr "{metric} · {title}"
+
+msgid "stats_progress_page_legend"
+msgstr "<span style=\"color:{pdf_color}\">●</span> PDF &nbsp; <span style=\"color:{epub_color}\">●</span> EPUB"
+
+msgid "stats_progress_consistency"
+msgstr "阅读天数：{reading} / {days} · 活跃天数：{active} / {days} · 每天 {average} 页"
+
 msgid "common_back"
 msgstr "返回"
 
@@ -202,6 +276,24 @@ msgstr "主要类型/标签"
 msgid "stats_pages_read"
 msgstr "已读页面"
 
+msgid "stats_reading_video_activity"
+msgstr "阅读与视频"
+
+msgid "stats_pdf_pages_read"
+msgstr "PDF 页面"
+
+msgid "stats_epub_pages_read"
+msgstr "EPUB 页面"
+
+msgid "stats_videos_watched"
+msgstr "观看的视频数"
+
+msgid "stats_video_watch_time"
+msgstr "视频观看时长"
+
+msgid "stats_video_watch_hint"
+msgstr "观看的视频数统计在 Incremento 阅读器中播放过的不同视频。观看时长从本次更新开始记录；暂停、跳转和外部浏览器播放不计入。"
+
 msgid "stats_study_time"
 msgstr "学习时间"
 
@@ -247,6 +339,52 @@ msgstr "全部时间"
 
 msgid "stats_daily_goals"
 msgstr "每日目标"
+
+msgid "stats_edit_goals"
+msgstr "编辑目标…"
+
+msgid "stats_edit_goals_accessible"
+msgstr "编辑每日统计目标"
+
+msgid "stats_goal_dashboard_hint"
+msgstr "只跟踪有助于学习的指标；目标可以随时更改。"
+
+msgid "stats_goal_empty"
+msgstr "尚未设置每日目标。请选择一个适合日常学习节奏的指标。"
+
+msgid "stats_goal_setup_title"
+msgstr "设置每日目标"
+
+msgid "stats_goal_setup_guidance"
+msgstr "请选择一个在正常学习日能够完成的目标。"
+
+msgid "stats_goal_intro"
+msgstr "只选择对你重要的指标。先设定现实的目标，稳定完成后再提高。"
+
+msgid "stats_goal_recent_explanation"
+msgstr "建议值取最近 30 天活跃日的中位数，因此一次异常大量的学习不会决定整体节奏。"
+
+msgid "stats_goal_cards_description"
+msgstr "已复习的主题、条目和其他卡片类型。"
+
+msgid "stats_goal_pages_description"
+msgstr "已阅读的不重复 PDF 和 EPUB 页面。"
+
+msgid "stats_goal_minutes_description"
+msgstr "所有活动中的专注学习和复习时间。"
+
+msgid "stats_goal_daily_target"
+msgstr "每日目标"
+
+msgid "stats_goal_use_suggestion"
+msgstr "使用 {target}"
+
+msgid "stats_goal_use_suggestion_accessible"
+msgstr "使用建议的每日 {label} 目标 {target}"
+
+msgid "stats_goal_suggestion_basis"
+msgid_plural "stats_goal_suggestion_basis_plural"
+msgstr[0] "根据 {count} 个活跃日计算"
 
 msgid "stats_cards"
 msgstr "卡片"
@@ -352,6 +490,27 @@ msgstr "按卡片类型的复习时间"
 
 msgid "stats_review_time_by_tag"
 msgstr "按标签的复习时间"
+
+msgid "stats_topic_tag_time"
+msgstr "按标签统计主题"
+
+msgid "stats_item_tag_time"
+msgstr "按标签统计条目"
+
+msgid "stats_topic_item_pie_hint"
+msgstr "扇区按标签显示已复习卡片。图例数值显示卡片数量。"
+
+msgid "stats_pie_legend_value"
+msgstr "卡片：{cards}"
+
+msgid "stats_pie_total"
+msgstr "总计：{cards}"
+
+msgid "stats_untagged"
+msgstr "无标签"
+
+msgid "stats_other_tags"
+msgstr "其他标签"
 
 msgid "stats_bar_chart_accessible"
 msgstr "统计条形图"
@@ -551,7 +710,7 @@ msgstr "总计"
 msgid "session_live_card_preview"
 msgstr "实时卡片预览…"
 msgid "session_live_preview_hint"
-msgstr "实时预览为估计样本。若要强制精确复用，请在预览对话框中启用复选框。"
+msgstr "表格与实时卡片预览共用同一份选择。列表为最新状态时，开始会话会复用此列表。"
 
 msgid "common_search"
 msgstr "搜索"
@@ -738,7 +897,7 @@ msgstr "实时调度器预览"
 msgid "session_live_preview_refresh_hint"
 msgstr "点击“刷新”以预览当前调度器输出。"
 msgid "session_live_preview_disclaimer"
-msgstr "预览说明：这是一次抽样调度运行。正常开始时会重新调度，结果可能不同，尤其是在软模式下。"
+msgstr "表格与此预览共用同一份已选卡片列表。只要设置未改变，开始会话时就会复用此列表。点击刷新会重新选择卡片并更新两个视图。"
 msgid "session_mode"
 msgstr "模式"
 msgid "session_tag"
@@ -782,9 +941,9 @@ msgstr "今天"
 msgid "session_scope_all_time"
 msgstr "全部时间"
 msgid "session_use_previewed_list"
-msgstr "开始时使用此预览卡片列表（跳过重新调度）"
+msgstr "开始前要求预览为最新状态"
 msgid "session_use_previewed_list_tooltip"
-msgstr "启用后，开始会话会精确复用最近一次刷新后的预览列表。"
+msgstr "始终复用当前显示的最新选择。启用此选项后，预览仍在刷新或不可用时将无法开始会话。"
 
 msgid "common_clear"
 msgstr "清除"
@@ -814,6 +973,106 @@ msgid "knowledge_tree_add_root_tooltip"
 msgstr "添加根主题或条目。"
 msgid "knowledge_tree_add_under"
 msgstr "在 {title} 下添加主题或条目。"
+msgid "knowledge_tree_mind_map"
+msgstr "思维导图"
+msgid "knowledge_tree_mind_map_tooltip"
+msgstr "打开整个知识树或所选分支的放射状彩色思维导图。"
+msgid "knowledge_tree_mind_map_title"
+msgstr "Incremento — 知识树思维导图"
+msgid "knowledge_tree_mind_map_principles"
+msgstr "中心思想向外延伸为弯曲的彩色分支。每个分支使用一个简洁标签、视觉层次和主题/条目符号，让关联更易浏览。"
+msgid "knowledge_tree_mind_map_principles_name"
+msgstr "思维导图原则"
+msgid "knowledge_tree_mind_map_scope"
+msgstr "范围"
+msgid "knowledge_tree_mind_map_whole_tree"
+msgstr "整个知识树"
+msgid "knowledge_tree_mind_map_selected_branch"
+msgstr "所选分支"
+msgid "knowledge_tree_view_branch_mind_map"
+msgstr "以思维导图查看分支"
+msgid "knowledge_tree_mind_map_select_branch_first"
+msgstr "请在知识树中只选择一个节点以使用此范围。"
+msgid "knowledge_tree_mind_map_show_priorities"
+msgstr "显示优先级"
+msgid "knowledge_tree_mind_map_fit"
+msgstr "适合窗口"
+msgid "knowledge_tree_mind_map_zoom_out"
+msgstr "缩小"
+msgid "knowledge_tree_mind_map_zoom_in"
+msgstr "放大"
+msgid "knowledge_tree_mind_map_canvas"
+msgstr "知识树思维导图"
+msgid "knowledge_tree_mind_map_summary_name"
+msgstr "思维导图摘要"
+msgid "knowledge_tree_mind_map_summary"
+msgstr "{visible}/{total} 个节点可见 · {levels} 个视觉层级"
+
+msgid "knowledge_tree_mind_map_hidden_nodes"
+msgstr "隐藏的后代节点：{count}"
+
+msgid "knowledge_tree_mind_map_canvas_instructions"
+msgstr "使用方向键移动，按空格键折叠或展开，按 Enter 返回知识树，拖动空白处平移。"
+
+msgid "knowledge_tree_mind_map_actual_size"
+msgstr "实际大小"
+
+msgid "knowledge_tree_mind_map_zoom_level"
+msgstr "缩放级别"
+
+msgid "knowledge_tree_mind_map_zoom_percent"
+msgstr "{percent}%"
+
+msgid "knowledge_tree_mind_map_search"
+msgstr "查找"
+
+msgid "knowledge_tree_mind_map_search_placeholder"
+msgstr "按标题查找节点…"
+
+msgid "knowledge_tree_mind_map_find_next"
+msgstr "下一个"
+
+msgid "knowledge_tree_mind_map_search_status"
+msgstr "搜索状态"
+
+msgid "knowledge_tree_mind_map_collapse_all"
+msgstr "全部折叠"
+
+msgid "knowledge_tree_mind_map_expand_all"
+msgstr "全部展开"
+
+msgid "knowledge_tree_mind_map_focus_branch"
+msgstr "聚焦分支"
+
+msgid "knowledge_tree_mind_map_show_full"
+msgstr "显示完整导图"
+
+msgid "knowledge_tree_mind_map_export_png"
+msgstr "导出 PNG…"
+
+msgid "knowledge_tree_mind_map_keyboard_hint"
+msgstr "方向键导航 · 空格键折叠 · Enter 返回知识树"
+
+msgid "knowledge_tree_mind_map_match_count"
+msgstr "{count} 个匹配项"
+
+msgid "knowledge_tree_mind_map_match_position"
+msgstr "{current}/{count}"
+
+msgid "knowledge_tree_mind_map_export_title"
+msgstr "导出思维导图"
+
+msgid "knowledge_tree_mind_map_png_filter"
+msgstr "PNG 图像 (*.png)"
+
+msgid "knowledge_tree_mind_map_export_failed"
+msgstr "无法导出思维导图图像。"
+msgid "knowledge_tree_mind_map_center"
+msgstr "知识树"
+msgid "knowledge_tree_mind_map_empty"
+msgstr "请先添加或关联至少一个节点，再打开思维导图。"
+msgid "knowledge_tree_priority_short"
+msgstr "优先级 {value}"
 msgid "knowledge_tree_search_placeholder"
 msgstr "搜索此树…"
 msgid "knowledge_tree_refresh_tooltip"
@@ -1506,7 +1765,7 @@ msgstr "Incremento 使用与 T 按钮、主题标签、已配置主题笔记类�
 msgid "session_live_preview_required_title"
 msgstr "需要实时预览"
 msgid "session_live_preview_required_message"
-msgstr "您已启用“使用预览的卡片列表”。\n\n请打开实时卡片预览，在最近一次设置更改后点击刷新，然后再次开始会话。"
+msgstr "您要求开始前预览必须为最新状态。\n\n更改设置后，请等待预览刷新完成。如果预览不可用，请打开实时卡片预览并点击刷新，然后再次开始会话。"
 msgid "session_delete_today_title"
 msgstr "删除今天的数据"
 msgid "session_delete_today_message"
@@ -1743,3 +2002,201 @@ msgstr "对所有 PDF 始终强制使用此外观"
 
 msgid "settings_pdf_appearance_hint"
 msgstr "未启用强制模式时，每个 PDF 会记住自己的选择，新 PDF 使用默认外观。启用后，每个 PDF 都以所选外观打开，但不会清除各自保存的选择。"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_title"
+msgstr "今日学习结果"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_stage"
+msgstr "学习"
+
+#: frontend/learning_stats.py
+msgid "stats_review_stage"
+msgstr "复习"
+
+#: frontend/learning_stats.py
+msgid "stats_relearning_stage"
+msgstr "重新学习"
+
+#: frontend/learning_stats.py
+msgid "stats_answer_attempts"
+msgstr "作答次数"
+
+#: frontend/learning_stats.py
+msgid "stats_again_fail"
+msgstr "重来 / 失败"
+
+#: frontend/learning_stats.py
+msgid "stats_recalled"
+msgstr "已回忆"
+
+#: frontend/learning_stats.py
+msgid "stats_recall_rate"
+msgstr "回忆率"
+
+#: frontend/learning_stats.py
+msgid "stats_answer_stage"
+msgstr "阶段"
+
+#: frontend/learning_stats.py
+msgid "stats_rating_hard"
+msgstr "困难"
+
+#: frontend/learning_stats.py
+msgid "stats_rating_good"
+msgstr "良好"
+
+#: frontend/learning_stats.py
+msgid "stats_rating_easy"
+msgstr "简单"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_card_totals"
+msgstr "不同卡片：{cards} · 选择重来的卡片：{failed_cards}"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_hint"
+msgstr "重来 / 失败统计未能回忆的作答。已回忆 = 困难 + 良好 + 简单。每次作答均计入，包括重复作答。"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_exclusions"
+msgstr "不包括主题频率选择、预览练习及手动排程变更。"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_loading"
+msgstr "正在加载学习结果…"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_unavailable"
+msgstr "学习结果不可用。请尝试重新打开统计。"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_learning_history_title"
+msgstr "学习结果 · 最近 {days} 天"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_learning_answers_by_day"
+msgstr "每日失败与回忆次数"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_rate_by_day"
+msgstr "每日回忆率"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_chart_hint"
+msgstr "回忆成功 = 困难 + 良好 + 简单。每次回答尝试均计入，包括重复尝试。回忆率图使用 0–100% 刻度；空白表示当天没有回答。将鼠标悬停在回忆率图上可查看当天详情。"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_learning_no_answers"
+msgstr "此期间没有作答。"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_no_previous"
+msgstr "此前 {days} 天没有作答，无法比较。"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_comparison_up"
+msgstr "回忆率上升了 {change} 个百分点：{current}，此前 {days} 天为 {previous}。"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_comparison_down"
+msgstr "回忆率下降了 {change} 个百分点：{current}，此前 {days} 天为 {previous}。"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_comparison_same"
+msgstr "回忆率未变：{current}，此前 {days} 天为 {previous}。"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_learning_day_summary"
+msgstr "{date}：作答 {attempts} 次 · 重来 / 失败 {failed} 次 · 回忆 {recalled} 次 · 回忆率：{rate}"
+
+msgid "stats_views"
+msgstr "统计视图"
+
+msgid "stats_view_overview"
+msgstr "概览"
+
+msgid "stats_view_documents"
+msgstr "文档"
+
+msgid "stats_view_learning"
+msgstr "学习卡片"
+
+msgid "stats_documents_title"
+msgstr "你的阅读进度"
+
+msgid "stats_documents_basis"
+msgstr "按已保存的阅读标记统计全部时间。PDF 使用实际页数。EPUB 按每页 1,500 个文本字符估算，不受字体或窗口大小影响，可能与阅读器显示不同。请在阅读器中标记「读到这里」，然后刷新。"
+
+msgid "stats_documents_loading"
+msgstr "正在加载文档进度…"
+
+msgid "stats_documents_unavailable"
+msgstr "文档进度暂不可用。请尝试刷新。"
+
+msgid "stats_documents_summary"
+msgstr "{total} 份文档 · {started} 份阅读中 · {finished} 份已完成"
+
+msgid "stats_documents_search"
+msgstr "搜索文档标题"
+
+msgid "stats_documents_all"
+msgstr "所有格式"
+
+msgid "stats_documents_format"
+msgstr "格式"
+
+msgid "stats_documents_document"
+msgstr "文档"
+
+msgid "stats_documents_read"
+msgstr "已读页数"
+
+msgid "stats_documents_left"
+msgstr "剩余页数"
+
+msgid "stats_documents_total"
+msgstr "总页数"
+
+msgid "stats_documents_completion"
+msgstr "完成度"
+
+msgid "stats_documents_no_matches"
+msgstr "没有匹配的文档。请导入 PDF 或 EPUB，或修改搜索条件。"
+
+msgid "stats_documents_previous"
+msgstr "上一页"
+
+msgid "stats_documents_next"
+msgstr "下一页"
+
+msgid "stats_documents_estimated"
+msgstr "估算"
+
+msgid "stats_documents_unknown"
+msgstr "总页数不可用。请确认可在阅读器中打开此文档，然后刷新。"
+
+msgid "stats_documents_page"
+msgstr "显示 {start}–{end} 项，共 {total} 项"
+
+msgid "stats_card_stages_title"
+msgstr "卡片当前状态"
+
+msgid "stats_card_stages_hint"
+msgstr "新卡片 → 学习中 → 复习，遗忘后进入重新学习。复习卡片仍需持续间隔练习。"
+
+msgid "stats_card_stage_new"
+msgstr "新卡片"
+
+msgid "stats_card_stage_count"
+msgstr "{count} 张，共 {total} 张记忆卡片"
+
+msgid "stats_card_stages_scope"
+msgstr "所有牌组 · {total} 张记忆卡片，包含 {suspended} 张已暂停和 {buried} 张已搁置卡片。显示当前状态，不含主题及阅读器卡片。"
+
+msgid "stats_learning_inspect_day"
+msgstr "查看某一天"
+
+msgid "stats_learning_period"
+msgstr "学习趋势时间范围"

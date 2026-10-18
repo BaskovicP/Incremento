@@ -23,6 +23,13 @@ except ImportError:
 _YOUTUBE_FILTER = 'note:"Incremento Video"'
 _WEBPAGE_FILTER = 'note:"Incremento Web"'
 _MAX_CONSECUTIVE_PICK_MISSES = 64
+INCREMENTO_DECK = "Incremento Session"
+
+
+def incremento_session_deck_name(dialog_profile_name: str | None = None) -> str:
+    """Use one target-deck identity in preview, startup, and session refill."""
+    name = str(dialog_profile_name or "").strip()
+    return f"{INCREMENTO_DECK} ({name})" if name else INCREMENTO_DECK
 
 
 @dataclass
@@ -417,6 +424,7 @@ class SessionPicker:
         col=None,
         topic_classifier=None,
         profile: str | None = None,
+        session_deck_name: str | None = None,
     ) -> None:
         card_utils.clear_topic_item_cache()
         self.cfg = cfg
@@ -444,6 +452,14 @@ class SessionPicker:
         self.ordered_priority_picked: dict[str, int] = {}
 
         branch_clause = _cid_clause(list((self.branch_scope or {}).get("card_ids") or []))
+        if session_deck_name is not None and col is not None:
+            # Anki can rebuild this session's own unfinished cards, but cannot
+            # admit buried cards or steal cards from another filtered deck.
+            target_deck = col.decks.by_name(session_deck_name)
+            admission = "-deck:filtered"
+            if target_deck and target_deck.get("dyn"):
+                admission = f"(-deck:filtered OR did:{int(target_deck['id'])})"
+            branch_clause = _compose_filter(branch_clause, f"{admission} -is:buried -is:suspended")
         self.topics_filter = _compose_filter(cfg.topics_filter, branch_clause)
         self.items_filter = _compose_filter(cfg.items_filter, branch_clause)
         self.pdf_filter = _compose_filter(DOCUMENT_FILTER, branch_clause)
@@ -921,6 +937,7 @@ def select_session_cards(
     col=None,
     topic_classifier=None,
     profile: str | None = None,
+    session_deck_name: str | None = None,
 ) -> SessionSelectionResult:
     """Run the scheduler pick loop and return selected card IDs + pick metadata."""
     picker = SessionPicker(
@@ -930,6 +947,7 @@ def select_session_cards(
         col=col,
         topic_classifier=topic_classifier,
         profile=profile,
+        session_deck_name=session_deck_name,
     )
     picker.pick_until(cfg.session_card_count)
     return picker.result()

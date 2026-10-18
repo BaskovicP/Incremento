@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import subprocess
@@ -30,6 +31,15 @@ def test_versioned_onboarding_is_wired_to_first_run_and_manual_reopen():
     assert 'QAction(_t("root_menu_getting_started")' in entrypoint
 
 
+def test_free_study_statistics_answer_tracker_is_registered():
+    entrypoint = (ROOT / "__init__.py").read_text(encoding="utf-8")
+
+    assert (
+        "gui_hooks.reviewer_did_answer_card.append("
+        "_review_time_mod.on_reviewer_card_answered)"
+    ) in entrypoint
+
+
 def test_audio_import_is_exposed_as_a_background_add_content_action():
     entrypoint = (ROOT / "__init__.py").read_text(encoding="utf-8")
     body = entrypoint.split("def addAudioFunction() -> None:", 1)[1].split(
@@ -42,6 +52,94 @@ def test_audio_import_is_exposed_as_a_background_add_content_action():
     assert "add_audio_card(" in body
     assert 'deck_name="Topics"' in body
     assert 'tags=["topic"]' in body
+
+
+def test_supermemo_import_is_preflighted_off_thread_and_mutated_in_collection_op():
+    entrypoint = (ROOT / "__init__.py").read_text(encoding="utf-8")
+    body = entrypoint.split("def importSuperMemoFunction() -> None:", 1)[1].split(
+        "def addPdfFunction() -> None:", 1
+    )[0]
+
+    assert 'QAction(_t("root_menu_import_supermemo")' in entrypoint
+    assert "_utilsMenu.addAction(_importSuperMemoAction)" in entrypoint
+    assert "_addContentMenu.addAction(_importSuperMemoAction)" not in entrypoint
+    assert "run_in_background(prepare, prepared_done, uses_collection=False)" in body
+    assert "CollectionOp(mw, operation)" in body
+    assert "import_supermemo_collection(" in body
+    assert 'imports_supermemo_non_undoable' in body
+
+
+def test_pdf_context_rebuild_uses_anki_26_compatible_collection_operation():
+    entrypoint = (ROOT / "__init__.py").read_text(encoding="utf-8")
+    body = entrypoint.split("def rebuildPdfCardContextsFunction() -> None:", 1)[1].split(
+        "def addPdfFunction() -> None:", 1
+    )[0]
+
+    assert 'QAction(_t("root_menu_rebuild_pdf_card_contexts")' in entrypoint
+    assert "_utilsMenu.addAction(_rebuildPdfCardContextsAction)" in entrypoint
+    assert "askUser(" in body
+    assert "rebuild_all_pdf_context_cards(" in body
+    assert "CollectionOp(mw, operation)" in body
+    assert ".with_progress(" not in body
+    assert "update.value = completed" in body
+    assert "update.max = total" in body
+    assert "progress=progress" in body
+    assert ".with_backend_progress(progress_update)" in body
+    assert ".run_in_background()" in body
+
+
+def test_collection_operations_do_not_call_query_only_with_progress_api():
+    def contains_collection_op(node: ast.AST) -> bool:
+        return any(
+            isinstance(child, ast.Call)
+            and (
+                isinstance(child.func, ast.Name)
+                and child.func.id == "CollectionOp"
+                or isinstance(child.func, ast.Attribute)
+                and child.func.attr == "CollectionOp"
+            )
+            for child in ast.walk(node)
+        )
+
+    def assigned_names(node: ast.Assign | ast.AnnAssign) -> set[str]:
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        return {
+            child.id
+            for target in targets
+            for child in ast.walk(target)
+            if isinstance(child, ast.Name)
+        }
+
+    runtime_paths = [
+        ROOT / "__init__.py",
+        *sorted((ROOT / "backend").rglob("*.py")),
+        *sorted((ROOT / "frontend").rglob("*.py")),
+    ]
+    offenders: list[str] = []
+    for path in runtime_paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        collection_op_names: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Assign, ast.AnnAssign)):
+                value = node.value
+                if value is not None and contains_collection_op(value):
+                    collection_op_names.update(assigned_names(node))
+
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "with_progress"
+            ):
+                continue
+            receiver = node.func.value
+            receiver_names = {
+                child.id for child in ast.walk(receiver) if isinstance(child, ast.Name)
+            }
+            if contains_collection_op(receiver) or receiver_names & collection_op_names:
+                offenders.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+
+    assert offenders == []
 
 
 def test_non_modal_command_and_activity_dialogs_are_shown_exactly_once():

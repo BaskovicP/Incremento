@@ -60,6 +60,8 @@ Core functionality works without extra system setup, but some PDF features impro
 
 Incremento can guide first-run setup from inside Anki. PyMuPDF installation is an explicit user action. A compatible Python interpreter installs and verifies it in Incremento's local `.dependencies/` folder; restart Anki to activate it. yt-dlp is never silently installed into Anki's Python environment. Platform-specific details are implemented in [backend/deps.py](backend/deps.py).
 
+Webpage-to-PDF offers Website appearance and Clean article layouts, plus an optional link appendix. **Set up browser component…** in that dialog explicitly installs Playwright and Chromium into `.dependencies/webpage-browser/` for JavaScript and lazy-loaded content. A compatible Python interpreter is required; Linux may additionally need Chromium's system libraries. The guarded offline exporter remains available without this component. Browser captures use fresh contexts and bounded public-only resource fetching; no personal browser profile or cookies are reused.
+
 ## Quick Start
 
 After installing and restarting Anki:

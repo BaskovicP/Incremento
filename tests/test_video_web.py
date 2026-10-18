@@ -2,6 +2,7 @@
 import importlib.util
 import os
 import types
+from pathlib import Path
 
 import db
 import pytest
@@ -38,6 +39,10 @@ set_video_position = _vm.set_video_position
 local_video_relpath = _vm.local_video_relpath
 local_video_abspath = _vm.local_video_abspath
 import_local_video_file = _vm.import_local_video_file
+validate_mobile_video_clip_range = _vm.validate_mobile_video_clip_range
+render_mobile_video_clip = _vm.render_mobile_video_clip
+add_mobile_video_clip_to_anki_media = _vm.add_mobile_video_clip_to_anki_media
+mobile_video_clip_html = _vm.mobile_video_clip_html
 video_download_requirements = _vm.video_download_requirements
 parse_ytdlp_percent = _vm._parse_ytdlp_percent
 hms_to_seconds = _vm._hms_to_seconds
@@ -283,8 +288,13 @@ class TestLocalVideoHelpers:
 
     def test_video_download_requirements_reports_missing_tools(self, monkeypatch):
         monkeypatch.setattr(_vm, "_yt_dlp_cmd", lambda allow_auto_install=False: None)
-        monkeypatch.setattr(_vm.shutil, "which", lambda _name: None)
+        monkeypatch.setattr(_vm, "_ffmpeg_path", lambda: None)
         assert video_download_requirements() == ["yt-dlp", "ffmpeg (optional for compression)"]
+
+    def test_video_tools_use_shared_ffmpeg_detector_for_gui_path(self, monkeypatch):
+        monkeypatch.setattr(_vm, "_yt_dlp_cmd", lambda allow_auto_install=False: ["yt-dlp"])
+        monkeypatch.setattr(_vm, "_ffmpeg_path", lambda: "/opt/homebrew/bin/ffmpeg")
+        assert video_download_requirements() == []
 
     def test_ytdlp_resolution_never_installs_packages(self, monkeypatch):
         monkeypatch.setattr(_vm.shutil, "which", lambda _name: None)
@@ -297,6 +307,23 @@ class TestLocalVideoHelpers:
         monkeypatch.setattr(_vm.subprocess, "run", run)
         assert _vm._yt_dlp_cmd(allow_auto_install=True) is None
         assert all("install" not in command for command in calls)
+
+    def test_ytdlp_enables_installed_node_runtime_when_deno_is_unavailable(
+        self, monkeypatch
+    ):
+        binaries = {
+            "deno": None,
+            "node": "/opt/homebrew/bin/node",
+            "bun": None,
+            "qjs": None,
+            "quickjs": None,
+        }
+        monkeypatch.setattr(_vm.shutil, "which", lambda name: binaries.get(name))
+
+        assert _vm._ytdlp_javascript_runtime_args() == [
+            "--js-runtimes",
+            "node:/opt/homebrew/bin/node",
+        ]
 
     def test_local_import_reports_managed_path_before_completion(self, tmp_path):
         source = tmp_path / "clip.mp4"
@@ -315,6 +342,202 @@ class TestLocalVideoHelpers:
         assert os.path.isfile(
             local_video_abspath(str(tmp_path / "addon"), "Profile", relpath)
         )
+
+    def test_mobile_clip_range_accepts_requested_segment(self):
+        assert validate_mobile_video_clip_range(7 * 60 + 55, 8 * 60 + 33, 20 * 60) == (
+            475.0,
+            513.0,
+        )
+
+    def test_ytdlp_remote_clip_requests_only_the_selected_range(
+        self, tmp_path, monkeypatch
+    ):
+        commands = []
+
+        class _Proc:
+            stdout = []
+
+            def __init__(self, command, **_kwargs):
+                commands.append(command)
+
+            def wait(self):
+                return 0
+
+        monkeypatch.setattr(_vm, "_has_chromium_cookies", lambda _path: False)
+        monkeypatch.setattr(_vm.subprocess, "Popen", _Proc)
+
+        _vm._run_yt_dlp_with_progress(
+            str(tmp_path),
+            "Profile",
+            ["yt-dlp"],
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            tmp_path / "video.%(ext)s",
+            None,
+            mode="compressible",
+            max_height=720,
+            download_sections=(475, 513),
+        )
+
+        command = commands[0]
+        assert command[command.index("--download-sections") + 1] == "*475.000-513.000"
+        assert "--force-keyframes-at-cuts" in command
+
+    def test_remote_mobile_clip_encodes_only_downloaded_segment(
+        self, tmp_path, monkeypatch
+    ):
+        destination = tmp_path / "clip.mp4"
+        download_calls = []
+        render_calls = []
+
+        monkeypatch.setattr(
+            _vm,
+            "_video_tools",
+            lambda: (["yt-dlp"], "/usr/bin/ffmpeg"),
+        )
+
+        def download(*args, **kwargs):
+            download_calls.append((args, dict(kwargs)))
+            output_template = Path(args[4])
+            (output_template.parent / "dQw4w9WgXcQ.webm").write_bytes(b"segment")
+
+        def render(source, target, start, end, **kwargs):
+            render_calls.append((Path(source), Path(target), start, end, dict(kwargs)))
+            Path(target).write_bytes(b"mobile-clip")
+            return Path(target)
+
+        monkeypatch.setattr(_vm, "_run_yt_dlp_with_progress", download)
+        monkeypatch.setattr(_vm, "_probe_duration_seconds", lambda *_args: 38.0)
+        monkeypatch.setattr(_vm, "render_mobile_video_clip", render)
+
+        result = _vm.download_remote_mobile_video_clip(
+            str(tmp_path),
+            "Profile",
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            destination,
+            475,
+            513,
+        )
+
+        assert result == destination
+        assert download_calls[0][1]["download_sections"] == (475.0, 513.0)
+        assert download_calls[0][1]["max_height"] == 720
+        assert render_calls[0][2:4] == (0.0, 38.0)
+        assert destination.read_bytes() == b"mobile-clip"
+
+    @pytest.mark.parametrize(
+        ("start", "end", "duration"),
+        [
+            (-1, 10, 100),
+            (20, 20, 100),
+            (21, 20, 100),
+            (0, _vm.MAX_MOBILE_CLIP_SECONDS + 0.1, None),
+            (90, 101, 100),
+            (float("nan"), 10, 100),
+        ],
+    )
+    def test_mobile_clip_range_rejects_invalid_or_unbounded_ranges(
+        self, start, end, duration
+    ):
+        with pytest.raises(ValueError):
+            validate_mobile_video_clip_range(start, end, duration)
+
+    def test_render_mobile_clip_uses_portable_h264_aac_encoding(
+        self, tmp_path, monkeypatch
+    ):
+        source = tmp_path / "lesson.mkv"
+        source.write_bytes(b"source")
+        target = tmp_path / "clip.mp4"
+        commands = []
+
+        class _Proc:
+            def __init__(self, command, **_kwargs):
+                commands.append(command)
+                Path(command[-1]).write_bytes(b"portable-video")
+                self.stdout = ["out_time_ms=38000000\n", "progress=end\n"]
+
+            def wait(self):
+                return 0
+
+        monkeypatch.setattr(
+            _vm.shutil,
+            "which",
+            lambda name: "/usr/bin/ffmpeg" if name == "ffmpeg" else None,
+        )
+        monkeypatch.setattr(_vm, "_probe_duration_seconds", lambda *_args: 1200.0)
+        monkeypatch.setattr(_vm.subprocess, "Popen", _Proc)
+
+        rendered = render_mobile_video_clip(source, target, 475, 513)
+
+        assert rendered == target
+        command = commands[0]
+        assert command[command.index("-ss") + 1] == "475.000"
+        assert command[command.index("-t") + 1] == "38.000"
+        assert command[command.index("-c:v") + 1] == "libx264"
+        assert command[command.index("-pix_fmt") + 1] == "yuv420p"
+        assert command[command.index("-c:a") + 1] == "aac"
+        assert "+faststart" in command
+        assert target.read_bytes() == b"portable-video"
+
+    def test_oversized_mobile_clip_is_removed(self, tmp_path, monkeypatch):
+        source = tmp_path / "lesson.mp4"
+        source.write_bytes(b"source")
+        target = tmp_path / "clip.mp4"
+
+        class _Proc:
+            def __init__(self, command, **_kwargs):
+                Path(command[-1]).write_bytes(b"x" * 10)
+                self.stdout = []
+
+            def wait(self):
+                return 0
+
+        monkeypatch.setattr(_vm.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+        monkeypatch.setattr(_vm, "_probe_duration_seconds", lambda *_args: 100.0)
+        monkeypatch.setattr(_vm.subprocess, "Popen", _Proc)
+        monkeypatch.setattr(_vm, "MAX_ANKI_VIDEO_CLIP_BYTES", 5)
+
+        with pytest.raises(ValueError, match="Anki media limit"):
+            render_mobile_video_clip(source, target, 0, 10)
+
+        assert not target.exists()
+
+    def test_mobile_clip_is_added_to_anki_media_with_safe_name(self, tmp_path):
+        clip = tmp_path / "rendered.mp4"
+        clip.write_bytes(b"video")
+        staged = []
+
+        class _Media:
+            def add_file(self, path):
+                candidate = Path(path)
+                staged.append(candidate.name)
+                return candidate.name
+
+        stored = add_mobile_video_clip_to_anki_media(
+            types.SimpleNamespace(media=_Media()),
+            clip,
+            source_title="Lesson / unsafe title",
+            start_sec=475,
+            end_sec=513,
+        )
+
+        assert stored == staged[0]
+        assert stored.startswith("incremento-video-clip-Lesson_unsafe_title-0755-0833-")
+        assert stored.endswith(".mp4")
+        assert "/" not in stored
+
+    def test_mobile_clip_html_is_playable_and_escapes_dynamic_values(self):
+        rendered = mobile_video_clip_html(
+            'clip"><script>alert(1)</script>.mp4',
+            start_sec=475,
+            end_sec=513,
+            source_title="Lesson <unsafe>",
+        )
+
+        assert '<video controls playsinline preload="metadata"' in rendered
+        assert "<script>" not in rendered
+        assert "clip&quot;&gt;&lt;script&gt;" in rendered
+        assert "7:55–8:33" in rendered
+        assert "Lesson &lt;unsafe&gt;" in rendered
 
     def test_parse_ytdlp_percent(self):
         assert parse_ytdlp_percent("[download]  23.4% of 10.00MiB") == pytest.approx(23.4)

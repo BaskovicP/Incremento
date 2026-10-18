@@ -10,6 +10,84 @@ msgstr ""
 "Language: hr\n"
 "Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<12 || n%100>14) ? 1 : 2;\n"
 
+msgid "stats_progress_heading"
+msgstr "{scope} ukratko"
+
+msgid "stats_progress_daily"
+msgstr "Dnevna aktivnost"
+
+msgid "stats_progress_weekly"
+msgstr "Tjedna aktivnost"
+
+msgid "stats_progress_cumulative"
+msgstr "Napredak se zbraja"
+
+msgid "stats_progress_cumulative_caption"
+msgstr "{value} · {metric} na ovom grafikonu"
+
+msgid "stats_progress_chart_accessible"
+msgstr "Strelicama lijevo i desno pregledajte datume, tipkom Home prvi, a tipkom End najnoviji datum.\n{details}"
+
+msgid "stats_progress_day_detail"
+msgstr "{date} · {pages} stranica (PDF {pdf} / EPUB {epub}) · {duration} učenja · {cards} kartica\n{metric} ukupno na ovom grafikonu: {total}"
+
+msgid "stats_progress_goal_line"
+msgstr "Trenutačni dnevni cilj: {value}"
+
+msgid "stats_progress_empty"
+msgstr "U ovom razdoblju još nema aktivnosti.\nOvdje će se prikazati vaš napredak."
+
+msgid "stats_progress_formats"
+msgstr "PDF {pdf} · EPUB {epub}"
+
+msgid "stats_progress_time_hint"
+msgstr "Zabilježeno vrijeme učenja i čitanja"
+
+msgid "stats_progress_cards_hint"
+msgstr "Kartice zabilježene u Incrementu"
+
+msgid "stats_progress_no_baseline"
+msgstr "Nema aktivnosti u prethodnom razdoblju"
+
+msgid "stats_progress_comparison"
+msgstr "{change} u odnosu na prethodnih {days} dana"
+
+msgid "stats_progress_graph_window"
+msgstr "Aktivnost · {period}"
+
+msgid "stats_progress_show_metric"
+msgstr "Prikaži grafikone: {metric}"
+
+msgid "stats_progress_interaction_hint"
+msgstr "Kliknite grafikon ili strelicama pregledajte dan. Stranica se broji jednom po dokumentu i danu; ukupni zbroj uključuje ponovno čitanje kasnijih dana."
+
+msgid "stats_progress_streak_hint"
+msgstr "Uzastopni dani čitanja PDF-a ili EPUB-a u zabilježenoj povijesti. Dok današnji dan traje, zadržava se jučerašnji niz."
+
+msgid "stats_progress_refresh"
+msgstr "Osvježi"
+
+msgid "stats_progress_streak"
+msgid_plural "stats_progress_streak_plural"
+msgstr[0] "Niz čitanja · {count} dan"
+msgstr[1] "Niz čitanja · {count} dana"
+msgstr[2] "Niz čitanja · {count} dana"
+
+msgid "stats_progress_last_days"
+msgid_plural "stats_progress_last_days_plural"
+msgstr[0] "Posljednji {count} dan"
+msgstr[1] "Posljednja {count} dana"
+msgstr[2] "Posljednjih {count} dana"
+
+msgid "stats_progress_chart_title"
+msgstr "{metric} · {title}"
+
+msgid "stats_progress_page_legend"
+msgstr "<span style=\"color:{pdf_color}\">●</span> PDF &nbsp; <span style=\"color:{epub_color}\">●</span> EPUB"
+
+msgid "stats_progress_consistency"
+msgstr "Dani čitanja: {reading} / {days} · Aktivni dani: {active} / {days} · {average} stranica/dan"
+
 msgid "common_back"
 msgstr "Natrag"
 
@@ -202,6 +280,24 @@ msgstr "Najčešća vrsta/oznaka"
 msgid "stats_pages_read"
 msgstr "Pročitane stranice"
 
+msgid "stats_reading_video_activity"
+msgstr "Čitanje i video"
+
+msgid "stats_pdf_pages_read"
+msgstr "PDF stranice"
+
+msgid "stats_epub_pages_read"
+msgstr "EPUB stranice"
+
+msgid "stats_videos_watched"
+msgstr "Gledani videozapisi"
+
+msgid "stats_video_watch_time"
+msgstr "Vrijeme gledanja videa"
+
+msgid "stats_video_watch_hint"
+msgstr "Gledani videozapisi broje različite videozapise reproducirane u čitaču Incremento. Vrijeme gledanja bilježi se od ovog ažuriranja; pauze, premotavanje i reprodukcija u vanjskom pregledniku ne broje se."
+
 msgid "stats_study_time"
 msgstr "Vrijeme učenja"
 
@@ -249,6 +345,54 @@ msgstr "Sveukupno"
 
 msgid "stats_daily_goals"
 msgstr "Dnevni ciljevi"
+
+msgid "stats_edit_goals"
+msgstr "Uredi ciljeve…"
+
+msgid "stats_edit_goals_accessible"
+msgstr "Uredi dnevne ciljeve statistike"
+
+msgid "stats_goal_dashboard_hint"
+msgstr "Pratite samo ono što podržava vaše učenje; ciljeve možete promijeniti bilo kada."
+
+msgid "stats_goal_empty"
+msgstr "Još nema dnevnih ciljeva. Odaberite jednu mjeru koja odgovara vašoj uobičajenoj rutini učenja."
+
+msgid "stats_goal_setup_title"
+msgstr "Postavi dnevne ciljeve"
+
+msgid "stats_goal_setup_guidance"
+msgstr "Odaberite cilj koji možete postići tijekom uobičajenog dana učenja."
+
+msgid "stats_goal_intro"
+msgstr "Odaberite samo mjere koje su vam važne. Počnite realno; cilj možete povisiti kada ga počnete redovito ostvarivati."
+
+msgid "stats_goal_recent_explanation"
+msgstr "Prijedlozi se temelje na medijanu aktivnih dana tijekom posljednjih 30 dana, pa jedna neuobičajeno velika sesija ne određuje tempo."
+
+msgid "stats_goal_cards_description"
+msgstr "Proučene teme, stavke i ostale vrste kartica."
+
+msgid "stats_goal_pages_description"
+msgstr "Jedinstvene pročitane stranice PDF i EPUB dokumenata."
+
+msgid "stats_goal_minutes_description"
+msgstr "Usredotočeno vrijeme učenja i ponavljanja u svim aktivnostima."
+
+msgid "stats_goal_daily_target"
+msgstr "Dnevni cilj"
+
+msgid "stats_goal_use_suggestion"
+msgstr "Primijeni {target}"
+
+msgid "stats_goal_use_suggestion_accessible"
+msgstr "Primijeni predloženi cilj za {label}: {target} dnevno"
+
+msgid "stats_goal_suggestion_basis"
+msgid_plural "stats_goal_suggestion_basis_plural"
+msgstr[0] "Na temelju {count} aktivnog dana"
+msgstr[1] "Na temelju {count} aktivna dana"
+msgstr[2] "Na temelju {count} aktivnih dana"
 
 msgid "stats_cards"
 msgstr "Kartice"
@@ -354,6 +498,27 @@ msgstr "Vrijeme ponavljanja po vrsti kartice"
 
 msgid "stats_review_time_by_tag"
 msgstr "Vrijeme ponavljanja po oznaci"
+
+msgid "stats_topic_tag_time"
+msgstr "Teme po oznakama"
+
+msgid "stats_item_tag_time"
+msgstr "Stavke po oznakama"
+
+msgid "stats_topic_item_pie_hint"
+msgstr "Isječci prikazuju ponovljene kartice po oznaci. Legenda prikazuje broj kartica."
+
+msgid "stats_pie_legend_value"
+msgstr "Kartice: {cards}"
+
+msgid "stats_pie_total"
+msgstr "Ukupno: {cards}"
+
+msgid "stats_untagged"
+msgstr "Bez oznake"
+
+msgid "stats_other_tags"
+msgstr "Ostale oznake"
 
 msgid "stats_bar_chart_accessible"
 msgstr "Stupčasti grafikon statistike"
@@ -553,7 +718,7 @@ msgstr "Ukupno"
 msgid "session_live_card_preview"
 msgstr "Pregled kartica uživo…"
 msgid "session_live_preview_hint"
-msgstr "Pregled uživo je procijenjeni uzorak. Za točnu ponovnu upotrebu omogućite potvrdni okvir u dijalogu pregleda."
+msgstr "Tablica i Pregled kartica uživo dijele isti odabir. Pokretanje ponovno koristi taj popis kada je ažuran."
 
 msgid "common_search"
 msgstr "Pretraži"
@@ -746,6 +911,106 @@ msgid "knowledge_tree_add_root_tooltip"
 msgstr "Dodajte korijensku temu ili stavku."
 msgid "knowledge_tree_add_under"
 msgstr "Dodajte temu ili stavku ispod čvora {title}."
+msgid "knowledge_tree_mind_map"
+msgstr "Mentalna mapa"
+msgid "knowledge_tree_mind_map_tooltip"
+msgstr "Otvorite radijalnu mentalnu mapu cijelog stabla ili odabrane grane, označenu bojama."
+msgid "knowledge_tree_mind_map_title"
+msgstr "Incremento — mentalna mapa stabla znanja"
+msgid "knowledge_tree_mind_map_principles"
+msgstr "Središnja ideja širi se u zakrivljene grane označene bojama. Svaka grana koristi jedan sažeti natpis, vizualnu hijerarhiju i simbol teme/stavke kako bi se veze lakše uočile."
+msgid "knowledge_tree_mind_map_principles_name"
+msgstr "Načela mentalne mape"
+msgid "knowledge_tree_mind_map_scope"
+msgstr "Opseg"
+msgid "knowledge_tree_mind_map_whole_tree"
+msgstr "Cijelo stablo"
+msgid "knowledge_tree_mind_map_selected_branch"
+msgstr "Odabrana grana"
+msgid "knowledge_tree_view_branch_mind_map"
+msgstr "Prikaži granu kao mentalnu mapu"
+msgid "knowledge_tree_mind_map_select_branch_first"
+msgstr "Odaberite točno jedan čvor u stablu znanja za korištenje ovog opsega."
+msgid "knowledge_tree_mind_map_show_priorities"
+msgstr "Prikaži prioritete"
+msgid "knowledge_tree_mind_map_fit"
+msgstr "Prilagodi"
+msgid "knowledge_tree_mind_map_zoom_out"
+msgstr "Umanji"
+msgid "knowledge_tree_mind_map_zoom_in"
+msgstr "Uvećaj"
+msgid "knowledge_tree_mind_map_canvas"
+msgstr "Mentalna mapa stabla znanja"
+msgid "knowledge_tree_mind_map_summary_name"
+msgstr "Sažetak mentalne mape"
+msgid "knowledge_tree_mind_map_summary"
+msgstr "Vidljivo čvorova: {visible} od {total} · vizualnih razina: {levels}"
+
+msgid "knowledge_tree_mind_map_hidden_nodes"
+msgstr "Skriveni potomci: {count}"
+
+msgid "knowledge_tree_mind_map_canvas_instructions"
+msgstr "Krećite se strelicama, razmaknicom sažmite ili proširite granu, tipkom Enter vratite se u stablo, a povlačenjem praznog prostora pomičite prikaz."
+
+msgid "knowledge_tree_mind_map_actual_size"
+msgstr "Stvarna veličina"
+
+msgid "knowledge_tree_mind_map_zoom_level"
+msgstr "Razina uvećanja"
+
+msgid "knowledge_tree_mind_map_zoom_percent"
+msgstr "{percent}%"
+
+msgid "knowledge_tree_mind_map_search"
+msgstr "Traži"
+
+msgid "knowledge_tree_mind_map_search_placeholder"
+msgstr "Pronađite čvor prema naslovu…"
+
+msgid "knowledge_tree_mind_map_find_next"
+msgstr "Sljedeće"
+
+msgid "knowledge_tree_mind_map_search_status"
+msgstr "Stanje pretraživanja"
+
+msgid "knowledge_tree_mind_map_collapse_all"
+msgstr "Sažmi sve"
+
+msgid "knowledge_tree_mind_map_expand_all"
+msgstr "Proširi sve"
+
+msgid "knowledge_tree_mind_map_focus_branch"
+msgstr "Izdvoji granu"
+
+msgid "knowledge_tree_mind_map_show_full"
+msgstr "Prikaži cijelu mapu"
+
+msgid "knowledge_tree_mind_map_export_png"
+msgstr "Izvezi PNG…"
+
+msgid "knowledge_tree_mind_map_keyboard_hint"
+msgstr "Strelice: navigacija · Razmaknica: sažimanje · Enter: povratak u stablo"
+
+msgid "knowledge_tree_mind_map_match_count"
+msgstr "Rezultata: {count}"
+
+msgid "knowledge_tree_mind_map_match_position"
+msgstr "{current}/{count}"
+
+msgid "knowledge_tree_mind_map_export_title"
+msgstr "Izvoz mentalne mape"
+
+msgid "knowledge_tree_mind_map_png_filter"
+msgstr "PNG slike (*.png)"
+
+msgid "knowledge_tree_mind_map_export_failed"
+msgstr "Nije moguće izvesti sliku mentalne mape."
+msgid "knowledge_tree_mind_map_center"
+msgstr "Stablo znanja"
+msgid "knowledge_tree_mind_map_empty"
+msgstr "Dodajte ili povežite barem jedan čvor prije otvaranja mentalne mape."
+msgid "knowledge_tree_priority_short"
+msgstr "P{value}"
 msgid "knowledge_tree_search_placeholder"
 msgstr "Pretraži ovo stablo…"
 msgid "knowledge_tree_refresh_tooltip"
@@ -1347,7 +1612,7 @@ msgstr "Pregled raspoređivača uživo"
 msgid "session_live_preview_refresh_hint"
 msgstr "Kliknite Osvježi za pregled trenutačnog izlaza raspoređivača."
 msgid "session_live_preview_disclaimer"
-msgstr "Napomena o pregledu: ovo je jedan uzorkovani rad raspoređivača. Pri normalnom pokretanju raspoređivanje se ponavlja i može se razlikovati, osobito u mekom načinu."
+msgstr "Tablica i ovaj pregled dijele isti odabrani popis kartica. Pokretanje sesije ponovno ga koristi dok su postavke nepromijenjene. Osvježi ažurira oba prikaza novim odabirom."
 msgid "session_mode"
 msgstr "Način"
 msgid "session_tag"
@@ -1391,9 +1656,9 @@ msgstr "Danas"
 msgid "session_scope_all_time"
 msgstr "Sveukupno"
 msgid "session_use_previewed_list"
-msgstr "Pri pokretanju koristi ovaj pregledani popis kartica (preskoči ponovno raspoređivanje)"
+msgstr "Zahtijevaj ažuran pregled prije pokretanja"
 msgid "session_use_previewed_list_tooltip"
-msgstr "Kada je omogućeno, Pokreni sesiju točno ponovno koristi posljednji osvježeni popis pregleda."
+msgstr "Ažuran prikazani odabir uvijek se ponovno koristi. Uključite ovu opciju za blokiranje pokretanja dok se pregled osvježava ili nije dostupan."
 
 msgid "writing_unknown_time"
 msgstr "Nepoznato vrijeme"
@@ -1534,7 +1799,7 @@ msgstr "Incremento klasificira teme istom logikom kao gumb T, oznake tema, pode�
 msgid "session_live_preview_required_title"
 msgstr "Potreban je pregled uživo"
 msgid "session_live_preview_required_message"
-msgstr "Omogućili ste „Koristi pregledani popis kartica”.\n\nOtvorite Pregled kartica uživo i kliknite Osvježi nakon posljednje promjene postavki, zatim ponovno pokrenite sesiju."
+msgstr "Zahtijevate ažuran pregled prije pokretanja.\n\nPričekajte da osvježavanje pregleda završi nakon posljednje promjene postavki. Ako pregled nije dostupan, otvorite Pregled kartica uživo i kliknite Osvježi, zatim ponovno pokrenite sesiju."
 msgid "session_delete_today_title"
 msgstr "Izbriši današnje podatke"
 msgid "session_delete_today_message"
@@ -1775,3 +2040,201 @@ msgstr "Uvijek prisili ovaj izgled za svaki PDF"
 
 msgid "settings_pdf_appearance_hint"
 msgstr "Kada prisila nije uključena, svaki PDF pamti vlastiti odabir, a novi PDF-ovi koriste zadani izgled. Kada je uključena, svaki PDF otvara se u odabranom izgledu bez brisanja spremljenog odabira."
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_title"
+msgstr "Današnji rezultati učenja"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_stage"
+msgstr "Učenje"
+
+#: frontend/learning_stats.py
+msgid "stats_review_stage"
+msgstr "Ponavljanje"
+
+#: frontend/learning_stats.py
+msgid "stats_relearning_stage"
+msgstr "Ponovno učenje"
+
+#: frontend/learning_stats.py
+msgid "stats_answer_attempts"
+msgstr "Pokušaji odgovora"
+
+#: frontend/learning_stats.py
+msgid "stats_again_fail"
+msgstr "Ponovno / Netočno"
+
+#: frontend/learning_stats.py
+msgid "stats_recalled"
+msgstr "Prisjećanje"
+
+#: frontend/learning_stats.py
+msgid "stats_recall_rate"
+msgstr "Stopa prisjećanja"
+
+#: frontend/learning_stats.py
+msgid "stats_answer_stage"
+msgstr "Faza"
+
+#: frontend/learning_stats.py
+msgid "stats_rating_hard"
+msgstr "Teško"
+
+#: frontend/learning_stats.py
+msgid "stats_rating_good"
+msgstr "Dobro"
+
+#: frontend/learning_stats.py
+msgid "stats_rating_easy"
+msgstr "Lako"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_card_totals"
+msgstr "Jedinstvene kartice: {cards} · Kartice s odgovorom Ponovno: {failed_cards}"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_hint"
+msgstr "Ponovno / Netočno broji neuspješne odgovore. Prisjećanje = Teško + Dobro + Lako. Broji se svaki pokušaj odgovora, uključujući ponovljene."
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_exclusions"
+msgstr "Izbori učestalosti tema, vježba u pretpregledu i ručne promjene rasporeda nisu uključeni."
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_loading"
+msgstr "Učitavanje rezultata učenja…"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_unavailable"
+msgstr "Rezultati učenja nisu dostupni. Pokušajte ponovno otvoriti Statistiku."
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_learning_history_title"
+msgstr "Rezultati učenja · Posljednjih {days} dana"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_learning_answers_by_day"
+msgstr "Neuspješni odgovori i prisjećanje po danu"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_rate_by_day"
+msgstr "Stopa prisjećanja po danu"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_chart_hint"
+msgstr "Prisjećanje = Teško + Dobro + Lako. Broji se svaki pokušaj odgovora, uključujući ponavljanja. Grafikon stope koristi 0–100%; praznine znače da nema odgovora. Zadržite pokazivač na grafikonu stope za pojedinosti dana."
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_learning_no_answers"
+msgstr "Nema odgovora u ovom razdoblju."
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_no_previous"
+msgstr "Nema odgovora u prethodnih {days} dana za usporedbu."
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_comparison_up"
+msgstr "Stopa prisjećanja porasla je za {change} postotnih bodova: {current} prema {previous} u prethodnih {days} dana."
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_comparison_down"
+msgstr "Stopa prisjećanja pala je za {change} postotnih bodova: {current} prema {previous} u prethodnih {days} dana."
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_comparison_same"
+msgstr "Stopa prisjećanja nije se promijenila: {current} prema {previous} u prethodnih {days} dana."
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_learning_day_summary"
+msgstr "{date}: {attempts} pokušaja · {failed} Ponovno / Netočno · {recalled} prisjećanja · Stopa prisjećanja: {rate}"
+
+msgid "stats_views"
+msgstr "Prikazi statistike"
+
+msgid "stats_view_overview"
+msgstr "Pregled"
+
+msgid "stats_view_documents"
+msgstr "Dokumenti"
+
+msgid "stats_view_learning"
+msgstr "Kartice za učenje"
+
+msgid "stats_documents_title"
+msgstr "Vaš napredak u čitanju"
+
+msgid "stats_documents_basis"
+msgstr "Spremljene oznake pročitanog, za cijelo razdoblje. PDF prikazuje stvarne stranice. EPUB prikazuje procjenu s 1.500 znakova po stranici, neovisno o fontu ili prozoru; broj se može razlikovati od čitača. Označite pročitano do željenog mjesta u čitaču pa osvježite."
+
+msgid "stats_documents_loading"
+msgstr "Učitavanje napretka dokumenata…"
+
+msgid "stats_documents_unavailable"
+msgstr "Napredak dokumenata nije dostupan. Pokušajte osvježiti."
+
+msgid "stats_documents_summary"
+msgstr "{total} dokumenata · {started} u tijeku · {finished} dovršeno"
+
+msgid "stats_documents_search"
+msgstr "Pretraži naslove dokumenata"
+
+msgid "stats_documents_all"
+msgstr "Svi formati"
+
+msgid "stats_documents_format"
+msgstr "Format"
+
+msgid "stats_documents_document"
+msgstr "Dokument"
+
+msgid "stats_documents_read"
+msgstr "Pročitano"
+
+msgid "stats_documents_left"
+msgstr "Preostalo"
+
+msgid "stats_documents_total"
+msgstr "Ukupno"
+
+msgid "stats_documents_completion"
+msgstr "Dovršeno"
+
+msgid "stats_documents_no_matches"
+msgstr "Nema odgovarajućih dokumenata. Uvezite PDF ili EPUB ili promijenite pretragu."
+
+msgid "stats_documents_previous"
+msgstr "Prethodno"
+
+msgid "stats_documents_next"
+msgstr "Sljedeće"
+
+msgid "stats_documents_estimated"
+msgstr "procj."
+
+msgid "stats_documents_unknown"
+msgstr "Ukupan broj nije dostupan. Provjerite je li dokument dostupan u čitaču pa osvježite."
+
+msgid "stats_documents_page"
+msgstr "Prikaz {start}–{end} od {total}"
+
+msgid "stats_card_stages_title"
+msgstr "Trenutačno stanje kartica"
+
+msgid "stats_card_stages_hint"
+msgstr "Novo → Učenje → Ponavljanje, uz ponovno učenje nakon zaboravljanja. Kartice za ponavljanje i dalje se vježbaju u razmacima."
+
+msgid "stats_card_stage_new"
+msgstr "Novo"
+
+msgid "stats_card_stage_count"
+msgstr "{count} od {total} kartica za pamćenje"
+
+msgid "stats_card_stages_scope"
+msgstr "Svi špilovi · {total} kartica za pamćenje, uključujući {suspended} obustavljenih i {buried} skrivenih. Trenutačno stanje; bez tema i kartica čitača."
+
+msgid "stats_learning_inspect_day"
+msgstr "Pregledaj dan"
+
+msgid "stats_learning_period"
+msgstr "Razdoblje učenja"

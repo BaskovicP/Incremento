@@ -6,6 +6,7 @@ No Anki mocking needed — statistics.py has no Anki imports.
 import importlib.util
 import json
 import os
+from types import SimpleNamespace
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from unittest.mock import MagicMock
@@ -25,6 +26,7 @@ _empty = _mod._empty
 _today = _mod._today
 _effective_date = _mod._effective_date
 _is_valid_counts_block = _mod._is_valid_counts_block
+record_tag_breakdown = _mod.record_tag_breakdown
 
 
 def make_result(card="fake_card_id", card_type="topics", tag="health", mode="random"):
@@ -616,6 +618,160 @@ class TestRecordTimeOnly:
         assert sm.lifetime_time["type"] == {"pdf": 10.0, "epub": 20.0}
 
 
+class TestTopicItemTagBreakdown:
+    def test_records_daily_and_lifetime_time_and_card_counts_by_kind_and_tag(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(_mod, "_effective_date", lambda _day_end: "2026-10-06")
+
+        record_tag_breakdown(
+            str(tmp_path),
+            "TestProfile",
+            study_kind="topics",
+            tag="history",
+            include_count=True,
+            seconds=42.5,
+            day_end_time="04:00",
+        )
+        record_tag_breakdown(
+            str(tmp_path),
+            "TestProfile",
+            study_kind="items",
+            tag=None,
+            include_count=True,
+            seconds=18.0,
+            day_end_time="04:00",
+        )
+
+        saved = load_stats(str(tmp_path), "TestProfile")["tag_breakdown"]
+        assert saved["daily"] == {
+            "date": "2026-10-06",
+            "counts": {"topics": {"history": 1}, "items": {"(untagged)": 1}},
+            "seconds": {
+                "topics": {"history": 42.5},
+                "items": {"(untagged)": 18.0},
+            },
+        }
+        assert saved["lifetime"]["counts"] == saved["daily"]["counts"]
+        assert saved["lifetime"]["seconds"] == saved["daily"]["seconds"]
+
+    def test_normal_stats_updates_preserve_the_joint_tag_breakdown(self, tmp_path):
+        record_tag_breakdown(
+            str(tmp_path),
+            "TestProfile",
+            study_kind="items",
+            tag="history",
+            include_count=True,
+            seconds=0,
+        )
+
+        manager = StatsManager(str(tmp_path), "TestProfile")
+        manager.record(make_result(card_type="items", tag=None), "daily")
+
+        saved = load_stats(str(tmp_path), "TestProfile")
+        assert saved["tag_breakdown"]["daily"]["counts"]["items"] == {
+            "history": 1
+        }
+        assert saved["tag_breakdown"]["lifetime"]["counts"]["items"] == {
+            "history": 1
+        }
+
+    def test_rebuilds_today_from_anki_revlog_rows_and_current_card_tags(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            _mod,
+            "_logical_day_bounds_ms",
+            lambda _day_end: (1000, 2000),
+        )
+
+        topic_note = SimpleNamespace(tags=["topic", "history"])
+        item_note = SimpleNamespace(tags=["item", "vocabulary"])
+        cards = {
+            10: SimpleNamespace(id=10, note=lambda: topic_note),
+            20: SimpleNamespace(id=20, note=lambda: item_note),
+        }
+
+        class FakeDb:
+            def all(self, query, *args):
+                assert "FROM revlog" in query
+                assert "GROUP BY cid" in query
+                assert args == (1000, 2000, 10_000)
+                return [(10, 2), (20, 1)]
+
+        collection = SimpleNamespace(
+            db=FakeDb(),
+            get_card=lambda cid: cards[cid],
+        )
+        classifier = SimpleNamespace(
+            topic_tags=frozenset({"topic"}),
+            item_tags=frozenset({"item"}),
+        )
+
+        rebuilt = _mod.daily_tag_breakdown_from_collection(
+            collection,
+            "04:00",
+            classifier=classifier,
+            topic_predicate=lambda card, **_kwargs: card.id == 10,
+        )
+
+        assert rebuilt == {
+            "counts": {
+                "topics": {"history": 2},
+                "items": {"vocabulary": 1},
+            },
+            "seconds": {"topics": {}, "items": {}},
+        }
+
+    def test_rejects_unknown_kind_and_normalizes_hostile_breakdown_values(
+        self, tmp_path
+    ):
+        with pytest.raises(ValueError, match="study_kind"):
+            record_tag_breakdown(
+                str(tmp_path),
+                "TestProfile",
+                study_kind="pdf",
+                tag="reading",
+                include_count=True,
+                seconds=5,
+            )
+
+        stats_file = tmp_path / "user_files" / "TestProfile" / "custom_learn_stats.json"
+        stats_file.parent.mkdir(parents=True)
+        stats_file.write_text(
+            json.dumps(
+                {
+                    "tag_breakdown": {
+                        "daily": {
+                            "date": _effective_date(),
+                            "counts": {
+                                "topics": {"ok": "2", "bad": -1},
+                                "items": {"x" * 129: 9},
+                                "other": {"leak": 2},
+                            },
+                            "seconds": {
+                                "topics": {"ok": "12.5", "bad": "nan"},
+                                "items": {},
+                            },
+                        },
+                        "lifetime": {"counts": {}, "seconds": {}},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        normalized = load_stats(str(tmp_path), "TestProfile")["tag_breakdown"]
+        assert normalized["daily"]["counts"] == {
+            "topics": {"ok": 2},
+            "items": {},
+        }
+        assert normalized["daily"]["seconds"] == {
+            "topics": {"ok": 12.5},
+            "items": {},
+        }
+
+
 class TestDailyTimeLoading:
     def test_loads_todays_daily_time(self, tmp_path):
         """If the file contains today's daily_time, it should be loaded."""
@@ -889,6 +1045,52 @@ class TestStatisticsGoalsAndCsv:
         assert row["counts"] == _empty()
         assert row["seconds"] == {"type": {}, "tags": {}}
         assert row["reading"] == {"pdf_pages": 1, "epub_pages": 0, "pages": 1}
+
+
+def test_media_activity_counts_unique_pages_and_distinct_watched_videos_by_scope(tmp_path, monkeypatch):
+    monkeypatch.setattr(_mod, "_effective_date", lambda _cutoff: "2026-10-14")
+    addon = str(tmp_path)
+    profile = "TestProfile"
+    _mod.record_reading_page(addon, profile, "pdf", 11, 1)
+    _mod.record_reading_page(addon, profile, "pdf", 11, 1)
+    _mod.record_reading_page(addon, profile, "epub", 12, 3)
+    _mod.record_video_watch(addon, profile, 21, 31.5)
+    _mod.record_video_watch(addon, profile, 21, 28.5)
+    _mod.record_video_watch(addon, profile, 22, 30)
+
+    monkeypatch.setattr(_mod, "_effective_date", lambda _cutoff: "2026-10-15")
+    _mod.record_reading_page(addon, profile, "pdf", 11, 2)
+    _mod.record_video_watch(addon, profile, 21, 15)
+
+    assert _mod.load_media_activity(addon, profile, days=1) == {
+        "pdf_pages": 1, "epub_pages": 0, "pages": 1,
+        "videos_watched": 1, "video_watch_seconds": 15.0,
+    }
+    assert _mod.load_media_activity(addon, profile, days=2) == {
+        "pdf_pages": 2, "epub_pages": 1, "pages": 3,
+        "videos_watched": 2, "video_watch_seconds": 105.0,
+    }
+    assert _mod.load_media_activity(addon, profile) == _mod.load_media_activity(
+        addon, profile, days=2
+    )
+    assert _mod.load_media_activity(addon, "OtherProfile", days=2)["pages"] == 0
+    assert _mod.load_media_activity(addon, "OtherProfile", days=2)["videos_watched"] == 0
+
+    _mod.delete_daily_stats(addon, profile)
+    assert _mod.load_media_activity(addon, profile, days=1) == {
+        "pdf_pages": 0, "epub_pages": 0, "pages": 0,
+        "videos_watched": 0, "video_watch_seconds": 0.0,
+    }
+    assert _mod.load_media_activity(addon, profile)["video_watch_seconds"] == 90.0
+    _mod.delete_all_stats(addon, profile)
+    assert _mod.load_media_activity(addon, profile)["video_watch_seconds"] == 0.0
+
+
+@pytest.mark.parametrize("card_id, seconds", [(0, 1), (-1, 1), (True, 1), (1, 0), (1, -1), (1, float("nan")), (1, 999)])
+def test_video_watch_rejects_invalid_samples_without_writing(tmp_path, card_id, seconds):
+    with pytest.raises(ValueError):
+        _mod.record_video_watch(str(tmp_path), "TestProfile", card_id, seconds)
+    assert _mod.load_media_activity(str(tmp_path), "TestProfile")["videos_watched"] == 0
 
 
 class TestStatisticsPersistenceHardening:

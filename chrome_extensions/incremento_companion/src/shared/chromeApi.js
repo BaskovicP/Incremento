@@ -79,6 +79,7 @@ export async function captureSnapshot(tabId, options = {}) {
   const contextOptions = {
     includeHtml: options?.includeHtml !== false,
     htmlScope: String(options?.htmlScope || "full").toLowerCase() === "main" ? "main" : "full",
+    ...(options?.preserveStyles === true ? {preserveStyles: true} : {}),
   };
   try {
     await chrome.scripting.executeScript({

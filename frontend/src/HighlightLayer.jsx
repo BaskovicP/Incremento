@@ -38,6 +38,8 @@ function highlightBackground(highlight, nativeHighlightsVisible) {
 export default function HighlightLayer({
   language = DEFAULT_LANGUAGE,
   nativeHighlightsVisible = false,
+  showHighlightControls = true,
+  showHighlightDeleteButtons = true,
   pageHighlights,
   renderInfo,
   deleteHighlight,
@@ -129,8 +131,8 @@ export default function HighlightLayer({
               border:        isSnapshotHighlight(h) ? '2px solid rgba(37,99,235,0.95)' : 'none',
               boxSizing:     'border-box',
               mixBlendMode:  isSnapshotHighlight(h) ? 'normal' : 'multiply',
-              outline:       h.id === focusedHighlightId ? '2px solid rgba(255,255,255,0.95)' : 'none',
-              boxShadow:     h.id === focusedHighlightId ? '0 0 0 3px rgba(56,189,248,0.55)' : 'none',
+              outline:       showHighlightControls && h.id === focusedHighlightId ? '2px solid rgba(255,255,255,0.95)' : 'none',
+              boxShadow:     showHighlightControls && h.id === focusedHighlightId ? '0 0 0 3px rgba(56,189,248,0.55)' : 'none',
               pointerEvents: 'none',
               zIndex:        1,
             }}
@@ -139,7 +141,7 @@ export default function HighlightLayer({
       )}
 
       {/* ── Hover targets for note-bearing highlights — above text layer ── */}
-      {displayHighlights.map(h =>
+      {showHighlightControls && displayHighlights.map(h =>
         !String(h.note || '').trim()
           ? null
           : h.rects.map((r, ri) => (
@@ -163,7 +165,7 @@ export default function HighlightLayer({
       )}
 
       {/* ── Highlight action buttons — above text layer (z:10), one cluster per highlight ── */}
-      {displayHighlights.map(h => {
+      {showHighlightControls && displayHighlights.map(h => {
         if (!h.rects.length) return null;
         const r = h.rects[0];
         const hasNote = !!String(h.note || '').trim();
@@ -228,7 +230,7 @@ export default function HighlightLayer({
                 ↔
               </button>
             )}
-            <button
+            {showHighlightDeleteButtons && <button
               title={language.tr(isSnapshotHighlight(h) ? 'reader_remove_snapshot_highlight' : 'reader_remove_highlight')}
               onClick={() => deleteHighlight(h.id)}
               style={{
@@ -246,13 +248,13 @@ export default function HighlightLayer({
               }}
             >
               ×
-            </button>
+            </button>}
           </div>
         );
       })}
 
       {/* ── Active text-highlight resize handles — large hit targets for mouse/touch ── */}
-      {displayHighlights.map((h) => {
+      {showHighlightControls && displayHighlights.map((h) => {
         if (h.id !== resizingHighlightId || !isResizableTextHighlight(h) || !h.rects.length) return null;
         const first = h.rects[0];
         const last = h.rects[h.rects.length - 1];

@@ -136,6 +136,20 @@ h1 {
   display: block;
 }
 
+.pdf-export-settings {
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(83, 72, 54, 0.18);
+}
+
+.pdf-export-settings .field {
+  margin-top: 12px;
+}
+
+.pdf-export-settings .toggle-row + .note {
+  margin-top: 6px;
+}
+
 .toggle-row {
   display: flex;
   align-items: center;

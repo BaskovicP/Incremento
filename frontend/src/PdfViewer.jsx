@@ -5,10 +5,12 @@ import PdfSelectionLayer from './PdfSelectionLayer.jsx';
 import { normalizePdfHighlightRects, pdfHighlightAtClientPoint } from './pdfHighlightRects.mjs';
 import { HL_COLORS, HL_SOLID, highlightSolidColor, normalizeHighlightColor } from './highlightColors.mjs';
 import { pushPdfLinkHistory, takePdfLinkHistory } from './pdfLinkHistory.mjs';
+import { capturePdfFindStartPage, pdfFindReturnDelta } from './pdfFindHistory.mjs';
 import { pdfAnchorScrollRatio } from './pdfAnchorLocation.mjs';
+import { pdfPageLocation } from './pdfPageLabels.mjs';
 import { createReaderLanguage } from './i18n.mjs';
 import { joinPdfTextParts, truncatePdfText } from './pdfCjkText.mjs';
-import { selectionCleaned } from './pdfTextSelection.mjs';
+import { selectionCleaned, selectionFormatted } from './pdfTextSelection.mjs';
 import { stablePdfEndpointCaret } from './pdfSelection.mjs';
 import {
   PDF_APPEARANCE_MODES,
@@ -414,15 +416,21 @@ export default function PdfViewer() {
   const { tr, plural } = language;
   // ── Rendering pipeline (text layer, canvases, zoom, navigation) ────────────
   const {
-    page, totalPages, zoom, error, renderInfo, readPage, linkAnnotations,
+    page, totalPages, pageLabels, zoom, error, renderInfo, readPage, linkAnnotations,
     canvasARef, canvasBRef, containerRef, textLayerRef,
     pdfDocRef, activeCvsRef, cardIdRef, pageRef, lastScaleRef,
     startViewer, nav: rawNav, adjustZoom, setReadProgress: rawSetReadProgress,
   } = usePdfRender();
+  const pageLocationText = pdfPageLocation(page, totalPages, pageLabels, tr);
+  const pageLocationTitle = tr('reader_page_jump') + '\n' + tr(
+    pageLabels?.[page - 1] ? 'reader_page_numbering_hint' : 'reader_printed_page_unavailable',
+  );
 
   // ── Highlight state ────────────────────────────────────────────────────────
   const [highlights,    setHighlights]    = useState([]);
   const [nativeHighlightsVisible, setNativeHighlightsVisible] = useState(false);
+  const [showHighlightControls, setShowHighlightControls] = useState(true);
+  const [showHighlightDeleteButtons, setShowHighlightDeleteButtons] = useState(true);
   const [hlColor,       setHlColor]       = useState('yellow');
   const [autoHighlight, setAutoHighlight] = useState(false);
   const [resizingHighlightId, setResizingHighlightId] = useState(null);
@@ -455,6 +463,7 @@ export default function PdfViewer() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchHits, setSearchHits] = useState([]);
   const [activeSearchHitIndex, setActiveSearchHitIndex] = useState(-1);
+  const [findStartPage, setFindStartPage] = useState(null);
   const [readAnchor, setReadAnchor] = useState(null);
   const [limitStatus, setLimitStatus] = useState(DEFAULT_LIMIT_STATUS);
   const [limitNotice, setLimitNotice] = useState(null);
@@ -918,6 +927,12 @@ export default function PdfViewer() {
   }, [searchQuery, page, renderInfo, textLayerRef, clearPendingResumeScroll, suppressScrollPersistence, searchJumpNonce]);
 
   useEffect(() => {
+    if (String(searchQuery || '').trim()) {
+      const currentPage = pageRef.current;
+      setFindStartPage((startPage) => capturePdfFindStartPage(startPage, currentPage));
+    } else {
+      setFindStartPage(null);
+    }
     if (suppressSearchSyncRef.current) {
       suppressSearchSyncRef.current = false;
       return;
@@ -925,7 +940,7 @@ export default function PdfViewer() {
     if (typeof window.pycmd === 'function') {
       window.pycmd('incremento_pdf_find:' + JSON.stringify({ query: searchQuery || '' }));
     }
-  }, [searchQuery]);
+  }, [pageRef, searchQuery]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -1137,6 +1152,7 @@ export default function PdfViewer() {
   }, []);
 
   const activateHighlightAtClientPoint = useCallback((point) => {
+    if (!showHighlightControls) return false;
     const wrapper = containerRef.current;
     if (!wrapper) return false;
     const highlight = pdfHighlightAtClientPoint(
@@ -1149,7 +1165,7 @@ export default function PdfViewer() {
     if (isResizableTextHighlight(highlight)) return activateHighlightResize(highlight);
     deactivateHighlightResize();
     return false;
-  }, [activateHighlightResize, containerRef, deactivateHighlightResize, pageHighlights, renderInfo]);
+  }, [activateHighlightResize, containerRef, deactivateHighlightResize, pageHighlights, renderInfo, showHighlightControls]);
 
   const activateHighlightFromPageClick = useCallback((event) => {
     if (snapshotMode || event?.defaultPrevented) return;
@@ -1372,6 +1388,13 @@ export default function PdfViewer() {
     return true;
   }, [canMoveToPage, clearPendingResumeScroll, pageRef, rawNav, suppressScrollPersistence]);
 
+  const returnToFindStartPage = useCallback(() => {
+    const delta = pdfFindReturnDelta(findStartPage, pageRef.current);
+    if (delta === null) return false;
+    if (delta === 0) return true;
+    return limitAwareNav(delta, { scrollToTop: false });
+  }, [findStartPage, limitAwareNav, pageRef]);
+
   const capturePdfLinkLocation = useCallback(() => {
     const currentPage = Number(pageRef.current || 0);
     if (!Number.isInteger(currentPage) || currentPage < 1) return null;
@@ -1405,12 +1428,12 @@ export default function PdfViewer() {
         visibleHeight: metrics?.visibleHeight,
       });
       if (scrollRatio === null) return null;
-      return { cardId, page: currentPage, scrollRatio };
+      return { cardId, page: currentPage, pageLabel: pageLabels?.[currentPage - 1] || '', scrollRatio };
     };
     return () => {
       delete window.incrementoPdfAnchorAtPoint;
     };
-  }, [cardIdRef, containerRef, pageRef]);
+  }, [cardIdRef, containerRef, pageLabels, pageRef]);
 
   const jumpBackFromPdfLink = useCallback(() => {
     const taken = takePdfLinkHistory(linkBackHistory);
@@ -1578,11 +1601,16 @@ export default function PdfViewer() {
       startLocale = 'en',
       startCustomLanguage = null,
       startAppearanceMode = 'original',
+      startShowHighlightDeleteButtons = true,
     ) => {
+      if (Number(cardIdRef.current || 0) !== Number(cardId || 0)) {
+        setFindStartPage(null);
+      }
       const nextLanguage = createReaderLanguage(startLocale, startCustomLanguage);
       setLanguage(nextLanguage);
       document.documentElement.lang = nextLanguage.locale;
       setAppearanceMode(normalizePdfAppearanceMode(startAppearanceMode));
+      setShowHighlightDeleteButtons(startShowHighlightDeleteButtons !== false);
       setLinkBackHistory([]);
       setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
       resizeHighlightRef.current = null;
@@ -1630,6 +1658,9 @@ export default function PdfViewer() {
     };
     window.incrementoSetPdfAppearanceMode = (mode) => {
       setAppearanceMode(normalizePdfAppearanceMode(mode));
+    };
+    window.incrementoSetPdfHighlightDeleteButtons = (value) => {
+      setShowHighlightDeleteButtons(value !== false);
     };
 
     window.incrementoReceivePageCards = (data) => {
@@ -1687,6 +1718,7 @@ export default function PdfViewer() {
         pending.locale || 'en',
         pending.customLanguage || null,
         pending.appearanceMode || 'original',
+        pending.showHighlightDeleteButtons,
       );
     }
     return () => {
@@ -1699,6 +1731,7 @@ export default function PdfViewer() {
       delete window.incrementoSetAutoHighlightOnExtract;
       delete window.incrementoSetScrollToTopOnPageChange;
       delete window.incrementoSetPdfAppearanceMode;
+      delete window.incrementoSetPdfHighlightDeleteButtons;
       delete window.incrementoReceivePageCards;
       delete window.incrementoReceivePdfHighlights;
       delete window.incrementoReceivePdfLimitStatus;
@@ -1772,10 +1805,10 @@ export default function PdfViewer() {
       const selObj  = window.getSelection();
       const tl = textLayerRef.current;
       if (!tl || !selObj || !selObj.rangeCount || !isSelectionInside(selObj, tl)) return false;
-      const selText = selectionCleaned(selObj, tl);
-      if (!selText) return false;
+      const formatted = selectionFormatted(selObj, tl);
+      if (!formatted.text) return false;
       if (autoHighlightRef.current) makeHighlight(selObj);
-      window.pycmd('incremento_fill_field:' + JSON.stringify({ idx, text: selText }));
+      window.pycmd('incremento_fill_field:' + JSON.stringify({ idx, ...formatted }));
       return true;
     };
 
@@ -1822,7 +1855,8 @@ export default function PdfViewer() {
         #pdf-controls button:focus-visible,
         #pdf-controls input:focus-visible,
         #pdf-controls select:focus-visible,
-        #pdf-controls [tabindex]:focus-visible {
+        #pdf-controls [tabindex]:focus-visible,
+        .incremento-pdf-highlight-controls-toggle:focus-visible {
           outline: 3px solid #60a5fa !important;
           outline-offset: 2px;
         }
@@ -1888,11 +1922,11 @@ export default function PdfViewer() {
             </button>
             <button
               type="button"
-              onClick={openPageJump}
-              title={tr("reader_page_jump")}
+              onClick={() => { setControlsCollapsed(false); openPageJump(); }}
+              title={pageLocationTitle}
               style={{ minWidth: 132, fontWeight: 700 }}
             >
-              {tr('reader_page_location', { current: page, total: totalPages || '\u2014' })}
+              {pageLocationText}
             </button>
             <button
               aria-label={tr("reader_next_pdf_page")}
@@ -2006,7 +2040,7 @@ export default function PdfViewer() {
                 </button>
                 {pageJumpEditing ? (
                   <span style={{ minWidth: 170, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 15, fontWeight: 700 }}>
-                    <span>{tr('reader_page')}</span>
+                    <span>{tr('reader_pdf_page')}</span>
                     <input
                       ref={pageJumpInputRef}
                       aria-label={tr("reader_pdf_page_number")}
@@ -2045,7 +2079,7 @@ export default function PdfViewer() {
                   <button
                     type="button"
                     onClick={openPageJump}
-                    title={totalPages > 0 ? tr("reader_page_jump") : undefined}
+                    title={totalPages > 0 ? pageLocationTitle : undefined}
                     style={{
                       minWidth: 170,
                       height: 32,
@@ -2060,7 +2094,7 @@ export default function PdfViewer() {
                       cursor: totalPages > 0 ? 'pointer' : 'default',
                     }}
                   >
-                    {tr('reader_page_location', { current: totalPages > 0 ? page : '\u2014', total: totalPages || '\u2014' })}
+                    {pageLocationText}
                   </button>
                 )}
                 <button
@@ -2278,11 +2312,21 @@ export default function PdfViewer() {
             >
               {tr('reader_next_short')}
             </button>
+            {findStartPage !== null && (
+              <button
+                type="button"
+                disabled={Number(page) === Number(findStartPage)}
+                onClick={returnToFindStartPage}
+              >
+                {tr('reader_return_to_search_page', { page: findStartPage })}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {
                 setFindOpen(false);
                 setSearchQuery('');
+                setFindStartPage(null);
               }}
             >
               {tr('reader_close')}
@@ -2870,6 +2914,22 @@ export default function PdfViewer() {
             </span>
           </div>
 
+          <button
+            type="button"
+            className="incremento-pdf-highlight-controls-toggle"
+            title={tr('reader_highlight_controls_hint')}
+            onClick={() => {
+              setShowHighlightControls(value => !value);
+              deactivateHighlightResize();
+              hideHighlightNote();
+              setFocusedHighlightId(null);
+              setShowHighlightsPanel(false);
+            }}
+            style={{ fontSize: 12, padding: '4px 8px', marginBottom: 8 }}
+          >
+            {tr(showHighlightControls ? 'reader_hide_highlight_controls' : 'reader_show_highlight_controls')}
+          </button>
+
           {highlightsForPanel.length === 0 ? (
             <div style={{ fontSize: 12, opacity: 0.75 }}>
               {highlightsNotesOnly
@@ -3030,7 +3090,7 @@ export default function PdfViewer() {
         </div>
       )}
 
-      {hoveredHighlightNote && (
+      {showHighlightControls && hoveredHighlightNote && (
         <div
           style={{
             position: 'fixed',
@@ -3184,6 +3244,8 @@ export default function PdfViewer() {
 
         <HighlightLayer
           nativeHighlightsVisible={nativeHighlightsVisible}
+          showHighlightControls={showHighlightControls}
+          showHighlightDeleteButtons={showHighlightDeleteButtons}
           language={language}
           pageHighlights={pageHighlights}
           renderInfo={renderInfo}

@@ -26,6 +26,9 @@ msgstr "Centar aktivnosti…"
 msgid "root_menu_add_content"
 msgstr "Dodaj sadržaj"
 
+msgid "root_menu_import_supermemo"
+msgstr "Uvezi SuperMemo zbirku…"
+
 #. Menu or action: Add Audio
 msgid "root_menu_add_audio"
 msgstr "Dodaj audiozapis"
@@ -66,9 +69,9 @@ msgstr "Očisti nepovezane PDF datoteke…"
 msgid "root_menu_cleanup_orphan_videos"
 msgstr "Očisti nepovezane video datoteke…"
 
-#. Menu or action: Clean Non-Active Profile Data…
+#. Menu or action: Clean Up Unused Incremento Data…
 msgid "root_menu_cleanup_profile_data"
-msgstr "Očisti podatke neaktivnih profila…"
+msgstr "Očisti neiskorištene podatke Incrementa…"
 
 #. Menu or action: Clean Up Stale Progress / Search Index / OCR Rows…
 msgid "root_menu_cleanup_stale_rows"
@@ -145,6 +148,10 @@ msgstr "Ponovno indeksiraj OCR predmemoriju (iz skrivenog polja)"
 #. Menu or action: Reindex PDF Text (Existing Cards)
 msgid "root_menu_reindex_pdf_text"
 msgstr "Ponovno indeksiraj PDF tekst (postojeće kartice)"
+
+#. Menu or action: Rebuild PDF Context on Cards…
+msgid "root_menu_rebuild_pdf_card_contexts"
+msgstr "Izradi preglede PDF snimki na karticama…"
 
 #. Menu or action: Restore Full Backup…
 msgid "root_menu_restore_full_backup"
@@ -1133,21 +1140,21 @@ msgstr[2] "Postavke Incrementa su ažurirane. Obrnuto je {count} spremljenih pri
 msgid "root_cleanup_stale_failed"
 msgstr "Nije moguće očistiti zastarjele retke Incrementa:\n{error}"
 
-#. Cleanup UI: Could not scan non-active profile artifacts:
+#. Cleanup UI: Could not scan unused Incremento data:
 msgid "root_cleanup_profile_scan_failed"
-msgstr "Nije moguće pregledati podatke neaktivnih profila:\n{error}"
+msgstr "Nije moguće pregledati neiskorištene podatke Incrementa:\n{error}"
 
-#. Cleanup UI: No deletable cross-profile artifacts detected.
+#. Cleanup UI: No files or records can be safely cleaned.
 msgid "root_cleanup_profile_none"
-msgstr "Nisu pronađeni podaci drugih profila koje je sigurno obrisati.\n\nNišta se ne može sigurno obrisati bez utjecaja na neki profil."
+msgstr "Nema datoteka ni zapisa koje je moguće sigurno očistiti."
 
 #. Cleanup UI: Active profile: {profile}
 msgid "root_cleanup_active_profile"
 msgstr "Aktivni profil: {profile}"
 
-#. Cleanup UI: The following data is not referenced by this profile and may belong to another profile (or be truly orphaned):
+#. Cleanup UI: The following unused Incremento files and stale records can be cleaned:
 msgid "root_cleanup_profile_explanation"
-msgstr "Sljedeći podaci nisu povezani s ovim profilom i možda pripadaju drugom profilu (ili su doista nepovezani):"
+msgstr "Mogu se očistiti sljedeće neiskorištene datoteke i zastarjeli zapisi Incrementa:"
 
 #. Cleanup UI: • PDF files: {count}
 msgid "root_cleanup_pdf_files"
@@ -1156,6 +1163,14 @@ msgstr "• PDF datoteke: {count}"
 #. Cleanup UI: • Video files: {count}
 msgid "root_cleanup_video_files"
 msgstr "• Videodatoteke: {count}"
+
+#. Cleanup UI: • Unused PDF screenshots in Anki media: {count} ({size})
+msgid "root_cleanup_snapshot_files"
+msgstr "• Neiskorištene PDF snimke u Anki medijima: {count} ({size})"
+
+#. Cleanup UI: PDF screenshots move to Anki's media trash.
+msgid "root_cleanup_snapshot_trash_note"
+msgstr "PDF snimke premještaju se u Ankijev koš za medije. Ispraznite ga kasnije da oslobodite prostor."
 
 #. Cleanup UI: • Progress rows: {count} (PDF {pdf}, Video {video}, Web {web})
 msgid "root_cleanup_progress_rows"
@@ -1201,9 +1216,9 @@ msgstr "Preskočeni videozapisi (zadržani):"
 msgid "root_cleanup_file_profiles"
 msgstr "  - {filename}  (profili: {profiles})"
 
-#. Cleanup UI: Delete these now?
+#. Cleanup UI: Clean up the items listed above?
 msgid "root_cleanup_delete_now"
-msgstr "Želite li ih sada obrisati?"
+msgstr "Želite li sada očistiti navedene stavke?"
 
 #. Cleanup UI: Rows: {error}
 msgid "root_cleanup_rows_error"
@@ -1316,3 +1331,52 @@ msgstr "Izvezi paket Incremento za podršku koji štiti privatnost"
 #. Item reviewer action; the command remains incremento_item_skip.
 msgid "root_reviewer_skip"
 msgstr "Preskoči"
+
+#. Bulk PDF card-context maintenance UI.
+msgid "root_pdf_context_rebuild_confirm"
+msgstr "Izraditi istaknutu snimku PDF-a za svaki odgovarajući citat s {rows} redaka prije i poslije?\n\nSlike se dodaju u Anki medije, polja bilježaka se ažuriraju i oboje će se sinkronizirati na druge uređaje. Promjene bilježaka možete poništiti u Ankiju."
+
+msgid "root_pdf_context_rebuild_progress"
+msgstr "Izrada pregleda PDF snimki na karticama…"
+
+msgid "root_pdf_context_rebuild_undo"
+msgstr "Izradi PDF snimke kartica"
+
+msgid "root_pdf_context_rebuild_stale"
+msgstr "Aktivni Anki profil se promijenio. Nije izrađena nijedna PDF snimka."
+
+msgid "root_pdf_context_rebuild_complete"
+msgstr "Izrada PDF snimki je završena.\n\nKandidatske bilješke: {scanned}\nPromijenjene bilješke: {changed}\nAžurirani pregledi: {updated}\nPreskočeni pregledi: {skipped}"
+
+msgid "root_pdf_context_rebuild_failed"
+msgstr "Nije moguće izraditi preglede PDF snimki:\n{error}"
+
+msgid "root_pdf_context_source_preview"
+msgstr "Pregled izvorne stranice"
+
+msgid "root_menu_cleanup_pdf_snapshots"
+msgstr "Očisti neiskorištene PDF snimke…"
+
+msgid "root_pdf_snapshot_cleanup_close_add"
+msgstr "Prije čišćenja PDF snimki zatvorite prozor za dodavanje kartica kako se nespremljena slika ne bi uklonila."
+
+msgid "root_pdf_snapshot_cleanup_invalid_draft"
+msgstr "Spremljeni nacrt izdvajanja nije moguće sigurno pročitati. Čišćenje je otkazano."
+
+msgid "root_pdf_snapshot_cleanup_stale"
+msgstr "Aktivni Anki profil se promijenio. Nijedna PDF snimka nije uklonjena."
+
+msgid "root_pdf_snapshot_cleanup_none"
+msgstr "U Anki medijima nisu pronađene neiskorištene PDF snimke Incrementa."
+
+msgid "root_pdf_snapshot_cleanup_more"
+msgstr "…i još {count} datoteka"
+
+msgid "root_pdf_snapshot_cleanup_confirm"
+msgstr "Premjestiti {count} neiskorištenih PDF snimki ({size}) u Ankijev koš za medije? Nisu povezane sa spremljenim bilješkama ni spremljenim nacrtom izdvajanja.\n\n{files}"
+
+msgid "root_pdf_snapshot_cleanup_complete"
+msgstr "Premješteno je {count} PDF snimki ({size}) u Ankijev koš za medije."
+
+msgid "root_pdf_snapshot_cleanup_failed"
+msgstr "Nije moguće očistiti PDF snimke:\n{error}"

@@ -103,6 +103,7 @@ Incremento adds its own top-level **Incremento** menu to Anki's menu bar.
 | **Getting Started…** | Reopen the first-run reading/extraction/session/backup guide |
 | **Settings** | Configure extraction, review, topic, writing, shortcut, and advanced options |
 | **About** | Show a summary of addon capabilities |
+| **Utils → Import SuperMemo Collection…** | Import a native SuperMemo 17/18/20 collection from its KNO file or ZIP |
 | **Add Content → Add PDF / DjVu** | Import a PDF or DjVu as a topic card |
 | **Add Content → Add EPUB** | Import one or more EPUBs as topic cards |
 | **Add Content → Add Markdown Document…** | Batch-import rendered Markdown learning documents with preview |
@@ -130,15 +131,13 @@ Incremento adds its own top-level **Incremento** menu to Anki's menu bar.
 
 | Menu item | What it does |
 |---|---|
-| **Check Dependencies...** | Check/install optional PDF tools |
+| **Check Dependencies...** | Check/install optional PDF and video tools, including FFmpeg |
 | **Reindex PDF Text (Existing Cards)** | Rebuild searchable PDF text index |
+| **Build PDF Snapshot Previews on Cards…** | Render or replace a highlighted, mobile-visible PDF screenshot for every PDF citation |
 | **Import Notebook Citations to PDF Highlights…** | Import supported notebook citations as PDF highlights |
 | **OCR Image Text (Existing Cards)…** | Extract searchable text from image-based cards |
 | **Reindex OCR Search Cache (From Hidden Field)** | Rebuild cached OCR search text |
-| **Clean Non-Active Profile Data...** | Remove orphaned data not tied to live cards |
-| **Clean Up Orphaned PDF Files...** | Delete unreferenced PDF files |
-| **Clean Up Orphaned Video Files...** | Delete unreferenced video files |
-| **Clean Up Stale Progress / Search Index / OCR Rows…** | Remove stale runtime rows for deleted cards |
+| **Clean Up Unused Incremento Data…** | Review and clean unused PDF and video files, unused PDF screenshots in Anki media, and stale progress/search/OCR records with one confirmation |
 
 ---
 
@@ -218,7 +217,15 @@ For example, 100 cards with 60% Topics / 40% Items and 10% Documents within Topi
 
 At 100% Items, the document control is disabled and displays 0%; its saved preference is retained for when Topics are enabled again. PDFs and EPUBs explicitly classified as Items remain eligible as Items and do not consume the document-Topic target. Regular flashcards extracted from a document are not automatically document-reading cards.
 
-The estimate table separates Documents (Topics), Other Topics, and Items. Documents plus Other Topics form the Topic total. Percentages inside each table column describe tag shares, not Topic/Item percentages. The first Total row shows the estimated count for each content column and the whole session.
+The estimate table separates Documents (Topics), Other Topics, and Items. It runs the actual session selection in the background, using the current tags, card states, filters, quotas, and branch scope. If only 20 cards can be selected for a 500-card target, the count shows **20 / 500** and the table totals 20. While recalculating, the table clears instead of displaying the requested target as available cards.
+
+Documents plus Other Topics form the Topic total. Percentages inside each table column describe tag shares, not Topic/Item percentages. The first Total row shows the selected count for each content column and the whole session. The expected-mix percentages still describe your configured preferences.
+
+The table, **Live card preview**, and session startup share one selected list, including random choices. Opening Live card preview loads the details for that list without drawing new cards. **Refresh** replaces the shared selection and updates both views. Starting with an up-to-date result reuses its exact cards and scheduling metadata. Changing session settings clears both views until the new selection is ready.
+
+Suspended and buried cards, and cards already in a different filtered deck, are excluded from this selection because Anki cannot admit them to the session deck. Unfinished cards in the same session deck remain eligible.
+
+The optional **Require an up-to-date preview before starting** checkbox blocks startup until the current selection is available. If it is off and startup occurs before the background preview finishes, Incremento selects cards during startup. An already displayed current selection is reused in either mode.
 
 Document Topics are eligible regardless of New/Learning/Due state and respect Topic classification, Topic filters, and active tag constraints. Separate Advanced content-type priorities can still reserve document places independently before the normal mix; these explicit overrides can change the final allocation, including in an Items-only setup.
 
@@ -239,7 +246,7 @@ The balancing memory can apply to:
 - **Today**
 - **All time**
 
-If you use **Today**, the **Day ends at** setting lets you define a late-night cutoff like `04:00`.
+For **Today**, the shared **Day ends at** setting in **Incremento → Settings → Review → Statistics** defines a late-night cutoff like `04:00`. It also controls Incremento's daily statistics, tag charts, and focus-timer day. Click **OK** in Settings to save it without starting a session. Existing saved cutoff times are retained; switching session presets does not change the cutoff.
 
 ### Scheduling priority order
 
@@ -255,7 +262,7 @@ Each phase tries to reach a rounded card-count target using the available slots.
 
 You can allocate part of each session to specific tags:
 
-1. Add one or more tags.
+1. Type a tag name in the editable picker or choose it from the dropdown, then click **Add…**. Suggestions match any part of an existing tag name, ignoring case. Repeat to add more tags.
 2. Set each tag percentage.
 3. Lock any tag whose share should stay fixed, or use **Lock all tags** to lock every current tag row at once. When all rows are locked, the same button becomes **Unlock all tags**.
 4. Use **After exhausting tag groups, fill with rest of cards** if you want leftover slots topped up automatically.
@@ -300,6 +307,20 @@ The dialog also has buttons to delete session, daily, and lifetime statistics or
 
 Incremento now supports several kinds of topic material.
 
+### Import SuperMemo Collection
+
+Use **Incremento → Utils → Import SuperMemo Collection…** and select either a ZIP containing one matched `.Kno`/collection-folder pair or the `.Kno` file beside its collection folder. Incremento validates and previews the import before changing Anki. Native structure versions 20–22 (used by supported SuperMemo 17/18/20 collections) are accepted; incomplete, ambiguous, unsafe, or unknown layouts are rejected rather than guessed.
+
+The import creates **Incremento SuperMemo** notes in the deck you choose. Items with one SuperMemo `[...]` omission and a separate answer become genuine **Incremento SuperMemo Cloze** notes: the answer replaces the marker as Anki `{{c1::answer}}` text. Other items remain normal Q/A cards. Formatted text comes from SuperMemo's native HTML files, so paragraphs, emphasis, lists, tables, links, colors, and safe inline styling are retained. Registered local GIF, JPEG, PNG, WebP, and BMP images are copied into Anki media with stable collection-scoped names and displayed responsively on every linked card; shared images are copied once. Active markup such as scripts, event handlers, embedded objects, forms, and unsafe URLs is removed rather than executed.
+
+The importer maps topics/concepts to Topic cards, the knowledge tree to Incremento's existing knowledge tree, and SuperMemo's priority queue to Incremento priority values. Deleted elements are skipped, with surviving descendants attached to the nearest surviving ancestor. Memorized cards retain their current interval, due date, repetition count, and lapse count. A-factors and forgetting indexes are retained in Anki card state; topic A-factors also seed Incremento's existing topic schedule. SuperMemo repetition history is restored to Anki's revlog: grades 1–5 become Anki answer grades, while topic and initial-memorization records become manual history entries so they do not invent scheduler answers. Native reference titles, safe HTTP(S) links, and source names populate Incremento's existing provenance fields. Anki's scheduler is authoritative for all future reviews.
+
+SM8 and SM17/SM20 optimization records are preserved byte-for-byte with sizes and SHA-256 checksums under `user_files/<ProfileName>/supermemo_imports/<collection-fingerprint>/optimization/`. They are archival input only and are not applied to Anki's scheduler. No new Incremento database tables are created for SuperMemo metadata.
+
+The importer deliberately excludes SuperMemo aggregate statistics/workload/outstanding queues, task scheduling and task elements, component window geometry, templates, scripts, OLE objects, and executable components. Text questions, answers, topic text, safe HTML formatting, registered images, hierarchy, references, and scheduling/history data are imported; unsupported active or layout-only components are never executed. Importing the same collection fingerprint again skips cards identified by their compact SuperMemo identity in Anki card custom data; older imports using the internal SuperMemo provenance link remain recognized.
+
+Because historical revlog rows must be restored directly, this bulk import is not an Anki Undo operation. Make an Anki profile backup before confirming the preflight. Parsing and ZIP extraction run outside the collection thread; the collection change is serialized and is cancelled if the active profile changes.
+
 ### Add PDF / DjVu
 
 Use **Incremento → Add Content → Add PDF / DjVu** to import one or more PDF or DjVu files into Incremento. DjVu documents are converted to PDFs while preserving existing selectable text; see the DjVu import guidance below. When Tesseract is available, **OCR all possible** selects every document that can use OCR—including documents whose text check finishes after you click it—and **Don't OCR anything** clears every OCR choice. Documents with usable text or without the required OCR tools remain unchanged.
@@ -328,7 +349,21 @@ The import runs in the background and captures the current Anki profile. **Setti
 
 Use **Incremento → Add Content → Webpage to PDF** when you want a normal PDF-style reading workflow for an online article.
 
-Incremento fetches the public HTTP(S) page, verifies the server certificate and hostname for HTTPS, then renders an offline snapshot in a hidden browser view and imports the result as a PDF card.
+Choose **Website appearance** to preserve the site's screen layout, or **Clean article** for consistent typography and margins with navigation, comments, and sharing controls removed. Both retain article images, tables, and ordinary clickable links. **Include a list of link destinations** adds a deduplicated appendix of up to 500 external destinations; it does not download the linked pages. In the PDF reader, enable **Links** to follow them.
+
+**Load content added by JavaScript** uses a disposable Chromium browser through Playwright. It waits for initial background requests, expands HTML details sections, scrolls a bounded distance to trigger lazy loading, and waits for images and fonts before printing. The browser component is enabled after **Set up browser component…**, an explicit download into Incremento's local dependency folder. It requires a compatible Python interpreter and supported Chromium system libraries; setup never modifies Anki's Python environment. It is already selected on later opens when the component is available. Dynamic captures have a 90-second limit. Closing the dialog or switching profiles cancels the capture. Login-only content, embedded frames, POST-based data requests, and interactive controls may not appear in a static PDF.
+
+Without dynamic content, Incremento fetches the public HTTP(S) page together with its styles, fonts, and images in the background, verifies HTTPS certificates and redirects, and prints a guarded offline snapshot with scripts and embedded frames disabled. Downloads have time, count, and size limits. An unavailable optional image or font does not discard the article.
+
+If the site returns HTTP 403/429 or a recognized CAPTCHA/login page, **Import** automatically opens a verification handoff in your default browser. Use Chrome/Brave with Incremento Companion installed and reloaded. The first time you use a site, Companion asks for permission to capture that site (including the archive aliases for archive.is). After that one-time setup, finish the CAPTCHA and wait: Companion detects the readable page, sends its rendered HTML back to the waiting import, and Anki saves the PDF, returns to the foreground, and displays a brief success message. There is no capture shortcut, Print dialog, saved-file picker, or second import confirmation. The original dialog's title, tags, layout, link appendix, and source URL are retained. Closing the browser tab reports failure; cancelling the Anki dialog or switching profiles prevents a late import. The request expires after ten minutes. Unrecognized challenges or redirects to a different article may need the manual alternatives below.
+
+You can also start directly in the browser: finish verification, then press **Option+Shift+P** on macOS (**Alt+Shift+P** elsewhere), or choose **Capture opened page as PDF** in Companion. The popup lets you edit title, deck, tags, and priority; the shortcut uses the page title and standard import defaults. This browser-first route uses Companion's layout/link preferences. Both routes include JavaScript content already loaded in the tab, without transferring cookies or requiring the separate browser component. Optional images/styles requiring sign-in may be missing.
+
+Without Companion, choose **Open in browser**, complete verification, and use **Print → Save as PDF**, then **Use browser-saved PDF…** here. This keeps this dialog's title, tags, and source URL and imports a separate study copy without changing your saved original. Select a regular PDF of at most 48 MiB; its layout comes from the browser's print settings. Incremento does not solve CAPTCHAs automatically; rate-limited sites must allow browser access before capture.
+
+**Website print layout (Wikipedia PDF)** uses the site's print styling. For Wikipedia article URLs without a link appendix, it first requests Wikipedia's official PDF service, preserving the clean article layout, images, tables, and citations. If that service is unavailable, it uses the selected browser or offline renderer. Restart Anki after updating the add-on, then import a page again to regenerate an existing PDF.
+
+In the Chrome/Brave Companion popup, **Settings → Webpage to PDF** provides the same three layouts, JavaScript loading, and link-destination appendix. Click **Save** to apply them to **Add as PDF** and its keyboard shortcut; **Cancel** discards edits. The extension keeps these defaults separately in the browser profile. JavaScript loading requires the browser component set up through the Anki dialog above and reloads the public page without Chrome cookies. Existing PDF files are imported unchanged. Reload the extension after updating Incremento.
 
 This is useful when you want:
 
@@ -401,7 +436,25 @@ For one-click link import, enable **Enable right-click link action** in the Comp
 
 The popup and the full text/snapshot capture form load existing tags from the active Anki profile. Focus the tag field or type any part of a tag to open suggestions, then click one or use the arrow keys with Enter/Tab. Completion replaces only the tag currently being typed, so other space- or comma-separated tags remain intact; new tags are still accepted.
 
+In the popup, enable **Remember tags for this website** below Tags to restore that set whenever you reopen the popup on the same website. It saves the current tags immediately and updates them automatically as you edit; wait for **Saving website tags…** to disappear before closing. The match uses the exact hostname across all pages, HTTP/HTTPS, and ports; subdomains have separate sets. Disable the checkbox to forget that website while retaining the current input. The option defaults off and stores remembered hostnames and tags in the active Anki profile's `incremento.db`, so they are included in normal backups and kept separate between profiles. Anki must be open. If loading or saving fails, use the visible **Retry** action. Each profile can remember up to 1,000 websites, with up to 100 tags of 200 characters each per website.
+
+Text and snapshot capture also start with the remembered website tags, including snapshot **Extract now**. These replace older capture-tag defaults; remembering an empty set leaves the Tags field blank. Note type, deck, priority, and field mappings retain their saved choices. Starting capture from the popup waits for the current website-tag save to finish.
+
+The capture form initially focuses **Create note**. With saved field mappings, select text, press **Option+X** on macOS (**Alt+X** elsewhere), then **Enter** to create the note. Enter also submits from ordinary form inputs. In the selected-text editor, Enter keeps adding newlines; with tag suggestions open, it accepts the selected tag first. Holding Enter or pressing it while a note is being created cannot submit the same capture twice. Existing field/content validation still applies.
+
+For snapshot regions, use Chrome's registered **Snapshot capture** shortcut: **Option+Shift+X** on macOS, **Alt+Shift+X** elsewhere, unless you changed it in **Chrome → Extensions → Keyboard shortcuts**. Set its **Scope** to **In Chrome**. **Global** shortcuts do not grant Chrome's temporary screenshot permission, even when used inside Chrome; Companion shows the scope instructions instead of starting an unauthorized capture. A page-only key handler cannot grant that permission either, so the older **Option+Command+X** combination shows the registered shortcut or assignment instructions. You can also click the Companion toolbar icon on the page and choose **Trigger snapshot capture**. Keep the original tab active while drawing; a tab switch cancels that region capture. Broad all-sites access is not required.
+
+Both text and snapshot capture shortcuts default to **In Chrome** on a new installation. Chrome retains any scope you previously changed; extensions cannot change that saved setting automatically. Existing **Global** assignments need a one-time change in Chrome's shortcut settings. If another extension already uses the suggested keys, Chrome may leave the shortcut unassigned; the Companion popup shows its assignment and provides **Open shortcut settings**.
+
+Shortcut and snapshot-permission warnings also include **Open shortcut settings**, which opens Chrome's shortcut settings in a new tab. The warning stays visible until you open settings or choose **Dismiss warning**. If Chrome cannot open settings, the warning shows an error and lets you retry.
+
+The **Source URL field** inserts a clickable page-title link. **Link to the original passage** defaults on and retains the original selection when you edit the excerpt; switch it off for a normal page link. Passage navigation depends on browser support and unchanged page text, with the source page as fallback. Older browser captures with source metadata also gain a clickable source during review without modifying their templates. Captures keep safe paragraphs, lists, emphasis, and code formatting, remove page clutter, and use cleaned plain text after you edit the excerpt.
+
+Use **Page title**, **Selected text**, deck, tags, and mappings to adjust a capture, then choose **Preview** to inspect each field and its clickable source before saving. Preview is read-only; the selected Anki template determines the final layout, and first-field title mappings get a unique label on creation. Capturing the same passage again offers **Open existing note** or **Create another**. Duplicate checks stay within the current profile and ignore deleted cards and whitespace/formatting differences. Older captures can be recognized when they retain source metadata. No note-type fields are added automatically; map the source URL to a visible field when metadata fields are absent. Switching Anki profiles invalidates an open capture form; reopen it before saving.
+
 You can keep multiple Chrome/Brave tabs open. Companion coordinates bridge reconnects, uses an origin-preserving local handshake for deck/tag metadata, keeps that loading independent from inspection of the current page, and serializes optional AnkiConnect video-time updates so one problematic or busy tab does not blank the popup metadata for the others.
+
+Text and snapshot capture use the same authenticated, origin-preserving metadata requests as the popup. If an older Companion build reports **This Companion copy is not authorized** only when starting capture, update and reload the extension, refresh the page, and retry. If the popup also reports that error, restart Anki so the intended Companion copy can reconnect.
 
 When you choose an import action such as **Add as Video**, the popup shows each stage: reading the current tab, preparing the card and destination, and waiting for Incremento/Anki to create it. The final message confirms the created card or names the stage where the operation stopped, along with the underlying error when available. The whole popup border appears once—green after confirmed creation or red after failure—stays steady briefly, then fades out once, without taking focus or blocking another click; reduced-motion mode uses a steady brief border. A failed import also shows a selectable diagnostic report and **Copy error details**. The report contains the extension version, action, stage, reason, stable error code, and applicable scope/size counters; it excludes page content, URLs, connection tokens, and card data.
 
@@ -493,7 +546,7 @@ Each PDF note includes:
 
 When a PDF card is reviewed, the PDF dock opens on the right.
 
-Press `Option+Shift+P` on macOS (`Alt+Shift+P` on Windows/Linux), or choose **Incremento → Document Bookshelf**, to open a searchable visual shelf of imported PDFs and EPUBs. Use **Show** inside the dialog to switch between **All documents**, **PDFs**, and **EPUBs**. **Possible duplicates only** compares document titles and reconstructed original filenames within the same document type, plus the standard embedded `Title` metadata between PDFs. PDF metadata is read and cached in the background, so opening the shelf does not wait for every PDF; hover a PDF tile to see the discovered metadata title. Generic metadata such as `Untitled` is ignored. The matcher combines case-insensitive word matching, lower weight for words that occur in many shelf entries, and three-character groups (trigrams) that tolerate punctuation, word-form, and small spelling differences. Numeric parts such as years or volume numbers must match. Treat the results as candidates rather than guaranteed byte-for-byte copies. While **Possible duplicates only** is selected, Incremento checks candidate documents for live attached Topic or Item cards in a background collection query. A green check appears over the top-right of a cover when attachments exist; hover it to see the distinct card count. This marker can help identify a copy on which you have already worked, but it does not change the duplicate score or choose which copy to retain. Right-click a tile to delete that document or, when it belongs to a duplicate group, delete its directly matching candidates while keeping the selected one. Before showing confirmation, Incremento checks the same direct, provenance, legacy-source, and knowledge-tree relationships used by Review All. When live attached cards exist, the confirmation reports their distinct count and explains that the cards remain in Anki while links back to deleted documents may stop working. If that check fails or the active profile changes, nothing is deleted. Confirmed deletion removes the corresponding Anki notes/cards through Anki's undoable collection operation. Managed source files remain so Undo can restore the documents safely.
+Press `Option+Shift+P` on macOS (`Alt+Shift+P` on Windows/Linux), or choose **Incremento → Document Bookshelf**, to open a searchable visual shelf of imported PDFs and EPUBs. Use **Show** inside the dialog to switch between **All documents**, **PDFs**, and **EPUBs**. **Possible duplicates only** compares document titles and reconstructed original filenames within the same document type, plus the standard embedded `Title` metadata between PDFs. PDF metadata is read and cached in the background, so opening the shelf does not wait for every PDF; hover a PDF tile to see the discovered metadata title. Generic metadata such as `Untitled` is ignored. The matcher combines case-insensitive word matching, lower weight for words that occur in many shelf entries, and three-character groups (trigrams) that tolerate punctuation, word-form, and small spelling differences. Numeric parts such as years or volume numbers must match. Treat the results as candidates rather than guaranteed byte-for-byte copies. While **Possible duplicates only** is selected, Incremento checks candidate documents for live attached Topic or Item cards in a background collection query. A green check appears over the top-right of a cover when attachments exist; hover it to see the distinct card count. This marker can help identify a copy on which you have already worked, but it does not change the duplicate score or choose which copy to retain. Right-click any tile and choose **Show in Finder** on macOS or **Show in File Explorer** on Windows to select its stored PDF or EPUB file; Linux opens the containing folder. This action is disabled when the stored file is unavailable. The same menu lets you delete that document or, when it belongs to a duplicate group, delete its directly matching candidates while keeping the selected one. Before showing confirmation, Incremento checks the same direct, provenance, legacy-source, and knowledge-tree relationships used by Review All. When live attached cards exist, the confirmation reports their distinct count and explains that the cards remain in Anki while links back to deleted documents may stop working. If that check fails or the active profile changes, nothing is deleted. Confirmed deletion removes the corresponding Anki notes/cards through Anki's undoable collection operation. Managed source files remain so Undo can restore the documents safely.
 
 The separate tag field accepts exact Anki tag names separated by spaces, commas, or semicolons. Start typing any part of a tag to see case-insensitive suggestions, or select **Browse tags** to discover tags already used by bookshelf documents; frequently used tags appear first, and choosing one completes only the tag currently being typed. Choose **Any tag (OR)** to include documents carrying at least one requested tag, or **All tags (AND)** to require every requested tag; tag matching ignores uppercase/lowercase and combines with the title and document-type filters. PDF tiles use their stored first-page cover; EPUB tiles use their stored book cover. Every tile has a bold, theme-aware title underneath and opens the appropriate reader with one left-click. Suspended document cards remain visible because the shelf is a document opener rather than a study queue. For older PDFs without a stored cover, Incremento renders a temporary first-page preview in the background. A document whose cover or source is unavailable keeps a placeholder instead of blocking the dialog.
 
@@ -508,12 +561,21 @@ Main controls include:
 - **Review All** for every available card linked to this PDF
 - **Links Off / On** to make PDF links clickable while you want them
 - **Jump Back** beside the link toggle to return to the page and reading position from before an internal PDF-link jump
+- **Find**, with **Return to p.N** after a search starts so you can go back to the page you were reading before the first result opened
 - **Highlight when extracting**
 - **Mark this PDF as finished reading**
 
+The page indicator shows both the printed-page label and the running PDF position when the PDF supplies page-label metadata, for example **Printed 551 · PDF 579 / 1453**. Roman numerals and appendix labels are preserved. The PDF position counts every page, including covers and front matter. When printed labels are unavailable, the indicator shows only **PDF 579 / 1453**; it does not guess from an offset or scan the page image. Click the indicator to jump by **PDF page**. Saved reading positions, highlights, bookmarks, and links continue to use that running PDF number.
+
+Under **Settings → Extraction → PDF citation page numbering**, choose **Printed page label (default)**, **PDF page number**, or **Printed label and PDF page**. This choice applies to ordinary text extraction, single and bulk highlight cards, and **Copy Link to This Place**, including the plain-text clipboard fallback. For printed page **v** at PDF page **7**, the choices show **Page v**, **Page 7**, or **Page v (PDF 7)**. Missing printed labels fall back to the PDF page number. Changing this setting affects new citations; existing card text is kept. Links always reopen the physical PDF page and retain the saved position.
+
 Reader links are off by default so ordinary text selection is not interrupted. Turn **Links On** when you want to follow them. Links to another page stay inside the current PDF; after following one, **Jump Back** restores the earlier page and scroll position. Repeated internal jumps build a short back history, which is cleared when another PDF opens. `http` and `https` links open in your system browser. Unsupported link types are blocked and PDFs never navigate the embedded reader to a remote site.
 
-To create a reusable return point, right-click the PDF page and choose **Copy Link to This Place**. Paste normally into an Anki card field: it appears as a clickable citation that reopens the same PDF page at the clicked vertical position. Incremento preserves this rich link even when Anki's **Paste strips formatting** preference is enabled. The ordinary Copy and other standard right-click actions remain available. Visiting this anchor does not replace the PDF's saved reading position. A plain-text title is also placed on the clipboard for apps that do not accept rich HTML.
+To create a reusable return point, right-click the PDF page and choose **Copy Link to This Place**. Paste normally into an Anki card field: it appears as a clickable citation that reopens the same PDF page at the clicked vertical position. The citation and its plain-text fallback use the PDF's printed page label when available (for example, **Page v** for physical PDF page 7); without a label, they use the physical PDF page number. The link always navigates by the physical PDF page number. Incremento preserves this rich link even when Anki's **Paste strips formatting** preference is enabled. The ordinary Copy and other standard right-click actions remain available. Visiting this anchor does not replace the PDF's saved reading position. A plain-text title is also placed on the clipboard for apps that do not accept rich HTML.
+
+During review, newer extracted PDF text keeps the card template's normal color and retains source bold and italics when the PDF exposes that font information. A visible **Source page preview** control appears beneath the text and citation. Press it to reveal a cropped image of the real PDF page with the source passage highlighted yellow; press it again to hide the image. For a selection spanning multiple rows, the crop covers the entire selection plus five PDF text rows before its first row and five after its last by default; change both sides together under **Settings → Extraction → PDF context rows before and after**. Matching tolerates PDF line wrapping, typographic punctuation, compatibility ligatures, and small OCR differences. Older citations without a saved screenshot retain the indexed-text hover fallback until you run the Utils action. Disable that legacy page-link popup under **Settings → Extraction → Show PDF context when hovering page links**.
+
+New PDF text and highlight extractions store the cropped screenshot in Anki media and add a closed **Source page preview** control below the citation in Add Card and during desktop and mobile review. The image and saved card HTML sync normally. If the screenshot cannot be created or saved, the same control shows surrounding indexed PDF text when the extracted passage can be matched; this saved text also syncs normally. Previously saved hover or always-visible previews also gain the control during desktop review without rewriting notes; rerun the Utils action to save that layout to the cards for mobile sync. If neither the screenshot nor matching indexed text is available, Incremento keeps the ordinary citation instead of attaching unrelated context.
 
 Incremento remembers:
 
@@ -525,7 +587,7 @@ Incremento remembers:
 
 1. Select text in the PDF viewer.
 2. Press `Cmd+1..4` on macOS or `Ctrl+1..4` on Windows/Linux.
-3. The selected text is inserted into the matching field in the Add Card dock.
+3. The selected text is inserted into the matching field in the Add Card dock and the note is immediately tagged as a Topic. Paragraph breaks and PDF bold/italic emphasis remain visible when available.
 4. Incremento appends a clickable citation link to the PDF page.
 
 If the target field already contains text, the new excerpt is appended rather than replacing the old content.
@@ -603,6 +665,12 @@ wide column gutters remain clear. Hovering a highlight
 with a saved note shows one note popup beside the pointer.
 The note icon stays transparent until you hover over its annotation controls
 or focus it with the keyboard, keeping it out of screenshots when idle.
+For clean PDF screenshots, open **Highlights** and choose **Hide highlight
+controls**. The panel closes and the on-page delete buttons, note popups, and
+resize handles disappear; saved highlights and their colors stay visible.
+This choice stays active while you navigate pages in the current reader.
+Open **Highlights → Show highlight controls** to edit annotations again.
+To keep highlights visible without their on-page delete X, uncheck **Settings → Extraction → Show delete X on PDF highlights**. The Highlights panel still offers Delete, and note and resize controls remain available. The setting applies immediately and is remembered after restarting Anki.
 
 With PyMuPDF 1.26 or newer installed, opening a PDF or editing its annotations
 syncs highlights and notes into the managed PDF as standard, editable PDF
@@ -622,7 +690,9 @@ file in its folder without syncing. On other systems, **Show containing folder**
 opens the folder.
 After editing in another reader, save there and reopen the Incremento PDF or
 choose **Sync now**. Files are not watched continuously. **Unlink original PDF**
-stops writing the external file. If a PDF exceeds the bounded sync limits, the
+stops writing the external file. Annotation sync accepts PDFs up to 512 MiB and
+20,000 pages, retains up to 32 MiB of serialized annotation metadata, and allows
+up to 10 minutes of processing per attempt. If a PDF exceeds a bounded limit, the
 automatic attempt is not repeated again during the current profile session;
 **Sync now** or linking the original explicitly retries it. Reopening or
 switching the Anki profile also resets this temporary suppression.
@@ -635,9 +705,14 @@ annotations in Incremento instead. Before replacing a changed PDF, Incremento
 keeps its previous version under `user_files/<Profile>/pdf_annotations/<card_id>/`
 as `managed-backup.pdf` or `source-backup.pdf`; each slot holds one previous
 version. `reader.pdf` is a derived display copy that avoids painting highlights
-twice. Original-file links and sync history are profile-specific. Signed,
-password-protected, annotation-restricted, oversized, or changed-content PDFs
-stop sync with an explanation; Incremento's saved annotations remain available.
+twice. Original-file links and sync history are profile-specific. PDFs marked as
+digitally signed, requiring a password, restricting annotation changes, exceeding
+the sync limits, or containing changed page content stop sync with a specific
+explanation; Incremento's saved annotations remain available. A digital signature
+is certificate-based evidence of who signed the document and whether it changed
+after signing; rewriting it during sync could invalidate that signature. An empty,
+unsigned signature field alone does not block sync. Saving annotations inside
+Incremento is separate from syncing them into the PDF file.
 Legacy citation highlights without page rectangles stay in Incremento only.
 
 ### Cross-references
@@ -697,6 +772,7 @@ The dock includes:
 
 - a compact current-time and manual resume-time control
 - a primary **Extract** action for adding a card at the current timestamp
+- **Create Mobile Clip…** for trimming a local or remote video range into synced Anki media
 - **Bookmark** plus a live bookmark count that opens the saved return points
 - an overflow menu for **Back** (10 seconds), **Open in Browser**, **Download Local Copy…**, **Captions…**, and **Review All**; the shared **Search** action stays visible but disabled because video cards do not have text search
 
@@ -715,6 +791,10 @@ For local playback, extra controls appear:
 ### Creating cards from videos
 
 Use **Add Card at this point** to create a new card tied to the current video moment. This is useful for note-taking and timestamp-based review prompts.
+
+To make part of a video playable on mobile, click **Create Mobile Clip…**, enter the exact start and end (for example, `07:55` and `08:33`), and confirm. When a local copy exists, Incremento trims it directly. For YouTube or Vimeo without a local copy, Incremento downloads only the selected range instead of the complete source video. It then creates a bounded H.264/AAC MP4, copies it into normal Anki media, and adds a playable video plus the source timestamp to the Add Card draft. Finish the prompt/answer in that draft and add the note normally. After Anki media sync completes, the embedded clip is available in desktop Anki, AnkiMobile, and AnkiDroid without the Incremento add-on on the mobile device.
+
+Clips are limited to 10 minutes and must remain below Anki's 100 MB per-media-file limit. A full local source video, when present, remains under `user_files/<ProfileName>/videos/` and does not sync; only the generated clip is stored in Anki media. Discarding the Add Card draft moves its staged Incremento clip to Anki's media trash. Creating local clips requires FFmpeg; clipping a remote YouTube or Vimeo source also requires yt-dlp. Install FFmpeg explicitly through **Incremento → Utils → Check Dependencies…** when Homebrew (macOS) or winget (Windows) is available. Linux users receive the appropriate package-manager commands. Incremento never installs FFmpeg without that button click.
 
 ### Browser sync
 
@@ -841,7 +921,9 @@ The knowledge tree lets you:
 - launch branch-scoped study sessions
 - postpone, reprioritize, or subset-review a whole subtree
 
-The tree browser has a compact **Study**, **Add**, search, and **Refresh** toolbar. **Workspace** and **Search** share one tabbed area above the tree. A breadcrumb shows the selected node's path, and the Priority column pairs each number with a green, amber, or red urgency bar. The selected-card pane shows its type, priority, full visible note text, card ID, and available source or citation. Use **Inspect** to open it in Anki Browser, or **More** for the same actions available by right-clicking a tree node. The urgency colors follow the configured priority direction.
+The tree browser has a compact **Study**, **Add**, **Mind Map**, search, and **Refresh** toolbar. **Workspace** and **Search** share one tabbed area above the tree. A breadcrumb shows the selected node's path, and the Priority column pairs each number with a green, amber, or red urgency bar. The selected-card pane shows its type, priority, full visible note text, card ID, and available source or citation. Use **Inspect** to open it in Anki Browser, or **More** for the same actions available by right-clicking a tree node. The urgency colors follow the configured priority direction.
+
+Click **Mind Map** to generate a read-only visual map from the current knowledge tree. The map follows the main Tony Buzan-style conventions: one central idea, radiant hierarchy, curved connected branches, a distinct color for each main branch, concise branch labels, symbols, and progressively lighter visual weight at deeper levels. Choose **Whole tree** or **Selected branch** and optionally show card priorities. Scroll normally, Shift-scroll horizontally, drag empty space to pan, or Cmd/Ctrl-scroll to zoom around the pointer; **Fit**, **100%**, and the zoom controls provide precise alternatives. Click a node to select it, use the arrow keys to move, press Space or `/` to fold or unfold its branch, and press Enter or double-click to return to that card in the tree. Fold badges show the number of hidden descendants, while **Collapse All** and **Expand All** control the full map. **Find** highlights matching titles and reveals folded ancestors, **Focus Branch** isolates the selected branch, hovering shows the full unshortened title, and **Export PNG…** saves the current map. When the tree has multiple roots, the map creates a synthetic **Knowledge Tree** center; a single root or focused branch becomes the center directly. You can also right-click a node and choose **View Branch as Mind Map** to open that subtree immediately. Tree editing remains in the normal workspace.
 
 ---
 
@@ -849,7 +931,119 @@ The tree browser has a compact **Study**, **Add**, search, and **Refresh** toolb
 
 ### Statistics
 
-Open **Statistics** to view study history.
+Open **Incremento → Statistics** for a progress overview: large **Pages read**,
+**Study time**, and **Cards studied** totals, PDF/EPUB counts, a reading streak,
+and comparisons with the previous equivalent period. Daily goals stay visible
+above the overview. The dialog opens on **Today**.
+
+Two graphs appear immediately: **Daily activity** and **Progress adds up**.
+Choose **Pages**, **Study time**, or **Cards** to change both graphs together.
+Pages use separate PDF and EPUB colors. The first graph includes a dashed line
+for the current daily goal; the second shows the running total within the graph's
+date range. Quiet days remain visible. Reading days, active days, and average
+pages per calendar day help show your pace without excluding days off.
+
+Today shows the last seven days of graphs. The 7 Days and 30 Days scopes graph
+their selected periods; Year groups its daily records into seven-day totals,
+including a partial last group, and omits the daily goal line. All Time keeps
+lifetime totals above clearly labelled graphs for the last 30 days. Click either
+graph, or focus it and use Left/Right, Home, or End, to inspect exact dates,
+PDF/EPUB pages, study time, card counts, and the accumulated total.
+
+The reading streak counts consecutive recorded days with PDF or EPUB reading;
+if you have not read today yet, yesterday's streak stays visible. Cumulative
+pages sum daily page observations, so rereading a page on another day counts
+again. A study-time-only day does not imply any pages or answered cards.
+**Refresh** reloads the statistics without reopening the window. Changing goals
+updates the graph marker immediately.
+
+Switch to **Documents** to see every PDF and EPUB in a searchable list, with
+**Pages read**, **Pages left**, **Total pages**, and a completion bar. Use the
+All formats / PDF / EPUB filter to narrow the list. The list shows 50 documents
+at a time, and search covers the entire library. These are all-time completion
+figures, independent of the Overview date range.
+
+Completion uses the readers' saved **Mark read to here** progress, rather than
+adding daily page visits. For PDFs, the denominator is the actual file's page
+count, including blank pages. A missing or unreadable file shows an unknown
+total and percentage. Update the marker in the reader, then click **Refresh**
+in Statistics to reload it.
+
+EPUB rows are labelled **est.**: reflowable books have no universal screen-page
+count. Statistics uses a stable reference of 1,500 cached text characters per
+page, rounded up within each section (at least one page per section). Counts
+can differ from the reader's window-dependent pagination. The saved section
+marker determines the read range; a saved text marker narrows it to reference
+pages before that location, and **Finished** sets it to 100%. A default first
+section with no text marker counts as unread. Missing cached metadata shows an
+unknown total; opening the EPUB in its reader can make that metadata available.
+Loading this view does not extract books or change reading progress.
+
+Switch to **Learning cards** for both the current **New → Learning → Review**
+breakdown and daily answer/recall graphs. **Relearning** appears separately.
+The stage bars show each stage's share of memory cards across all decks,
+including suspended and buried cards in their existing stages; their counts
+appear below the bars. Topic and reader cards are excluded. Review is ongoing
+spaced practice, not permanent completion. Stage counts always describe the
+current collection, while the trend selector chooses the last 7 or 30 days.
+
+The two learning graphs show recalled/failed answer attempts and daily recall
+rate side by side. Use the day selector for exact figures with the keyboard,
+or hover over the rate graph. The period comparison is weighted by answer
+attempts. Repeats count, so this is an answer-level recall rate, not Anki's
+first-review-per-card-per-day **True Retention** metric. Quiet days are gaps in
+the rate graph. **Refresh** reloads both the history and current stages; Anki's
+Undo/Redo remains authoritative.
+
+Below the overview, **Topics by tag** and **Items by tag** pie charts show each
+chart's total reviewed-card count below the title.
+Percentages appear inside the slices, rounded to one decimal place when needed;
+slice size and each legend entry use the reviewed-card count.
+The charts use the shared **Day ends at** cutoff in **Settings → Review → Statistics** (default `04:00`, local time), and include reviews outside Incremento sessions. Anki's native **Studied … today** summary uses Anki's own day boundary.
+Topic/Item classification tags are omitted from the
+legend so the chart uses the first meaningful content tag; cards without one
+appear as **Untagged**. Incremento also removes the separate Session Timer
+summary from this screen because its “minutes in session” includes time while
+Anki is simply open.
+
+The dialog opens on **Today** by default; the same tag split is available in
+**All Time**. Today also shows **Pages read**, the sum of unique PDF and EPUB
+pages visited during the current logical day.
+
+The **Reading & video** panel appears in Today, 7 Days, 30 Days, Year, and All
+Time. It shows total pages read, separate PDF and EPUB page counts, distinct
+videos played in Incremento, and video watch time. The page totals count each
+document page once per logical day. Video watch time starts with this update:
+it counts observed playback, excluding pauses and seeks. It cannot be
+reconstructed from old resume positions, and playback in an external browser
+is not included.
+
+**Statistics → Today** shows **Today’s learning results**: total answer attempts,
+**Again / Fail**, **Recalled**, and the recall
+rate. **Recalled** means Hard, Good, or Easy; the recall rate is those answers
+divided by all counted answer attempts. The table separates Learning, Review,
+and Relearning using the stage recorded when each answer was given.
+
+Repeated attempts count separately: three Again clicks on one card mean three
+failed attempts and one card with Again. The panel also shows unique cards and
+unique cards with Again. Results come from Anki's review history, include study
+outside Incremento sessions, follow native Undo/Redo, and use the shared **Day
+ends at** cutoff. Current Topic/Item classification rules exclude topic frequency
+choices from recall results. Preview practice and manual schedule changes are
+also excluded. Normal rescheduling filtered-deck reviews are included.
+
+Choose **7 Days** or **30 Days** for the same failed/recalled totals across that
+period, including today. A stacked daily graph shows **Recalled** in green and
+**Again / Fail** in orange. A second graph shows the daily recall rate on a fixed
+0–100% scale; days without answers leave a gap. Hover over the rate graph for a
+day's attempts, failures, recalled answers, and percentage.
+
+The panel compares the selected period's recall rate with the preceding 7 or
+30 days and reports the change in percentage points. Period rates use total
+recalled answers divided by total answer attempts, so quiet days do not outweigh
+busy days. If either period has no answers, it reports that instead of inventing
+a comparison. Past results are backfilled from Anki's review history using the
+same daily cutoff and exclusions as Today.
 
 Scopes:
 
@@ -859,6 +1053,10 @@ Scopes:
 - **30 Days**
 - **Year**
 - **All Time**
+
+Free study in Anki is included: Incremento measures from question display to
+answer display and records the answer separately. It does not use the time Anki
+has merely been left open on the deck browser.
 
 Current statistics include both count-based and time-based views:
 
@@ -874,9 +1072,22 @@ The 7- and 30-day views add daily stacked graphs for:
 - unique PDF and EPUB pages read
 - study/review time
 
-They also show total cards, total pages, study time, active days, the current activity streak, and active-day averages. A page is counted once per document and logical day even if you revisit it or restart Anki. The same profile-specific `day_end_time` used by scheduling determines when a new statistics day begins.
+They also show total cards, total pages, study time, active days, the current activity streak, and active-day averages. A page is counted once per document and logical day even if you revisit it or restart Anki. The shared **Day ends at** setting used by scheduling determines when a new statistics day begins.
 
-Set optional daily goals for cards, pages, and minutes at the top of the dialog. Goal progress is based on the same logical day as scheduling. The 7-day, 30-day, and Year scopes compare their totals with the preceding equivalent period and include an activity heatmap. Change the heatmap metric between all activity, cards, pages, and minutes; selecting a day shows its Topics, Items, other cards, PDF pages, EPUB pages, and study time. **Export History CSV…** exports up to the latest year of this normalized daily history.
+Use **Edit goals…** to choose only the daily measures that support your study:
+cards, pages, or minutes. Each goal has an explicit on/off choice instead of using
+zero as a hidden off state. When recent activity is available, Incremento suggests
+a realistic starting target from the median of positive activity days in the last
+30 days; unusually large sessions therefore do not set the pace. Suggestions are
+optional and never change a goal until selected and saved. The main Statistics
+window shows progress only for enabled goals. Goal progress is based on the same
+logical day as scheduling.
+
+The 7-day, 30-day, and Year scopes compare their totals with the preceding
+equivalent period and include an activity heatmap. Change the heatmap metric
+between all activity, cards, pages, and minutes; selecting a day shows its Topics,
+Items, other cards, PDF pages, EPUB pages, and study time. **Export History CSV…**
+exports up to the latest year of this normalized daily history.
 
 EPUB stays separate from PDF in these views.
 
@@ -1026,7 +1237,7 @@ The full backup is private and intentionally contains your cards, media, databas
 
 The APKG and `user_files/<ProfileName>/` snapshot always refer to the same active profile. Restoring this archive does not require deleting other existing Incremento profile folders.
 
-Incremento runs SQLite's integrity check and copies the database through SQLite's backup API. It writes and validates a temporary ZIP before atomically replacing the selected destination. Automatic exports keep that work file outside the selected folder when the filesystem permits, so cloud-sync software sees only the completed slot. If the active profile changes during export, the operation stops rather than mixing data from two profiles.
+Incremento copies the database through a dedicated read-only connection using SQLite's backup API and checks both the source and the completed copy. This avoids false search-index errors from a reused background connection; a failed integrity check still stops the export and preserves the previous backup. It writes and validates a temporary ZIP before atomically replacing the selected destination. Automatic exports keep that work file outside the selected folder when the filesystem permits, so cloud-sync software sees only the completed slot. If the active profile changes during export, the operation stops rather than mixing data from two profiles.
 
 Choose **Incremento → Export Full Backup → Automatic Backups…** (or the separate **Configure Automatic Full Backups…** menu item) to select a folder, enable backups for the current Anki profile, and choose **when the profile opens**, **when it closes**, and/or an interval in hours while Anki stays open (0 turns the interval off). **Export Now…** keeps the one-time save flow. Choose how many automatic versions to keep, from 1 to 20 (5 by default). Incremento creates slot files until that count is reached; after that, each successful, validated backup atomically replaces the oldest automatic ZIP at the same path. For example, with five selected, the sixth backup replaces the first. Older timestamp-named automatic ZIPs count toward the limit and are reused instead of creating a second set of slot files. The first timed backup runs when due; reopening with the on-open option selected creates a new backup. Automatic backups run in the background with a progress window that explains why Anki is temporarily unavailable and shows the current stage. Progress and failures also appear in Activity Center. Collection operations may briefly queue behind the export. If close backup is selected, Anki waits for the backup attempt to finish before unloading the profile, so shutdown or profile switching may take longer. An existing backup also finishes before the profile unloads. A failed close backup is flagged when that profile next opens. Each new ZIP is verified before an existing automatic ZIP is replaced or excess automatic ZIPs for that profile are rotated; manual exports and other profiles' backups are untouched. A missing or inaccessible destination produces a notification rather than switching to another folder.
 
@@ -1042,7 +1253,7 @@ Choose **Incremento → Settings** to open seven tabs:
 
 - **Language**: choose Automatic (follow Anki), English, Hrvatski, or 简体中文
 
-- **Extraction**: default extract note type, extract priority behavior, PDF highlight card target field, remembered PDF snapshot-field reuse, topic/tag defaults, and saved provenance link types
+- **Extraction**: default extract note type, extract priority behavior, PDF highlight card target field, PDF citation page numbering (printed labels, PDF numbers, or both), remembered PDF snapshot-field reuse, topic/tag defaults, and saved provenance link types
 - **Review**: priority direction, per-type reviewer badge visibility, post-answer prompt behavior, browser/PDF/web reviewer defaults, item skip, focus-timer auto-start, and custom scheduling presets
 - **Topics**: which card types/tags count as topics, the Done tag, the default topic A-factor, More/Less strength, the maximum topic interval, Add Card topic/item tags, whether Incremento auto-creates the `Topics` deck, which profiles that applies to, and the red Postpone button behavior
 - **Writing**: editor defaults, automatic backup intervals, progress visibility, default progress scope, and word-count mode
@@ -1101,6 +1312,14 @@ You can reopen the same workflow manually with **Incremento → Utils → Card F
 
 `Incremento_Content_ID` from an earlier development build is tolerated as an optional hidden field, but Incremento neither adds nor removes it automatically. New installations keep this internal identity in the per-profile SQLite journal, so this implementation detail does not force an Anki full sync.
 
+### Learning leech tags
+
+Under **Incremento → Settings → Review → Learning leeches**, enable **Tag difficult learning cards**, choose an **Again threshold** (1–9,999; default 5), and set the **Tag** (default `learning_leech`). The feature is off until enabled.
+
+Each card counts its own cumulative **Again** answers during initial learning, including its first answer as a new card and learning on later days. Good/Hard answers do not reset the count. Review lapses, relearning, and non-rescheduling filtered-deck Preview answers do not count. Existing learning history is included when the next learning Again is answered; saving settings does not scan or tag the collection retroactively.
+
+At the threshold, Incremento adds the tag to the card's Anki note, so sibling cards share the visible tag but do not pool their failure counts. The card is not suspended and its schedule is unchanged. Counts survive restarting Anki because they use Anki's review history. Undo/Redo restores the answer and its newly added tag together; pre-existing tags remain untouched. The tag stays after graduation until you remove it manually. Find marked notes in the Browser with `tag:learning_leech` (or your chosen tag).
+
 ### Dependency setup
 
 On first run, Incremento can show a dependency setup dialog.
@@ -1109,7 +1328,8 @@ Optional tools:
 
 - **PyMuPDF `>=1.26,<2`** for PDF rendering, text extraction, and annotation sync
 - **Tesseract OCR** for scanned/image-only PDFs
-- **yt-dlp** for optional local YouTube/Vimeo downloads; ffmpeg is optional for compression and required for local re-encoding
+- **yt-dlp** for optional local YouTube/Vimeo downloads
+- **FFmpeg** for video compression, local re-encoding, and mobile clips
 
 The PyMuPDF install button uses a real Python interpreter matching Anki's Python
 version and CPU architecture, verifies that the downloaded native package works,
@@ -1118,7 +1338,7 @@ it. This folder is local to the installation and is excluded from add-on release
 and profile backups. If no compatible interpreter with pip is available, the
 setup dialog provides the required Python version and a manual install command.
 
-The PyMuPDF button performs an explicit, version-bounded installation after you choose it. Incremento never silently installs yt-dlp into Anki's Python environment; install yt-dlp yourself when you want local video downloads. Tesseract and ffmpeg must be installed at the system level.
+The PyMuPDF button performs an explicit, version-bounded installation after you choose it. The FFmpeg row recognizes standard system and Homebrew locations even when Anki's GUI `PATH` is limited. On macOS with Homebrew or Windows with winget, its install button runs the fixed system-package command in the background and verifies the resulting executable; Linux keeps the privileged package-manager step manual. Incremento never installs FFmpeg without an explicit click and never silently installs yt-dlp into Anki's Python environment. Tesseract remains a guided system-level installation.
 
 ### Reindex PDF text
 
@@ -1130,15 +1350,23 @@ Use this if:
 
 Reindexing runs in the background, records progress per PDF, and can be cancelled. The manual command forces a fresh index even when the stored file signature has not changed.
 
+### Build PDF snapshot previews on cards
+
+Use **Incremento → Utils → Build PDF Snapshot Previews on Cards…** after changing the context-row setting or upgrading older extracted cards. The action finds notes containing Incremento PDF citations, opens the cited local page, locates the exact extracted passage, renders the configured rows before and after, highlights the passage yellow, and stores the resulting image in Anki media. It places a closed screenshot-preview control below the citation on desktop and mobile without overriding the card template's text color or weight. Rerunning it also removes the former blue styling and hover behavior from existing preview triggers. Saved highlight coordinates are preferred when available; otherwise Incremento matches the citation excerpt against the PDF's words. Unmatched passages are left unchanged and reported as skipped. Identical images reuse content-addressed media names. The work is profile-scoped, creates one Undo step for note changes, and syncs both the card HTML and media to mobile devices.
+
+### Clean up unused PDF screenshots
+
+Extracting a PDF passage adds its generated screenshot to Anki media before the card is saved. Discarding the card can therefore leave an unused image. After closing Add Cards, choose **Incremento → Utils → Clean Up Unused Incremento Data…**. One preview and confirmation covers unused PDF screenshots, orphaned PDF and video files, and stale progress, search-index, and OCR records. Incremento asks Anki which media files are unused, narrows the list to its own content-addressed PDF screenshots, and excludes images named in a saved extraction draft. It checks again immediately before moving those screenshots to Anki's media trash; screenshots used by saved notes remain untouched. Empty Anki's media trash when you want to reclaim its disk space.
+
 ### Cleanup tools
 
-The cleanup utilities help remove:
+The unified cleanup action helps remove:
 
 - files no current card references
 - saved progress rows for deleted cards
 - data tied to non-active profiles
 
-These are maintenance tools, not normal daily workflow tools.
+This is a maintenance action, not a normal daily workflow step.
 
 ---
 
@@ -1194,7 +1422,7 @@ Inside the quick-open dialog:
 
 ### Document Bookshelf
 
-The Document Bookshelf is optimized for visual recognition across PDFs and EPUBs. Choose **All documents**, **PDFs**, or **EPUBs**, type in the search box to filter titles, and use the tag autocomplete or **Browse tags** with **OR/AND** matching to narrow the shelf without remembering exact spelling. **Possible duplicates only** can be combined with those filters and uses cached rare-word plus trigram similarity across document titles, original filenames, and embedded PDF metadata titles. The profile-captured metadata scan runs off the UI thread and ignores generic titles. Duplicate mode also caches per-document attachment counts and overlays a green top-right check on covers with live Topic or Item attachments; the hover text gives the count. The badge is informational and does not affect matching. Right-click a candidate to delete it or keep it and delete its directly matching candidates. A separate background collection query recounts distinct live attached cards before confirmation; attached cards are not deleted, and the warning explains that their document links may stop working. A failed or stale attachment check cancels deletion. The confirmation also explains that the document's Anki note/card is deleted while the managed source stays available for Undo. Use the arrow keys and Return for keyboard selection, or left-click any cover tile to open it immediately. Opening a PDF restores its saved page, zoom, and appearance state unless Settings force another appearance; opening an EPUB restores its saved section and scroll position. Thumbnails load progressively, and missing PDF previews render one at a time, so opening a large library does not synchronously render every document. **Don't change cards attached to PDF reading history** is enabled only for a selected PDF. **Open the card also to study** works for either format and starts the selected document card after opening its reader. If an older profile customized the former PDF Bookshelf shortcut, Incremento carries that shortcut into Document Bookshelf automatically. If `Option/Alt+Shift+P` was also assigned to Quick Open Content, the Bookshelf keeps that key; Quick Open Content remains available from the Incremento menu and can be given a different shortcut in Settings.
+The Document Bookshelf is optimized for visual recognition across PDFs and EPUBs. Choose **All documents**, **PDFs**, or **EPUBs**, type in the search box to filter titles, and use the tag autocomplete or **Browse tags** with **OR/AND** matching to narrow the shelf without remembering exact spelling. **Possible duplicates only** can be combined with those filters and uses cached rare-word plus trigram similarity across document titles, original filenames, and embedded PDF metadata titles. The profile-captured metadata scan runs off the UI thread and ignores generic titles. Duplicate mode also caches per-document attachment counts and overlays a green top-right check on covers with live Topic or Item attachments; the hover text gives the count. The badge is informational and does not affect matching. Right-click any book and choose **Show in Finder** (macOS), **Show in File Explorer** (Windows), or **Show containing folder** (Linux) to locate its stored PDF or EPUB file. The action is disabled if the file is unavailable. The same menu lets you delete a candidate or keep it and delete its directly matching candidates. A separate background collection query recounts distinct live attached cards before confirmation; attached cards are not deleted, and the warning explains that their document links may stop working. A failed or stale attachment check cancels deletion. The confirmation also explains that the document's Anki note/card is deleted while the managed source stays available for Undo. Use the arrow keys and Return for keyboard selection, or left-click any cover tile to open it immediately. Opening a PDF restores its saved page, zoom, and appearance state unless Settings force another appearance; opening an EPUB restores its saved section and scroll position. Thumbnails load progressively, and missing PDF previews render one at a time, so opening a large library does not synchronously render every document. **Don't change cards attached to PDF reading history** is enabled only for a selected PDF. **Open the card also to study** works for either format and starts the selected document card after opening its reader. If an older profile customized the former PDF Bookshelf shortcut, Incremento carries that shortcut into Document Bookshelf automatically. If `Option/Alt+Shift+P` was also assigned to Quick Open Content, the Bookshelf keeps that key; Quick Open Content remains available from the Incremento menu and can be given a different shortcut in Settings.
 
 ---
 
@@ -1220,8 +1448,9 @@ The Document Bookshelf is optimized for visual recognition across PDFs and EPUBs
 
 1. Add a YouTube, Vimeo, or local video with **Add Video**.
 2. Review the video card.
-3. Pause at key moments and use **Add Card at this point**.
-4. Resume later from the saved timestamp.
+3. Pause at key moments and use **Add Card at this point** for a timestamp link, or **Create Mobile Clip…** for a trimmed segment that syncs through Anki media.
+4. Finish and add the extracted card, then let Anki sync its media for mobile playback.
+5. Resume the source video later from its saved timestamp.
 
 ### Workflow D: Incremental web reading
 

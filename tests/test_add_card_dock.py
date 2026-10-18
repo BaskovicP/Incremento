@@ -660,13 +660,59 @@ def test_fill_dock_field_passes_excerpt_text_to_pdf_citation(monkeypatch):
         "frontend.pdf_dock",
         types.SimpleNamespace(
             pdf_citation=lambda excerpt_text=None: captured.append(excerpt_text) or "Citation",
+            pdf_reference_html_for_citation=lambda excerpt, citation: (
+                '<span data-incremento-pdf-snapshot="1">Snapshot</span>'
+            ),
         ),
     )
 
     dock.fill_dock_field(0, "Excerpt text")
 
     assert captured == ["Excerpt text"]
-    assert filled == [(0, "Excerpt text<br>Citation", False)]
+    assert filled == [
+        (
+            0,
+            '<span data-incremento-pdf-snapshot="1">Snapshot</span>',
+            False,
+        )
+    ]
+
+
+def test_fill_dock_field_embeds_snapshot_for_explicit_pdf_highlight_citation(monkeypatch):
+    filled = []
+    fake_dock = types.SimpleNamespace(
+        show=lambda: None,
+        raise_=lambda: None,
+        _set_field=lambda idx, text, mark_topic=False: filled.append(text),
+    )
+    context_calls = []
+    monkeypatch.setattr(dock, "_add_card_dock", fake_dock)
+    monkeypatch.setattr(dock, "_apply_configured_extract_notetype", lambda: None)
+    monkeypatch.setattr(dock, "_refresh_transfer_buttons", lambda: None)
+    monkeypatch.setattr(dock.QTimer, "singleShot", lambda delay, func: None)
+    monkeypatch.setattr(dock, "__package__", "frontend")
+    monkeypatch.setitem(
+        sys.modules,
+        "frontend.pdf_dock",
+        types.SimpleNamespace(
+            pdf_reference_html_for_citation=lambda excerpt, citation: (
+                context_calls.append((excerpt, citation))
+                or '<span data-incremento-pdf-snapshot="1">Snapshot</span>'
+            ),
+        ),
+    )
+
+    dock.fill_dock_field(
+        0,
+        "Highlighted excerpt",
+        citation_html="Citation",
+        source_link_kind="pdf",
+    )
+
+    assert context_calls == [("Highlighted excerpt", "Citation")]
+    assert filled == [
+        '<span data-incremento-pdf-snapshot="1">Snapshot</span>'
+    ]
 
 
 def test_fill_dock_field_reports_success_only_after_field_update(monkeypatch):
@@ -1250,6 +1296,64 @@ def test_set_pending_extract_options_snapshots_source_tags(monkeypatch):
     )
 
     assert options["source_tags"] == ["Topic", "Source"]
+
+
+def test_discarded_extract_context_trashes_only_incremento_clip_media(monkeypatch):
+    trashed = []
+    monkeypatch.setattr(
+        dock,
+        "mw",
+        types.SimpleNamespace(
+            col=types.SimpleNamespace(
+                media=types.SimpleNamespace(trash_files=lambda names: trashed.extend(names))
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        dock,
+        "_pending_extract_context",
+        {
+            "staged_media_files": [
+                "incremento-video-clip-example-abc.mp4",
+                "user-photo.jpg",
+                "../outside.mp4",
+            ]
+        },
+    )
+
+    dock.clear_pending_extract_context()
+
+    assert trashed == ["incremento-video-clip-example-abc.mp4"]
+    assert dock.pending_extract_context() is None
+
+
+def test_consuming_extract_context_keeps_staged_clip_media(monkeypatch):
+    trashed = []
+    monkeypatch.setattr(
+        dock,
+        "mw",
+        types.SimpleNamespace(
+            col=types.SimpleNamespace(
+                media=types.SimpleNamespace(trash_files=lambda names: trashed.extend(names))
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        dock,
+        "_pending_extract_context",
+        {"staged_media_files": ["incremento-video-clip-example-abc.mp4"]},
+    )
+    monkeypatch.setattr(dock, "_snapshot_web_extract_records_on_note", lambda *_args: None)
+    monkeypatch.setattr(
+        dock,
+        "apply_extract_context_to_note",
+        lambda *_args, **_kwargs: {},
+    )
+
+    dock.consume_pending_extract_context_for_note(object(), {"source_card_id": 321})
+
+    assert trashed == []
+    assert dock.pending_extract_context() is None
 
 
 def test_consume_pending_extract_options_ignores_missing_source_card(monkeypatch):

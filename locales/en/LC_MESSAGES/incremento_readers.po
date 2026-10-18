@@ -1586,6 +1586,60 @@ msgstr "Refresh"
 msgid "reader_video_add_card_here"
 msgstr "+ Add Card at this point"
 
+msgid "reader_video_create_mobile_clip"
+msgstr "Create Mobile Clip…"
+
+msgid "reader_video_clip_hint"
+msgstr "Creates a trimmed H.264/AAC clip in Anki media. Remote videos download only the selected range."
+
+msgid "reader_video_clip_download_first"
+msgstr "Download a local copy of this video before creating a mobile clip."
+
+msgid "reader_video_clip_title"
+msgstr "Create Mobile Video Clip"
+
+msgid "reader_video_clip_intro"
+msgstr "Choose the exact start and end. If there is no local copy, Incremento downloads only that range. The clip is added to the Add Card draft."
+
+msgid "reader_video_clip_no_source"
+msgstr "This card has neither a local video copy nor a supported YouTube or Vimeo URL."
+
+msgid "reader_video_clip_start"
+msgstr "Start"
+
+msgid "reader_video_clip_end"
+msgstr "End"
+
+msgid "reader_video_clip_source_duration"
+msgstr "Source duration: {duration}"
+
+msgid "reader_video_clip_invalid_time"
+msgstr "Enter times such as 7:55 or 1:02:03."
+
+msgid "reader_video_clip_invalid_range"
+msgstr "Choose an end time after the start, within the video, and no more than 10 minutes later."
+
+msgid "reader_video_clip_local_missing"
+msgstr "The local video copy is missing. Download it again, then retry."
+
+msgid "reader_video_clip_activity"
+msgstr "Creating mobile video clip"
+
+msgid "reader_video_clip_encoding"
+msgstr "Encoding H.264/AAC clip…"
+
+msgid "reader_video_clip_failed"
+msgstr "Could not create mobile video clip.\n\n{error}"
+
+msgid "reader_video_clip_stale"
+msgstr "The video or Anki profile changed before the clip was ready, so it was discarded."
+
+msgid "reader_video_clip_add_card_failed"
+msgstr "The clip was created, but Incremento could not add it to the Add Card draft."
+
+msgid "reader_video_clip_ready"
+msgstr "Mobile video clip added to the Add Card draft."
+
 msgid "reader_video_bookmark_comment"
 msgstr "Video Bookmark Comment"
 
@@ -3304,6 +3358,15 @@ msgstr "The PDF page content has changed or the selected original is a different
 msgid "reader_pdf_sync_protected"
 msgstr "Signed, password-protected or annotation-restricted PDFs cannot be synced. Your Incremento annotations remain saved."
 
+msgid "reader_pdf_sync_password"
+msgstr "This PDF requires a password and cannot be synced without unlocking it. Your Incremento annotations remain saved."
+
+msgid "reader_pdf_sync_signed"
+msgstr "This PDF is marked as digitally signed. Sync would rewrite the file and could invalidate its signature. Your Incremento annotations remain saved."
+
+msgid "reader_pdf_sync_restricted"
+msgstr "This PDF's permissions prohibit annotation changes, so annotation sync is blocked. Your Incremento annotations remain saved."
+
 msgid "reader_pdf_sync_file_changed"
 msgstr "The PDF changed during sync. Your newer edits remain saved; use Sync now to try again."
 
@@ -3338,3 +3401,10 @@ msgstr "More colors…"
 #. Annotation palette and hex color picker.
 msgid "reader_choose_annotation_color"
 msgstr "Choose annotation color"
+
+#. Saved card screenshot shown on desktop hover and mobile tap.
+msgid "reader_pdf_source_preview"
+msgstr "Source page preview"
+
+msgid "reader_pdf_citation_page_both"
+msgstr "{label} (PDF {page})"

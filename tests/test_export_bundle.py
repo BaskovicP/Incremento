@@ -1,5 +1,8 @@
 import os
+import sqlite3
 import tempfile
+
+import pytest
 
 import export_bundle
 
@@ -60,3 +63,102 @@ def test_snapshot_tree_does_not_follow_profile_symlinks(tmp_path):
     assert not (destination / "linked.txt").exists()
     assert stats["files_copied"] == 0
     assert stats["files_skipped"] == 1
+
+
+def test_database_snapshot_includes_committed_wal_data_without_changing_source(tmp_path):
+    source = tmp_path / "profile #1.db"
+    destination = tmp_path / "snapshot.db"
+    conn = sqlite3.connect(source)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("CREATE VIRTUAL TABLE documents USING fts5(text)")
+        conn.execute("INSERT INTO documents VALUES('searchable example')")
+        conn.execute("PRAGMA user_version=12")
+        conn.commit()
+        before = source.read_bytes()
+
+        result = export_bundle.snapshot_database(source, destination)
+
+        assert result == {"integrity_check": "ok", "schema_version": 12}
+        assert source.read_bytes() == before
+        with sqlite3.connect(destination) as copied:
+            assert copied.execute("PRAGMA integrity_check").fetchall() == [("ok",)]
+            assert copied.execute(
+                "SELECT text FROM documents WHERE documents MATCH 'searchable'"
+            ).fetchall() == [("searchable example",)]
+    finally:
+        conn.close()
+
+
+def test_database_snapshot_rejects_real_integrity_error_without_creating_copy(tmp_path):
+    source = tmp_path / "corrupt.db"
+    destination = tmp_path / "snapshot.db"
+    with sqlite3.connect(source) as conn:
+        conn.execute("CREATE TABLE example(value INTEGER CHECK(value > 0))")
+        conn.execute("PRAGMA ignore_check_constraints=ON")
+        conn.execute("INSERT INTO example VALUES(-1)")
+    before = source.read_bytes()
+
+    with pytest.raises(RuntimeError, match="integrity check failed"):
+        export_bundle.snapshot_database(source, destination)
+
+    assert source.read_bytes() == before
+    assert not destination.exists()
+
+
+def test_database_snapshot_rejects_missing_source_without_creating_database(tmp_path):
+    source = tmp_path / "missing.db"
+    destination = tmp_path / "snapshot.db"
+
+    with pytest.raises(sqlite3.OperationalError):
+        export_bundle.snapshot_database(source, destination)
+
+    assert not source.exists()
+    assert not destination.exists()
+
+
+def test_database_snapshot_preserves_existing_destination(tmp_path):
+    source = tmp_path / "source.db"
+    destination = tmp_path / "previous.db"
+    with sqlite3.connect(source) as conn:
+        conn.execute("CREATE TABLE example(value INTEGER)")
+    destination.write_bytes(b"previous backup")
+
+    with pytest.raises(FileExistsError):
+        export_bundle.snapshot_database(source, destination)
+
+    assert destination.read_bytes() == b"previous backup"
+
+
+@pytest.mark.parametrize("failure", ["copy", "validation"])
+def test_database_snapshot_removes_partial_copy_on_failure(monkeypatch, tmp_path, failure):
+    source = tmp_path / "source.db"
+    destination = tmp_path / "snapshot.db"
+    with sqlite3.connect(source) as conn:
+        conn.execute("CREATE TABLE example(value INTEGER CHECK(value > 0))")
+        conn.execute("INSERT INTO example VALUES(1)")
+    before = source.read_bytes()
+    connect = sqlite3.connect
+
+    class _InterruptedBackup(sqlite3.Connection):
+        def backup(self, target, **kwargs):
+            super().backup(target, **kwargs)
+            if failure == "copy":
+                raise sqlite3.OperationalError("interrupted copy")
+            target.execute("PRAGMA ignore_check_constraints=ON")
+            target.execute("INSERT INTO example VALUES(-1)")
+            target.commit()
+            target.execute("PRAGMA ignore_check_constraints=OFF")
+
+    def open_connection(database, **kwargs):
+        if kwargs.get("uri"):
+            kwargs["factory"] = _InterruptedBackup
+        return connect(database, **kwargs)
+
+    monkeypatch.setattr(export_bundle.sqlite3, "connect", open_connection)
+    error = sqlite3.OperationalError if failure == "copy" else RuntimeError
+    with pytest.raises(error, match="interrupted copy|snapshot integrity check failed"):
+        export_bundle.snapshot_database(source, destination)
+
+    assert source.read_bytes() == before
+    assert not destination.exists()

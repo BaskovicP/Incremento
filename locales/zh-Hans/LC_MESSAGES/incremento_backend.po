@@ -72,6 +72,10 @@ msgstr "<span style=\"color: #e05050;\">自动安装失败。请参阅下方说�
 msgid "backend_deps_install_pymupdf"
 msgstr "自动安装 PyMuPDF"
 
+#. Incremento UI: deps install ffmpeg
+msgid "backend_deps_install_ffmpeg"
+msgstr "安装 FFmpeg"
+
 #. Incremento UI: deps installed
 msgid "backend_deps_installed"
 msgstr "<span style=\"color: gray; font-size: small;\">已安装 — 无需操作。</span>"
@@ -92,9 +96,13 @@ msgstr "正在安装…"
 msgid "backend_deps_installing_pymupdf"
 msgstr "<span style=\"color: gray; font-size: small;\">正在安装 PyMuPDF — 请稍候…</span>"
 
+#. Incremento UI: deps installing ffmpeg
+msgid "backend_deps_installing_ffmpeg"
+msgstr "正在安装 FFmpeg — 这可能需要几分钟…"
+
 #. Incremento UI: deps intro
 msgid "backend_deps_intro"
-msgstr "Incremento 使用可选组件进行 PDF OCR 和浏览器扩展同步。基本功能无需这些组件也可使用。"
+msgstr "Incremento 使用可选组件进行 PDF OCR、视频处理和浏览器扩展同步。基本功能无需这些组件也可使用。"
 
 #. Incremento UI: deps manual install
 msgid "backend_deps_manual_install"
@@ -115,6 +123,26 @@ msgstr "Incremento 可以将 PyMuPDF 自动安装到其本地依赖目录。\n\n
 #. Incremento UI: deps restart notice
 msgid "backend_deps_restart_notice"
 msgstr "PyMuPDF 已安装 — 请重新启动 Anki 后使用。"
+
+#. Incremento UI: deps ffmpeg
+msgid "backend_deps_ffmpeg"
+msgstr "FFmpeg（视频编码、压缩和移动端片段）"
+
+#. Incremento UI: deps ffmpeg ready
+msgid "backend_deps_ffmpeg_ready"
+msgstr "FFmpeg 已安装，可以使用。"
+
+#. Incremento UI: deps ffmpeg mac
+msgid "backend_deps_ffmpeg_mac"
+msgstr "通过 Homebrew 安装 FFmpeg。如果 Homebrew 可用，请点击下方的“安装 FFmpeg”按钮。\n\n手动命令：brew install ffmpeg\n\n如果未显示按钮，请先从 https://brew.sh 安装 Homebrew，再重新打开此对话框。"
+
+#. Incremento UI: deps ffmpeg windows
+msgid "backend_deps_ffmpeg_windows"
+msgstr "通过 Windows 程序包管理器安装 FFmpeg。如果 winget 可用，请点击下方的“安装 FFmpeg”按钮。\n\n手动命令：winget install --id Gyan.FFmpeg --exact\n\n手动安装后，请重新启动 Anki。"
+
+#. Incremento UI: deps ffmpeg linux
+msgid "backend_deps_ffmpeg_linux"
+msgstr "使用包管理器安装 FFmpeg：\n\n    Ubuntu / Debian:  sudo apt install ffmpeg\n    Fedora:           sudo dnf install ffmpeg\n    Arch:             sudo pacman -S ffmpeg\n    openSUSE:         sudo zypper install ffmpeg\n\n然后重新启动 Anki。"
 
 #. Incremento UI: deps tesseract
 msgid "backend_deps_tesseract"

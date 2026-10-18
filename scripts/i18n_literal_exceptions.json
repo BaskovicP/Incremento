@@ -176,6 +176,12 @@
   {
     "file": "frontend/video_dock.py",
     "sink": "setText",
+    "text": "f\"\\u25a3  {clip_btn.text()}\"",
+    "reason": "Fixed icon prefix wrapped around an already-localized reader action label."
+  },
+  {
+    "file": "frontend/video_dock.py",
+    "sink": "setText",
     "text": "f\"\\u2606  {bookmark_btn.text()}\"",
     "reason": "Fixed icon prefix wrapped around an already-localized reader action label."
   },

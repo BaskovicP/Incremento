@@ -18,6 +18,8 @@ import {
   formatBridgeError,
   importIntoIncremento,
   loadBrowserCaptureMeta,
+  loadWebsiteTags,
+  saveWebsiteTags,
   saveBrowserMediaRef,
 } from "../shared/bridge.js";
 import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
@@ -51,7 +53,12 @@ import {
 import { normalizeAvailableTags } from "../shared/tagAutocomplete.js";
 import { pageContextOptionsForImport } from "../shared/pageContext.js";
 import { TagAutocompleteInput } from "./TagAutocompleteInput.jsx";
+import { WebsiteTagControls } from "./WebsiteTagControls.jsx";
+import { createWebsiteTagPreferences, websiteOrigin } from "../shared/websiteTags.js";
 import { LanguageSettingsPanel } from "./LanguageSettingsPanel.jsx";
+import { PdfExportSettingsPanel } from "./PdfExportSettingsPanel.jsx";
+import { PdfCaptureButton } from "./PdfCaptureButton.jsx";
+import { DEFAULT_PDF_EXPORT_SETTINGS, PDF_EXPORT_SETTINGS_KEY, loadPdfExportSettings, normalizePdfExportSettings, pdfExportPayload, pdfExportSettingsForCapture } from "../shared/pdfExportSettings.js";
 import { runPopupStartupTasks } from "./startup.js";
 import { runVisibleOperation } from "./visibleOperation.js";
 import {
@@ -93,7 +100,7 @@ function importValidationError(statusText) {
 }
 
 function importActionMessage(kind, options = {}) {
-  if (kind === "pdf") return message("add_as_pdf");
+  if (kind === "pdf") return message(options.openedPage === true ? "capture_opened_page_pdf" : "add_as_pdf");
   if (kind === "video") return message("add_as_video");
   if (kind === "webpage") return message("add_as_webpage");
   if (kind === "writing" && options.writingMode === "webpage_markdown") {
@@ -162,10 +169,11 @@ export function PopupApp() {
   const [languageError, setLanguageError] = useState("");
   const [languagePacksDraft, setLanguagePacksDraft] = useState({});
   const [languagePackPreview, setLanguagePackPreview] = useState(null);
+  const [pdfExportDraft, setPdfExportDraft] = useState(DEFAULT_PDF_EXPORT_SETTINGS);
   const languageFileInput = useRef(null);
   const [activeTab, setActiveTab] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const [operationBusy, setBusy] = useState(false);
   const addOperationInFlight = useRef(false);
   const outcomeFlashController = useRef(null);
   const [outcomeFlash, setOutcomeFlash] = useState({ kind: "", revision: 0 });
@@ -185,17 +193,33 @@ export function PopupApp() {
   const [priorityText, setPriorityText] = useState(formatPriority(DEFAULT_PRIORITY));
   const [tagsText, setTagsText] = useState("");
   const [tagNames, setTagNames] = useState([]);
+  const [websiteTags, setWebsiteTags] = useState({enabled: false, ready: false, loading: false});
+  const websiteTagController = useRef(null);
+  const busy = operationBusy || websiteTags.loading;
 
   const pageUrl = String(snapshot?.url || getTabUrl(activeTab) || "").trim();
   const pageTitle = String(snapshot?.title || activeTab?.title || "").trim();
   const selectionText = String(snapshot?.selectionText || "");
   const hasSupportedPage = Boolean(activeTab && isHttpUrl(pageUrl));
+  const tagOrigin = websiteOrigin(pageUrl);
   const onVideoPage = isSupportedVideoUrl(pageUrl);
   const detectedTimeText = mediaContext?.hasDetectedTime ? formatMediaTime(mediaContext.seconds) : "";
   const contextMenuDeckName = resolveContextMenuDeckName(
     linkSaveSettings.contextMenuDeckName,
     deckNames,
   );
+
+  useEffect(() => {
+    const controller = createWebsiteTagPreferences({
+      load: loadWebsiteTags, save: saveWebsiteTags, onState: setWebsiteTags, onTags: setTagsText,
+    });
+    websiteTagController.current = controller;
+    void controller.load(tagOrigin);
+    return () => {
+      controller.dispose();
+      websiteTagController.current = null;
+    };
+  }, [tagOrigin]);
 
   useEffect(() => {
     outcomeFlashController.current = createOutcomeFlashController({ onChange: setOutcomeFlash });
@@ -205,22 +229,32 @@ export function PopupApp() {
     };
   }, []);
 
-  function openSettings() {
-    setLanguageDraft(currentPreference());
-    setLanguagePacksDraft({});
-    setLanguagePackPreview(null);
-    setLanguageError("");
-    setSettingsOpen(true);
+  async function openSettings() {
+    setLanguageBusy(true);
+    try {
+      setPdfExportDraft(await loadPdfExportSettings());
+      setLanguageDraft(currentPreference());
+      setLanguagePacksDraft({});
+      setLanguagePackPreview(null);
+      setLanguageError("");
+      setSettingsOpen(true);
+    } catch (_error) {
+      setStatus({text: message("settings_load_error"), kind: "error"});
+    } finally {
+      setLanguageBusy(false);
+    }
   }
 
-  async function saveSettingsLanguage() {
+  async function saveSettings() {
     setLanguageBusy(true);
     setLanguageError("");
     try {
-      await saveLanguageSettings(languageDraft, languagePacksDraft);
+      await saveLanguageSettings(languageDraft, languagePacksDraft, globalThis.chrome, {
+        [PDF_EXPORT_SETTINGS_KEY]: normalizePdfExportSettings(pdfExportDraft),
+      });
       setSettingsOpen(false);
     } catch (error) {
-      setLanguageError(error instanceof LanguagePackError ? languagePackErrorText(error) : t("language_save_error"));
+      setLanguageError(error instanceof LanguagePackError ? languagePackErrorText(error) : t("settings_save_error"));
     } finally {
       setLanguageBusy(false);
     }
@@ -556,9 +590,13 @@ export function PopupApp() {
         onStatus: setStatus,
         run: async (report) => {
           const requestedWritingMode = String(options.writingMode || "selection");
+          const pdfSettings = kind === "pdf"
+            ? pdfExportSettingsForCapture(await loadPdfExportSettings(), {openedPage: options.openedPage === true})
+            : null;
           const context = await readCurrentPageContext(pageContextOptionsForImport(kind, {
             writingMode: requestedWritingMode,
             pageContentScope,
+            pdfOptions: pdfSettings,
           }));
           const currentTab = context.tab;
           const currentSnapshot = context.snapshot;
@@ -572,6 +610,10 @@ export function PopupApp() {
           if (!isHttpUrl(currentPageUrl)) {
             throw importValidationError(message("only_http_pages"));
           }
+          if (websiteOrigin(currentPageUrl) !== tagOrigin) {
+            throw importValidationError(message("website_tags_page_changed"));
+          }
+          await websiteTagController.current?.flush();
           if (kind === "video" && !isSupportedVideoUrl(currentPageUrl)) {
             throw importValidationError(message("open_video_page"));
           }
@@ -608,8 +650,12 @@ export function PopupApp() {
           if (currentLinkedCard?.linked && Number(currentLinkedCard.cardId) > 0) {
             payload.parentCardId = Math.max(0, Math.floor(Number(currentLinkedCard.cardId) || 0));
           }
-          if (kind === "pdf" && currentSnapshot?.html) {
-            payload.html = String(currentSnapshot.html);
+          if (kind === "pdf") {
+            if (options.openedPage === true && !String(currentSnapshot?.html || "").trim()) {
+              throw importValidationError(message("web_content_failed"));
+            }
+            Object.assign(payload, pdfExportPayload(pdfSettings, {openedPage: options.openedPage === true}));
+            if (currentSnapshot?.html) payload.html = String(currentSnapshot.html);
           }
           if (kind === "writing") {
             const writingMode = requestedWritingMode;
@@ -638,7 +684,7 @@ export function PopupApp() {
               payload.html = String(currentSnapshot.html);
             }
           }
-          if (kind === "pdf") {
+          if (kind === "pdf" && options.openedPage !== true) {
             const pdfPayload = await getPdfPayloadForUrl(currentPageUrl);
             if (pdfPayload) {
               payload.pdfBase64 = pdfPayload.pdfBase64;
@@ -850,6 +896,7 @@ export function PopupApp() {
       kind: "",
     });
     try {
+      await websiteTagController.current?.flush();
       const response = await triggerBrowserCaptureForTab(activeTab.id, mode);
       if (response?.ok) {
         setStatus({
@@ -939,6 +986,7 @@ export function PopupApp() {
 
   const selectionShortcut = commandShortcuts.find((command) => command.name === "browser-capture-selection")?.shortcut || "";
   const snapshotShortcut = commandShortcuts.find((command) => command.name === "browser-capture-snapshot")?.shortcut || "";
+  const pdfCaptureShortcut = commandShortcuts.find((command) => command.name === "capture-opened-page-as-pdf")?.shortcut || "";
 
   function localizedErrorReport(details) {
     if (!details) return "";
@@ -988,7 +1036,7 @@ export function PopupApp() {
         />
       ) : null}
       <nav className="popup-navigation">
-        <button className="ghost-btn" type="button" disabled={settingsOpen && languageBusy} onClick={settingsOpen ? () => setSettingsOpen(false) : openSettings}>
+        <button className="ghost-btn" type="button" disabled={languageBusy || busy} onClick={settingsOpen ? () => setSettingsOpen(false) : () => void openSettings()}>
           {settingsOpen ? t("language_cancel") : t("settings")}
         </button>
       </nav>
@@ -1032,9 +1080,12 @@ export function PopupApp() {
             value={tagsText}
             availableTags={tagNames}
             disabled={busy}
-            onChange={setTagsText}
+            onChange={value => websiteTagController.current?.changeTags(value)}
           />
           <p className="field-hint">{t("tag_hint")}</p>
+          {hasSupportedPage ? <WebsiteTagControls state={websiteTags} busy={operationBusy}
+            onToggle={value => websiteTagController.current?.setEnabled(value)}
+            onRetry={() => websiteTagController.current?.retry()} /> : null}
         </div>
         <label className="field">
           <span>{t("priority")}</span>
@@ -1090,6 +1141,7 @@ export function PopupApp() {
           >
             {t("add_as_pdf")}
           </button>
+          <PdfCaptureButton busy={busy} hasSupportedPage={hasSupportedPage} onAdd={handleAdd} />
           <button
             className="kind-btn"
             data-kind="video"
@@ -1289,7 +1341,12 @@ export function PopupApp() {
             <strong>{t("snapshot_capture")}</strong>
             <span>{snapshotShortcut || t("not_assigned_chrome")}</span>
           </div>
+          <div>
+            <strong>{t("capture_opened_page_pdf")}</strong>
+            <span>{pdfCaptureShortcut || t("not_assigned_chrome")}</span>
+          </div>
         </div>
+        <p className="note">{t("snapshot_shortcut_scope")}</p>
         <button
           className="ghost-btn"
           type="button"
@@ -1351,9 +1408,11 @@ export function PopupApp() {
           onExportTemplate={() => void exportLanguageFile(true)}
           onExportSelected={() => void exportLanguageFile()}
           onImport={event => void importLanguageFile(event)}
-          onSave={() => void saveSettingsLanguage()}
+          onSave={() => void saveSettings()}
           onCancel={() => setSettingsOpen(false)}
-        />
+        >
+          <PdfExportSettingsPanel settings={pdfExportDraft} busy={languageBusy} onChange={setPdfExportDraft} />
+        </LanguageSettingsPanel>
       ) : null}
     </main>
   );

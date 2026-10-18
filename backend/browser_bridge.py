@@ -22,8 +22,10 @@ try:
         external_plain_text_to_markdown,
         normalize_external_http_url,
     )
+    from .browser_capture import capture_fingerprint, capture_source_html, capture_source_url, legacy_capture_matches, selection_html
     from .network_safety import copy_response_limited, open_public_http
     from .webpage_markdown import convert_webpage_html_to_markdown
+    from .webpage_handoff import HANDOFF_PATH, HANDOFF_RPC_PATH, browser_pdf_handoffs
     from .note_metadata import (
         apply_incremento_metadata,
         build_incremento_metadata,
@@ -37,8 +39,10 @@ except ImportError:
         external_plain_text_to_markdown,
         normalize_external_http_url,
     )
+    from browser_capture import capture_fingerprint, capture_source_html, capture_source_url, legacy_capture_matches, selection_html
     from network_safety import copy_response_limited, open_public_http  # type: ignore
     from webpage_markdown import convert_webpage_html_to_markdown
+    from webpage_handoff import HANDOFF_PATH, HANDOFF_RPC_PATH, browser_pdf_handoffs
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
         build_incremento_metadata,
@@ -54,6 +58,7 @@ BROWSER_CAPTURE_META_PATH = "/incremento/browser-capture-meta"
 WEB_TRACK_PATH = "/incremento/update-web-card"
 WEB_TRACK_MEDIA_PATH = "/incremento/update-web-card-media"
 BROWSER_MEDIA_REF_PATH = "/incremento/browser-media-ref"
+WEBSITE_TAGS_PATH = "/incremento/website-tags"
 BRIDGE_HANDSHAKE_PATH = "/incremento/handshake"
 BRIDGE_PROTOCOL_VERSION = 2
 _ALLOWED_ORIGIN_PREFIX = "chrome-extension://"
@@ -74,10 +79,21 @@ _MAX_PDF_UPLOAD_BYTES = 48 * 1024 * 1024
 _MAX_REMOTE_PDF_BYTES = 256 * 1024 * 1024
 _MAX_BROWSER_CAPTURE_SNAPSHOTS = 12
 _MAX_BROWSER_CAPTURE_IMAGE_BYTES = 8_000_000
+_MAX_BROWSER_CAPTURE_TOTAL_IMAGE_BYTES = 32_000_000
 _MAX_MEDIA_FILENAME_STEM = 80
 _PREPARED_PDF_PATH_KEY = "_prepared_pdf_path"
 _PREPARED_PDF_PAGE_TEXTS_KEY = "_prepared_pdf_page_texts"
 _PREPARED_WRITING_MARKDOWN_KEY = "_prepared_writing_markdown"
+
+_browser_capture_open_note = None
+_browser_capture_dispatch = None
+
+
+def configure_browser_capture(*, dispatcher, opener) -> None:
+    global _browser_capture_dispatch, _browser_capture_open_note
+    _browser_capture_dispatch = dispatcher
+    _browser_capture_open_note = opener
+
 
 _server: ThreadingHTTPServer | None = None
 _server_thread: threading.Thread | None = None
@@ -300,6 +316,7 @@ def _normalize_browser_capture_snapshots(raw_snapshots) -> list[dict]:
         raise ValueError(f"Too many snapshots. Maximum is {_MAX_BROWSER_CAPTURE_SNAPSHOTS}.")
 
     normalized = []
+    total_bytes = 0
     for idx, raw_snapshot in enumerate(raw_snapshots):
         if not isinstance(raw_snapshot, dict):
             raise ValueError("Each snapshot must be a JSON object.")
@@ -320,8 +337,13 @@ def _normalize_browser_capture_snapshots(raw_snapshots) -> list[dict]:
             raise ValueError(f"Invalid snapshot payload: {exc}") from exc
         if not raw_bytes:
             raise ValueError("Snapshot payload cannot be empty.")
+        if not raw_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise ValueError("Snapshot payload must contain PNG image data.")
         if len(raw_bytes) > _MAX_BROWSER_CAPTURE_IMAGE_BYTES:
             raise ValueError("Snapshot image is too large.")
+        total_bytes += len(raw_bytes)
+        if total_bytes > _MAX_BROWSER_CAPTURE_TOTAL_IMAGE_BYTES:
+            raise ValueError("Combined snapshots are too large.")
         normalized.append(
             {
                 "mime_type": mime_type,
@@ -343,9 +365,31 @@ def normalize_browser_capture_payload(payload) -> dict:
     if not note_type_name:
         raise ValueError("noteTypeName is required.")
 
+    action = payload.get("action", "create")
+    if action not in {"create", "preview", "open_existing"}:
+        raise ValueError("Invalid browser capture action.")
+    for key in ("linkToPassage", "allowDuplicate"):
+        if key in payload and type(payload[key]) is not bool:
+            raise ValueError(f"{key} must be a boolean.")
+    for key in ("selectedText", "selectedHtml", "sourceText"):
+        if not isinstance(payload.get(key, ""), str) or len(payload.get(key, "")) > _MAX_SELECTED_TEXT_CHARS:
+            raise ValueError(f"{key} must be text of at most {_MAX_SELECTED_TEXT_CHARS} characters.")
+    selected_text = external_plain_text(payload.get("selectedText", "")).strip()
+    selected_html = selection_html(selected_text, payload.get("selectedHtml", ""))
+    url = normalize_http_url(payload.get("url", ""))
+    source_link = capture_source_url(url, payload.get("sourceText", selected_text)) if payload.get("linkToPassage", False) else url
+    profile_token = payload.get("profileToken", "")
+    if not isinstance(profile_token, str) or (profile_token and not re.fullmatch(r"[a-f0-9]{64}", profile_token)):
+        raise ValueError("Invalid capture profile token.")
+
     return {
         "type": "browser_capture",
-        "url": normalize_http_url(payload.get("url", "")),
+        "action": action,
+        "allow_duplicate": payload.get("allowDuplicate", False),
+        "profile_token": profile_token,
+        "selected_html": selected_html,
+        "source_link": source_link,
+        "url": url,
         "title": _bounded_collapsed(
             payload.get("title", ""), max_chars=_MAX_TITLE_CHARS
         )
@@ -364,6 +408,18 @@ def normalize_browser_capture_payload(payload) -> dict:
         "field_mappings": _normalize_browser_capture_field_mappings(payload.get("fieldMappings")),
         "snapshots": _normalize_browser_capture_snapshots(payload.get("snapshots")),
     }
+
+
+def _normalize_pdf_options(value) -> dict:
+    if not isinstance(value, dict) or set(value) - {"style", "dynamic", "includeLinks"}:
+        raise ValueError("pdfOptions must contain only style, dynamic, and includeLinks.")
+    style = value.get("style", "print")
+    if not isinstance(style, str) or style not in {"print", "website", "article"}:
+        raise ValueError("pdfOptions.style must be print, website, or article.")
+    if any(not isinstance(value.get(key, False), bool) for key in ("dynamic", "includeLinks")):
+        raise ValueError("pdfOptions.dynamic and pdfOptions.includeLinks must be booleans.")
+    return {"style": style, "dynamic": value.get("dynamic", False),
+            "include_links": value.get("includeLinks", False)}
 
 
 def normalize_add_content_payload(payload) -> dict:
@@ -396,6 +452,11 @@ def normalize_add_content_payload(payload) -> dict:
     html = str(payload.get("html", "") or "")
     if len(html) > _MAX_HTML_CHARS:
         raise ValueError("HTML payload is too large.")
+    capture_opened_page = payload.get("captureOpenedPage", False)
+    if type(capture_opened_page) is not bool:
+        raise ValueError("captureOpenedPage must be a boolean.")
+    if capture_opened_page and (kind != "pdf" or not html.strip() or payload.get("pdfBase64")):
+        raise ValueError("captureOpenedPage requires a PDF import with HTML and no uploaded PDF.")
     markdown = str(payload.get("markdown", "") or "")
     if len(markdown) > _MAX_MARKDOWN_CHARS:
         raise ValueError("Markdown payload is too large.")
@@ -443,12 +504,14 @@ def normalize_add_content_payload(payload) -> dict:
         "parent_card_id": _normalize_parent_card_id(payload.get("parentCardId")),
         "selected_text": selected_text,
         "html": html,
+        "capture_opened_page": capture_opened_page,
         "markdown": markdown,
         "preferred_filename": preferred_filename,
         "writing_mode": raw_writing_mode or "selection",
         "page_content_scope": raw_page_content_scope or "main",
         "pdf_base64": pdf_base64,
         "pdf_filename": pdf_filename,
+        "pdf_options": _normalize_pdf_options(payload.get("pdfOptions", {})),
         "media_url": media_url,
         "media_title": media_title,
         "media_seconds": media_seconds,
@@ -597,6 +660,38 @@ def normalize_browser_media_ref_query(payload) -> dict:
     return {"card_id": card_id}
 
 
+def _website_tags_on_main(payload: object, bridge_token: str) -> dict:
+    from aqt import mw
+
+    try:
+        from .db import get_website_tags, set_website_tags
+        from .paths import get_active_profile
+    except ImportError:
+        from db import get_website_tags, set_website_tags
+        from paths import get_active_profile
+
+    if (not isinstance(payload, dict)
+            or set(payload) - {"action", "url", "enabled", "tags", "profileToken"}
+            or payload.get("action") not in ("load", "save")):
+        raise ValueError("Invalid website tag request.")
+    if not bridge_token or not hmac.compare_digest(bridge_token, _bridge_token):
+        raise ValueError("Anki profile changed. Reopen the extension popup.")
+    if mw is None or mw.col is None:
+        raise ValueError("Open an Anki profile first.")
+    profile = get_active_profile()
+    profile_token = hmac.new(bridge_token.encode(), profile.encode(), "sha256").hexdigest()
+    if payload["action"] == "save":
+        supplied = payload.get("profileToken")
+        if (not isinstance(supplied, str) or not re.fullmatch(r"[a-f0-9]{64}", supplied)
+                or not hmac.compare_digest(supplied, profile_token)):
+            raise ValueError("Anki profile changed. Reopen the extension popup.")
+        result = set_website_tags(_addon_dir, profile, payload.get("url"),
+                                  payload.get("enabled"), payload.get("tags"))
+    else:
+        result = get_website_tags(_addon_dir, profile, payload.get("url"))
+    return {"ok": True, **result, "profileToken": profile_token}
+
+
 def _run_on_main_and_wait(fn, timeout_sec: float = 180.0):
     from aqt import mw
 
@@ -640,6 +735,41 @@ def _refresh_anki_after_import() -> None:
         pass
 
 
+def _run_browser_capture_and_wait(normalized: dict, timeout_sec: float = 180.0) -> dict:
+    """Wait on frontend-owned background inspection without blocking Qt."""
+    from aqt import mw
+
+    if _browser_capture_dispatch is None:
+        raise RuntimeError("Browser capture is unavailable.")
+    done = threading.Event()
+    cancelled = threading.Event()
+    box: dict = {}
+
+    def success(result):
+        box["result"] = result
+        done.set()
+
+    def failure(error):
+        box["error"] = error
+        done.set()
+
+    def launch():
+        if cancelled.is_set():
+            return
+        try:
+            _browser_capture_dispatch(normalized, success, failure, is_cancelled=cancelled.is_set)
+        except Exception as error:
+            failure(error)
+
+    mw.taskman.run_on_main(launch)
+    if not done.wait(timeout_sec):
+        cancelled.set()
+        raise TimeoutError("Incremento browser capture timed out.")
+    if "error" in box:
+        raise box["error"]
+    return box["result"]
+
+
 def _make_temp_pdf_path() -> str:
     fd, temp_path = tempfile.mkstemp(prefix="incremento-webpage-", suffix=".pdf")
     os.close(fd)
@@ -673,6 +803,8 @@ def _prepare_pdf_item_off_main(normalized: dict) -> None:
     if normalized.get("kind") != "pdf":
         return
     if normalized.get(_PREPARED_PDF_PATH_KEY):
+        return
+    if normalized.get("capture_opened_page"):
         return
     if not normalized.get("pdf_base64") and not url_looks_like_pdf(normalized.get("url", "")):
         return
@@ -768,6 +900,10 @@ def cleanup_prepared_add_content_request(request: dict | None) -> None:
             pass
 
 
+def _browser_capture_profile_token(profile: str) -> str:
+    return hmac.new(_bridge_token.encode(), profile.encode(), "sha256").hexdigest()
+
+
 def _browser_capture_meta_on_main() -> dict:
     from aqt import mw
 
@@ -818,6 +954,7 @@ def _browser_capture_meta_on_main() -> dict:
 
     return {
         "ok": True,
+        "profileToken": _browser_capture_profile_token(_browser_capture_active_profile()),
         "noteTypes": sorted(note_types, key=lambda item: item["name"].casefold()),
         "deckNames": deck_names,
         "tagNames": tag_names,
@@ -836,11 +973,6 @@ def _append_browser_capture_html(existing: str, chunk: str) -> str:
 
 def _plain_text_to_html(text: str) -> str:
     return external_plain_text_to_anki_html(text)
-
-
-def _browser_capture_source_html(url: str) -> str:
-    safe_url = escape(url, quote=True)
-    return f'Source: <a href="{safe_url}">{safe_url}</a>'
 
 
 def _browser_capture_unique_label_suffix() -> str:
@@ -957,134 +1089,180 @@ def _sync_parent_child_knowledge_tree_on_main(
     )
 
 
-def _create_browser_capture_note_on_main(normalized: dict) -> dict:
-    from aqt import mw
+def _browser_capture_active_profile() -> str:
+    try:
+        from .paths import get_active_profile
+    except ImportError:
+        from paths import get_active_profile
+    return get_active_profile()
 
+
+def _find_browser_capture_duplicate(col, profile: str, normalized: dict, *, include_legacy=True) -> dict | None:
+    try:
+        from .db import get_connection
+        from .paths import get_db_path
+    except ImportError:
+        from db import get_connection
+        from paths import get_db_path
+    fingerprint = capture_fingerprint(normalized["url"], normalized["selected_text"])
+    if not fingerprint or not normalized["field_mappings"]["selected_text_field"]:
+        return None
+    rows = []
+    if get_db_path(_addon_dir, profile).is_file():
+        rows = get_connection(_addon_dir, profile).execute(
+            "SELECT card_id, note_id FROM content_items WHERE kind='browser_capture' AND storage_key=? LIMIT 100",
+            (fingerprint,),
+        ).fetchall()
+    for card_id, note_id in rows:
+        try:
+            card = col.get_card(int(card_id))
+            if int(card.id) == int(card_id) and int(card.nid) == int(note_id):
+                return {"ok": True, "duplicate": True, "cardId": int(card_id), "noteId": int(note_id)}
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+        except Exception:
+            # Anki raises NotFoundError for a deleted card.
+            continue
+    if not include_legacy:
+        return None
+    # Old captures predate the import registry. Ask Anki for this exact source,
+    # then inspect only a bounded number of candidate notes/fields.
+    base_url = normalized["url"].split(":~:", 1)[0]
+    pattern = "^" + re.escape(base_url) + r"(?:#?:~:.*)?$"
+    escaped = pattern.replace('"', '\\"')
+    query = f'"Incremento_Source_Type:Browser Capture" "Incremento_Source_Link:re:{escaped}"'
+    for note_id in col.find_notes(query)[:100]:
+        try:
+            note = col.get_note(note_id)
+            if not legacy_capture_matches(note, normalized["url"], normalized["selected_text"]):
+                continue
+            for card_id in col.find_cards(f"nid:{int(note_id)}")[:20]:
+                card = col.get_card(card_id)
+                if int(card.nid) == int(note_id):
+                    return {"ok": True, "duplicate": True, "cardId": int(card_id), "noteId": int(note_id)}
+        except Exception:
+            continue
+    return None
+
+
+def _browser_capture_fields(normalized: dict, field_names: list[str], *, preview=False) -> dict[str, str]:
+    mappings = normalized["field_mappings"]
+    fields: dict[str, str] = {}
+    def append(name, value):
+        if name and value:
+            fields[name] = _append_browser_capture_html(fields.get(name, ""), value)
+    if mappings["title_field"]:
+        title = _browser_capture_note_title(normalized["title"], normalized["url"],
+            unique=not preview and mappings["title_field"] == field_names[0])
+        append(mappings["title_field"], _plain_text_to_html(title))
+    if normalized["selected_text"]:
+        append(mappings["selected_text_field"], normalized["selected_html"])
+    append(mappings["url_field"], capture_source_html(normalized["source_link"], normalized["title"]))
+    if preview and mappings["snapshot_field"]:
+        for snapshot in normalized["snapshots"]:
+            # Data URLs are PNG-signature checked during payload normalization.
+            append(mappings["snapshot_field"], '<img src="data:image/png;base64,' + snapshot["base64"] + '">')
+    return {name: fields[name] for name in field_names if name in fields}
+
+
+def _create_browser_capture_note_on_main(normalized: dict, *, legacy_duplicate=None, legacy_checked=False) -> dict:
+    from aqt import mw
+    try:
+        from .operation_journal import ImportOperation
+    except ImportError:
+        from operation_journal import ImportOperation
+
+    profile = _browser_capture_active_profile()
+    token = normalized.get("profile_token", "")
+    if token and not hmac.compare_digest(token, _browser_capture_profile_token(profile)):
+        raise ValueError("Anki profile changed. Reopen the capture dialog.")
+    model = mw.col.models.by_name(normalized["note_type_name"])
+    if model is None:
+        raise ValueError(f"Note type '{normalized['note_type_name']}' was not found.")
+    field_names = visible_field_names([str(field.get("name") or "") for field in model.get("flds") or []])
+    if not field_names:
+        raise ValueError("The note type has no writable fields.")
+    for field_name in normalized["field_mappings"].values():
+        if field_name and field_name not in field_names:
+            raise ValueError(f"Field '{field_name}' was not found in the note type.")
+    duplicate = _find_browser_capture_duplicate(mw.col, profile, normalized, include_legacy=not legacy_checked)
+    if duplicate is None and legacy_duplicate:
+        try:
+            card = mw.col.get_card(legacy_duplicate["cardId"])
+            if int(card.nid) == int(legacy_duplicate["noteId"]):
+                duplicate = legacy_duplicate
+        except Exception:
+            pass
+    action = normalized.get("action", "create")
+    if action == "open_existing":
+        if not duplicate:
+            raise ValueError("The captured note no longer exists.")
+        if _browser_capture_open_note is None:
+            raise ValueError("Opening captured notes is unavailable.")
+        _browser_capture_open_note(duplicate["noteId"])
+        return {**duplicate, "opened": True}
+    if action == "preview":
+        return {"ok": True, "preview": True, "fields": _browser_capture_fields(normalized, field_names, preview=True),
+                "sourceLink": normalized["source_link"], "sourceTitle": normalized["title"],
+                "duplicate": duplicate, "uniqueTitle": normalized["field_mappings"]["title_field"] == field_names[0]}
+    if duplicate and not normalized.get("allow_duplicate"):
+        return duplicate
+    with ImportOperation(_addon_dir, profile, "browser_capture") as operation:
+        result = _insert_browser_capture_note(mw.col, model, field_names, normalized, profile, operation)
+        return result
+
+
+def _insert_browser_capture_note(col, model, field_names, normalized, profile, operation):
     try:
         from .priority_manager import set_priority
-        from .paths import get_active_profile as _active_profile
     except ImportError:
-        from priority_manager import set_priority  # type: ignore
-        from paths import get_active_profile as _active_profile  # type: ignore
+        from priority_manager import set_priority
 
-    note_type_name = normalized["note_type_name"]
-    model = mw.col.models.by_name(note_type_name)
-    if model is None:
-        raise ValueError(f"Note type '{note_type_name}' was not found.")
-    ensure_incremento_metadata_fields(mw.col.models, model, save=True)
-
-    field_names = [str(field.get("name") or "") for field in model.get("flds") or [] if str(field.get("name") or "").strip()]
-    if not field_names:
-        raise ValueError(f"Note type '{note_type_name}' has no writable fields.")
-
-    deck_name = normalized["deck_name"]
-    deck = mw.col.decks.by_name(deck_name)
-    if deck is None:
-        deck_id = mw.col.decks.add_normal_deck_with_name(deck_name).id
-    else:
-        deck_id = deck["id"]
-
+    field_html = _browser_capture_fields(normalized, field_names)
     mappings = normalized["field_mappings"]
-    for mapping_name, field_name in mappings.items():
-        if field_name and field_name not in field_names:
-            raise ValueError(f"Field '{field_name}' was not found in note type '{note_type_name}'.")
-
-    note = mw.col.new_note(model)
-    field_html: dict[str, str] = {}
-
-    selected_text = normalized["selected_text"]
-    first_field_name = field_names[0]
-    title_field = mappings["title_field"]
-
-    if title_field:
-        capture_title = _browser_capture_note_title(
-            normalized["title"],
-            normalized["url"],
-            unique=title_field == first_field_name,
-        )
-        field_html[title_field] = _append_browser_capture_html(
-            field_html.get(title_field, ""),
-            _plain_text_to_html(capture_title),
-        )
-
-    if selected_text and mappings["selected_text_field"]:
-        field_name = mappings["selected_text_field"]
-        field_html[field_name] = _append_browser_capture_html(field_html.get(field_name, ""), _plain_text_to_html(selected_text))
-
-    if mappings["url_field"]:
-        field_name = mappings["url_field"]
-        field_html[field_name] = _append_browser_capture_html(
-            field_html.get(field_name, ""),
-            _plain_text_to_html(normalized["url"]),
-        )
-
+    if not any(field_html.values()) and not (normalized["snapshots"] and mappings["snapshot_field"]):
+        raise ValueError("Nothing to insert. Choose at least one destination field.")
+    deck_name = normalized["deck_name"]
+    deck = col.decks.by_name(deck_name)
+    deck_id = deck["id"] if deck else col.decks.add_normal_deck_with_name(deck_name).id
+    note = col.new_note(model)
     if mappings["snapshot_field"]:
-        field_name = mappings["snapshot_field"]
-        snapshot_html = ""
         for idx, snapshot in enumerate(normalized["snapshots"], start=1):
-            media_filename = _store_browser_capture_snapshot(mw.col, snapshot, normalized["title"], idx)
-            snapshot_html = _append_browser_capture_html(snapshot_html, f'<img src="{escape(media_filename, quote=True)}">')
-        field_html[field_name] = _append_browser_capture_html(field_html.get(field_name, ""), snapshot_html)
-
-    if not any(value for value in field_html.values()):
-        raise ValueError(
-            "Nothing to insert. Choose at least one title, selected text, or snapshot destination field."
-        )
-
-    for field_name, value in field_html.items():
-        note[field_name] = value
-
+            filename = _store_browser_capture_snapshot(col, snapshot, normalized["title"], idx)
+            name = mappings["snapshot_field"]
+            field_html[name] = _append_browser_capture_html(field_html.get(name, ""), f'<img src="{escape(filename, quote=True)}">')
+    for name, value in field_html.items():
+        note[name] = value
     parent_card_id = normalized.get("parent_card_id")
-    apply_incremento_metadata(
-        note,
-        _source_metadata_for_extension_card(
-            source_type="Browser Capture",
-            source_title=normalized["title"],
-            source_link=normalized["url"],
-            parent_card_id=parent_card_id,
-        ),
-    )
-
-    for tag in ["Incremento"] + [t for t in normalized["tags"] if t != "Incremento"]:
-        if not tag:
-            continue
+    apply_incremento_metadata(note, _source_metadata_for_extension_card(
+        source_type="Browser Capture", source_title=normalized["title"],
+        source_link=normalized["source_link"], parent_card_id=parent_card_id,
+    ))
+    for tag in ["Incremento"] + [tag for tag in normalized["tags"] if tag != "Incremento"]:
         if hasattr(note, "add_tag"):
             note.add_tag(tag)
-        elif hasattr(note, "tags"):
+        else:
             note.tags.append(tag)
-
     note.note_type()["did"] = deck_id
-    added = mw.col.add_note(note, deck_id)
-    if not added:
-        try:
-            first_field_value = _collapse_ws(note[first_field_name])
-        except Exception:
-            first_field_value = ""
-        if not first_field_value:
-            raise ValueError(f"Could not create note. The first field '{first_field_name}' is empty.")
-        raise ValueError(
-            f"Could not create note. The first field '{first_field_name}' duplicates an existing note: {first_field_value}"
-        )
+    if not col.add_note(note, deck_id):
+        first = _collapse_ws(note[field_names[0]])
+        if not first:
+            raise ValueError(f"Could not create note. The first field '{field_names[0]}' is empty.")
+        raise ValueError(f"Could not create note. The first field '{field_names[0]}' duplicates an existing note: {first}")
     try:
-        card_id = mw.col.find_cards(f"nid:{note.id}")[0]
+        card_id = int(col.find_cards(f"nid:{note.id}")[0])
     except Exception as exc:
         raise RuntimeError("Created note but could not resolve its card id.") from exc
-    set_priority(_addon_dir, _active_profile(), int(card_id), normalized["priority"])
-    knowledge_tree_result = _sync_parent_child_knowledge_tree_on_main(
-        parent_card_id=parent_card_id,
-        child_card_id=int(card_id),
-        node_kind="item",
-    )
-    return {
-        "ok": True,
-        "type": "browser_capture",
-        "cardId": int(card_id),
-        "noteId": int(note.id),
-        "noteTypeName": note_type_name,
-        "deckName": deck_name,
-        "title": normalized["title"],
-        "knowledgeTree": knowledge_tree_result,
-    }
+    operation.bind_anki(card_id=card_id, note_id=int(note.id))
+    # The Anki note now exists and cannot be rolled back by this journal.
+    # Persist its identity before optional priority/tree work so retries can
+    # recover the created note even if either later step fails.
+    operation.commit(storage_key=capture_fingerprint(normalized["url"], normalized["selected_text"]))
+    set_priority(_addon_dir, profile, card_id, normalized["priority"])
+    tree = _sync_parent_child_knowledge_tree_on_main(parent_card_id=parent_card_id, child_card_id=card_id, node_kind="item")
+    return {"ok": True, "type": "browser_capture", "cardId": card_id, "noteId": int(note.id),
+            "noteTypeName": normalized["note_type_name"], "deckName": deck_name,
+            "title": normalized["title"], "knowledgeTree": tree}
 
 
 def _add_content_item_on_main(normalized: dict) -> dict:
@@ -1211,13 +1389,23 @@ def _add_content_item_on_main(normalized: dict) -> dict:
                     raise ValueError("Invalid PDF payload: empty file.")
                 with open(temp_pdf_path, "wb") as handle:
                     handle.write(pdf_bytes)
-            elif url_looks_like_pdf(url):
+            elif url_looks_like_pdf(url) and not normalized.get("capture_opened_page"):
                 download_pdf_from_url(url, temp_pdf_path)
             else:
+                pdf_options = normalized.get("pdf_options") or _normalize_pdf_options({})
+                snapshot_options = {}
+                if normalized.get("capture_opened_page"):
+                    pdf_options = {**pdf_options, "dynamic": False}
+                    snapshot_options["prefer_snapshot"] = True
                 render_webpage_to_pdf(
                     temp_pdf_path,
                     url=url,
-                    html=html,
+                    # Dynamic capture reloads the public URL in its isolated
+                    # browser; extension snapshots intentionally omit scripts.
+                    html="" if pdf_options["dynamic"] else html,
+                    **pdf_options,
+                    **snapshot_options,
+                    timeout_ms=90000 if pdf_options["dynamic"] else 45000,
                 )
             card_id = add_pdf_card(
                 _addon_dir,
@@ -1261,7 +1449,8 @@ def _add_content_item_on_main(normalized: dict) -> dict:
 def _add_content_request_on_main(request: dict) -> dict:
     if request.get("browser_capture"):
         result = _create_browser_capture_note_on_main(request["items"][0])
-        _refresh_anki_after_import()
+        if result.get("type") == "browser_capture":
+            _refresh_anki_after_import()
         return result
 
     batch = bool(request["batch"])
@@ -1672,6 +1861,8 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
             WEB_TRACK_PATH,
             WEB_TRACK_MEDIA_PATH,
             BROWSER_MEDIA_REF_PATH,
+            HANDOFF_RPC_PATH,
+            WEBSITE_TAGS_PATH,
         }:
             self.send_error(404)
             return
@@ -1695,6 +1886,27 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
     def _do_GET(self) -> None:
         parsed = urlsplit(self.path)
         request_path = parsed.path
+        if request_path == HANDOFF_PATH:
+            # This inert landing page contains no request data and cannot access
+            # the authenticated RPC. Companion sees its opaque fragment locally.
+            if str(self.headers.get("Host") or "") != f"{BRIDGE_HOST}:{BRIDGE_PORT}":
+                self._send_json(403, {"ok": False, "error_code": "origin_not_allowed"})
+                return
+            try:
+                from .i18n import t
+            except ImportError:
+                from i18n import t
+            body = ("<!doctype html><meta charset='utf-8'><title>Incremento</title><p>"
+                    + escape(t("imports_webpage_browser_landing")) + "</p>").encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if request_path == BRIDGE_HANDSHAKE_PATH:
             self._send_handshake_response()
             return
@@ -1744,7 +1956,7 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
             if self._require_empty_post_body():
                 self._send_handshake_response()
             return
-        if request_path not in {BRIDGE_PATH, BROWSER_CAPTURE_META_PATH, WEB_TRACK_PATH, WEB_TRACK_MEDIA_PATH, BROWSER_MEDIA_REF_PATH}:
+        if request_path not in {BRIDGE_PATH, BROWSER_CAPTURE_META_PATH, WEB_TRACK_PATH, WEB_TRACK_MEDIA_PATH, BROWSER_MEDIA_REF_PATH, HANDOFF_RPC_PATH, WEBSITE_TAGS_PATH}:
             self._send_json(404, {"ok": False, "error": "Unknown path.", "error_code": "unknown_path"})
             return
         if not self._request_origin_allowed():
@@ -1790,7 +2002,8 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         except ValueError:
             self._send_json(400, {"ok": False, "error": "Invalid Content-Length.", "error_code": "invalid_content_length"})
             return
-        if length < 0 or length > _MAX_REQUEST_BYTES:
+        max_bytes = 512 * 1024 if request_path == WEBSITE_TAGS_PATH else _MAX_REQUEST_BYTES
+        if length < 0 or length > max_bytes:
             self.close_connection = True
             self._send_json(413, {"ok": False, "error": "Request is too large.", "error_code": "request_too_large"})
             return
@@ -1812,12 +2025,34 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            if request_path == BRIDGE_PATH:
+            if request_path == WEBSITE_TAGS_PATH:
+                token = str(self.headers.get("X-Incremento-Token") or "")
+                result = _run_on_main_and_wait(lambda: _website_tags_on_main(payload, token))
+            elif request_path == HANDOFF_RPC_PATH:
+                if (not isinstance(payload, dict) or set(payload) - {"action", "ticket", "url", "html"}
+                        or not isinstance(payload.get("ticket"), str)
+                        or not re.fullmatch(r"[a-f0-9]{64}", payload["ticket"])):
+                    raise ValueError("Invalid browser PDF handoff.")
+                ticket = payload["ticket"]
+                if payload.get("action") == "describe":
+                    result = browser_pdf_handoffs.describe(ticket)
+                elif payload.get("action") == "submit":
+                    browser_pdf_handoffs.submit(ticket, payload.get("url", ""), payload.get("html"))
+                    result = {"ok": True}
+                elif payload.get("action") == "fail":
+                    browser_pdf_handoffs.fail(ticket)
+                    result = {"ok": True}
+                else:
+                    raise ValueError("Invalid browser PDF handoff action.")
+            elif request_path == BRIDGE_PATH:
                 prepared_request = prepare_add_content_request_off_main(payload)
                 try:
-                    result = _run_on_main_and_wait(
-                        lambda: _add_content_request_on_main(prepared_request)
-                    )
+                    if prepared_request.get("browser_capture"):
+                        result = _run_browser_capture_and_wait(prepared_request["items"][0])
+                    else:
+                        result = _run_on_main_and_wait(
+                            lambda: _add_content_request_on_main(prepared_request)
+                        )
                 finally:
                     cleanup_prepared_add_content_request(prepared_request)
             elif request_path == WEB_TRACK_MEDIA_PATH:
@@ -1868,6 +2103,7 @@ def start_browser_bridge(addon_dir: str) -> None:
 
 
 def stop_browser_bridge(*_args, **_kwargs) -> None:
+    browser_pdf_handoffs.clear()
     global _server, _server_thread, _bridge_token, _allowed_extension_origin
 
     with _server_lock:

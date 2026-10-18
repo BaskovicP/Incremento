@@ -2643,6 +2643,46 @@
     },
     {
       "component": "addon",
+      "key": "backend_deps_ffmpeg",
+      "form": "",
+      "source": "FFmpeg  (video encoding, compression, and mobile clips)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_deps_ffmpeg_linux",
+      "form": "",
+      "source": "Install FFmpeg with your package manager:\n\n    Ubuntu / Debian:  sudo apt install ffmpeg\n    Fedora:           sudo dnf install ffmpeg\n    Arch:             sudo pacman -S ffmpeg\n    openSUSE:         sudo zypper install ffmpeg\n\nThen restart Anki.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_deps_ffmpeg_mac",
+      "form": "",
+      "source": "Install FFmpeg with Homebrew. If Homebrew is available, use the Install FFmpeg button below.\n\nManual command:  brew install ffmpeg\n\nIf the button is not shown, install Homebrew from https://brew.sh, reopen this dialog, and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_deps_ffmpeg_ready",
+      "form": "",
+      "source": "FFmpeg is installed and ready to use.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_deps_ffmpeg_windows",
+      "form": "",
+      "source": "Install FFmpeg with Windows Package Manager. If winget is available, use the Install FFmpeg button below.\n\nManual command:  winget install --id Gyan.FFmpeg --exact\n\nAfter a manual install, restart Anki.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "backend_deps_found",
       "form": "",
       "source": "Found at: {path}",
@@ -2661,6 +2701,14 @@
         "<span style=\"color: #e05050;\">",
         "</span>"
       ]
+    },
+    {
+      "component": "addon",
+      "key": "backend_deps_install_ffmpeg",
+      "form": "",
+      "source": "Install FFmpeg",
+      "tokens": [],
+      "markup": []
     },
     {
       "component": "addon",
@@ -2712,6 +2760,14 @@
     },
     {
       "component": "addon",
+      "key": "backend_deps_installing_ffmpeg",
+      "form": "",
+      "source": "Installing FFmpeg — this may take several minutes…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "backend_deps_installing_pymupdf",
       "form": "",
       "source": "<span style=\"color: gray; font-size: small;\">Installing PyMuPDF — please wait…</span>",
@@ -2725,7 +2781,7 @@
       "component": "addon",
       "key": "backend_deps_intro",
       "form": "",
-      "source": "Incremento uses optional setup components for PDF OCR and browser companion sync. Core features work without them.",
+      "source": "Incremento uses optional setup components for PDF OCR, video processing, and browser companion sync. Core features work without them.",
       "tokens": [],
       "markup": []
     },
@@ -5567,7 +5623,7 @@
       "component": "addon",
       "key": "imports_ffmpeg_missing_hint",
       "form": "",
-      "source": "ffmpeg not found: video will still download, but compression is skipped.",
+      "source": "FFmpeg was not found. Open Incremento → Utils → Check Dependencies… to install it; video download can continue without compression.",
       "tokens": [],
       "markup": []
     },
@@ -6990,6 +7046,131 @@
     },
     {
       "component": "addon",
+      "key": "imports_supermemo_complete",
+      "form": "",
+      "source": "Imported {created} SuperMemo card(s) into {deck}, including {cloze} cloze card(s) and {media} local image file(s); {existing} existing card(s) skipped and {history} repetition-history row(s) restored.",
+      "tokens": [
+        "{cloze}",
+        "{created}",
+        "{deck}",
+        "{existing}",
+        "{history}",
+        "{media}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_supermemo_deck_prompt",
+      "form": "",
+      "source": "Import cards into deck:",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_supermemo_deck_title",
+      "form": "",
+      "source": "SuperMemo destination deck",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_supermemo_default_deck",
+      "form": "",
+      "source": "SuperMemo::{collection}",
+      "tokens": [
+        "{collection}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_supermemo_failed",
+      "form": "",
+      "source": "SuperMemo import failed: {error}",
+      "tokens": [
+        "{error}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_supermemo_file_filter",
+      "form": "",
+      "source": "SuperMemo collections (*.zip *.ZIP *.kno *.KNO)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_supermemo_non_undoable",
+      "form": "",
+      "source": "This bulk import restores Anki review-history rows directly and cannot be undone. Back up your Anki profile before continuing. Importing the same collection again is detected and does not duplicate its cards.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_supermemo_preflight_summary",
+      "form": "",
+      "source": "Collection: {collection}\nCards to import: {elements} ({topics} topics, {items} items)\nCloze items: {cloze}\nLocal images copied to Anki media: {media}\nRepetition-history rows: {history}\nOptimization files preserved: {optimization}\nUnsupported task elements skipped: {skipped}\n\nPriorities, hierarchy, rich HTML, registered images, A-factors, intervals, due dates, repetition/lapse counts, forgetting indexes, and history will be imported. Single-omission [...] items become native Anki cloze cards. Active scripts, SuperMemo statistics, outstanding queues, task scheduling, component geometry, templates, OLE, and executable components will not be imported. Anki remains the scheduler after import.",
+      "tokens": [
+        "{cloze}",
+        "{collection}",
+        "{elements}",
+        "{history}",
+        "{items}",
+        "{media}",
+        "{optimization}",
+        "{skipped}",
+        "{topics}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_supermemo_preflight_title",
+      "form": "",
+      "source": "Import SuperMemo collection?",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_supermemo_preparing",
+      "form": "",
+      "source": "Validating SuperMemo collection…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_supermemo_select",
+      "form": "",
+      "source": "Select a SuperMemo collection",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_supermemo_stale",
+      "form": "",
+      "source": "SuperMemo import was cancelled because the active Anki profile changed.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_supermemo_unsupported_file",
+      "form": "",
+      "source": "Choose a ZIP archive or KNO file.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_table_file",
       "form": "",
       "source": "File",
@@ -7434,9 +7615,115 @@
     },
     {
       "component": "addon",
+      "key": "imports_webpage_access_blocked",
+      "form": "",
+      "source": "The site refused the automated download (HTTP {status}). Use the browser options below.",
+      "tokens": [
+        "{status}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_browser_capture_failed",
+      "form": "",
+      "source": "The browser could not capture this page. Retry, or turn off JavaScript content to use the offline exporter.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_browser_handoff_failed",
+      "form": "",
+      "source": "Automatic browser capture did not finish. Keep Incremento Companion enabled and allow access to this site, then try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_browser_help",
+      "form": "",
+      "source": "If verification is required, Import opens your browser automatically. Finish the CAPTCHA; Incremento Companion saves the page and returns you to Anki. Allow site access once when asked.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_browser_installing",
+      "form": "",
+      "source": "Downloading the browser component. This can take a few minutes…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_browser_landing",
+      "form": "",
+      "source": "Opening the page with Incremento Companion. If nothing happens, install or reload Companion in Chrome/Brave, then try again from Anki.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_browser_ready",
+      "form": "",
+      "source": "Browser component ready. Dynamic content is enabled.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_browser_setup",
+      "form": "",
+      "source": "Set up browser component…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_browser_setup_failed",
+      "form": "",
+      "source": "Browser setup failed. Check your internet connection and a compatible Python installation, then retry. You can still export without dynamic content.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_browser_url_invalid",
+      "form": "",
+      "source": "Enter a valid http:// or https:// URL without a username or password.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_browser_waiting",
+      "form": "",
+      "source": "Finish verification in the browser. Incremento will save the page and return to Anki automatically.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_cancelled",
+      "form": "",
+      "source": "Import cancelled.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_webpage_card_title_label",
       "form": "",
       "source": "Card title:",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_dynamic",
+      "form": "",
+      "source": "Load content added by JavaScript",
       "tokens": [],
       "markup": []
     },
@@ -7466,6 +7753,30 @@
     },
     {
       "component": "addon",
+      "key": "imports_webpage_invalid_style",
+      "form": "",
+      "source": "Unknown PDF appearance.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_link_appendix",
+      "form": "",
+      "source": "Include a list of link destinations",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_links_heading",
+      "form": "",
+      "source": "Links",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_webpage_load_failed",
       "form": "",
       "source": "Failed to load page.",
@@ -7490,6 +7801,14 @@
     },
     {
       "component": "addon",
+      "key": "imports_webpage_open_browser",
+      "form": "",
+      "source": "Open in browser",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_webpage_pdf_failed",
       "form": "",
       "source": "Failed to generate PDF.",
@@ -7508,9 +7827,73 @@
     },
     {
       "component": "addon",
+      "key": "imports_webpage_saved_pdf",
+      "form": "",
+      "source": "Use browser-saved PDF…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_saved_pdf_failed",
+      "form": "",
+      "source": "Could not read that PDF. Choose a regular PDF file up to 48 MiB, then try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_saved_pdf_help",
+      "form": "",
+      "source": "Without Companion: in your browser, Print → Save as PDF, then choose that file here.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_saved_pdf_loading",
+      "form": "",
+      "source": "Preparing the saved PDF…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_webpage_scope",
       "form": "",
       "source": "Webpage scope:",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_style_article",
+      "form": "",
+      "source": "Clean article",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_style_label",
+      "form": "",
+      "source": "PDF appearance:",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_style_print",
+      "form": "",
+      "source": "Website print layout (Wikipedia PDF)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_style_website",
+      "form": "",
+      "source": "Website appearance",
       "tokens": [],
       "markup": []
     },
@@ -8395,6 +8778,323 @@
     },
     {
       "component": "addon",
+      "key": "knowledge_tree_mind_map",
+      "form": "",
+      "source": "Mind Map",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_actual_size",
+      "form": "",
+      "source": "Actual size",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_canvas",
+      "form": "",
+      "source": "Knowledge tree mind map",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_canvas_instructions",
+      "form": "",
+      "source": "Use the arrow keys to move, Space to fold or unfold, Enter to return to the tree, and drag empty space to pan.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_center",
+      "form": "",
+      "source": "Knowledge Tree",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_collapse_all",
+      "form": "",
+      "source": "Collapse All",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_empty",
+      "form": "",
+      "source": "Add or link at least one node before opening the mind map.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_expand_all",
+      "form": "",
+      "source": "Expand All",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_export_failed",
+      "form": "",
+      "source": "Could not export the mind map image.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_export_png",
+      "form": "",
+      "source": "Export PNG…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_export_title",
+      "form": "",
+      "source": "Export Mind Map",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_find_next",
+      "form": "",
+      "source": "Next",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_fit",
+      "form": "",
+      "source": "Fit",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_focus_branch",
+      "form": "",
+      "source": "Focus Branch",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_hidden_nodes",
+      "form": "",
+      "source": "Hidden descendants: {count}",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_keyboard_hint",
+      "form": "",
+      "source": "Arrows navigate · Space folds · Enter returns to tree",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_match_count",
+      "form": "",
+      "source": "{count} matches",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_match_position",
+      "form": "",
+      "source": "{current}/{count}",
+      "tokens": [
+        "{count}",
+        "{current}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_png_filter",
+      "form": "",
+      "source": "PNG images (*.png)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_principles",
+      "form": "",
+      "source": "A central idea radiates into curved, color-coded branches. Each branch uses one concise label, visual hierarchy, and a topic/item symbol to make associations easier to scan.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_principles_name",
+      "form": "",
+      "source": "Mind map principles",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_scope",
+      "form": "",
+      "source": "Scope",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_search",
+      "form": "",
+      "source": "Find",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_search_placeholder",
+      "form": "",
+      "source": "Find a node by title…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_search_status",
+      "form": "",
+      "source": "Search status",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_select_branch_first",
+      "form": "",
+      "source": "Select exactly one node in the knowledge tree to use this scope.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_selected_branch",
+      "form": "",
+      "source": "Selected branch",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_show_full",
+      "form": "",
+      "source": "Show Full Map",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_show_priorities",
+      "form": "",
+      "source": "Show priorities",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_summary",
+      "form": "",
+      "source": "{visible} of {total} nodes visible · {levels} visual levels",
+      "tokens": [
+        "{levels}",
+        "{total}",
+        "{visible}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_summary_name",
+      "form": "",
+      "source": "Mind map summary",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_title",
+      "form": "",
+      "source": "Incremento — Knowledge Tree Mind Map",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_tooltip",
+      "form": "",
+      "source": "Open a radiant, color-coded mind map of the full tree or selected branch.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_whole_tree",
+      "form": "",
+      "source": "Whole tree",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_zoom_in",
+      "form": "",
+      "source": "Zoom in",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_zoom_level",
+      "form": "",
+      "source": "Zoom level",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_zoom_out",
+      "form": "",
+      "source": "Zoom out",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_mind_map_zoom_percent",
+      "form": "",
+      "source": "{percent}%",
+      "tokens": [
+        "{percent}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "knowledge_tree_move_failed",
       "form": "",
       "source": "Failed to move knowledge-tree node:\n{error}",
@@ -8659,6 +9359,16 @@
       "form": "",
       "source": "Select exactly one knowledge-tree node to change its priority.",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_priority_short",
+      "form": "",
+      "source": "P{value}",
+      "tokens": [
+        "{value}"
+      ],
       "markup": []
     },
     {
@@ -9224,6 +9934,14 @@
       "key": "knowledge_tree_unknown_card",
       "form": "",
       "source": "Unknown card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "knowledge_tree_view_branch_mind_map",
+      "form": "",
+      "source": "View Branch as Mind Map",
       "tokens": [],
       "markup": []
     },
@@ -14736,6 +15454,17 @@
     },
     {
       "component": "addon",
+      "key": "reader_pdf_citation_page_both",
+      "form": "",
+      "source": "{label} (PDF {page})",
+      "tokens": [
+        "{label}",
+        "{page}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_pdf_controls",
       "form": "",
       "source": "PDF reader controls",
@@ -15283,6 +16012,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_pdf_source_preview",
+      "form": "",
+      "source": "Source page preview",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_pdf_suspend_failed",
       "form": "",
       "source": "Could not suspend card:\n{error}",
@@ -15392,6 +16129,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_pdf_sync_password",
+      "form": "",
+      "source": "This PDF requires a password and cannot be synced without unlocking it. Your Incremento annotations remain saved.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_pdf_sync_protected",
       "form": "",
       "source": "Signed, password-protected or annotation-restricted PDFs cannot be synced. Your Incremento annotations remain saved.",
@@ -15403,6 +16148,14 @@
       "key": "reader_pdf_sync_ready",
       "form": "",
       "source": "Sync runs in the background. Before each changed PDF is replaced, its previous version is backed up in this profile.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_restricted",
+      "form": "",
+      "source": "This PDF's permissions prohibit annotation changes, so annotation sync is blocked. Your Incremento annotations remain saved.",
       "tokens": [],
       "markup": []
     },
@@ -15443,6 +16196,14 @@
       "key": "reader_pdf_sync_running",
       "form": "",
       "source": "Syncing PDF annotations…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_sync_signed",
+      "form": "",
+      "source": "This PDF is marked as digitally signed. Sync would rewrite the file and could invalidate its signature. Your Incremento annotations remain saved.",
       "tokens": [],
       "markup": []
     },
@@ -18254,6 +19015,154 @@
       "key": "reader_video_clear_target",
       "form": "",
       "source": "Clear Target",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_activity",
+      "form": "",
+      "source": "Creating mobile video clip",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_add_card_failed",
+      "form": "",
+      "source": "The clip was created, but Incremento could not add it to the Add Card draft.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_download_first",
+      "form": "",
+      "source": "Download a local copy of this video before creating a mobile clip.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_encoding",
+      "form": "",
+      "source": "Encoding H.264/AAC clip…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_end",
+      "form": "",
+      "source": "End",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_failed",
+      "form": "",
+      "source": "Could not create mobile video clip.\n\n{error}",
+      "tokens": [
+        "{error}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_hint",
+      "form": "",
+      "source": "Creates a trimmed H.264/AAC clip in Anki media. Remote videos download only the selected range.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_intro",
+      "form": "",
+      "source": "Choose the exact start and end. If there is no local copy, Incremento downloads only that range. The clip is added to the Add Card draft.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_invalid_range",
+      "form": "",
+      "source": "Choose an end time after the start, within the video, and no more than 10 minutes later.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_invalid_time",
+      "form": "",
+      "source": "Enter times such as 7:55 or 1:02:03.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_local_missing",
+      "form": "",
+      "source": "The local video copy is missing. Download it again, then retry.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_no_source",
+      "form": "",
+      "source": "This card has neither a local video copy nor a supported YouTube or Vimeo URL.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_ready",
+      "form": "",
+      "source": "Mobile video clip added to the Add Card draft.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_source_duration",
+      "form": "",
+      "source": "Source duration: {duration}",
+      "tokens": [
+        "{duration}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_stale",
+      "form": "",
+      "source": "The video or Anki profile changed before the clip was ready, so it was discarded.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_start",
+      "form": "",
+      "source": "Start",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_clip_title",
+      "form": "",
+      "source": "Create Mobile Video Clip",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_video_create_mobile_clip",
+      "form": "",
+      "source": "Create Mobile Clip…",
       "tokens": [],
       "markup": []
     },
@@ -21502,7 +22411,7 @@
       "component": "addon",
       "key": "root_cleanup_delete_now",
       "form": "",
-      "source": "Delete these now?",
+      "source": "Clean up the items listed above?",
       "tokens": [],
       "markup": []
     },
@@ -21702,7 +22611,7 @@
       "component": "addon",
       "key": "root_cleanup_profile_explanation",
       "form": "",
-      "source": "The following data is not referenced by this profile and may belong to another profile (or be truly orphaned):",
+      "source": "The following unused Incremento files and stale records can be cleaned:",
       "tokens": [],
       "markup": []
     },
@@ -21710,7 +22619,7 @@
       "component": "addon",
       "key": "root_cleanup_profile_none",
       "form": "",
-      "source": "No deletable cross-profile artifacts detected.\n\nNothing is safe to delete without affecting some profile.",
+      "source": "No files or records can be safely cleaned.",
       "tokens": [],
       "markup": []
     },
@@ -21718,7 +22627,7 @@
       "component": "addon",
       "key": "root_cleanup_profile_scan_failed",
       "form": "",
-      "source": "Could not scan non-active profile artifacts:\n{error}",
+      "source": "Could not scan unused Incremento data:\n{error}",
       "tokens": [
         "{error}"
       ],
@@ -21813,6 +22722,25 @@
       "key": "root_cleanup_skipped_videos_heading",
       "form": "",
       "source": "Skipped videos (kept):",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_cleanup_snapshot_files",
+      "form": "",
+      "source": "• Unused PDF screenshots in Anki media: {count} ({size})",
+      "tokens": [
+        "{count}",
+        "{size}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_cleanup_snapshot_trash_note",
+      "form": "",
+      "source": "PDF screenshots move to Anki's media trash. Empty that trash later to free disk space.",
       "tokens": [],
       "markup": []
     },
@@ -22356,9 +23284,17 @@
     },
     {
       "component": "addon",
+      "key": "root_menu_cleanup_pdf_snapshots",
+      "form": "",
+      "source": "Clean Up Unused PDF Screenshots…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "root_menu_cleanup_profile_data",
       "form": "",
-      "source": "Clean Non-Active Profile Data…",
+      "source": "Clean Up Unused Incremento Data…",
       "tokens": [],
       "markup": []
     },
@@ -22476,6 +23412,14 @@
     },
     {
       "component": "addon",
+      "key": "root_menu_import_supermemo",
+      "form": "",
+      "source": "Import SuperMemo Collection…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "root_menu_incremento",
       "form": "",
       "source": "Incremento",
@@ -22503,6 +23447,14 @@
       "key": "root_menu_quick_open_content",
       "form": "",
       "source": "Quick Open Content",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_menu_rebuild_pdf_card_contexts",
+      "form": "",
+      "source": "Build PDF Snapshot Previews on Cards…",
       "tokens": [],
       "markup": []
     },
@@ -22846,6 +23798,71 @@
     },
     {
       "component": "addon",
+      "key": "root_pdf_context_rebuild_complete",
+      "form": "",
+      "source": "PDF screenshot build finished.\n\nCandidate notes: {scanned}\nChanged notes: {changed}\nUpdated previews: {updated}\nSkipped previews: {skipped}",
+      "tokens": [
+        "{changed}",
+        "{scanned}",
+        "{skipped}",
+        "{updated}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_pdf_context_rebuild_confirm",
+      "form": "",
+      "source": "Build a highlighted PDF screenshot for every matching citation using {rows} rows before and after?\n\nThe images are added to Anki media, note fields are updated, and both will sync to your other devices. You can undo the note changes in Anki.",
+      "tokens": [
+        "{rows}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_pdf_context_rebuild_failed",
+      "form": "",
+      "source": "Could not build PDF screenshot previews:\n{error}",
+      "tokens": [
+        "{error}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_pdf_context_rebuild_progress",
+      "form": "",
+      "source": "Building PDF screenshot previews on cards…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_pdf_context_rebuild_stale",
+      "form": "",
+      "source": "The active Anki profile changed. No PDF screenshots were built.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_pdf_context_rebuild_undo",
+      "form": "",
+      "source": "Build PDF card snapshots",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_pdf_context_source_preview",
+      "form": "",
+      "source": "Source page preview",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "root_pdf_list_failed",
       "form": "",
       "source": "Could not list PDF cards:\n{error}",
@@ -22937,6 +23954,81 @@
       "tokens": [
         "{count}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_pdf_snapshot_cleanup_close_add",
+      "form": "",
+      "source": "Close Add Cards before cleaning PDF screenshots so an unsaved image is not removed.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_pdf_snapshot_cleanup_complete",
+      "form": "",
+      "source": "Moved {count} PDF screenshots ({size}) to Anki's media trash.",
+      "tokens": [
+        "{count}",
+        "{size}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_pdf_snapshot_cleanup_confirm",
+      "form": "",
+      "source": "Move {count} unused Incremento PDF screenshots ({size}) to Anki's media trash? They are not referenced by saved notes or the saved extraction draft.\n\n{files}",
+      "tokens": [
+        "{count}",
+        "{files}",
+        "{size}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_pdf_snapshot_cleanup_failed",
+      "form": "",
+      "source": "Could not clean up PDF screenshots:\n{error}",
+      "tokens": [
+        "{error}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_pdf_snapshot_cleanup_invalid_draft",
+      "form": "",
+      "source": "The saved extraction draft could not be read safely. Cleanup was cancelled.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_pdf_snapshot_cleanup_more",
+      "form": "",
+      "source": "…and {count} more files",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_pdf_snapshot_cleanup_none",
+      "form": "",
+      "source": "No unused Incremento PDF screenshots were found in Anki media.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_pdf_snapshot_cleanup_stale",
+      "form": "",
+      "source": "The active Anki profile changed. No PDF screenshots were removed.",
+      "tokens": [],
       "markup": []
     },
     {
@@ -24798,7 +25890,7 @@
       "component": "addon",
       "key": "session_live_preview_disclaimer",
       "form": "",
-      "source": "Preview disclaimer: this is one sampled scheduler run. If you start normally, scheduling reruns and may differ, especially in soft mode.",
+      "source": "The table and this preview share one selected card list. Starting the session reuses it while your settings are unchanged. Refresh updates both views with a new selection.",
       "tokens": [],
       "markup": []
     },
@@ -24806,7 +25898,7 @@
       "component": "addon",
       "key": "session_live_preview_hint",
       "form": "",
-      "source": "Live preview is an estimate sample. To force exact reuse, enable the checkbox inside the preview dialog.",
+      "source": "The table and Live card preview share the same selection. Starting reuses this list when it is up to date.",
       "tokens": [],
       "markup": []
     },
@@ -24822,7 +25914,7 @@
       "component": "addon",
       "key": "session_live_preview_required_message",
       "form": "",
-      "source": "You enabled 'Use previewed card list'.\n\nOpen Live card preview and click Refresh after your latest settings change, then start the session again.",
+      "source": "You require an up-to-date preview before starting.\n\nWait for the preview to finish refreshing after your latest settings change. If it is unavailable, open Live card preview and click Refresh, then start the session again.",
       "tokens": [],
       "markup": []
     },
@@ -26224,7 +27316,7 @@
       "component": "addon",
       "key": "session_use_previewed_list",
       "form": "",
-      "source": "Use this previewed card list when starting (skip scheduler rerun)",
+      "source": "Require an up-to-date preview before starting",
       "tokens": [],
       "markup": []
     },
@@ -26232,7 +27324,7 @@
       "component": "addon",
       "key": "session_use_previewed_list_tooltip",
       "form": "",
-      "source": "When enabled, Start Session reuses the latest refreshed preview list exactly.",
+      "source": "A current displayed selection is always reused. Enable this option to block starting while the preview is still refreshing or unavailable.",
       "tokens": [],
       "markup": []
     },
@@ -26955,6 +28047,54 @@
     },
     {
       "component": "addon",
+      "key": "settings_learning_leech",
+      "form": "",
+      "source": "Learning leeches",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_learning_leech_enabled",
+      "form": "",
+      "source": "Tag difficult learning cards",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_learning_leech_hint",
+      "form": "",
+      "source": "Count each card’s cumulative Again answers during initial learning, including its first answer and later days. At the threshold, add this tag to its note without suspending the card. Review, relearning and Preview do not count. Undo/Redo includes the new tag.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_learning_leech_tag",
+      "form": "",
+      "source": "Tag:",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_learning_leech_tag_invalid",
+      "form": "",
+      "source": "Enter one tag, up to 255 characters, without spaces or empty :: levels.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_learning_leech_threshold",
+      "form": "",
+      "source": "Again threshold:",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "settings_leave_blank_for_all_profiles_or_enter_one_profile",
       "form": "",
       "source": "Leave blank for all profiles, or enter one profile name per line",
@@ -27178,6 +28318,54 @@
       "key": "settings_pdf_appearance_original",
       "form": "",
       "source": "Original / light",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_pdf_citation_numbering",
+      "form": "",
+      "source": "PDF citation page numbering",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_pdf_citation_numbering_both",
+      "form": "",
+      "source": "Printed label and PDF page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_pdf_citation_numbering_hint",
+      "form": "",
+      "source": "Applies to PDF extraction, highlight cards, and Copy Link to This Place. Missing printed labels fall back to PDF page numbers. Links always open the physical PDF page.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_pdf_citation_numbering_pdf",
+      "form": "",
+      "source": "PDF page number",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_pdf_citation_numbering_printed",
+      "form": "",
+      "source": "Printed page label (default)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_pdf_context_rows_before_and_after",
+      "form": "",
+      "source": "PDF context rows before and after:",
       "tokens": [],
       "markup": []
     },
@@ -27447,6 +28635,14 @@
     },
     {
       "component": "addon",
+      "key": "settings_show_daily_topic_item_tag_charts_on_deck_screen",
+      "form": "",
+      "source": "Show daily Topic/Item tag charts on the deck screen",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "settings_show_incremento_metadata_ocr_fields_in_browser_and_note",
       "form": "",
       "source": "Show Incremento metadata / OCR fields in Browser and note editors",
@@ -27458,6 +28654,22 @@
       "key": "settings_show_markdown_preview_in_writing_cards",
       "form": "",
       "source": "Show markdown preview in writing cards",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_show_pdf_context_when_hovering_page_links",
+      "form": "",
+      "source": "Show PDF context when hovering page links",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_show_pdf_highlight_delete_buttons",
+      "form": "",
+      "source": "Show delete X on PDF highlights",
       "tokens": [],
       "markup": []
     },
@@ -27538,6 +28750,14 @@
       "key": "settings_starting_a_factor_for_topic_cards_before_they_build",
       "form": "",
       "source": "Starting A-factor for topic cards before they build their own topic review history.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_statistics",
+      "form": "",
+      "source": "Statistics",
       "tokens": [],
       "markup": []
     },
@@ -28241,9 +29461,33 @@
     },
     {
       "component": "addon",
+      "key": "stats_again_fail",
+      "form": "",
+      "source": "Again / Fail",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "stats_all_activity",
       "form": "",
       "source": "All activity",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_answer_attempts",
+      "form": "",
+      "source": "Answer attempts",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_answer_stage",
+      "form": "",
+      "source": "Stage",
       "tokens": [],
       "markup": []
     },
@@ -28260,6 +29504,53 @@
       "key": "stats_bar_chart_accessible",
       "form": "",
       "source": "Statistics bar chart",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_card_stage_count",
+      "form": "",
+      "source": "{count} of {total} memory cards",
+      "tokens": [
+        "{count}",
+        "{total}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_card_stage_new",
+      "form": "",
+      "source": "New",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_card_stages_hint",
+      "form": "",
+      "source": "New → Learning → Review, with Relearning after lapses. Review cards continue in spaced practice.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_card_stages_scope",
+      "form": "",
+      "source": "All decks · {total} memory cards, including {suspended} suspended and {buried} buried. Current state; Topics and reader cards excluded.",
+      "tokens": [
+        "{buried}",
+        "{suspended}",
+        "{total}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_card_stages_title",
+      "form": "",
+      "source": "Where your cards stand",
       "tokens": [],
       "markup": []
     },
@@ -28364,6 +29655,166 @@
     },
     {
       "component": "addon",
+      "key": "stats_documents_all",
+      "form": "",
+      "source": "All formats",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_basis",
+      "form": "",
+      "source": "Saved read markers, across all time. PDF counts are actual pages. EPUB counts are estimates at 1,500 text characters per page, independent of font or window size; they can differ from the reader. Use Mark read to here in the reader, then Refresh.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_completion",
+      "form": "",
+      "source": "Completed",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_document",
+      "form": "",
+      "source": "Document",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_estimated",
+      "form": "",
+      "source": "est.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_format",
+      "form": "",
+      "source": "Format",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_left",
+      "form": "",
+      "source": "Pages left",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_loading",
+      "form": "",
+      "source": "Loading your document progress…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_next",
+      "form": "",
+      "source": "Next",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_no_matches",
+      "form": "",
+      "source": "No matching documents. Import a PDF or EPUB, or change your search.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_page",
+      "form": "",
+      "source": "Showing {start}–{end} of {total}",
+      "tokens": [
+        "{end}",
+        "{start}",
+        "{total}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_previous",
+      "form": "",
+      "source": "Previous",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_read",
+      "form": "",
+      "source": "Pages read",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_search",
+      "form": "",
+      "source": "Search document titles",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_summary",
+      "form": "",
+      "source": "{total} documents · {started} in progress · {finished} finished",
+      "tokens": [
+        "{finished}",
+        "{started}",
+        "{total}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_title",
+      "form": "",
+      "source": "Your reading progress",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_total",
+      "form": "",
+      "source": "Total pages",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_unavailable",
+      "form": "",
+      "source": "Document progress is unavailable. Try Refresh.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_documents_unknown",
+      "form": "",
+      "source": "Total unavailable. Check that the document is available in its reader, then Refresh.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "stats_duration_hours_minutes",
       "form": "",
       "source": "{hours}h {minutes}m",
@@ -28392,6 +29843,30 @@
       "tokens": [
         "{seconds}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_edit_goals",
+      "form": "",
+      "source": "Edit goals…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_edit_goals_accessible",
+      "form": "",
+      "source": "Edit daily statistics goals",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_epub_pages_read",
+      "form": "",
+      "source": "EPUB pages",
+      "tokens": [],
       "markup": []
     },
     {
@@ -28444,6 +29919,54 @@
     },
     {
       "component": "addon",
+      "key": "stats_goal_cards_description",
+      "form": "",
+      "source": "Reviewed Topics, Items, and other card types.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_daily_target",
+      "form": "",
+      "source": "Daily target",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_dashboard_hint",
+      "form": "",
+      "source": "Track only what supports your study; you can change goals at any time.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_empty",
+      "form": "",
+      "source": "No daily goals yet. Choose one measure that fits your normal study routine.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_intro",
+      "form": "",
+      "source": "Select only the measures that matter to you. Start realistic; you can raise a target after you reach it consistently.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_minutes_description",
+      "form": "",
+      "source": "Focused study and review time across activities.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "stats_goal_off",
       "form": "",
       "source": "{label} goal off · {value} today",
@@ -28451,6 +29974,14 @@
         "{label}",
         "{value}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_pages_description",
+      "form": "",
+      "source": "Unique PDF and EPUB pages read.",
+      "tokens": [],
       "markup": []
     },
     {
@@ -28472,6 +30003,111 @@
       "source": "Today's {label} goal progress",
       "tokens": [
         "{label}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_recent_explanation",
+      "form": "",
+      "source": "Suggestions use the median of your active days in the last 30 days, so one unusually large session does not set the pace.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_setup_guidance",
+      "form": "",
+      "source": "Choose a goal you can reach on a normal study day.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_setup_title",
+      "form": "",
+      "source": "Set Daily Goals",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_suggestion_basis",
+      "form": "few",
+      "source": "Based on {count} active days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_suggestion_basis",
+      "form": "many",
+      "source": "Based on {count} active days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_suggestion_basis",
+      "form": "one",
+      "source": "Based on {count} active day",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_suggestion_basis",
+      "form": "other",
+      "source": "Based on {count} active days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_suggestion_basis",
+      "form": "two",
+      "source": "Based on {count} active days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_suggestion_basis",
+      "form": "zero",
+      "source": "Based on {count} active days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_use_suggestion",
+      "form": "",
+      "source": "Use {target}",
+      "tokens": [
+        "{target}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_goal_use_suggestion_accessible",
+      "form": "",
+      "source": "Use suggested {label} goal of {target} per day",
+      "tokens": [
+        "{label}",
+        "{target}"
       ],
       "markup": []
     },
@@ -28594,6 +30230,129 @@
     },
     {
       "component": "addon",
+      "key": "stats_item_tag_time",
+      "form": "",
+      "source": "Items by tag",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_learning_answers_by_day",
+      "form": "",
+      "source": "Failed and recalled answers by day",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_learning_card_totals",
+      "form": "",
+      "source": "Unique cards: {cards} · Cards with Again: {failed_cards}",
+      "tokens": [
+        "{cards}",
+        "{failed_cards}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_learning_day_summary",
+      "form": "",
+      "source": "{date}: {attempts} attempts · {failed} Again / Fail · {recalled} recalled · Recall rate: {rate}",
+      "tokens": [
+        "{attempts}",
+        "{date}",
+        "{failed}",
+        "{rate}",
+        "{recalled}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_learning_history_title",
+      "form": "",
+      "source": "Learning results · Last {days} days",
+      "tokens": [
+        "{days}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_learning_inspect_day",
+      "form": "",
+      "source": "Inspect a day",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_learning_no_answers",
+      "form": "",
+      "source": "No answers in this period.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_learning_period",
+      "form": "",
+      "source": "Learning trend period",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_learning_results_exclusions",
+      "form": "",
+      "source": "Topic frequency choices, preview practice and manual schedule changes are excluded.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_learning_results_hint",
+      "form": "",
+      "source": "Again / Fail counts missed answers. Recalled = Hard + Good + Easy. Each answer attempt counts, including repeats.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_learning_results_loading",
+      "form": "",
+      "source": "Loading learning results…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_learning_results_title",
+      "form": "",
+      "source": "Today’s learning results",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_learning_results_unavailable",
+      "form": "",
+      "source": "Learning results are unavailable. Try reopening Statistics.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_learning_stage",
+      "form": "",
+      "source": "Learning",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "stats_minutes",
       "form": "",
       "source": "Minutes",
@@ -28676,6 +30435,14 @@
     },
     {
       "component": "addon",
+      "key": "stats_other_tags",
+      "form": "",
+      "source": "Other tags",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "stats_pages",
       "form": "",
       "source": "Pages",
@@ -28708,6 +30475,14 @@
     },
     {
       "component": "addon",
+      "key": "stats_pdf_pages_read",
+      "form": "",
+      "source": "PDF pages",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "stats_period_comparison",
       "form": "",
       "source": "Compared with the previous {days} days: {cards} cards · {pages} pages · {study_time} study time",
@@ -28717,6 +30492,495 @@
         "{pages}",
         "{study_time}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_pie_legend_value",
+      "form": "",
+      "source": "Cards: {cards}",
+      "tokens": [
+        "{cards}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_pie_total",
+      "form": "",
+      "source": "Total: {cards}",
+      "tokens": [
+        "{cards}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_cards_hint",
+      "form": "",
+      "source": "Cards recorded by Incremento",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_chart_accessible",
+      "form": "",
+      "source": "Use Left and Right to inspect dates, Home for the first date, End for the latest.\n{details}",
+      "tokens": [
+        "{details}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_chart_title",
+      "form": "",
+      "source": "{metric} · {title}",
+      "tokens": [
+        "{metric}",
+        "{title}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_comparison",
+      "form": "",
+      "source": "{change} vs previous {days} day(s)",
+      "tokens": [
+        "{change}",
+        "{days}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_consistency",
+      "form": "",
+      "source": "Reading days: {reading} / {days} · Active days: {active} / {days} · {average} pages/day",
+      "tokens": [
+        "{active}",
+        "{average}",
+        "{days}",
+        "{days}",
+        "{reading}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_cumulative",
+      "form": "",
+      "source": "Progress adds up",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_cumulative_caption",
+      "form": "",
+      "source": "{value} · {metric} in this graph",
+      "tokens": [
+        "{metric}",
+        "{value}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_daily",
+      "form": "",
+      "source": "Daily activity",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_day_detail",
+      "form": "",
+      "source": "{date} · {pages} pages (PDF {pdf} / EPUB {epub}) · {duration} study · {cards} cards\n{metric} accumulated in this graph: {total}",
+      "tokens": [
+        "{cards}",
+        "{date}",
+        "{duration}",
+        "{epub}",
+        "{metric}",
+        "{pages}",
+        "{pdf}",
+        "{total}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_empty",
+      "form": "",
+      "source": "No activity yet in this period.\nYour progress will appear here.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_formats",
+      "form": "",
+      "source": "PDF {pdf} · EPUB {epub}",
+      "tokens": [
+        "{epub}",
+        "{pdf}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_goal_line",
+      "form": "",
+      "source": "Current daily goal: {value}",
+      "tokens": [
+        "{value}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_graph_window",
+      "form": "",
+      "source": "Activity · {period}",
+      "tokens": [
+        "{period}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_heading",
+      "form": "",
+      "source": "{scope} at a glance",
+      "tokens": [
+        "{scope}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_interaction_hint",
+      "form": "",
+      "source": "Click a graph or use the arrow keys to inspect a day. Pages count once per document per day; cumulative totals include rereading on later days.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_last_days",
+      "form": "few",
+      "source": "Last {count} days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_last_days",
+      "form": "many",
+      "source": "Last {count} days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_last_days",
+      "form": "one",
+      "source": "Last {count} day",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_last_days",
+      "form": "other",
+      "source": "Last {count} days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_last_days",
+      "form": "two",
+      "source": "Last {count} days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_last_days",
+      "form": "zero",
+      "source": "Last {count} days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_no_baseline",
+      "form": "",
+      "source": "No activity in the previous period",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_page_legend",
+      "form": "",
+      "source": "<span style=\"color:{pdf_color}\">●</span> PDF &nbsp; <span style=\"color:{epub_color}\">●</span> EPUB",
+      "tokens": [
+        "{epub_color}",
+        "{pdf_color}"
+      ],
+      "markup": [
+        "<span style=\"color:{pdf_color}\">",
+        "</span>",
+        "<span style=\"color:{epub_color}\">",
+        "</span>"
+      ]
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_refresh",
+      "form": "",
+      "source": "Refresh",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_show_metric",
+      "form": "",
+      "source": "Show {metric} graphs",
+      "tokens": [
+        "{metric}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_streak",
+      "form": "few",
+      "source": "Reading streak · {count} days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_streak",
+      "form": "many",
+      "source": "Reading streak · {count} days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_streak",
+      "form": "one",
+      "source": "Reading streak · {count} day",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_streak",
+      "form": "other",
+      "source": "Reading streak · {count} days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_streak",
+      "form": "two",
+      "source": "Reading streak · {count} days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_streak",
+      "form": "zero",
+      "source": "Reading streak · {count} days",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_streak_hint",
+      "form": "",
+      "source": "Consecutive days with PDF or EPUB reading in recorded history. An unfinished today keeps yesterday's streak.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_time_hint",
+      "form": "",
+      "source": "Recorded study and reading time",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_progress_weekly",
+      "form": "",
+      "source": "Weekly activity",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_rating_easy",
+      "form": "",
+      "source": "Easy",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_rating_good",
+      "form": "",
+      "source": "Good",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_rating_hard",
+      "form": "",
+      "source": "Hard",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_reading_video_activity",
+      "form": "",
+      "source": "Reading & video",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_recall_chart_hint",
+      "form": "",
+      "source": "Recalled = Hard + Good + Easy. Every answer attempt counts, including repeats. The rate graph uses 0–100%; gaps mean no answers. Hover over the rate graph for day details.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_recall_comparison_down",
+      "form": "",
+      "source": "Recall rate fell by {change} percentage points: {current} versus {previous} in the preceding {days} days.",
+      "tokens": [
+        "{change}",
+        "{current}",
+        "{days}",
+        "{previous}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_recall_comparison_same",
+      "form": "",
+      "source": "Recall rate is unchanged: {current} versus {previous} in the preceding {days} days.",
+      "tokens": [
+        "{current}",
+        "{days}",
+        "{previous}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_recall_comparison_up",
+      "form": "",
+      "source": "Recall rate rose by {change} percentage points: {current} versus {previous} in the preceding {days} days.",
+      "tokens": [
+        "{change}",
+        "{current}",
+        "{days}",
+        "{previous}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_recall_no_previous",
+      "form": "",
+      "source": "No answers in the preceding {days} days to compare.",
+      "tokens": [
+        "{days}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_recall_rate",
+      "form": "",
+      "source": "Recall rate",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_recall_rate_by_day",
+      "form": "",
+      "source": "Recall rate by day",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_recalled",
+      "form": "",
+      "source": "Recalled",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_relearning_stage",
+      "form": "",
+      "source": "Relearning",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_review_stage",
+      "form": "",
+      "source": "Review",
+      "tokens": [],
       "markup": []
     },
     {
@@ -28881,6 +31145,22 @@
     },
     {
       "component": "addon",
+      "key": "stats_topic_item_pie_hint",
+      "form": "",
+      "source": "Slices show reviewed cards by tag. Each legend value shows the card count.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_topic_tag_time",
+      "form": "",
+      "source": "Topics by tag",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "stats_trend_chart_accessible",
       "form": "",
       "source": "Daily statistics trend chart",
@@ -28976,6 +31256,70 @@
       "key": "stats_type_web_pages",
       "form": "",
       "source": "Web pages",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_untagged",
+      "form": "",
+      "source": "Untagged",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_video_watch_hint",
+      "form": "",
+      "source": "Videos watched counts distinct videos played in the Incremento reader. Watch time starts with this update and excludes pauses, seeks, and external browser playback.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_video_watch_time",
+      "form": "",
+      "source": "Video watch time",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_videos_watched",
+      "form": "",
+      "source": "Videos watched",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_view_documents",
+      "form": "",
+      "source": "Documents",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_view_learning",
+      "form": "",
+      "source": "Learning cards",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_view_overview",
+      "form": "",
+      "source": "Overview",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "stats_views",
+      "form": "",
+      "source": "Statistics views",
       "tokens": [],
       "markup": []
     },
@@ -30252,6 +32596,46 @@
     },
     {
       "component": "extension",
+      "key": "capture_create_another",
+      "form": "",
+      "source": "Create another",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "capture_duplicate_found",
+      "form": "",
+      "source": "This passage is already captured. Open the existing note or choose Create another to save it again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "capture_edit_title",
+      "form": "",
+      "source": "Page title",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "capture_existing_opened",
+      "form": "",
+      "source": "Opened the existing note in Anki.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "capture_field_preview",
+      "form": "",
+      "source": "Field preview",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "capture_label",
       "form": "",
       "source": "Capture $COUNT$",
@@ -30262,10 +32646,100 @@
     },
     {
       "component": "extension",
+      "key": "capture_link_passage",
+      "form": "",
+      "source": "Link to the original passage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "capture_more",
       "form": "",
       "source": "Capture more",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "capture_open_existing",
+      "form": "",
+      "source": "Open existing note",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "capture_opened_page_pdf",
+      "form": "",
+      "source": "Capture opened page as PDF",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "capture_opened_page_pdf_help",
+      "form": "",
+      "source": "Use the page already loaded in this tab, including content added by JavaScript. Complete any CAPTCHA or sign-in first. Creates the PDF in Anki without saving a file.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "capture_opening_existing",
+      "form": "",
+      "source": "Opening existing note…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "capture_passage_hint",
+      "form": "",
+      "source": "Uses the original selection even after you edit the excerpt. If the page changes or passage links are unsupported, the source page still opens.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "capture_preview",
+      "form": "",
+      "source": "Preview",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "capture_preview_hint",
+      "form": "",
+      "source": "Shows the content saved to each field. Your Anki card template controls the final layout.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "capture_preview_loading",
+      "form": "",
+      "source": "Preparing preview…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "capture_preview_unique_title",
+      "form": "",
+      "source": "Shows saved field content. A unique title label is added when creating the note; your Anki template controls the final layout.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "capture_source_link",
+      "form": "",
+      "source": "Source: $TITLE$",
+      "tokens": [
+        "$TITLE$"
+      ],
       "markup": []
     },
     {
@@ -30357,6 +32831,14 @@
       "key": "command_add_webpage",
       "form": "",
       "source": "Add current page to Incremento as webpage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "command_capture_opened_page_pdf",
+      "form": "",
+      "source": "Capture opened page in Incremento as PDF",
       "tokens": [],
       "markup": []
     },
@@ -30915,6 +33397,56 @@
     },
     {
       "component": "extension",
+      "key": "handoff_allow",
+      "form": "",
+      "source": "Allow this site and continue",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "handoff_capture_failed",
+      "form": "",
+      "source": "The page could not be captured. Return to Anki and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "handoff_expired",
+      "form": "",
+      "source": "This import is no longer waiting. Start Webpage to PDF again in Anki.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "handoff_permission",
+      "form": "",
+      "source": "Allow Companion to capture {site} automatically after you finish verification. You only need to allow this once.",
+      "tokens": [
+        "{site}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "handoff_title",
+      "form": "",
+      "source": "Finish verification to save this page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "handoff_waiting",
+      "form": "",
+      "source": "Finish verification on the page. Incremento will save it as a PDF and return you to Anki automatically.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "import_bookmark_failed",
       "form": "",
       "source": "Failed to import bookmark.",
@@ -31112,7 +33644,7 @@
       "component": "extension",
       "key": "inserted_text_note",
       "form": "",
-      "source": "This content is inserted into the selected text field if one is chosen.",
+      "source": "Keeps safe paragraphs, lists and emphasis. Editing the excerpt switches to clean plain text.",
       "tokens": [],
       "markup": []
     },
@@ -31785,6 +34317,78 @@
     },
     {
       "component": "extension",
+      "key": "pdf_export_article",
+      "form": "",
+      "source": "Clean article",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "pdf_export_description",
+      "form": "",
+      "source": "These settings apply to Add as PDF and the PDF keyboard shortcut. Existing PDF files are imported unchanged.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "pdf_export_dynamic",
+      "form": "",
+      "source": "Load content added by JavaScript",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "pdf_export_dynamic_help",
+      "form": "",
+      "source": "First set up the browser component in Anki → Incremento → Add Content → Webpage to PDF. This reloads the public page without your Chrome sign-in.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "pdf_export_heading",
+      "form": "",
+      "source": "Webpage to PDF",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "pdf_export_layout",
+      "form": "",
+      "source": "Layout",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "pdf_export_links",
+      "form": "",
+      "source": "Include a list of link destinations",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "pdf_export_print",
+      "form": "",
+      "source": "Print layout (Wikipedia PDF)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "pdf_export_website",
+      "form": "",
+      "source": "Website appearance",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "pdf_kind",
       "form": "",
       "source": "PDF",
@@ -32097,6 +34701,22 @@
     },
     {
       "component": "extension",
+      "key": "settings_load_error",
+      "form": "",
+      "source": "Could not load settings. Try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "settings_save_error",
+      "form": "",
+      "source": "Could not save settings. Try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "site_access_change_failed",
       "form": "",
       "source": "Could not change automatic site access.",
@@ -32193,6 +34813,14 @@
     },
     {
       "component": "extension",
+      "key": "snapshot_permission_required",
+      "form": "",
+      "source": "Chrome has not authorized this snapshot. Set Snapshot capture’s scope to “In Chrome” in Chrome → Extensions → Keyboard shortcuts and retry on the page, or click the Incremento Companion toolbar icon first. “Global” shortcuts do not grant screenshot access.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "snapshot_ready",
       "form": "few",
       "source": "$COUNT$ snapshots ready",
@@ -32253,12 +34881,54 @@
     },
     {
       "component": "extension",
+      "key": "snapshot_registered_shortcut",
+      "form": "",
+      "source": "Use $SHORTCUT$ for snapshots. Set its scope to “In Chrome” in Chrome → Extensions → Keyboard shortcuts, or click Companion and choose Trigger snapshot capture. “Global” shortcuts do not grant screenshot access.",
+      "tokens": [
+        "$SHORTCUT$"
+      ],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "snapshot_shortcut_scope",
+      "form": "",
+      "source": "For snapshot capture, set the shortcut’s scope to “In Chrome” in Chrome → Extensions → Keyboard shortcuts. “Global” does not grant screenshot access.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "snapshot_shortcut_unassigned",
+      "form": "",
+      "source": "Assign Snapshot capture with scope “In Chrome” in Chrome → Extensions → Keyboard shortcuts, or click the Companion toolbar icon and choose Trigger snapshot capture.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "snapshot_tab_changed",
+      "form": "",
+      "source": "The capture tab changed. Return to the page where you started snapshot capture and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "snapshot_too_large",
       "form": "",
       "source": "A snapshot is too large. Maximum is $COUNT$ bytes.",
       "tokens": [
         "$COUNT$"
       ],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "snapshot_warning_dismiss",
+      "form": "",
+      "source": "Dismiss warning",
+      "tokens": [],
       "markup": []
     },
     {
@@ -32407,7 +35077,7 @@
       "component": "extension",
       "key": "source_url_note",
       "form": "",
-      "source": "The current page URL is always available.",
+      "source": "Inserts a clickable page-title link. Source metadata stays separate when available.",
       "tokens": [],
       "markup": []
     },
@@ -32626,6 +35296,64 @@
       "key": "webpage_kind",
       "form": "",
       "source": "Webpage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "website_tags_error",
+      "form": "",
+      "source": "Website tags could not be loaded or saved.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "website_tags_help",
+      "form": "",
+      "source": "Applies to all pages on $SITE$. Saved in the active Anki profile; turn off to forget.",
+      "tokens": [
+        "$SITE$"
+      ],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "website_tags_loading",
+      "form": "",
+      "source": "Loading website tags…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "website_tags_page_changed",
+      "form": "",
+      "source": "The active website changed. Reopen the popup before importing.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "website_tags_remember",
+      "form": "",
+      "source": "Remember tags for this website",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "website_tags_retry",
+      "form": "",
+      "source": "Retry",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "website_tags_saving",
+      "form": "",
+      "source": "Saving website tags…",
       "tokens": [],
       "markup": []
     },
@@ -33081,12 +35809,28 @@
     },
     {
       "component": "reader",
+      "key": "reader_hide_highlight_controls",
+      "form": "",
+      "source": "Hide highlight controls",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_highlight_color",
       "form": "",
       "source": "Highlight {color}",
       "tokens": [
         "{color}"
       ],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_highlight_controls_hint",
+      "form": "",
+      "source": "Toggle on-page delete, note, and resize controls for clean screenshots. Highlights stay visible.",
+      "tokens": [],
       "markup": []
     },
     {
@@ -33556,7 +36300,7 @@
       "component": "reader",
       "key": "reader_page_jump",
       "form": "",
-      "source": "Go to page",
+      "source": "Go to PDF page (counts every page)",
       "tokens": [],
       "markup": []
     },
@@ -33564,9 +36308,21 @@
       "component": "reader",
       "key": "reader_page_location",
       "form": "",
-      "source": "Page {current} / {total}",
+      "source": "PDF {current} / {total}",
       "tokens": [
         "{current}",
+        "{total}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_page_location_labeled",
+      "form": "",
+      "source": "Printed {label} · PDF {current} / {total}",
+      "tokens": [
+        "{current}",
+        "{label}",
         "{total}"
       ],
       "markup": []
@@ -33579,6 +36335,14 @@
       "tokens": [
         "{page}"
       ],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_page_numbering_hint",
+      "form": "",
+      "source": "Printed page labels come from PDF metadata. PDF page numbers count every page, including covers and front matter.",
+      "tokens": [],
       "markup": []
     },
     {
@@ -33642,6 +36406,14 @@
       "key": "reader_pdf_highlights",
       "form": "",
       "source": "PDF Highlights",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_pdf_page",
+      "form": "",
+      "source": "PDF page",
       "tokens": [],
       "markup": []
     },
@@ -33722,6 +36494,14 @@
       "key": "reader_previous_pdf_page",
       "form": "",
       "source": "Previous PDF page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_printed_page_unavailable",
+      "form": "",
+      "source": "Printed-page numbering is unavailable for this page. The PDF number counts every page, including covers and front matter.",
       "tokens": [],
       "markup": []
     },
@@ -33874,6 +36654,16 @@
     },
     {
       "component": "reader",
+      "key": "reader_return_to_search_page",
+      "form": "",
+      "source": "Return to p.{page}",
+      "tokens": [
+        "{page}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_review",
       "form": "",
       "source": "Review",
@@ -33968,6 +36758,14 @@
       "key": "reader_show_controls",
       "form": "",
       "source": "Show controls",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_show_highlight_controls",
+      "form": "",
+      "source": "Show highlight controls",
       "tokens": [],
       "markup": []
     },

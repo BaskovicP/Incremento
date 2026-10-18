@@ -5,6 +5,45 @@ msgstr "Project-Id-Version: Incremento\nLanguage: zh-Hans\nPO-Revision-Date: 202
 msgid "imports_markdown_document_title"
 msgstr "添加 Markdown 文档"
 
+msgid "imports_supermemo_select"
+msgstr "选择 SuperMemo 集合"
+
+msgid "imports_supermemo_file_filter"
+msgstr "SuperMemo 集合 (*.zip *.ZIP *.kno *.KNO)"
+
+msgid "imports_supermemo_unsupported_file"
+msgstr "请选择 ZIP 压缩包或 KNO 文件。"
+
+msgid "imports_supermemo_preparing"
+msgstr "正在验证 SuperMemo 集合…"
+
+msgid "imports_supermemo_preflight_title"
+msgstr "导入 SuperMemo 集合？"
+
+msgid "imports_supermemo_preflight_summary"
+msgstr "集合：{collection}\n待导入卡片：{elements}（{topics} 个主题，{items} 个项目）\n填空项目：{cloze}\n复制到 Anki 媒体的本地图像：{media}\n复习历史记录：{history}\n保留的优化文件：{optimization}\n跳过的不支持任务元素：{skipped}\n\n将导入优先级、层级、富文本 HTML、已注册图像、A 因子、间隔、到期日、重复/遗忘次数、遗忘指数和历史。含单个 [...] 空缺的项目会转换为原生 Anki 填空卡片。不会导入活动脚本、SuperMemo 统计、待处理队列、任务调度、组件几何、模板、OLE 和可执行组件。导入后仍由 Anki 负责调度。"
+
+msgid "imports_supermemo_non_undoable"
+msgstr "此批量导入会直接恢复 Anki 复习历史记录，无法撤销。继续前请备份 Anki 配置文件。再次导入同一集合时会检测已有卡片，不会重复创建。"
+
+msgid "imports_supermemo_deck_title"
+msgstr "SuperMemo 目标牌组"
+
+msgid "imports_supermemo_deck_prompt"
+msgstr "将卡片导入牌组："
+
+msgid "imports_supermemo_default_deck"
+msgstr "SuperMemo::{collection}"
+
+msgid "imports_supermemo_failed"
+msgstr "SuperMemo 导入失败：{error}"
+
+msgid "imports_supermemo_stale"
+msgstr "由于当前 Anki 配置文件已更改，SuperMemo 导入已取消。"
+
+msgid "imports_supermemo_complete"
+msgstr "已将 {created} 张 SuperMemo 卡片导入 {deck}，其中包括 {cloze} 张填空卡片和 {media} 个本地图像文件；跳过 {existing} 张已有卡片，并恢复 {history} 条复习历史记录。"
+
 msgid "imports_markdown_document_description"
 msgstr "导入 Markdown 文件，用于阅读和学习。原始文件保持不变。"
 
@@ -421,7 +460,7 @@ msgstr "首次使用时将尝试自动安装 yt-dlp。"
 
 #. Import video/webpage UI: ffmpeg not found: video will still download, but compression is skipped.
 msgid "imports_ffmpeg_missing_hint"
-msgstr "未找到 ffmpeg：仍会下载视频，但会跳过压缩。"
+msgstr "未找到 FFmpeg。请打开 Incremento → 工具 → 检查依赖项…进行安装；视频仍可下载，但不会压缩。"
 
 #. Import video/webpage UI: Optional: creates a local compressed copy for offline playback.
 msgid "imports_offline_copy_hint"
@@ -1406,3 +1445,93 @@ msgstr "无法估算：{reason}\n您可以重试，或使用所选压缩方式�
 
 msgid "imports_djvu_estimate_changed"
 msgstr "源文件已更改。请重新估算当前文件。"
+
+#. Webpage PDF export options
+msgid "imports_webpage_style_label"
+msgstr "PDF 外观："
+
+#. Webpage PDF export options
+msgid "imports_webpage_style_website"
+msgstr "网页外观"
+
+#. Webpage PDF export options
+msgid "imports_webpage_style_article"
+msgstr "简洁文章"
+
+#. Webpage PDF export options
+msgid "imports_webpage_style_print"
+msgstr "网站打印布局（维基百科 PDF）"
+
+#. Webpage PDF export options
+msgid "imports_webpage_dynamic"
+msgstr "加载 JavaScript 添加的内容"
+
+#. Webpage PDF export options
+msgid "imports_webpage_browser_setup"
+msgstr "设置浏览器组件…"
+
+#. Webpage PDF export options
+msgid "imports_webpage_link_appendix"
+msgstr "附加链接地址列表"
+
+#. Webpage PDF export options
+msgid "imports_webpage_links_heading"
+msgstr "链接"
+
+#. Webpage PDF export options
+msgid "imports_webpage_browser_installing"
+msgstr "正在下载浏览器组件，可能需要几分钟…"
+
+#. Webpage PDF export options
+msgid "imports_webpage_browser_ready"
+msgstr "浏览器组件已就绪，已启用动态内容。"
+
+#. Webpage PDF export options
+msgid "imports_webpage_browser_setup_failed"
+msgstr "浏览器设置失败。请检查网络连接和兼容的 Python 安装后重试。仍可导出不含动态内容的页面。"
+
+#. Webpage PDF export options
+msgid "imports_webpage_browser_capture_failed"
+msgstr "浏览器无法捕获此页面。请重试，或关闭 JavaScript 内容以使用离线导出。"
+
+#. Webpage PDF export options
+msgid "imports_webpage_invalid_style"
+msgstr "未知的 PDF 外观。"
+
+#. Webpage PDF cancellation
+msgid "imports_webpage_cancelled"
+msgstr "导入已取消。"
+
+#. Webpage PDF browser fallback
+msgid "imports_webpage_browser_help"
+msgstr "需要验证时，“导入”会自动打开浏览器。完成验证码后，Incremento Companion 将保存网页并返回 Anki。首次使用时，请允许访问该网站。"
+
+msgid "imports_webpage_open_browser"
+msgstr "在浏览器中打开"
+
+msgid "imports_webpage_saved_pdf"
+msgstr "使用浏览器保存的 PDF…"
+
+msgid "imports_webpage_saved_pdf_help"
+msgstr "未安装 Companion 时：在浏览器中选择打印 → 另存为 PDF，然后在此选择该文件。"
+
+msgid "imports_webpage_browser_url_invalid"
+msgstr "请输入有效的 http:// 或 https:// 网址，且不含用户名或密码。"
+
+msgid "imports_webpage_saved_pdf_loading"
+msgstr "正在准备保存的 PDF…"
+
+msgid "imports_webpage_saved_pdf_failed"
+msgstr "无法读取此 PDF。请选择不超过 48 MiB 的普通 PDF 文件，然后重试。"
+
+msgid "imports_webpage_access_blocked"
+msgstr "网站拒绝了自动下载（HTTP {status}）。请使用下方的浏览器选项。"
+
+msgid "imports_webpage_browser_waiting"
+msgstr "请在浏览器中完成验证。Incremento 将保存网页并自动返回 Anki。"
+
+msgid "imports_webpage_browser_handoff_failed"
+msgstr "浏览器自动导入未完成。请启用 Incremento Companion，允许访问此网站，然后重试。"
+
+msgid "imports_webpage_browser_landing"
+msgstr "正在通过 Incremento Companion 打开网页。如果没有响应，请在 Chrome/Brave 中安装或重新加载 Companion，然后从 Anki 重试。"

@@ -193,7 +193,8 @@ export function localizeDocument(titleKey) {
 
 // Only this final Save step commits an imported draft. A single storage write
 // keeps the preference and its catalog available together in every context.
-export async function saveLanguageSettings(value, pending = {}, chromeApi = globalThis.chrome) {
+// Other Settings drafts join this write so a failed save cannot apply only part.
+export async function saveLanguageSettings(value, pending = {}, chromeApi = globalThis.chrome, additionalSettings = {}) {
   const stored = await chromeApi.storage.local.get(LANGUAGE_PACKS_KEY);
   const merged = validatedStoredPacks(stored?.[LANGUAGE_PACKS_KEY]);
   for (const candidate of Object.values(pending)) {
@@ -203,7 +204,7 @@ export async function saveLanguageSettings(value, pending = {}, chromeApi = glob
   if (Object.keys(merged).length > MAX_PACKS) throw new LanguagePackError("packs");
   const normalized = normalizeLanguagePreference(value);
   if (normalized.startsWith("custom:") && !Object.hasOwn(merged, normalized.slice(7))) throw new LanguagePackError("locale");
-  await chromeApi.storage.local.set({[LANGUAGE_KEY]: normalized, [LANGUAGE_PACKS_KEY]: merged});
+  await chromeApi.storage.local.set({...additionalSettings, [LANGUAGE_KEY]: normalized, [LANGUAGE_PACKS_KEY]: merged});
   revision += 1;
   setLanguage(normalized, chromeApi, merged);
   return normalized;

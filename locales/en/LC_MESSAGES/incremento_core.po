@@ -176,6 +176,12 @@ msgstr "Fallback extract priority:"
 msgid "settings_focus_timer"
 msgstr "Focus Timer"
 
+msgid "settings_statistics"
+msgstr "Statistics"
+
+msgid "settings_show_daily_topic_item_tag_charts_on_deck_screen"
+msgstr "Show daily Topic/Item tag charts on the deck screen"
+
 msgid "settings_for_example_10_schedules_110_of_the_normal_next"
 msgstr "For example, 10% schedules 110% of the normal next interval and multiplies the persistent A-factor by 1.1."
 
@@ -299,6 +305,9 @@ msgstr "Optional extra filter. If you fill this in, the auto-start timer only tr
 msgid "settings_parent_cards_in_extract_card"
 msgstr "Parent cards in Extract Card"
 
+msgid "settings_pdf_context_rows_before_and_after"
+msgstr "PDF context rows before and after:"
+
 msgid "settings_pdf_highlight_card_target_field"
 msgstr "PDF highlight card target field:"
 
@@ -400,6 +409,12 @@ msgstr "Show Incremento metadata / OCR fields in Browser and note editors"
 
 msgid "settings_show_markdown_preview_in_writing_cards"
 msgstr "Show markdown preview in writing cards"
+
+msgid "settings_show_pdf_context_when_hovering_page_links"
+msgstr "Show PDF context when hovering page links"
+
+msgid "settings_show_pdf_highlight_delete_buttons"
+msgstr "Show delete X on PDF highlights"
 
 msgid "settings_show_priority_dialog_after_each_card_is_done_before"
 msgstr "Show priority dialog after each card is done before moving forward"
@@ -715,3 +730,36 @@ msgstr "CSV tables (*.csv *.tsv);;All files (*)"
 
 msgid "settings_language_profile_changed"
 msgstr "The active profile changed. Reopen Settings to import translations into the intended profile."
+
+msgid "settings_learning_leech"
+msgstr "Learning leeches"
+
+msgid "settings_learning_leech_enabled"
+msgstr "Tag difficult learning cards"
+
+msgid "settings_learning_leech_threshold"
+msgstr "Again threshold:"
+
+msgid "settings_learning_leech_tag"
+msgstr "Tag:"
+
+msgid "settings_learning_leech_hint"
+msgstr "Count each card’s cumulative Again answers during initial learning, including its first answer and later days. At the threshold, add this tag to its note without suspending the card. Review, relearning and Preview do not count. Undo/Redo includes the new tag."
+
+msgid "settings_learning_leech_tag_invalid"
+msgstr "Enter one tag, up to 255 characters, without spaces or empty :: levels."
+
+msgid "settings_pdf_citation_numbering"
+msgstr "PDF citation page numbering"
+
+msgid "settings_pdf_citation_numbering_printed"
+msgstr "Printed page label (default)"
+
+msgid "settings_pdf_citation_numbering_pdf"
+msgstr "PDF page number"
+
+msgid "settings_pdf_citation_numbering_both"
+msgstr "Printed label and PDF page"
+
+msgid "settings_pdf_citation_numbering_hint"
+msgstr "Applies to PDF extraction, highlight cards, and Copy Link to This Place. Missing printed labels fall back to PDF page numbers. Links always open the physical PDF page."

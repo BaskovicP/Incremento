@@ -914,7 +914,7 @@
     "message": "Source URL field"
   },
   "source_url_note": {
-    "message": "The current page URL is always available."
+    "message": "Inserts a clickable page-title link. Source metadata stays separate when available."
   },
   "snapshot_field": {
     "message": "Snapshot field"
@@ -959,7 +959,7 @@
     "message": "Selected text"
   },
   "inserted_text_note": {
-    "message": "This content is inserted into the selected text field if one is chosen."
+    "message": "Keeps safe paragraphs, lists and emphasis. Editing the excerpt switches to clean plain text."
   },
   "snapshots": {
     "message": "Snapshots"
@@ -1307,5 +1307,161 @@
   },
   "language_pack_error_file": {
     "message": "The file could not be read or exported. Try again."
+  },
+  "pdf_export_heading": {
+    "message": "Webpage to PDF"
+  },
+  "pdf_export_description": {
+    "message": "These settings apply to Add as PDF and the PDF keyboard shortcut. Existing PDF files are imported unchanged."
+  },
+  "pdf_export_layout": {
+    "message": "Layout"
+  },
+  "pdf_export_website": {
+    "message": "Website appearance"
+  },
+  "pdf_export_article": {
+    "message": "Clean article"
+  },
+  "pdf_export_print": {
+    "message": "Print layout (Wikipedia PDF)"
+  },
+  "pdf_export_dynamic": {
+    "message": "Load content added by JavaScript"
+  },
+  "pdf_export_dynamic_help": {
+    "message": "First set up the browser component in Anki → Incremento → Add Content → Webpage to PDF. This reloads the public page without your Chrome sign-in."
+  },
+  "pdf_export_links": {
+    "message": "Include a list of link destinations"
+  },
+  "settings_load_error": {
+    "message": "Could not load settings. Try again."
+  },
+  "settings_save_error": {
+    "message": "Could not save settings. Try again."
+  },
+  "capture_opened_page_pdf": {
+    "message": "Capture opened page as PDF"
+  },
+  "capture_opened_page_pdf_help": {
+    "message": "Use the page already loaded in this tab, including content added by JavaScript. Complete any CAPTCHA or sign-in first. Creates the PDF in Anki without saving a file."
+  },
+  "command_capture_opened_page_pdf": {
+    "message": "Capture opened page in Incremento as PDF"
+  },
+  "handoff_title": {
+    "message": "Finish verification to save this page"
+  },
+  "handoff_permission": {
+    "message": "Allow Companion to capture {site} automatically after you finish verification. You only need to allow this once."
+  },
+  "handoff_allow": {
+    "message": "Allow this site and continue"
+  },
+  "handoff_waiting": {
+    "message": "Finish verification on the page. Incremento will save it as a PDF and return you to Anki automatically."
+  },
+  "handoff_expired": {
+    "message": "This import is no longer waiting. Start Webpage to PDF again in Anki."
+  },
+  "handoff_capture_failed": {
+    "message": "The page could not be captured. Return to Anki and try again."
+  },
+  "website_tags_remember": {
+    "message": "Remember tags for this website"
+  },
+  "website_tags_help": {
+    "message": "Applies to all pages on $SITE$. Saved in the active Anki profile; turn off to forget.",
+    "placeholders": {
+      "site": {
+        "content": "$1"
+      }
+    }
+  },
+  "website_tags_loading": {
+    "message": "Loading website tags…"
+  },
+  "website_tags_saving": {
+    "message": "Saving website tags…"
+  },
+  "website_tags_error": {
+    "message": "Website tags could not be loaded or saved."
+  },
+  "website_tags_retry": {
+    "message": "Retry"
+  },
+  "website_tags_page_changed": {
+    "message": "The active website changed. Reopen the popup before importing."
+  },
+  "capture_edit_title": {
+    "message": "Page title"
+  },
+  "capture_link_passage": {
+    "message": "Link to the original passage"
+  },
+  "capture_passage_hint": {
+    "message": "Uses the original selection even after you edit the excerpt. If the page changes or passage links are unsupported, the source page still opens."
+  },
+  "capture_preview": {
+    "message": "Preview"
+  },
+  "capture_field_preview": {
+    "message": "Field preview"
+  },
+  "capture_preview_hint": {
+    "message": "Shows the content saved to each field. Your Anki card template controls the final layout."
+  },
+  "capture_preview_unique_title": {
+    "message": "Shows saved field content. A unique title label is added when creating the note; your Anki template controls the final layout."
+  },
+  "capture_source_link": {
+    "message": "Source: $TITLE$",
+    "placeholders": {
+      "title": {
+        "content": "$1"
+      }
+    }
+  },
+  "capture_duplicate_found": {
+    "message": "This passage is already captured. Open the existing note or choose Create another to save it again."
+  },
+  "capture_open_existing": {
+    "message": "Open existing note"
+  },
+  "capture_create_another": {
+    "message": "Create another"
+  },
+  "capture_existing_opened": {
+    "message": "Opened the existing note in Anki."
+  },
+  "capture_preview_loading": {
+    "message": "Preparing preview…"
+  },
+  "capture_opening_existing": {
+    "message": "Opening existing note…"
+  },
+  "snapshot_permission_required": {
+    "message": "Chrome has not authorized this snapshot. Set Snapshot capture’s scope to “In Chrome” in Chrome → Extensions → Keyboard shortcuts and retry on the page, or click the Incremento Companion toolbar icon first. “Global” shortcuts do not grant screenshot access."
+  },
+  "snapshot_tab_changed": {
+    "message": "The capture tab changed. Return to the page where you started snapshot capture and try again."
+  },
+  "snapshot_registered_shortcut": {
+    "message": "Use $SHORTCUT$ for snapshots. Set its scope to “In Chrome” in Chrome → Extensions → Keyboard shortcuts, or click Companion and choose Trigger snapshot capture. “Global” shortcuts do not grant screenshot access.",
+    "placeholders": {
+      "shortcut": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshot_shortcut_unassigned": {
+    "message": "Assign Snapshot capture with scope “In Chrome” in Chrome → Extensions → Keyboard shortcuts, or click the Companion toolbar icon and choose Trigger snapshot capture."
+  },
+  "snapshot_shortcut_scope": {
+    "message": "For snapshot capture, set the shortcut’s scope to “In Chrome” in Chrome → Extensions → Keyboard shortcuts. “Global” does not grant screenshot access."
+  },
+  "snapshot_warning_dismiss": {
+    "message": "Dismiss warning"
   }
 }

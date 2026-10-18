@@ -50,3 +50,10 @@ test("manifest auto-injects only on supported media providers", async () => {
   );
   assert.deepEqual(exposedMatches, new Set(["http://*/*", "https://*/*"]));
 });
+
+test("new text and snapshot capture shortcuts explicitly default to In Chrome scope", async () => {
+  const manifest = await loadManifest();
+  for (const name of ["browser-capture-selection", "browser-capture-snapshot"]) {
+    assert.equal(manifest.commands[name].global, false, `${name} must default to In Chrome`);
+  }
+});

@@ -10,6 +10,82 @@ msgstr ""
 "Language: en\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+msgid "stats_progress_heading"
+msgstr "{scope} at a glance"
+
+msgid "stats_progress_daily"
+msgstr "Daily activity"
+
+msgid "stats_progress_weekly"
+msgstr "Weekly activity"
+
+msgid "stats_progress_cumulative"
+msgstr "Progress adds up"
+
+msgid "stats_progress_cumulative_caption"
+msgstr "{value} · {metric} in this graph"
+
+msgid "stats_progress_chart_accessible"
+msgstr "Use Left and Right to inspect dates, Home for the first date, End for the latest.\n{details}"
+
+msgid "stats_progress_day_detail"
+msgstr "{date} · {pages} pages (PDF {pdf} / EPUB {epub}) · {duration} study · {cards} cards\n{metric} accumulated in this graph: {total}"
+
+msgid "stats_progress_goal_line"
+msgstr "Current daily goal: {value}"
+
+msgid "stats_progress_empty"
+msgstr "No activity yet in this period.\nYour progress will appear here."
+
+msgid "stats_progress_formats"
+msgstr "PDF {pdf} · EPUB {epub}"
+
+msgid "stats_progress_time_hint"
+msgstr "Recorded study and reading time"
+
+msgid "stats_progress_cards_hint"
+msgstr "Cards recorded by Incremento"
+
+msgid "stats_progress_no_baseline"
+msgstr "No activity in the previous period"
+
+msgid "stats_progress_comparison"
+msgstr "{change} vs previous {days} day(s)"
+
+msgid "stats_progress_graph_window"
+msgstr "Activity · {period}"
+
+msgid "stats_progress_show_metric"
+msgstr "Show {metric} graphs"
+
+msgid "stats_progress_interaction_hint"
+msgstr "Click a graph or use the arrow keys to inspect a day. Pages count once per document per day; cumulative totals include rereading on later days."
+
+msgid "stats_progress_streak_hint"
+msgstr "Consecutive days with PDF or EPUB reading in recorded history. An unfinished today keeps yesterday's streak."
+
+msgid "stats_progress_refresh"
+msgstr "Refresh"
+
+msgid "stats_progress_streak"
+msgid_plural "stats_progress_streak_plural"
+msgstr[0] "Reading streak · {count} day"
+msgstr[1] "Reading streak · {count} days"
+
+msgid "stats_progress_last_days"
+msgid_plural "stats_progress_last_days_plural"
+msgstr[0] "Last {count} day"
+msgstr[1] "Last {count} days"
+
+msgid "stats_progress_chart_title"
+msgstr "{metric} · {title}"
+
+msgid "stats_progress_page_legend"
+msgstr "<span style=\"color:{pdf_color}\">●</span> PDF &nbsp; <span style=\"color:{epub_color}\">●</span> EPUB"
+
+msgid "stats_progress_consistency"
+msgstr "Reading days: {reading} / {days} · Active days: {active} / {days} · {average} pages/day"
+
 msgid "common_back"
 msgstr "Back"
 
@@ -202,6 +278,24 @@ msgstr "Top type/tag"
 msgid "stats_pages_read"
 msgstr "Pages read"
 
+msgid "stats_reading_video_activity"
+msgstr "Reading & video"
+
+msgid "stats_pdf_pages_read"
+msgstr "PDF pages"
+
+msgid "stats_epub_pages_read"
+msgstr "EPUB pages"
+
+msgid "stats_videos_watched"
+msgstr "Videos watched"
+
+msgid "stats_video_watch_time"
+msgstr "Video watch time"
+
+msgid "stats_video_watch_hint"
+msgstr "Videos watched counts distinct videos played in the Incremento reader. Watch time starts with this update and excludes pauses, seeks, and external browser playback."
+
 msgid "stats_study_time"
 msgstr "Study time"
 
@@ -248,6 +342,53 @@ msgstr "All Time"
 
 msgid "stats_daily_goals"
 msgstr "Daily goals"
+
+msgid "stats_edit_goals"
+msgstr "Edit goals…"
+
+msgid "stats_edit_goals_accessible"
+msgstr "Edit daily statistics goals"
+
+msgid "stats_goal_dashboard_hint"
+msgstr "Track only what supports your study; you can change goals at any time."
+
+msgid "stats_goal_empty"
+msgstr "No daily goals yet. Choose one measure that fits your normal study routine."
+
+msgid "stats_goal_setup_title"
+msgstr "Set Daily Goals"
+
+msgid "stats_goal_setup_guidance"
+msgstr "Choose a goal you can reach on a normal study day."
+
+msgid "stats_goal_intro"
+msgstr "Select only the measures that matter to you. Start realistic; you can raise a target after you reach it consistently."
+
+msgid "stats_goal_recent_explanation"
+msgstr "Suggestions use the median of your active days in the last 30 days, so one unusually large session does not set the pace."
+
+msgid "stats_goal_cards_description"
+msgstr "Reviewed Topics, Items, and other card types."
+
+msgid "stats_goal_pages_description"
+msgstr "Unique PDF and EPUB pages read."
+
+msgid "stats_goal_minutes_description"
+msgstr "Focused study and review time across activities."
+
+msgid "stats_goal_daily_target"
+msgstr "Daily target"
+
+msgid "stats_goal_use_suggestion"
+msgstr "Use {target}"
+
+msgid "stats_goal_use_suggestion_accessible"
+msgstr "Use suggested {label} goal of {target} per day"
+
+msgid "stats_goal_suggestion_basis"
+msgid_plural "stats_goal_suggestion_basis_plural"
+msgstr[0] "Based on {count} active day"
+msgstr[1] "Based on {count} active days"
 
 msgid "stats_cards"
 msgstr "Cards"
@@ -353,6 +494,27 @@ msgstr "Review Time by Card Type"
 
 msgid "stats_review_time_by_tag"
 msgstr "Review Time by Tag"
+
+msgid "stats_topic_tag_time"
+msgstr "Topics by tag"
+
+msgid "stats_item_tag_time"
+msgstr "Items by tag"
+
+msgid "stats_topic_item_pie_hint"
+msgstr "Slices show reviewed cards by tag. Each legend value shows the card count."
+
+msgid "stats_pie_legend_value"
+msgstr "Cards: {cards}"
+
+msgid "stats_pie_total"
+msgstr "Total: {cards}"
+
+msgid "stats_untagged"
+msgstr "Untagged"
+
+msgid "stats_other_tags"
+msgstr "Other tags"
 
 msgid "stats_bar_chart_accessible"
 msgstr "Statistics bar chart"
@@ -619,13 +781,13 @@ msgid "session_live_preview_refresh_hint"
 msgstr "Click Refresh to preview current scheduler output."
 
 msgid "session_live_preview_disclaimer"
-msgstr "Preview disclaimer: this is one sampled scheduler run. If you start normally, scheduling reruns and may differ, especially in soft mode."
+msgstr "The table and this preview share one selected card list. Starting the session reuses it while your settings are unchanged. Refresh updates both views with a new selection."
 
 msgid "session_use_previewed_list"
-msgstr "Use this previewed card list when starting (skip scheduler rerun)"
+msgstr "Require an up-to-date preview before starting"
 
 msgid "session_use_previewed_list_tooltip"
-msgstr "When enabled, Start Session reuses the latest refreshed preview list exactly."
+msgstr "A current displayed selection is always reused. Enable this option to block starting while the preview is still refreshing or unavailable."
 
 msgid "session_type"
 msgstr "Type"
@@ -724,7 +886,7 @@ msgid "session_live_card_preview"
 msgstr "Live card preview…"
 
 msgid "session_live_preview_hint"
-msgstr "Live preview is an estimate sample. To force exact reuse, enable the checkbox inside the preview dialog."
+msgstr "The table and Live card preview share the same selection. Starting reuses this list when it is up to date."
 
 msgid "common_search"
 msgstr "Search"
@@ -993,6 +1155,126 @@ msgstr "Add a root topic or item."
 
 msgid "knowledge_tree_add_under"
 msgstr "Add a topic or item under {title}."
+
+msgid "knowledge_tree_mind_map"
+msgstr "Mind Map"
+
+msgid "knowledge_tree_mind_map_tooltip"
+msgstr "Open a radiant, color-coded mind map of the full tree or selected branch."
+
+msgid "knowledge_tree_mind_map_title"
+msgstr "Incremento — Knowledge Tree Mind Map"
+
+msgid "knowledge_tree_mind_map_principles"
+msgstr "A central idea radiates into curved, color-coded branches. Each branch uses one concise label, visual hierarchy, and a topic/item symbol to make associations easier to scan."
+
+msgid "knowledge_tree_mind_map_principles_name"
+msgstr "Mind map principles"
+
+msgid "knowledge_tree_mind_map_scope"
+msgstr "Scope"
+
+msgid "knowledge_tree_mind_map_whole_tree"
+msgstr "Whole tree"
+
+msgid "knowledge_tree_mind_map_selected_branch"
+msgstr "Selected branch"
+
+msgid "knowledge_tree_view_branch_mind_map"
+msgstr "View Branch as Mind Map"
+
+msgid "knowledge_tree_mind_map_select_branch_first"
+msgstr "Select exactly one node in the knowledge tree to use this scope."
+
+msgid "knowledge_tree_mind_map_show_priorities"
+msgstr "Show priorities"
+
+msgid "knowledge_tree_mind_map_fit"
+msgstr "Fit"
+
+msgid "knowledge_tree_mind_map_zoom_out"
+msgstr "Zoom out"
+
+msgid "knowledge_tree_mind_map_zoom_in"
+msgstr "Zoom in"
+
+msgid "knowledge_tree_mind_map_canvas"
+msgstr "Knowledge tree mind map"
+
+msgid "knowledge_tree_mind_map_summary_name"
+msgstr "Mind map summary"
+
+msgid "knowledge_tree_mind_map_summary"
+msgstr "{visible} of {total} nodes visible · {levels} visual levels"
+
+msgid "knowledge_tree_mind_map_hidden_nodes"
+msgstr "Hidden descendants: {count}"
+
+msgid "knowledge_tree_mind_map_canvas_instructions"
+msgstr "Use the arrow keys to move, Space to fold or unfold, Enter to return to the tree, and drag empty space to pan."
+
+msgid "knowledge_tree_mind_map_actual_size"
+msgstr "Actual size"
+
+msgid "knowledge_tree_mind_map_zoom_level"
+msgstr "Zoom level"
+
+msgid "knowledge_tree_mind_map_zoom_percent"
+msgstr "{percent}%"
+
+msgid "knowledge_tree_mind_map_search"
+msgstr "Find"
+
+msgid "knowledge_tree_mind_map_search_placeholder"
+msgstr "Find a node by title…"
+
+msgid "knowledge_tree_mind_map_find_next"
+msgstr "Next"
+
+msgid "knowledge_tree_mind_map_search_status"
+msgstr "Search status"
+
+msgid "knowledge_tree_mind_map_collapse_all"
+msgstr "Collapse All"
+
+msgid "knowledge_tree_mind_map_expand_all"
+msgstr "Expand All"
+
+msgid "knowledge_tree_mind_map_focus_branch"
+msgstr "Focus Branch"
+
+msgid "knowledge_tree_mind_map_show_full"
+msgstr "Show Full Map"
+
+msgid "knowledge_tree_mind_map_export_png"
+msgstr "Export PNG…"
+
+msgid "knowledge_tree_mind_map_keyboard_hint"
+msgstr "Arrows navigate · Space folds · Enter returns to tree"
+
+msgid "knowledge_tree_mind_map_match_count"
+msgstr "{count} matches"
+
+msgid "knowledge_tree_mind_map_match_position"
+msgstr "{current}/{count}"
+
+msgid "knowledge_tree_mind_map_export_title"
+msgstr "Export Mind Map"
+
+msgid "knowledge_tree_mind_map_png_filter"
+msgstr "PNG images (*.png)"
+
+msgid "knowledge_tree_mind_map_export_failed"
+msgstr "Could not export the mind map image."
+
+msgid "knowledge_tree_mind_map_center"
+msgstr "Knowledge Tree"
+
+msgid "knowledge_tree_mind_map_empty"
+msgstr "Add or link at least one node before opening the mind map."
+
+msgid "knowledge_tree_priority_short"
+msgstr "P{value}"
 
 msgid "knowledge_tree_search_placeholder"
 msgstr "Search this tree…"
@@ -1817,7 +2099,7 @@ msgstr "Incremento classifies topics using the same logic as the T button, topic
 msgid "session_live_preview_required_title"
 msgstr "Live Preview Required"
 msgid "session_live_preview_required_message"
-msgstr "You enabled 'Use previewed card list'.\n\nOpen Live card preview and click Refresh after your latest settings change, then start the session again."
+msgstr "You require an up-to-date preview before starting.\n\nWait for the preview to finish refreshing after your latest settings change. If it is unavailable, open Live card preview and click Refresh, then start the session again."
 msgid "session_delete_today_title"
 msgstr "Delete Today's Data"
 msgid "session_delete_today_message"
@@ -2056,3 +2338,201 @@ msgstr "Always force this appearance for every PDF"
 
 msgid "settings_pdf_appearance_hint"
 msgstr "When forcing is off, each PDF remembers its own selection and new PDFs use the default. When forcing is on, every PDF opens in the selected appearance without erasing its saved choice."
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_title"
+msgstr "Today’s learning results"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_stage"
+msgstr "Learning"
+
+#: frontend/learning_stats.py
+msgid "stats_review_stage"
+msgstr "Review"
+
+#: frontend/learning_stats.py
+msgid "stats_relearning_stage"
+msgstr "Relearning"
+
+#: frontend/learning_stats.py
+msgid "stats_answer_attempts"
+msgstr "Answer attempts"
+
+#: frontend/learning_stats.py
+msgid "stats_again_fail"
+msgstr "Again / Fail"
+
+#: frontend/learning_stats.py
+msgid "stats_recalled"
+msgstr "Recalled"
+
+#: frontend/learning_stats.py
+msgid "stats_recall_rate"
+msgstr "Recall rate"
+
+#: frontend/learning_stats.py
+msgid "stats_answer_stage"
+msgstr "Stage"
+
+#: frontend/learning_stats.py
+msgid "stats_rating_hard"
+msgstr "Hard"
+
+#: frontend/learning_stats.py
+msgid "stats_rating_good"
+msgstr "Good"
+
+#: frontend/learning_stats.py
+msgid "stats_rating_easy"
+msgstr "Easy"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_card_totals"
+msgstr "Unique cards: {cards} · Cards with Again: {failed_cards}"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_hint"
+msgstr "Again / Fail counts missed answers. Recalled = Hard + Good + Easy. Each answer attempt counts, including repeats."
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_exclusions"
+msgstr "Topic frequency choices, preview practice and manual schedule changes are excluded."
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_loading"
+msgstr "Loading learning results…"
+
+#: frontend/learning_stats.py
+msgid "stats_learning_results_unavailable"
+msgstr "Learning results are unavailable. Try reopening Statistics."
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_learning_history_title"
+msgstr "Learning results · Last {days} days"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_learning_answers_by_day"
+msgstr "Failed and recalled answers by day"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_rate_by_day"
+msgstr "Recall rate by day"
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_chart_hint"
+msgstr "Recalled = Hard + Good + Easy. Every answer attempt counts, including repeats. The rate graph uses 0–100%; gaps mean no answers. Hover over the rate graph for day details."
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_learning_no_answers"
+msgstr "No answers in this period."
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_no_previous"
+msgstr "No answers in the preceding {days} days to compare."
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_comparison_up"
+msgstr "Recall rate rose by {change} percentage points: {current} versus {previous} in the preceding {days} days."
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_comparison_down"
+msgstr "Recall rate fell by {change} percentage points: {current} versus {previous} in the preceding {days} days."
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_recall_comparison_same"
+msgstr "Recall rate is unchanged: {current} versus {previous} in the preceding {days} days."
+
+#: frontend/learning_stats.py frontend/stats_dialog.py
+msgid "stats_learning_day_summary"
+msgstr "{date}: {attempts} attempts · {failed} Again / Fail · {recalled} recalled · Recall rate: {rate}"
+
+msgid "stats_views"
+msgstr "Statistics views"
+
+msgid "stats_view_overview"
+msgstr "Overview"
+
+msgid "stats_view_documents"
+msgstr "Documents"
+
+msgid "stats_view_learning"
+msgstr "Learning cards"
+
+msgid "stats_documents_title"
+msgstr "Your reading progress"
+
+msgid "stats_documents_basis"
+msgstr "Saved read markers, across all time. PDF counts are actual pages. EPUB counts are estimates at 1,500 text characters per page, independent of font or window size; they can differ from the reader. Use Mark read to here in the reader, then Refresh."
+
+msgid "stats_documents_loading"
+msgstr "Loading your document progress…"
+
+msgid "stats_documents_unavailable"
+msgstr "Document progress is unavailable. Try Refresh."
+
+msgid "stats_documents_summary"
+msgstr "{total} documents · {started} in progress · {finished} finished"
+
+msgid "stats_documents_search"
+msgstr "Search document titles"
+
+msgid "stats_documents_all"
+msgstr "All formats"
+
+msgid "stats_documents_format"
+msgstr "Format"
+
+msgid "stats_documents_document"
+msgstr "Document"
+
+msgid "stats_documents_read"
+msgstr "Pages read"
+
+msgid "stats_documents_left"
+msgstr "Pages left"
+
+msgid "stats_documents_total"
+msgstr "Total pages"
+
+msgid "stats_documents_completion"
+msgstr "Completed"
+
+msgid "stats_documents_no_matches"
+msgstr "No matching documents. Import a PDF or EPUB, or change your search."
+
+msgid "stats_documents_previous"
+msgstr "Previous"
+
+msgid "stats_documents_next"
+msgstr "Next"
+
+msgid "stats_documents_estimated"
+msgstr "est."
+
+msgid "stats_documents_unknown"
+msgstr "Total unavailable. Check that the document is available in its reader, then Refresh."
+
+msgid "stats_documents_page"
+msgstr "Showing {start}–{end} of {total}"
+
+msgid "stats_card_stages_title"
+msgstr "Where your cards stand"
+
+msgid "stats_card_stages_hint"
+msgstr "New → Learning → Review, with Relearning after lapses. Review cards continue in spaced practice."
+
+msgid "stats_card_stage_new"
+msgstr "New"
+
+msgid "stats_card_stage_count"
+msgstr "{count} of {total} memory cards"
+
+msgid "stats_card_stages_scope"
+msgstr "All decks · {total} memory cards, including {suspended} suspended and {buried} buried. Current state; Topics and reader cards excluded."
+
+msgid "stats_learning_inspect_day"
+msgstr "Inspect a day"
+
+msgid "stats_learning_period"
+msgstr "Learning trend period"

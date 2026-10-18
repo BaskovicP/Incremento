@@ -12,7 +12,7 @@ function registerBridge(pending = null) {
   const start = source.indexOf('    const startWithHighlights = (');
   const finish = source.indexOf('    return () => {', start);
   assert.ok(start > 0 && finish > start);
-  const state = { language: createReaderLanguage('en'), starts: [], appearance: 'original' };
+  const state = { language: createReaderLanguage('en'), starts: [], appearance: 'original', showDeleteX: true };
   const scope = {
     window: { _incPdfPending: pending },
     document: { documentElement: { lang: 'en' } },
@@ -22,6 +22,7 @@ function registerBridge(pending = null) {
     setLanguage: (value) => { state.language = value; },
     setLocale: () => {},
     setAppearanceMode: (value) => { state.appearance = value; },
+    setShowHighlightDeleteButtons: (value) => { state.showDeleteX = value; },
     startViewer: (...args) => state.starts.push(args),
     clampScrollRatio: (value) => value,
     compareHighlights: () => 0,
@@ -30,6 +31,7 @@ function registerBridge(pending = null) {
   for (const name of [
     'setLinkBackHistory', 'setHighlights', 'setNativeHighlightsVisible', 'setBookmarks', 'setFindOpen',
     'setSearchQuery', 'setSearchHits', 'setActiveSearchHitIndex', 'setReadAnchor',
+    'setFindStartPage',
     'setActiveHighlightId', 'suppressScrollPersistence', 'setLimitStatus',
     'setLimitNotice', 'applyAutoHighlightSetting', 'applyScrollToTopOnPageChangeSetting',
     'limitAwareNav', 'adjustZoom', 'limitAwareMarkRead', 'openFind', 'setPageCards',
@@ -39,13 +41,28 @@ function registerBridge(pending = null) {
   for (const name of [
     'pendingExcerptJumpRef', 'pendingHighlightScrollRef', 'pendingReadAnchorScrollRef',
     'pendingPageTopScrollRef', 'pendingResumeScrollRef', 'pendingResumePageRef',
-    'pageRef', 'suppressSearchSyncRef', 'pendingHighlightSelectionRef',
+    'pageRef', 'cardIdRef', 'suppressSearchSyncRef', 'pendingHighlightSelectionRef',
     'resizeHighlightRef',
   ]) scope[name] = { current: null };
   scope.highlightRangeCacheRef = { current: new Map() };
   vm.runInNewContext(source.slice(start, finish), scope);
   return { scope, state };
 }
+
+test('PDF startup and live settings hide the delete X without changing the highlight data', () => {
+  const { scope, state } = registerBridge({
+    cardId: 10, filename: 'source.pdf', page: 1, zoom: 1,
+    showHighlightDeleteButtons: false,
+  });
+  assert.equal(state.showDeleteX, false);
+  scope.window.incrementoSetPdfHighlightDeleteButtons(true);
+  assert.equal(state.showDeleteX, true);
+  scope.window.incrementoPdfStart(
+    10, 'source.pdf', 1, 1, 0, 0, null, '', [], -1, '', '',
+    false, null, false, true, [], 'en', null, 'original', false,
+  );
+  assert.equal(state.showDeleteX, false);
+});
 
 const customLanguage = { locale: 'de', messages: {
   reader_previous_page: 'Vorherige Seite',

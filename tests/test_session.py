@@ -87,8 +87,11 @@ def _load_review_time_tracker_module():
     class _StatsManager:
         def __init__(self, *_args, **_kwargs):
             self.record_time_only = MagicMock()
+            self.record = MagicMock()
 
     statistics.StatsManager = _StatsManager
+    statistics.UNTAGGED_STATS_TAG = "(untagged)"
+    statistics.record_tag_breakdown = MagicMock()
     sys.modules["incremento.backend.statistics"] = statistics
 
     return _load_repo_module(
@@ -2117,6 +2120,12 @@ class TestIncrementoSessionExit:
 
 
 class TestReviewTimeTrackerIncrementoSessions:
+    def test_review_elapsed_time_uses_ankis_per_card_idle_cap(self):
+        review_time_tracker = _load_review_time_tracker_module()
+        card = types.SimpleNamespace(time_taken=lambda: 60_000)
+
+        assert review_time_tracker._active_review_seconds(card, 460 * 60) == 60.0
+
     def test_profile_scoped_incremento_session_decks_skip_duplicate_pdf_time(self):
         review_time_tracker = _load_review_time_tracker_module()
         get_card = MagicMock(side_effect=AssertionError("should not fetch cards"))
@@ -2171,3 +2180,107 @@ class TestReviewTimeTrackerIncrementoSessions:
             "pdf": 5.0,
             "epub": 7.0,
         }
+
+    def test_free_review_tracks_topic_time_count_and_tag_breakdown(self):
+        review_time_tracker = _load_review_time_tracker_module()
+        manager_calls = []
+        breakdown_calls = []
+
+        class CapturingStatsManager:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def record_time_only(self, result, seconds):
+                manager_calls.append(("time", result.card_type, result.tag, seconds))
+
+            def record(self, result, scope):
+                manager_calls.append(("count", result.card_type, result.tag, scope))
+
+        note = types.SimpleNamespace(mid=99, tags=["topic", "history"])
+        note.note_type = lambda: {"name": "Basic"}
+        card = types.SimpleNamespace(id=7, nid=10, note=lambda: note)
+        collection = types.SimpleNamespace(
+            decks=types.SimpleNamespace(current=lambda: {"name": "Default"}),
+            get_card=lambda _cid: card,
+            get_note=lambda _nid: note,
+            models=types.SimpleNamespace(get=lambda _mid: {"name": "Basic"}),
+        )
+        classifier = types.SimpleNamespace(
+            topic_tags=frozenset({"topic"}),
+            item_tags=frozenset({"item"}),
+        )
+        review_time_tracker.mw = types.SimpleNamespace(state="review", col=collection)
+        review_time_tracker.StatsManager = CapturingStatsManager
+        review_time_tracker.resolve_topic_card_classifier = lambda: classifier
+        review_time_tracker.is_topic_card = lambda *_args, **_kwargs: True
+        review_time_tracker.record_tag_breakdown = lambda *args, **kwargs: breakdown_calls.append(kwargs)
+
+        review_time_tracker._record_review_time(7, 12.0)
+        review_time_tracker.on_reviewer_card_answered(None, card, 3)
+
+        assert manager_calls == [
+            ("time", "topics", "history", 12.0),
+            ("count", "topics", "history", "daily"),
+        ]
+        assert breakdown_calls == [
+            {
+                "study_kind": "topics",
+                "tag": "history",
+                "include_count": False,
+                "seconds": 12.0,
+                "day_end_time": "00:00",
+            },
+            {
+                "study_kind": "topics",
+                "tag": "history",
+                "include_count": True,
+                "seconds": 0.0,
+                "day_end_time": "00:00",
+            },
+        ]
+
+    def test_incremento_session_skips_duplicate_totals_but_keeps_breakdown(self):
+        review_time_tracker = _load_review_time_tracker_module()
+        breakdown_calls = []
+        note = types.SimpleNamespace(mid=99, tags=["item", "law"])
+        note.note_type = lambda: {"name": "Basic"}
+        card = types.SimpleNamespace(id=8, nid=11, note=lambda: note)
+        collection = types.SimpleNamespace(
+            decks=types.SimpleNamespace(
+                current=lambda: {"name": "Incremento Session (Focus)"}
+            ),
+            get_card=lambda _cid: card,
+            get_note=lambda _nid: note,
+            models=types.SimpleNamespace(get=lambda _mid: {"name": "Basic"}),
+        )
+        classifier = types.SimpleNamespace(
+            topic_tags=frozenset({"topic"}),
+            item_tags=frozenset({"item"}),
+        )
+        review_time_tracker.mw = types.SimpleNamespace(state="review", col=collection)
+        review_time_tracker.resolve_topic_card_classifier = lambda: classifier
+        review_time_tracker.is_topic_card = lambda *_args, **_kwargs: False
+        review_time_tracker.StatsManager = MagicMock(
+            side_effect=AssertionError("session totals must stay session-owned")
+        )
+        review_time_tracker.record_tag_breakdown = lambda *args, **kwargs: breakdown_calls.append(kwargs)
+
+        review_time_tracker._record_review_time(8, 9.0)
+        review_time_tracker.on_reviewer_card_answered(None, card, 3)
+
+        assert breakdown_calls == [
+            {
+                "study_kind": "items",
+                "tag": "law",
+                "include_count": False,
+                "seconds": 9.0,
+                "day_end_time": "00:00",
+            },
+            {
+                "study_kind": "items",
+                "tag": "law",
+                "include_count": True,
+                "seconds": 0.0,
+                "day_end_time": "00:00",
+            },
+        ]

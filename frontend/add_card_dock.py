@@ -117,6 +117,7 @@ _ADD_CARD_PRIORITY_BUTTON_ID = "incremento-add-card-priority"
 _EXTRACT_BATCH_BUTTON_ID = "incremento-add-card-batch-qa"
 _TOPIC_TAG_BUTTON_ID = "incremento-add-card-topic-tag"
 _ITEM_TAG_BUTTON_ID = "incremento-add-card-item-tag"
+_STAGED_VIDEO_CLIP_PREFIX = "incremento-video-clip-"
 
 
 def _clamp_priority(value) -> float:
@@ -1844,6 +1845,7 @@ def set_pending_extract_options(
     link_to_knowledge_tree: bool | None = None,
     source: str = "",
     source_card_id: int | None = None,
+    source_position: float | None = None,
 ) -> dict:
     global _pending_extract_options
     resolved_source_card_id = source_card_id
@@ -1868,6 +1870,13 @@ def set_pending_extract_options(
         "source_tags": source_tags,
         "seen": time.monotonic(),
     }
+    if source_position is not None:
+        try:
+            normalized_position = float(source_position)
+        except (TypeError, ValueError):
+            normalized_position = -1.0
+        if normalized_position >= 0:
+            _pending_extract_options["source_position"] = normalized_position
     return dict(_pending_extract_options)
 
 
@@ -1941,6 +1950,22 @@ def set_pending_extract_context(
     preserve_web_extract_records: bool = False,
 ) -> dict:
     global _pending_extract_context
+    previous_context = dict(_pending_extract_context or {})
+    previous_parent = previous_context.get("parent_card_id")
+    same_parent = False
+    try:
+        same_parent = (
+            previous_parent is not None
+            and parent_card_id is not None
+            and int(previous_parent) == int(parent_card_id)
+        )
+    except Exception:
+        same_parent = False
+    retained_staged_media = (
+        _staged_extract_media_names(previous_context) if same_parent else []
+    )
+    if not same_parent:
+        _trash_pending_extract_media(previous_context)
     retained_web_records = (
         pending_web_extract_records() if preserve_web_extract_records else []
     )
@@ -1954,11 +1979,76 @@ def set_pending_extract_context(
     }
     if retained_web_records:
         _pending_extract_context["web_extract_records"] = retained_web_records
+    if retained_staged_media:
+        _pending_extract_context["staged_media_files"] = retained_staged_media
     return dict(_pending_extract_context)
 
 
-def clear_pending_extract_context() -> None:
+def _staged_extract_media_names(context: dict | None = None) -> list[str]:
+    raw_names = list((context or {}).get("staged_media_files") or [])
+    names: list[str] = []
+    for raw_name in raw_names:
+        name = str(raw_name or "").strip()
+        if (
+            name
+            and os.path.basename(name) == name
+            and name.startswith(_STAGED_VIDEO_CLIP_PREFIX)
+            and name.lower().endswith(".mp4")
+            and name not in names
+        ):
+            names.append(name)
+    return names
+
+
+def _trash_pending_extract_media(context: dict | None = None) -> None:
+    names = _staged_extract_media_names(context)
+    if not names:
+        return
+    try:
+        mw.col.media.trash_files(names)
+    except Exception:
+        pass
+
+
+def register_pending_extract_media(
+    media_name: str,
+    *,
+    source_card_id: int | None = None,
+) -> bool:
+    """Keep one generated clip with the active draft, or trash it if stale."""
     global _pending_extract_context
+    candidate_context = {"staged_media_files": [media_name]}
+    names = _staged_extract_media_names(candidate_context)
+    if not names:
+        return False
+    options = pending_extract_options() or {}
+    try:
+        matches_source = (
+            str(options.get("source") or "") == "video"
+            and source_card_id is not None
+            and int(options.get("source_card_id")) == int(source_card_id)
+        )
+    except Exception:
+        matches_source = False
+    if not matches_source:
+        _trash_pending_extract_media(candidate_context)
+        return False
+    context = dict(_pending_extract_context or {})
+    staged = _staged_extract_media_names(context)
+    for name in names:
+        if name not in staged:
+            staged.append(name)
+    context["staged_media_files"] = staged
+    context["seen"] = time.monotonic()
+    _pending_extract_context = context
+    _schedule_extract_draft_autosave(_dock_editor())
+    return True
+
+
+def clear_pending_extract_context(*, discard_staged_media: bool = True) -> None:
+    global _pending_extract_context
+    if discard_staged_media:
+        _trash_pending_extract_media(_pending_extract_context)
     _pending_extract_context = None
 
 
@@ -2048,6 +2138,7 @@ def remove_pending_web_extract_record(record: object) -> bool:
 
 def _clear_pending_extract_context_except_web_records() -> None:
     global _pending_extract_context
+    _trash_pending_extract_media(_pending_extract_context)
     retained = pending_web_extract_records()
     _pending_extract_context = (
         {"web_extract_records": retained, "seen": time.monotonic()}
@@ -2279,7 +2370,7 @@ def consume_pending_extract_context_for_note(note, options: dict | None = None) 
             return None
         context = {}
     else:
-        clear_pending_extract_context()
+        clear_pending_extract_context(discard_staged_media=False)
     _snapshot_web_extract_records_on_note(note, context)
     return apply_extract_context_to_note(note, options=options, context=context)
 
@@ -2535,7 +2626,15 @@ def _notify_video_extract_note_added(note, options: dict | None) -> None:
         except Exception:
             return
     try:
-        video_dock.on_video_extract_note_added(source_card_id, created_card_ids)
+        source_position = (options or {}).get("source_position")
+        if source_position is None:
+            video_dock.on_video_extract_note_added(source_card_id, created_card_ids)
+        else:
+            video_dock.on_video_extract_note_added(
+                source_card_id,
+                created_card_ids,
+                source_position=source_position,
+            )
     except Exception:
         pass
 
@@ -3379,16 +3478,29 @@ def fill_dock_field(
     global _add_card_dock, _last_fill_source, _last_fill_seen
     citation = citation_html
     link_kind = str(source_link_kind or "").strip()
+    pdf_dock_module = None
     if citation is None and include_pdf_citation:
         link_kind = link_kind or "pdf"
         try:
-            from .pdf_dock import pdf_citation
+            from . import pdf_dock as pdf_dock_module
 
-            citation = pdf_citation(excerpt_text=text)
+            citation = pdf_dock_module.pdf_citation(excerpt_text=text)
         except Exception:
             citation = None
     if citation and (not link_kind or should_add_extract_source_link(link_kind)):
-        text = text + '<br>' + citation
+        if link_kind == "pdf":
+            try:
+                if pdf_dock_module is None:
+                    from . import pdf_dock as pdf_dock_module
+                reference_html = pdf_dock_module.pdf_reference_html_for_citation(
+                    text,
+                    citation,
+                )
+            except Exception:
+                reference_html = ""
+            text = reference_html or text + '<br>' + citation
+        else:
+            text = text + '<br>' + citation
     if link_kind:
         prepare_pending_extract_from_source_fill(
             link_kind,

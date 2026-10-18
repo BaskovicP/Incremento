@@ -2,8 +2,17 @@ import os
 import subprocess
 import sys
 
-from PyQt6.QtCore import QUrl
-from PyQt6.QtGui import QDesktopServices
+def activate_anki_window(window, platform: str | None = None) -> None:
+    window.showNormal()
+    window.raise_()
+    window.activateWindow()
+    if (platform or sys.platform) == "darwin":
+        # Launch Services activates the already-running Anki app without an
+        # Apple Events/Accessibility permission or an interpolated shell script.
+        try:
+            subprocess.Popen(["open", "-a", "Anki"])
+        except OSError:
+            pass
 
 
 def reveal_file_command(path: str, platform: str | None = None) -> list[str] | None:
@@ -17,6 +26,9 @@ def reveal_file_command(path: str, platform: str | None = None) -> list[str] | N
 
 
 def reveal_local_file(path: str, platform: str | None = None) -> bool:
+    from PyQt6.QtCore import QUrl
+    from PyQt6.QtGui import QDesktopServices
+
     target = os.path.normpath(str(path or "").strip())
     if not target:
         return False
@@ -34,6 +46,9 @@ def reveal_local_file(path: str, platform: str | None = None) -> bool:
 
 
 def open_local_file(path: str) -> bool:
+    from PyQt6.QtCore import QUrl
+    from PyQt6.QtGui import QDesktopServices
+
     target = os.path.normpath(str(path or "").strip())
     if not target:
         return False

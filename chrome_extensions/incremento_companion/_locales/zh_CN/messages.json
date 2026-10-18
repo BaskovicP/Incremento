@@ -812,7 +812,7 @@
     "message": "来源网址字段"
   },
   "source_url_note": {
-    "message": "当前页面网址始终可用。"
+    "message": "插入可点击的页面标题链接。可用的来源元数据单独保存。"
   },
   "snapshot_field": {
     "message": "快照字段"
@@ -841,7 +841,7 @@
     "message": "选中文本"
   },
   "inserted_text_note": {
-    "message": "如果选定了选中文本字段，此内容会插入其中。"
+    "message": "保留安全的段落、列表和强调格式。编辑摘录后改用整洁的纯文本。"
   },
   "snapshots": {
     "message": "快照"
@@ -1173,5 +1173,161 @@
   },
   "language_pack_error_file": {
     "message": "无法读取或导出文件。请重试。"
+  },
+  "pdf_export_heading": {
+    "message": "网页转 PDF"
+  },
+  "pdf_export_description": {
+    "message": "这些设置适用于“添加为 PDF”和 PDF 键盘快捷键。现有 PDF 文件将原样导入。"
+  },
+  "pdf_export_layout": {
+    "message": "布局"
+  },
+  "pdf_export_website": {
+    "message": "网站外观"
+  },
+  "pdf_export_article": {
+    "message": "简洁文章"
+  },
+  "pdf_export_print": {
+    "message": "网站打印布局（维基百科 PDF）"
+  },
+  "pdf_export_dynamic": {
+    "message": "加载 JavaScript 添加的内容"
+  },
+  "pdf_export_dynamic_help": {
+    "message": "请先在 Anki → Incremento → 添加内容 → 网页转 PDF 中设置浏览器组件。此功能会重新加载公开网页，不使用您的 Chrome 登录状态。"
+  },
+  "pdf_export_links": {
+    "message": "附加链接目标列表"
+  },
+  "settings_load_error": {
+    "message": "无法加载设置。请重试。"
+  },
+  "settings_save_error": {
+    "message": "无法保存设置。请重试。"
+  },
+  "capture_opened_page_pdf": {
+    "message": "将当前网页导入为 PDF"
+  },
+  "capture_opened_page_pdf_help": {
+    "message": "使用此标签页已加载的内容，包括 JavaScript 添加的内容。请先完成验证码或登录。直接在 Anki 中创建 PDF，无需保存文件。"
+  },
+  "command_capture_opened_page_pdf": {
+    "message": "将当前网页导入 Incremento 为 PDF"
+  },
+  "handoff_title": {
+    "message": "完成验证以保存此网页"
+  },
+  "handoff_permission": {
+    "message": "允许 Companion 在您完成验证后自动导入 {site}。只需授权一次。"
+  },
+  "handoff_allow": {
+    "message": "允许访问此网站并继续"
+  },
+  "handoff_waiting": {
+    "message": "请在网页上完成验证。Incremento 将把网页保存为 PDF，并自动返回 Anki。"
+  },
+  "handoff_expired": {
+    "message": "此导入请求已失效。请在 Anki 中重新启动“网页转 PDF”。"
+  },
+  "handoff_capture_failed": {
+    "message": "无法导入此网页。请返回 Anki 后重试。"
+  },
+  "website_tags_remember": {
+    "message": "记住此网站的标签"
+  },
+  "website_tags_help": {
+    "message": "适用于 $SITE$ 上的所有页面。保存在当前 Anki 配置中；取消勾选即可忘记。",
+    "placeholders": {
+      "site": {
+        "content": "$1"
+      }
+    }
+  },
+  "website_tags_loading": {
+    "message": "正在加载网站标签…"
+  },
+  "website_tags_saving": {
+    "message": "正在保存网站标签…"
+  },
+  "website_tags_error": {
+    "message": "无法加载或保存网站标签。"
+  },
+  "website_tags_retry": {
+    "message": "重试"
+  },
+  "website_tags_page_changed": {
+    "message": "当前网站已更改。请重新打开弹出窗口后再导入。"
+  },
+  "capture_edit_title": {
+    "message": "页面标题"
+  },
+  "capture_link_passage": {
+    "message": "链接到原始段落"
+  },
+  "capture_passage_hint": {
+    "message": "即使编辑摘录，也使用原始选区。如果页面已更改或不支持段落链接，仍会打开来源页面。"
+  },
+  "capture_preview": {
+    "message": "预览"
+  },
+  "capture_field_preview": {
+    "message": "字段预览"
+  },
+  "capture_preview_hint": {
+    "message": "显示各字段将保存的内容。最终布局由您的 Anki 卡片模板决定。"
+  },
+  "capture_preview_unique_title": {
+    "message": "显示将保存的字段内容。创建笔记时会添加唯一标题标记；最终布局由 Anki 模板决定。"
+  },
+  "capture_source_link": {
+    "message": "来源：$TITLE$",
+    "placeholders": {
+      "title": {
+        "content": "$1"
+      }
+    }
+  },
+  "capture_duplicate_found": {
+    "message": "此段落已提取。打开现有笔记，或选择“再创建一条”以再次保存。"
+  },
+  "capture_open_existing": {
+    "message": "打开现有笔记"
+  },
+  "capture_create_another": {
+    "message": "再创建一条"
+  },
+  "capture_existing_opened": {
+    "message": "已在 Anki 中打开现有笔记。"
+  },
+  "capture_preview_loading": {
+    "message": "正在准备预览…"
+  },
+  "capture_opening_existing": {
+    "message": "正在打开现有笔记…"
+  },
+  "snapshot_permission_required": {
+    "message": "Chrome 尚未授权此截图。请在 Chrome → 扩展程序 → 键盘快捷键中，将截图快捷键的范围设为“In Chrome”（在 Chrome 中），然后返回网页重试；也可以先点击工具栏上的 Incremento Companion 图标。“Global”（全局）快捷键不会授予截图权限。"
+  },
+  "snapshot_tab_changed": {
+    "message": "采集标签页已更改。请返回开始快照采集的页面并重试。"
+  },
+  "snapshot_registered_shortcut": {
+    "message": "请使用 $SHORTCUT$ 截图。在 Chrome → 扩展程序 → 键盘快捷键中，将范围设为“In Chrome”（在 Chrome 中），或点击 Companion 并选择启动截图。“Global”（全局）快捷键不会授予截图权限。",
+    "placeholders": {
+      "shortcut": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshot_shortcut_unassigned": {
+    "message": "请在 Chrome → 扩展程序 → 键盘快捷键中分配截图快捷键，并将范围设为“In Chrome”（在 Chrome 中）；也可以点击 Companion 工具栏图标并选择启动截图。"
+  },
+  "snapshot_shortcut_scope": {
+    "message": "截图快捷键的范围必须设为“In Chrome”（在 Chrome 中），可在 Chrome → 扩展程序 → 键盘快捷键中修改。“Global”（全局）不会授予截图权限。"
+  },
+  "snapshot_warning_dismiss": {
+    "message": "关闭警告"
   }
 }

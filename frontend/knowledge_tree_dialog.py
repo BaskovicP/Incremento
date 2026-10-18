@@ -97,6 +97,19 @@ except ImportError:
     from knowledge_tree_subset_dialog import KnowledgeTreeSubsetDialog  # type: ignore
 
 try:
+    from .knowledge_tree_mind_map import KnowledgeTreeMindMapDialog
+    from .knowledge_tree_mind_map_model import (
+        SCOPE_SELECTED_BRANCH,
+        SCOPE_WHOLE_TREE,
+    )
+except ImportError:
+    from knowledge_tree_mind_map import KnowledgeTreeMindMapDialog  # type: ignore
+    from knowledge_tree_mind_map_model import (  # type: ignore
+        SCOPE_SELECTED_BRANCH,
+        SCOPE_WHOLE_TREE,
+    )
+
+try:
     from ..backend.knowledge_tree import (
         LINK_PLACEMENT_CHILDREN,
         LINK_PLACEMENT_SIBLINGS,
@@ -262,6 +275,19 @@ def _toolbar_glyph_icon(glyph: str, palette: QPalette) -> QIcon:
         painter.setPen(pen)
         painter.drawLine(10, 4, 10, 16)
         painter.drawLine(4, 10, 16, 10)
+    elif glyph == "mind_map":
+        pen = QPen(color, 1.7)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        for end_x, end_y in ((3, 4), (2, 15), (17, 4), (18, 15)):
+            path = QPainterPath()
+            path.moveTo(10, 10)
+            path.cubicTo(7 if end_x < 10 else 13, 10, end_x, end_y, end_x, end_y)
+            painter.drawPath(path)
+            painter.drawEllipse(end_x - 1, end_y - 1, 2, 2)
+        painter.setBrush(color)
+        painter.drawEllipse(7, 7, 6, 6)
     painter.end()
     return QIcon(pixmap)
 
@@ -1122,6 +1148,12 @@ class KnowledgeTreeDialog(QDialog):
         self._search_edit.setPalette(search_palette)
         self._search_edit.setClearButtonEnabled(True)
         self._search_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._mind_map_btn = self._build_toolbar_button(
+            t("knowledge_tree_mind_map"),
+            _toolbar_glyph_icon("mind_map", self.palette()),
+            self._open_mind_map,
+            tool_tip=t("knowledge_tree_mind_map_tooltip"),
+        )
         self._refresh_btn = self._build_toolbar_button(
             t("common_refresh"),
             _readable_icon(
@@ -1133,6 +1165,7 @@ class KnowledgeTreeDialog(QDialog):
         )
         toolbar_layout.addWidget(self._study_btn)
         toolbar_layout.addWidget(self._add_btn)
+        toolbar_layout.addWidget(self._mind_map_btn)
         toolbar_layout.addWidget(self._search_edit, 1)
         toolbar_layout.addWidget(self._refresh_btn)
         outer.addWidget(toolbar)
@@ -1518,6 +1551,11 @@ class KnowledgeTreeDialog(QDialog):
             t("knowledge_tree_subset_review"),
             menu,
         )
+        mind_map_action = QAction(
+            _toolbar_glyph_icon("mind_map", self.palette()),
+            t("knowledge_tree_view_branch_mind_map"),
+            menu,
+        )
         browser_action = QAction(
             self._standard_icon(QStyle.StandardPixmap.SP_DialogOpenButton),
             t("knowledge_tree_edit_in_browser"),
@@ -1558,6 +1596,10 @@ class KnowledgeTreeDialog(QDialog):
         qconnect(postpone_action.triggered, lambda _checked=False: self._open_postpone_dialog())
         qconnect(study_action.triggered, lambda _checked=False: self._study_selected_branch())
         qconnect(subset_action.triggered, lambda _checked=False: self._open_subset_review_dialog())
+        qconnect(
+            mind_map_action.triggered,
+            lambda _checked=False: self._open_mind_map(selected_branch=True),
+        )
         qconnect(browser_action.triggered, lambda _checked=False: self._open_selected_in_browser())
         qconnect(open_pdf_action.triggered, lambda _checked=False: self._open_selected_pdf())
         qconnect(parent_action.triggered, lambda _checked=False: self._go_to_parent())
@@ -1569,6 +1611,7 @@ class KnowledgeTreeDialog(QDialog):
         priority_action.setEnabled(has_single_selection)
         study_action.setEnabled(has_single_selection)
         subset_action.setEnabled(has_single_selection)
+        mind_map_action.setEnabled(has_single_selection)
         browser_action.setEnabled(has_single_selection)
         open_pdf_action.setEnabled(open_pdf_enabled)
         open_pdf_action.setToolTip(open_pdf_tool_tip)
@@ -1591,6 +1634,7 @@ class KnowledgeTreeDialog(QDialog):
         menu.addSeparator()
         menu.addAction(study_action)
         menu.addAction(subset_action)
+        menu.addAction(mind_map_action)
         menu.addAction(priority_action)
         menu.addAction(postpone_action)
         menu.addSeparator()
@@ -2107,6 +2151,7 @@ class KnowledgeTreeDialog(QDialog):
         card_id = self._selected_card_id()
         single = selected_count == 1 and card_id is not None
         self._study_btn.setEnabled(single)
+        self._mind_map_btn.setEnabled(bool(self._rows_cache))
         self._inspect_btn.setEnabled(single)
         self._more_btn.setEnabled(selected_count > 0)
         self._add_topic_action.setText(t("knowledge_tree_add_topic_child") if card_id is not None else t("knowledge_tree_add_root_topic"))
@@ -2230,6 +2275,25 @@ class KnowledgeTreeDialog(QDialog):
             self._workspace_focus.setText(t("knowledge_tree_focused_current"))
         else:
             self._workspace_focus.setText(t("knowledge_tree_focused_other", title=focus_title))
+
+    def _open_mind_map(self, *, selected_branch: bool = False) -> None:
+        if not self._rows_cache:
+            tooltip(t("knowledge_tree_mind_map_empty"))
+            return
+        dialog = KnowledgeTreeMindMapDialog(
+            self._rows_cache,
+            selected_card_id=self._single_selected_card_id(),
+            initial_scope=(
+                SCOPE_SELECTED_BRANCH if selected_branch else SCOPE_WHOLE_TREE
+            ),
+            on_card_activated=self._activate_mind_map_card,
+            parent=self,
+        )
+        dialog.exec()
+
+    def _activate_mind_map_card(self, card_id: int) -> None:
+        self._select_card_id(int(card_id))
+        self._tree.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _start_edit(self, item: QTreeWidgetItem | None) -> None:
         if item is None:

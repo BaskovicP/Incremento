@@ -81,3 +81,28 @@ test("captureSnapshot requests only the HTML scope needed by the current action"
     globalThis.chrome = originalChrome;
   }
 });
+
+test("PDF snapshot preserves styles through both the content-script and direct-read paths", async () => {
+  const originalChrome = globalThis.chrome;
+  const messages = [];
+  const directReads = [];
+  globalThis.chrome = {
+    runtime: {lastError: null},
+    scripting: {async executeScript(request) {
+      if (request.func) {
+        directReads.push(request.args[2]);
+        return [{result: {ok: true, html: "<style>p{color:red}</style><p>Article</p>"}}];
+      }
+      return [];
+    }},
+    tabs: {sendMessage(_id, message, _options, callback) {messages.push(message); callback(null);}},
+  };
+  try {
+    const result = await captureSnapshot(42, {includeHtml: true, preserveStyles: true});
+    assert.match(result.html, /<style>/);
+    assert.deepEqual(messages, [{type: "GET_PAGE_CONTEXT", includeHtml: true, htmlScope: "full", preserveStyles: true}]);
+    assert.deepEqual(directReads, [{includeHtml: true, htmlScope: "full", preserveStyles: true}]);
+  } finally {
+    globalThis.chrome = originalChrome;
+  }
+});

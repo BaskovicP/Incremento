@@ -2,10 +2,11 @@ export function pageContextOptionsForImport(kind, options = {}) {
   const writingMode = String(options?.writingMode || "selection").toLowerCase();
   const needsPageMarkdown = kind === "writing" && writingMode === "webpage_markdown";
   return {
-    includeHtml: kind === "pdf" || needsPageMarkdown,
+    includeHtml: (kind === "pdf" && options?.pdfOptions?.dynamic !== true) || needsPageMarkdown,
     htmlScope: needsPageMarkdown && String(options?.pageContentScope || "main").toLowerCase() === "main"
       ? "main"
       : "full",
+    ...(kind === "pdf" ? {preserveStyles: true} : {}),
   };
 }
 
@@ -39,13 +40,13 @@ export function readPageContextFromTab(maxHtmlChars, maxSelectedTextChars, optio
     if (clonedRoot) {
       const ignoredSelectors = [
         "script",
-        "style",
         "noscript",
         "template",
         "svg",
         "canvas",
         "iframe",
       ];
+      if (options?.preserveStyles !== true) ignoredSelectors.push("style");
       if (htmlScope === "main") {
         ignoredSelectors.push("aside", "footer", "form", "header", "nav", "[hidden]", "[aria-hidden='true']");
       }

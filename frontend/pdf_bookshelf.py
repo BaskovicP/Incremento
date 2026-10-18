@@ -6,6 +6,7 @@ import html
 import math
 import os
 import re
+import sys
 import threading
 import unicodedata
 from collections import Counter, defaultdict, deque
@@ -67,6 +68,7 @@ try:
         EPUB_COVER_FIELD,
         EPUB_FILE_FIELD,
         EPUB_NOTE_TYPE,
+        epub_storage_abspath,
     )
     from ..backend.media_review import (
         linked_media_attachment_card_ids,
@@ -74,11 +76,16 @@ try:
     from ..backend.priority_manager import get_all_priorities
 except ImportError:
     from pdf_manager import PDF_COVER_FIELD, PDF_NOTE_TYPE, pdf_storage_abspath  # type: ignore
-    from epub_manager import EPUB_COVER_FIELD, EPUB_FILE_FIELD, EPUB_NOTE_TYPE  # type: ignore
+    from epub_manager import EPUB_COVER_FIELD, EPUB_FILE_FIELD, EPUB_NOTE_TYPE, epub_storage_abspath  # type: ignore
     from media_review import (  # type: ignore
         linked_media_attachment_card_ids,
     )
     from priority_manager import get_all_priorities  # type: ignore
+
+try:
+    from .file_shell import reveal_local_file
+except ImportError:
+    from file_shell import reveal_local_file
 
 
 _PREVIEW_WIDTH = 160
@@ -1183,6 +1190,23 @@ def _bookshelf_count_text(
     return count_label
 
 
+def _bookshelf_source_path(entry: _BookshelfEntry, *, profile: str) -> str:
+    """Return an existing document file contained in its captured profile."""
+    if not profile or not entry.source_filename:
+        return ""
+    resolver = {
+        _KIND_PDF: pdf_storage_abspath,
+        _KIND_EPUB: epub_storage_abspath,
+    }.get(entry.kind)
+    if resolver is None:
+        return ""
+    try:
+        path = resolver(entry.source_filename, profile=profile)
+        return path if path and os.path.isfile(path) else ""
+    except (OSError, RuntimeError, ValueError):
+        return ""
+
+
 def _existing_media_preview_path(media_dir: str, cover_filename: str) -> str:
     """Resolve an Anki media preview without allowing it to escape media.dir()."""
     raw = str(cover_filename or "").strip()
@@ -1730,6 +1754,21 @@ class _DocumentBookshelfDialog(QDialog):
         self._list.setCurrentItem(item)
 
         menu = QMenu(self)
+        reveal_key = (
+            "reader_pdf_sync_reveal_finder" if sys.platform == "darwin" else
+            "reader_pdf_sync_reveal_explorer" if sys.platform.startswith("win") else
+            "reader_pdf_sync_reveal_folder"
+        )
+        reveal_action = menu.addAction(t(reveal_key))
+        reveal_action.setEnabled(
+            str(_active_profile() or "") == self._profile
+            and bool(_bookshelf_source_path(entry, profile=self._profile))
+        )
+        qconnect(
+            reveal_action.triggered,
+            lambda _checked=False, target=entry: self._reveal_entry(target),
+        )
+        menu.addSeparator()
         delete_action = menu.addAction(t("reader_bookshelf_delete_document"))
         qconnect(
             delete_action.triggered,
@@ -1756,6 +1795,13 @@ class _DocumentBookshelfDialog(QDialog):
             )
 
         menu.exec(self._list.viewport().mapToGlobal(position))
+
+    def _reveal_entry(self, entry: _BookshelfEntry) -> None:
+        source_path = ""
+        if str(_active_profile() or "") == self._profile:
+            source_path = _bookshelf_source_path(entry, profile=self._profile)
+        if not source_path or not reveal_local_file(source_path):
+            tooltip(t("admin_file_reveal_failed"), parent=self)
 
     def _confirm_delete_entries(
         self,

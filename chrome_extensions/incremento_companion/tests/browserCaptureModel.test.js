@@ -54,6 +54,24 @@ test("normalizeBrowserCaptureSettings selects saved note type and deck when pres
   assert.equal(settings.fieldMappings.snapshotField, "");
 });
 
+test("remembered website tags replace stale global tags in text and snapshot capture defaults", () => {
+  const stored = {noteTypeName: "Basic", deckName: "Topics", priority: 12.5, tagsText: "data"};
+  const meta = {noteTypes: [{name: "Basic", fields: ["Front", "Back"]}], deckNames: ["Topics"],
+    websiteTags: {site: "updraft.cyfrin.io", enabled: true, tags: ["blockchain"]}};
+  const settings = normalizeBrowserCaptureSettings(stored, meta);
+  assert.equal(settings.tagsText, "blockchain");
+  assert.equal(settings.priority, 12.5);
+  assert.equal(stored.tagsText, "data");
+  assert.deepEqual(buildBrowserCapturePayload({url: "https://updraft.cyfrin.io/lesson", selectedText: "Selection"}, settings).tags, ["blockchain"]);
+});
+
+test("an explicitly remembered empty set overrides old tags while sites without a set keep legacy defaults", () => {
+  const stored = {tagsText: "data"};
+  assert.equal(normalizeBrowserCaptureSettings(stored, {websiteTags: {enabled: true, tags: []}}).tagsText, "");
+  assert.equal(normalizeBrowserCaptureSettings(stored, {websiteTags: {enabled: false, tags: []}}).tagsText, "data");
+  assert.equal(normalizeBrowserCaptureSettings(stored, {}).tagsText, "data");
+});
+
 test("updateMappingsForNoteType stores mappings by note type", () => {
   const updated = updateMappingsForNoteType(
     { mappingsByNoteType: {}, noteTypeName: "Basic", fieldMappings: {} },

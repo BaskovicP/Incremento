@@ -23,7 +23,7 @@ The ZIP now includes:
 
 Transient runtime lock files are skipped.
 
-Before export, Incremento checks the active profile database with SQLite's integrity check and creates its database copy through SQLite's backup API. The completed ZIP is reopened for validation before it atomically replaces the selected destination. Automatic exports build their temporary ZIP outside the selected folder when the filesystem permits, so desktop sync services see only the validated final slot instead of uploading a temporary `.incremento-backup-*.zip` as an additional cloud file.
+Before export, Incremento opens a dedicated read-only connection to the active profile database and creates its database copy through SQLite's backup API. It checks both the source and the completed database copy with SQLite's integrity check, so stale search-index state in a reused background connection cannot block a healthy backup. A failed check stops the export and leaves the previous backup intact. The completed ZIP is reopened for validation before it atomically replaces the selected destination. Automatic exports build their temporary ZIP outside the selected folder when the filesystem permits, so desktop sync services see only the validated final slot instead of uploading a temporary `.incremento-backup-*.zip` as an additional cloud file.
 
 ## Automatic backups
 

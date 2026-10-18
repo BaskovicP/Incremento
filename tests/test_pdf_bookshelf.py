@@ -4,6 +4,9 @@ import sys
 import threading
 from pathlib import Path
 from textwrap import dedent
+from types import SimpleNamespace
+
+import pytest
 
 
 # Some older dialog tests replace the shared aqt.qt test double during
@@ -44,7 +47,13 @@ if _qt_module is not None:
     if not hasattr(_qt_module, "qconnect"):
         _qt_module.qconnect = lambda *_args, **_kwargs: None
 
-import pdf_bookshelf
+# Real class bases let the menu callbacks execute under the shared Qt stub.
+# Restore the Qt boundary immediately so other dialog tests keep their own setup.
+with pytest.MonkeyPatch.context() as _imports:
+    if _qt_module is not None:
+        for _name in ("QDialog", "QCompleter", "QStyledItemDelegate"):
+            _imports.setattr(_qt_module, _name, type(_name, (), {}))
+    import pdf_bookshelf
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -820,6 +829,137 @@ def test_bookshelf_dialog_exposes_duplicate_filter_and_safe_delete_context_menu(
     assert "self._start_duplicate_attachment_scan()" in source
     assert '"reader_bookshelf_attached_badge_tooltip"' in source
     assert "self._list.itemClicked" not in source
+
+
+@pytest.fixture
+def bookshelf_reveal_menu(monkeypatch, tmp_path):
+    import epub_manager
+    import pdf_manager
+
+    profile = "ShelfProfile"
+    roots = {kind: tmp_path / profile / kind.lower() for kind in ("PDF", "EPUB")}
+    for root in roots.values():
+        root.mkdir(parents=True)
+    monkeypatch.setattr(pdf_manager, "get_pdf_dir", lambda selected: str(tmp_path / selected / "pdf"))
+    monkeypatch.setattr(epub_manager, "get_epub_dir", lambda selected: str(tmp_path / selected / "epub"))
+    monkeypatch.setattr(pdf_bookshelf, "_active_profile", lambda: profile)
+    monkeypatch.setattr(pdf_bookshelf, "qconnect", lambda signal, callback: signal.connect(callback))
+    calls = []
+    monkeypatch.setattr(pdf_bookshelf, "reveal_local_file", lambda path: calls.append(path) or True)
+    notices = []
+    monkeypatch.setattr(pdf_bookshelf, "tooltip", lambda message, **_kwargs: notices.append(message))
+
+    class Menu:
+        def __init__(self, parent):
+            self.actions = []
+            parent.menu = self
+
+        def addAction(self, label):
+            action = SimpleNamespace(label=label, enabled=True)
+            action.setEnabled = lambda enabled: setattr(action, "enabled", enabled)
+            action.triggered = SimpleNamespace(connect=lambda callback: setattr(action, "trigger", callback))
+            self.actions.append(action)
+            return action
+
+        def addSeparator(self):
+            pass
+
+        def exec(self, _position):
+            pass
+
+    monkeypatch.setattr(pdf_bookshelf, "QMenu", Menu)
+
+    def show(entry):
+        item = SimpleNamespace(data=lambda _role: entry)
+        selected = []
+        dialog = SimpleNamespace(
+            _profile=profile,
+            _list=SimpleNamespace(
+                itemAt=lambda _position: item,
+                setCurrentItem=selected.append,
+                viewport=lambda: SimpleNamespace(mapToGlobal=lambda position: position),
+            ),
+            _duplicates_for_entry=lambda _entry: (),
+            _confirm_delete_entries=lambda *_args: pytest.fail("Reveal must not delete a book"),
+            _reveal_entry=lambda target: pdf_bookshelf._DocumentBookshelfDialog._reveal_entry(dialog, target),
+        )
+        pdf_bookshelf._DocumentBookshelfDialog._show_context_menu(dialog, (10, 10))
+        assert selected == [item]
+        return dialog.menu.actions[0]
+
+    return SimpleNamespace(show=show, roots=roots, calls=calls, notices=notices, profile=profile)
+
+
+@pytest.mark.parametrize("kind", ["PDF", "EPUB"])
+@pytest.mark.parametrize(
+    ("platform", "label"),
+    [("darwin", "Show in Finder"), ("win32", "Show in File Explorer"), ("linux", "Show containing folder")],
+)
+def test_bookshelf_right_click_reveals_clicked_document_file(bookshelf_reveal_menu, monkeypatch, kind, platform, label):
+    shelf = bookshelf_reveal_menu
+    source = shelf.roots[kind] / f"A book with spaces.{kind.lower()}"
+    source.write_bytes(b"document")
+    entry = pdf_bookshelf._BookshelfEntry("Selected book", 1, kind, source_filename=source.name)
+    monkeypatch.setattr(sys, "platform", platform)
+
+    action = shelf.show(entry)
+    assert action.label == label
+    assert action.enabled
+    action.trigger()
+
+    assert shelf.calls == [str(source)]
+    assert shelf.notices == []
+    assert source.read_bytes() == b"document"
+
+
+@pytest.mark.parametrize("kind", ["PDF", "EPUB"])
+@pytest.mark.parametrize("target", ["missing", "empty", "directory", "traversal", "absolute", "symlink"])
+def test_bookshelf_reveal_is_disabled_for_missing_or_unsafe_files(bookshelf_reveal_menu, kind, target):
+    shelf = bookshelf_reveal_menu
+    outside = shelf.roots[kind].parent / "outside.book"
+    outside.write_bytes(b"private")
+    filename = "missing.book"
+    if target == "empty":
+        filename = ""
+    elif target == "directory":
+        filename = "folder"
+        (shelf.roots[kind] / filename).mkdir()
+    elif target == "traversal":
+        filename = "../outside.book"
+    elif target == "absolute":
+        filename = str(outside)
+    elif target == "symlink":
+        filename = "linked.book"
+        (shelf.roots[kind] / filename).symlink_to(outside)
+    entry = pdf_bookshelf._BookshelfEntry("Unavailable", 1, kind, source_filename=filename)
+
+    action = shelf.show(entry)
+
+    assert not action.enabled
+    action.trigger()  # Even a stale/queued signal must fail closed.
+    assert shelf.calls == []
+    assert shelf.notices
+
+
+@pytest.mark.parametrize("change", ["removed", "profile_switched", "reveal_failed"])
+def test_bookshelf_reveal_rechecks_file_and_profile_when_triggered(bookshelf_reveal_menu, monkeypatch, change):
+    shelf = bookshelf_reveal_menu
+    source = shelf.roots["PDF"] / "book.pdf"
+    source.write_bytes(b"document")
+    entry = pdf_bookshelf._BookshelfEntry("Book", 1, "PDF", source_filename=source.name)
+    action = shelf.show(entry)
+    assert action.enabled
+    if change == "removed":
+        source.unlink()
+    elif change == "profile_switched":
+        monkeypatch.setattr(pdf_bookshelf, "_active_profile", lambda: "AnotherProfile")
+    else:
+        monkeypatch.setattr(pdf_bookshelf, "reveal_local_file", lambda _path: False)
+
+    action.trigger()
+
+    assert shelf.calls == []
+    assert shelf.notices == [pdf_bookshelf.t("admin_file_reveal_failed")]
 
 
 def test_bookshelf_attachment_badge_renders_above_normal_and_selected_cover():

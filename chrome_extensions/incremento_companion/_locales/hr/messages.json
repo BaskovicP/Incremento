@@ -914,7 +914,7 @@
     "message": "Polje izvornog URL-a"
   },
   "source_url_note": {
-    "message": "URL trenutačne stranice uvijek je dostupan."
+    "message": "Umeće naslov stranice kao poveznicu. Dostupni izvorni metapodaci čuvaju se odvojeno."
   },
   "snapshot_field": {
     "message": "Polje snimke"
@@ -959,7 +959,7 @@
     "message": "Odabrani tekst"
   },
   "inserted_text_note": {
-    "message": "Ovaj se sadržaj umeće u polje odabranog teksta ako je odabrano."
+    "message": "Čuva sigurne odlomke, popise i naglašavanje. Uređivanje izvatka koristi čist običan tekst."
   },
   "snapshots": {
     "message": "Snimke"
@@ -1307,5 +1307,161 @@
   },
   "language_pack_error_file": {
     "message": "Datoteku nije moguće pročitati ili izvesti. Pokušaj ponovno."
+  },
+  "pdf_export_heading": {
+    "message": "Web-stranica u PDF"
+  },
+  "pdf_export_description": {
+    "message": "Ove postavke vrijede za Dodaj kao PDF i tipkovni prečac za PDF. Postojeće PDF datoteke uvoze se bez promjena."
+  },
+  "pdf_export_layout": {
+    "message": "Izgled"
+  },
+  "pdf_export_website": {
+    "message": "Izgled web-stranice"
+  },
+  "pdf_export_article": {
+    "message": "Pročišćeni članak"
+  },
+  "pdf_export_print": {
+    "message": "Izgled za ispis (Wikipedia PDF)"
+  },
+  "pdf_export_dynamic": {
+    "message": "Učitaj sadržaj dodan JavaScriptom"
+  },
+  "pdf_export_dynamic_help": {
+    "message": "Najprije postavite komponentu preglednika u Ankiju → Incremento → Dodaj sadržaj → Web-stranica u PDF. Javna stranica učitava se ponovno, bez vaše prijave u Chromeu."
+  },
+  "pdf_export_links": {
+    "message": "Dodaj popis odredišta poveznica"
+  },
+  "settings_load_error": {
+    "message": "Postavke se nisu mogle učitati. Pokušajte ponovno."
+  },
+  "settings_save_error": {
+    "message": "Postavke se nisu mogle spremiti. Pokušajte ponovno."
+  },
+  "capture_opened_page_pdf": {
+    "message": "Snimi otvorenu stranicu kao PDF"
+  },
+  "capture_opened_page_pdf_help": {
+    "message": "Upotrijebi već učitanu stranicu, uključujući sadržaj dodan JavaScriptom. Najprije dovršite CAPTCHA provjeru ili prijavu. PDF se stvara u Ankiju bez spremanja datoteke."
+  },
+  "command_capture_opened_page_pdf": {
+    "message": "Snimi otvorenu stranicu u Incremento kao PDF"
+  },
+  "handoff_title": {
+    "message": "Dovršite provjeru za spremanje stranice"
+  },
+  "handoff_permission": {
+    "message": "Dopustite Companionu da automatski snimi {site} nakon što dovršite provjeru. Dopuštenje je potrebno dati samo jednom."
+  },
+  "handoff_allow": {
+    "message": "Dopusti ovu stranicu i nastavi"
+  },
+  "handoff_waiting": {
+    "message": "Dovršite provjeru na stranici. Incremento će je spremiti kao PDF i automatski vas vratiti u Anki."
+  },
+  "handoff_expired": {
+    "message": "Ovaj uvoz više ne čeka. Ponovno pokrenite Web-stranica u PDF u Ankiju."
+  },
+  "handoff_capture_failed": {
+    "message": "Stranicu nije bilo moguće snimiti. Vratite se u Anki i pokušajte ponovno."
+  },
+  "website_tags_remember": {
+    "message": "Zapamti oznake za ovu web-stranicu"
+  },
+  "website_tags_help": {
+    "message": "Vrijedi za sve stranice na $SITE$. Sprema se u aktivnom Anki profilu; isključite za brisanje.",
+    "placeholders": {
+      "site": {
+        "content": "$1"
+      }
+    }
+  },
+  "website_tags_loading": {
+    "message": "Učitavanje oznaka web-stranice…"
+  },
+  "website_tags_saving": {
+    "message": "Spremanje oznaka web-stranice…"
+  },
+  "website_tags_error": {
+    "message": "Oznake web-stranice nije moguće učitati ili spremiti."
+  },
+  "website_tags_retry": {
+    "message": "Pokušaj ponovno"
+  },
+  "website_tags_page_changed": {
+    "message": "Aktivna web-stranica se promijenila. Ponovno otvorite skočni prozor prije uvoza."
+  },
+  "capture_edit_title": {
+    "message": "Naslov stranice"
+  },
+  "capture_link_passage": {
+    "message": "Poveži s izvornim odlomkom"
+  },
+  "capture_passage_hint": {
+    "message": "Koristi izvorni odabir i nakon uređivanja izvatka. Ako se stranica promijeni ili poveznice na odlomke nisu podržane, izvorna stranica i dalje se otvara."
+  },
+  "capture_preview": {
+    "message": "Pregled"
+  },
+  "capture_field_preview": {
+    "message": "Pregled polja"
+  },
+  "capture_preview_hint": {
+    "message": "Prikazuje sadržaj koji se sprema u svako polje. Predložak kartice u Ankiju određuje konačni izgled."
+  },
+  "capture_preview_unique_title": {
+    "message": "Prikazuje sadržaj polja. Pri izradi bilješke dodaje se jedinstvena oznaka naslova; predložak u Ankiju određuje konačni izgled."
+  },
+  "capture_source_link": {
+    "message": "Izvor: $TITLE$",
+    "placeholders": {
+      "title": {
+        "content": "$1"
+      }
+    }
+  },
+  "capture_duplicate_found": {
+    "message": "Ovaj je odlomak već izdvojen. Otvorite postojeću bilješku ili odaberite Izradi još jednu za ponovno spremanje."
+  },
+  "capture_open_existing": {
+    "message": "Otvori postojeću bilješku"
+  },
+  "capture_create_another": {
+    "message": "Izradi još jednu"
+  },
+  "capture_existing_opened": {
+    "message": "Postojeća bilješka otvorena je u Ankiju."
+  },
+  "capture_preview_loading": {
+    "message": "Priprema pregleda…"
+  },
+  "capture_opening_existing": {
+    "message": "Otvaranje postojeće bilješke…"
+  },
+  "snapshot_permission_required": {
+    "message": "Chrome nije odobrio ovu snimku. U Chrome → Proširenja → Tipkovni prečaci postavite opseg prečaca za snimanje na „In Chrome” i pokušajte ponovno na stranici ili najprije kliknite ikonu Incremento Companion na alatnoj traci. Prečaci s opsegom „Global” ne daju dopuštenje za snimanje."
+  },
+  "snapshot_tab_changed": {
+    "message": "Kartica za snimanje se promijenila. Vratite se na stranicu na kojoj ste pokrenuli snimanje i pokušajte ponovno."
+  },
+  "snapshot_registered_shortcut": {
+    "message": "Za snimke koristite $SHORTCUT$. U Chrome → Proširenja → Tipkovni prečaci postavite opseg na „In Chrome” ili kliknite Companion i pokrenite snimanje. Prečaci s opsegom „Global” ne daju dopuštenje za snimanje.",
+    "placeholders": {
+      "shortcut": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshot_shortcut_unassigned": {
+    "message": "U Chrome → Proširenja → Tipkovni prečaci dodijelite prečac za snimanje s opsegom „In Chrome” ili kliknite ikonu Companion i pokrenite snimanje."
+  },
+  "snapshot_shortcut_scope": {
+    "message": "Za snimanje postavite opseg prečaca na „In Chrome” u Chrome → Proširenja → Tipkovni prečaci. Opseg „Global” ne daje dopuštenje za snimanje."
+  },
+  "snapshot_warning_dismiss": {
+    "message": "Zatvori upozorenje"
   }
 }

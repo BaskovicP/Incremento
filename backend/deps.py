@@ -4,8 +4,9 @@ Dependency detection and guided installation for Incremento.
 Two kinds of dependency:
   - Python packages (PyMuPDF / fitz): explicitly installed with a compatible
     interpreter into Incremento's local dependency folder.
-  - System binaries (Tesseract): must be installed by the user at the OS
-    level; we provide platform-specific instructions.
+  - System binaries: Tesseract remains a guided manual install. FFmpeg can be
+    installed explicitly through Homebrew or winget when either is available;
+    other platforms receive package-manager instructions.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ import uuid
 
 PYMUPDF_REQUIREMENT = "PyMuPDF>=1.26,<2"
 _install_lock = threading.Lock()
+_ffmpeg_install_lock = threading.Lock()
 _PYTHON_NAME = re.compile(r'python(?:3(?:\.\d+)?)?(?:\.exe)?$', re.IGNORECASE)
 _PYTHON_PROBE = (
     'import json,platform,sys,pip; print(json.dumps({"version": list(sys.version_info[:2]), '
@@ -195,6 +197,45 @@ def has_tesseract() -> bool:
     return tesseract_path() is not None
 
 
+def _executable_path(name: str, candidates: tuple[str, ...] = ()) -> str | None:
+    paths = [shutil.which(name), *candidates]
+    return next(
+        (
+            path
+            for path in paths
+            if path and os.path.isfile(path) and os.access(path, os.X_OK)
+        ),
+        None,
+    )
+
+
+def ffmpeg_path() -> str | None:
+    """Find FFmpeg even when Anki's GUI process has a restricted PATH."""
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    windows_candidates = (
+        str(Path(local_app_data) / "Microsoft" / "WinGet" / "Links" / "ffmpeg.exe")
+        if local_app_data
+        else "",
+        str(Path(os.environ.get("ProgramData", r"C:\ProgramData")) /
+            "chocolatey" / "bin" / "ffmpeg.exe"),
+        str(Path(os.environ.get("ProgramFiles", r"C:\Program Files")) /
+            "ffmpeg" / "bin" / "ffmpeg.exe"),
+    )
+    return _executable_path(
+        "ffmpeg",
+        (
+            "/opt/homebrew/bin/ffmpeg",
+            "/usr/local/bin/ffmpeg",
+            "/usr/bin/ffmpeg",
+            *windows_candidates,
+        ),
+    )
+
+
+def has_ffmpeg() -> bool:
+    return ffmpeg_path() is not None
+
+
 def djvu_tools() -> dict[str, str]:
     """Find already installed DjVuLibre tools; never install them implicitly."""
     found = {}
@@ -222,6 +263,7 @@ def status() -> dict[str, bool]:
     return {
         "pymupdf":   has_pymupdf(),
         "tesseract": has_tesseract(),
+        "ffmpeg":    has_ffmpeg(),
     }
 
 
@@ -248,6 +290,38 @@ def tesseract_instructions() -> str:
     return (
         t('backend_deps_tesseract_linux')
     )
+
+
+def ffmpeg_install_command() -> list[str] | None:
+    """Return a fixed, user-invoked package-manager command when safe."""
+    if _platform() == "Darwin":
+        brew = _executable_path(
+            "brew", ("/opt/homebrew/bin/brew", "/usr/local/bin/brew")
+        )
+        return [brew, "install", "ffmpeg"] if brew else None
+    if _platform() == "Windows":
+        local_app_data = os.environ.get("LOCALAPPDATA", "")
+        aliases = (
+            str(Path(local_app_data) / "Microsoft" / "WindowsApps" / "winget.exe"),
+        ) if local_app_data else ()
+        winget = _executable_path("winget", aliases)
+        if winget:
+            return [
+                winget,
+                "install",
+                "--id",
+                "Gyan.FFmpeg",
+                "--exact",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+                "--silent",
+            ]
+    return None
+
+
+def ffmpeg_instructions() -> str:
+    key = {"Darwin": "mac", "Windows": "windows"}.get(_platform(), "linux")
+    return t("backend_deps_ffmpeg_" + key)
 
 
 def pymupdf_instructions() -> str:
@@ -293,6 +367,36 @@ def install_pymupdf(mw, on_done: "Callable[[bool], None] | None" = None) -> None
     mw.taskman.run_in_background(_task, _on_done)
 
 
+def _install_ffmpeg_package() -> bool:
+    with _ffmpeg_install_lock:
+        command = ffmpeg_install_command()
+        if not command:
+            return False
+        try:
+            proc = subprocess.run(
+                command,
+                capture_output=True,
+                timeout=900,
+                env=_subprocess_env(),
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return proc.returncode == 0 and ffmpeg_path() is not None
+
+
+def install_ffmpeg(mw, on_done: "Callable[[bool], None] | None" = None) -> None:
+    """Install FFmpeg after an explicit click, off Anki's main thread."""
+    def _on_done(fut) -> None:
+        try:
+            ok = fut.result()
+        except Exception:
+            ok = False
+        if on_done:
+            on_done(ok)
+
+    mw.taskman.run_in_background(_install_ffmpeg_package, _on_done)
+
+
 # ---------------------------------------------------------------------------
 # First-run setup dialog
 # ---------------------------------------------------------------------------
@@ -310,8 +414,9 @@ def show_setup_dialog(mw, force: bool = False) -> None:
     )
     from aqt.utils import tooltip
 
-    pymupdf_ok  = has_pymupdf()
-    tess_ok     = has_tesseract()
+    pymupdf_ok = has_pymupdf()
+    tess_ok = has_tesseract()
+    ffmpeg_ok = has_ffmpeg()
 
     dlg = QDialog(mw)
     dlg.setWindowTitle(t('backend_deps_title'))
@@ -377,6 +482,25 @@ def show_setup_dialog(mw, force: bool = False) -> None:
 
     layout.addWidget(_tess_browser)
 
+    # FFmpeg row
+    layout.addLayout(_row(t('backend_deps_ffmpeg'), ffmpeg_ok))
+
+    _ffmpeg_status = QLabel()
+    _ffmpeg_status.setWordWrap(True)
+    _ffmpeg_status.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    _ffmpeg_install_btn = QPushButton(t('backend_deps_install_ffmpeg'))
+
+    if ffmpeg_ok:
+        _ffmpeg_status.setText(t("backend_deps_found", path=ffmpeg_path()))
+        _ffmpeg_install_btn.setVisible(False)
+    else:
+        _ffmpeg_status.setText(ffmpeg_instructions())
+        _ffmpeg_install_btn.setVisible(ffmpeg_install_command() is not None)
+        _ffmpeg_install_btn.setStyleSheet("font-weight: bold;")
+
+    layout.addWidget(_ffmpeg_status)
+    layout.addWidget(_ffmpeg_install_btn)
+
     layout.addLayout(_row(t("backend_deps_djvulibre"), len(djvu_tools()) == 2))
     djvu_help = QLabel(djvulibre_instructions())
     djvu_help.setWordWrap(True)
@@ -437,5 +561,27 @@ def show_setup_dialog(mw, force: bool = False) -> None:
         install_pymupdf(mw, on_done=_done)
 
     _pymupdf_install_btn.clicked.connect(_do_install)
+
+    def _do_install_ffmpeg() -> None:
+        _ffmpeg_install_btn.setEnabled(False)
+        _ffmpeg_install_btn.setText(t('backend_deps_installing'))
+        _ffmpeg_status.setText(t('backend_deps_installing_ffmpeg'))
+
+        def _done(ok: bool) -> None:
+            if ok:
+                _ffmpeg_install_btn.setText(t('backend_deps_installed_check'))
+                _ffmpeg_install_btn.setVisible(False)
+                _ffmpeg_status.setText(t("backend_deps_found", path=ffmpeg_path()))
+                tooltip(t('backend_deps_ffmpeg_ready'))
+            else:
+                _ffmpeg_install_btn.setEnabled(True)
+                _ffmpeg_install_btn.setText(t('backend_deps_install_ffmpeg'))
+                _ffmpeg_status.setText(
+                    t('backend_deps_install_failed') + "<br><br>" + ffmpeg_instructions()
+                )
+
+        install_ffmpeg(mw, on_done=_done)
+
+    _ffmpeg_install_btn.clicked.connect(_do_install_ffmpeg)
 
     dlg.exec()

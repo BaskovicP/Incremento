@@ -176,6 +176,12 @@ msgstr "Rezervni prioritet izdvajanja:"
 msgid "settings_focus_timer"
 msgstr "Mjerač fokusa"
 
+msgid "settings_statistics"
+msgstr "Statistika"
+
+msgid "settings_show_daily_topic_item_tag_charts_on_deck_screen"
+msgstr "Prikaži dnevne grafikone tema i stavki po oznakama na početnom zaslonu"
+
 msgid "settings_for_example_10_schedules_110_of_the_normal_next"
 msgstr "Primjerice, 10% postavlja 110% uobičajenog sljedećeg intervala i množi trajni A-faktor s 1,1."
 
@@ -299,6 +305,9 @@ msgstr "Dodatni filtar. Ako je popunjen, automatski mjerač pokreće se samo za 
 msgid "settings_parent_cards_in_extract_card"
 msgstr "Roditeljske kartice u Izdvoji karticu"
 
+msgid "settings_pdf_context_rows_before_and_after"
+msgstr "Redci PDF konteksta prije i poslije:"
+
 msgid "settings_pdf_highlight_card_target_field"
 msgstr "Ciljno polje kartice iz PDF isticanja:"
 
@@ -400,6 +409,12 @@ msgstr "Prikaži polja metapodataka / OCR-a Incrementa u pregledniku i uređiva�
 
 msgid "settings_show_markdown_preview_in_writing_cards"
 msgstr "Prikaži Markdown pretpregled u karticama za pisanje"
+
+msgid "settings_show_pdf_context_when_hovering_page_links"
+msgstr "Prikaži PDF kontekst pri zadržavanju pokazivača iznad poveznica na stranice"
+
+msgid "settings_show_pdf_highlight_delete_buttons"
+msgstr "Prikaži X za brisanje na PDF isticanjima"
 
 msgid "settings_show_priority_dialog_after_each_card_is_done_before"
 msgstr "Prikaži dijalog prioriteta nakon svake dovršene kartice prije nastavka"
@@ -715,3 +730,36 @@ msgstr "CSV tablice (*.csv *.tsv);;Sve datoteke (*)"
 
 msgid "settings_language_profile_changed"
 msgstr "Aktivni profil se promijenio. Ponovno otvorite Postavke za uvoz prijevoda u željeni profil."
+
+msgid "settings_learning_leech"
+msgstr "Teške kartice u učenju"
+
+msgid "settings_learning_leech_enabled"
+msgstr "Označi teške kartice tijekom učenja"
+
+msgid "settings_learning_leech_threshold"
+msgstr "Prag odgovora Again:"
+
+msgid "settings_learning_leech_tag"
+msgstr "Oznaka:"
+
+msgid "settings_learning_leech_hint"
+msgstr "Broje se svi odgovori Again za pojedinu karticu tijekom početnog učenja, uključujući prvi odgovor i učenje tijekom više dana. Na zadanom pragu bilješka dobiva ovu oznaku, bez suspendiranja kartice. Ponavljanje, ponovno učenje i pregled bez promjene rasporeda ne broje se. Undo/Redo obuhvaća i dodanu oznaku."
+
+msgid "settings_learning_leech_tag_invalid"
+msgstr "Unesite jednu oznaku do 255 znakova, bez razmaka ili praznih razina ::."
+
+msgid "settings_pdf_citation_numbering"
+msgstr "Numeriranje stranica u PDF citatima"
+
+msgid "settings_pdf_citation_numbering_printed"
+msgstr "Tiskana oznaka stranice (zadano)"
+
+msgid "settings_pdf_citation_numbering_pdf"
+msgstr "Broj PDF stranice"
+
+msgid "settings_pdf_citation_numbering_both"
+msgstr "Tiskana oznaka i PDF stranica"
+
+msgid "settings_pdf_citation_numbering_hint"
+msgstr "Vrijedi za izdvajanje iz PDF-a, kartice iz istaknutog teksta i Kopiraj poveznicu na ovo mjesto. Ako tiskana oznaka nedostaje, koristi se broj PDF stranice. Poveznice uvijek otvaraju fizičku PDF stranicu."

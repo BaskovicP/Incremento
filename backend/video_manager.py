@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import re
 import shutil
@@ -8,6 +9,7 @@ import tempfile
 import uuid
 from collections import deque
 from collections.abc import Callable
+from html import escape as _html_escape
 from html import unescape as _html_unescape
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -17,6 +19,7 @@ from urllib.request import Request
 try:
     from .content_safety import external_plain_text, external_plain_text_to_anki_html
     from .network_safety import open_public_http, read_response_limited
+    from .deps import ffmpeg_path as _ffmpeg_path
     from .db import get_connection
     from . import paths as _paths
     from .note_metadata import (
@@ -43,6 +46,7 @@ except ImportError:
         external_plain_text_to_anki_html,
     )
     from network_safety import open_public_http, read_response_limited  # type: ignore
+    from deps import ffmpeg_path as _ffmpeg_path  # type: ignore
     from db import get_connection
     import paths as _paths
     from note_metadata import (  # type: ignore
@@ -77,6 +81,8 @@ VIDEO_SUBTITLE_FIELDS = (
     REFERENCE_SUBTITLE_LABEL_FIELD,
 )
 _MAX_VIDEO_STEM = 80
+MAX_MOBILE_CLIP_SECONDS = 10 * 60
+MAX_ANKI_VIDEO_CLIP_BYTES = 100_000_000
 
 CARD_TEMPLATE_FRONT = """
 <div style="text-align:center; padding:60px 20px; font-family:sans-serif; color:#888;">
@@ -312,7 +318,22 @@ def _yt_dlp_cmd(allow_auto_install: bool = False) -> list[str] | None:
 
 
 def _video_tools(allow_auto_install_yt: bool = False) -> tuple[list[str] | None, str | None]:
-    return _yt_dlp_cmd(allow_auto_install=allow_auto_install_yt), shutil.which("ffmpeg")
+    return _yt_dlp_cmd(allow_auto_install=allow_auto_install_yt), _ffmpeg_path()
+
+
+def _ytdlp_javascript_runtime_args() -> list[str]:
+    """Explicitly enable the first installed runtime supported by current yt-dlp."""
+    for runtime, binary_names in (
+        ("deno", ("deno",)),
+        ("node", ("node",)),
+        ("bun", ("bun",)),
+        ("quickjs", ("qjs", "quickjs")),
+    ):
+        for binary_name in binary_names:
+            binary = shutil.which(binary_name)
+            if binary:
+                return ["--js-runtimes", f"{runtime}:{binary}"]
+    return []
 
 
 def video_download_requirements() -> list[str]:
@@ -569,6 +590,7 @@ def list_available_video_resolutions(addon_dir: str, profile: str, video_url: st
 
     base_cmd = [
         *yt_dlp_cmd,
+        *_ytdlp_javascript_runtime_args(),
         "--no-playlist",
         "--no-warnings",
         "-J",
@@ -690,6 +712,7 @@ def list_available_video_subtitles(addon_dir: str, profile: str, video_url: str)
 
     base_cmd = [
         *yt_dlp_cmd,
+        *_ytdlp_javascript_runtime_args(),
         "--no-playlist",
         "--no-warnings",
         "--skip-download",
@@ -758,6 +781,7 @@ def _run_ytdlp_subtitle_download(
         output_template = tmp / f"{video_key}.%(ext)s"
         base_cmd = [
             *yt_dlp_cmd,
+            *_ytdlp_javascript_runtime_args(),
             "--no-playlist",
             "--no-warnings",
             "--skip-download",
@@ -861,6 +885,7 @@ def _run_yt_dlp_with_progress(
     progress_cb: Callable[[int, str], None] | None,
     mode: str = "download",
     max_height: int | None = None,
+    download_sections: tuple[float, float] | None = None,
 ) -> None:
     merge_mode = mode in ("compressible", "original")
 
@@ -881,14 +906,27 @@ def _run_yt_dlp_with_progress(
 
     all_tail: list[str] = []
     downloaded = False
+    section_args: list[str] = []
+    if download_sections is not None:
+        section_start, section_end = validate_mobile_video_clip_range(
+            download_sections[0],
+            download_sections[1],
+        )
+        section_args = [
+            "--download-sections",
+            f"*{section_start:.3f}-{section_end:.3f}",
+            "--force-keyframes-at-cuts",
+        ]
     for selector_index, selector in enumerate(selectors):
         # Deduplicate selector sequence while preserving the final None fallback.
         if selector_index < len(selectors) - 1 and selector in selectors[:selector_index]:
             continue
         base_cmd = [
             *yt_dlp_cmd,
+            *_ytdlp_javascript_runtime_args(),
             "--no-playlist",
             "--newline",
+            *section_args,
         ]
         if selector:
             base_cmd.extend(["-f", selector])
@@ -1127,6 +1165,314 @@ def _unique_target_path(out_dir: Path, stem: str, ext: str) -> Path:
     return out_dir / f"{base}-{uuid.uuid4().hex}{ext_norm}"
 
 
+def validate_mobile_video_clip_range(
+    start_sec: float,
+    end_sec: float,
+    source_duration_sec: float | None = None,
+) -> tuple[float, float]:
+    """Validate one bounded in/out range for a synced mobile video clip."""
+    try:
+        start = float(start_sec)
+        end = float(end_sec)
+    except (TypeError, ValueError):
+        raise ValueError("Clip start and end times must be valid numbers.") from None
+    if not math.isfinite(start) or not math.isfinite(end):
+        raise ValueError("Clip start and end times must be finite.")
+    if start < 0:
+        raise ValueError("Clip start time cannot be negative.")
+    if end <= start:
+        raise ValueError("Clip end time must be after its start time.")
+    if end - start > float(MAX_MOBILE_CLIP_SECONDS) + 1e-6:
+        raise ValueError(
+            f"Mobile video clips are limited to {MAX_MOBILE_CLIP_SECONDS // 60} minutes."
+        )
+    if source_duration_sec is not None:
+        try:
+            source_duration = float(source_duration_sec)
+        except (TypeError, ValueError):
+            source_duration = 0.0
+        if math.isfinite(source_duration) and source_duration > 0 and end > source_duration + 0.25:
+            raise ValueError("Clip end time exceeds the source video duration.")
+    return start, end
+
+
+def _clip_time_token(seconds: float) -> str:
+    value = max(0, int(round(float(seconds or 0.0))))
+    hours, remainder = divmod(value, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours:02d}{minutes:02d}{secs:02d}"
+    return f"{minutes:02d}{secs:02d}"
+
+
+def _mobile_video_clip_media_name(
+    source_title: str,
+    start_sec: float,
+    end_sec: float,
+) -> str:
+    title = _safe_video_slug(source_title or "video")
+    title = title[:48].strip("._-") or "video"
+    return (
+        f"incremento-video-clip-{title}-{_clip_time_token(start_sec)}-"
+        f"{_clip_time_token(end_sec)}-{uuid.uuid4().hex[:12]}.mp4"
+    )
+
+
+def render_mobile_video_clip(
+    source_path: str | Path,
+    destination_path: str | Path,
+    start_sec: float,
+    end_sec: float,
+    *,
+    progress_cb: Callable[[int, str], None] | None = None,
+) -> Path:
+    """Render a bounded H.264/AAC MP4 suitable for normal Anki media sync."""
+    source = Path(source_path)
+    destination = Path(destination_path)
+    if not source.is_file() or source.stat().st_size <= 0:
+        raise ValueError("The local source video is missing or empty.")
+    if source.suffix.lower() not in _VIDEO_EXTS:
+        raise ValueError("The local source video format is not supported.")
+    if destination.suffix.lower() != ".mp4":
+        raise ValueError("A mobile video clip must use an MP4 destination.")
+    try:
+        if source.resolve() == destination.resolve():
+            raise ValueError("The mobile clip destination must differ from its source.")
+    except OSError:
+        pass
+
+    ffmpeg_bin = _ffmpeg_path()
+    if not ffmpeg_bin:
+        raise RuntimeError("ffmpeg is required to create mobile video clips.")
+    source_duration = _probe_duration_seconds(ffmpeg_bin, source)
+    start, end = validate_mobile_video_clip_range(start_sec, end_sec, source_duration)
+    clip_duration = end - start
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        destination.unlink()
+
+    command = [
+        ffmpeg_bin,
+        "-y",
+        "-ss",
+        f"{start:.3f}",
+        "-i",
+        str(source),
+        "-t",
+        f"{clip_duration:.3f}",
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a?",
+        "-map_metadata",
+        "-1",
+        "-sn",
+        "-vf",
+        "scale=w=min(1280\\,iw):h=min(720\\,ih):"
+        "force_original_aspect_ratio=decrease:force_divisible_by=2",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-profile:v",
+        "high",
+        "-level",
+        "4.1",
+        "-crf",
+        "23",
+        "-preset",
+        "medium",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "+faststart",
+        "-progress",
+        "pipe:1",
+        "-nostats",
+        "-loglevel",
+        "error",
+        str(destination),
+    ]
+    _emit_progress(progress_cb, 1, "Creating mobile video clip…")
+    proc = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    tail = deque(maxlen=24)
+    for line in proc.stdout or []:
+        text = line.strip()
+        if text:
+            tail.append(text)
+        elapsed = None
+        if text.startswith("out_time_ms="):
+            try:
+                elapsed = float(text.split("=", 1)[1]) / 1_000_000.0
+            except (TypeError, ValueError):
+                elapsed = None
+        elif text.startswith("out_time="):
+            elapsed = _hms_to_seconds(text.split("=", 1)[1] or "")
+        if elapsed is not None and clip_duration > 0:
+            ratio = min(1.0, max(0.0, elapsed / clip_duration))
+            _emit_progress(
+                progress_cb,
+                1 + ratio * 97,
+                f"Creating mobile video clip… {ratio * 100:.1f}%",
+            )
+    return_code = proc.wait()
+    if return_code != 0 or not destination.is_file() or destination.stat().st_size <= 0:
+        try:
+            destination.unlink()
+        except OSError:
+            pass
+        detail = "\n".join(tail) or "no output"
+        raise RuntimeError(f"ffmpeg could not create the mobile video clip.\n{detail}")
+    if destination.stat().st_size > MAX_ANKI_VIDEO_CLIP_BYTES:
+        try:
+            destination.unlink()
+        except OSError:
+            pass
+        raise ValueError("The generated clip exceeds the Anki media limit.")
+    _emit_progress(progress_cb, 100, "Mobile video clip ready.")
+    return destination
+
+
+def download_remote_mobile_video_clip(
+    addon_dir: str,
+    profile: str,
+    video_url: str,
+    destination_path: str | Path,
+    start_sec: float,
+    end_sec: float,
+    *,
+    progress_cb: Callable[[int, str], None] | None = None,
+) -> Path:
+    """Download only one remote range, then normalize it for Anki mobile."""
+    if not is_supported_video_url(video_url or ""):
+        raise ValueError("A supported YouTube or Vimeo URL is required.")
+    start, end = validate_mobile_video_clip_range(start_sec, end_sec)
+    clip_duration = end - start
+    yt_dlp_cmd, ffmpeg_bin = _video_tools()
+    if not yt_dlp_cmd:
+        raise RuntimeError(
+            "Missing required tool: yt-dlp.\n"
+            "Install it explicitly, then restart Anki:\n"
+            f"{sys.executable} -m pip install yt-dlp"
+        )
+    if not ffmpeg_bin:
+        raise RuntimeError("ffmpeg is required to create mobile video clips.")
+
+    destination = Path(destination_path)
+    video_key = extract_video_key(video_url or "")
+    if not video_key:
+        raise ValueError("Could not extract a valid YouTube or Vimeo video ID.")
+
+    with tempfile.TemporaryDirectory(prefix="incremento_remote_video_clip_") as tmp_dir:
+        tmp = Path(tmp_dir)
+        output_template = tmp / f"{video_key}.%(ext)s"
+
+        def _download_progress(percent: int, label: str) -> None:
+            _emit_progress(progress_cb, float(percent) * 0.55, label)
+
+        _run_yt_dlp_with_progress(
+            addon_dir,
+            profile,
+            yt_dlp_cmd,
+            video_url,
+            output_template,
+            _download_progress,
+            mode="compressible",
+            max_height=720,
+            download_sections=(start, end),
+        )
+        candidates = [
+            path
+            for path in tmp.glob(f"{video_key}.*")
+            if path.is_file() and path.suffix.lower() in _VIDEO_EXTS
+        ]
+        if not candidates:
+            raise RuntimeError(
+                "yt-dlp finished, but no downloaded video segment was found."
+            )
+        source_path = max(candidates, key=lambda path: path.stat().st_size)
+        source_duration = _probe_duration_seconds(ffmpeg_bin, source_path)
+        encode_duration = clip_duration
+        if (
+            source_duration is not None
+            and math.isfinite(float(source_duration))
+            and float(source_duration) > 0
+        ):
+            encode_duration = min(clip_duration, float(source_duration))
+        if encode_duration <= 0:
+            raise RuntimeError("The downloaded video segment is empty.")
+
+        def _encode_progress(percent: int, label: str) -> None:
+            _emit_progress(progress_cb, 55 + float(percent) * 0.45, label)
+
+        return render_mobile_video_clip(
+            source_path,
+            destination,
+            0.0,
+            encode_duration,
+            progress_cb=_encode_progress,
+        )
+
+
+def add_mobile_video_clip_to_anki_media(
+    col,
+    clip_path: str | Path,
+    *,
+    source_title: str,
+    start_sec: float,
+    end_sec: float,
+) -> str:
+    """Copy a rendered MP4 into collection.media under a portable unique name."""
+    clip = Path(clip_path)
+    if not clip.is_file() or clip.suffix.lower() != ".mp4" or clip.stat().st_size <= 0:
+        raise ValueError("The generated mobile video clip is missing or invalid.")
+    if clip.stat().st_size > MAX_ANKI_VIDEO_CLIP_BYTES:
+        raise ValueError("The generated clip exceeds the Anki media limit.")
+    desired_name = _mobile_video_clip_media_name(source_title, start_sec, end_sec)
+    with tempfile.TemporaryDirectory(prefix="incremento_video_clip_media_") as tmp_dir:
+        staged = Path(tmp_dir) / desired_name
+        shutil.copyfile(clip, staged)
+        stored_name = str(col.media.add_file(str(staged)) or "").strip()
+    if not stored_name or Path(stored_name).name != stored_name:
+        raise RuntimeError("Anki did not accept the generated mobile video clip.")
+    return stored_name
+
+
+def mobile_video_clip_html(
+    media_name: str,
+    *,
+    start_sec: float,
+    end_sec: float,
+    source_title: str = "",
+) -> str:
+    """Return portable card HTML for a clip stored in normal Anki media."""
+    safe_name = _html_escape(str(media_name or "").strip(), quote=True)
+    if not safe_name:
+        raise ValueError("A mobile video clip needs an Anki media filename.")
+    safe_title = _html_escape(
+        external_plain_text(source_title, max_chars=2_000).strip(),
+        quote=False,
+    )
+    label = f"{fmt_time(start_sec)}–{fmt_time(end_sec)}"
+    title_html = f" · {safe_title}" if safe_title else ""
+    return (
+        '<div class="incremento-video-clip" style="max-width:720px;margin:8px auto;">'
+        '<video controls playsinline preload="metadata" '
+        'style="display:block;width:100%;max-height:70vh;background:#000;" '
+        f'src="{safe_name}"></video>'
+        '<div style="margin-top:6px;color:#888;font-size:0.85em;">'
+        f'{_html_escape(label)}{title_html}</div></div>'
+    )
+
+
 def _copy_with_progress(
     src: Path,
     dst: Path,
@@ -1272,7 +1618,7 @@ def import_local_video_file(
         _emit_progress(progress_cb, 100, "Local video imported.")
         return relpath
 
-    ffmpeg_bin = shutil.which("ffmpeg")
+    ffmpeg_bin = _ffmpeg_path()
     if not ffmpeg_bin:
         raise RuntimeError(
             "ffmpeg is required for local encoding.\n"

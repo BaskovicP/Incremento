@@ -9,8 +9,8 @@ from aqt import mw
 from aqt.qt import (
     QDialog, QDialogButtonBox, QVBoxLayout, QHBoxLayout,
     QFormLayout,
-    QLabel, QSlider, QCheckBox, QComboBox, QPushButton, QWidget, Qt, qconnect,
-    QTimeEdit, QTime, QSpinBox, QLineEdit, QMessageBox, QFileDialog, QFrame,
+    QLabel, QSlider, QCheckBox, QComboBox, QCompleter, QPushButton, QWidget, Qt, qconnect,
+    QSpinBox, QLineEdit, QMessageBox, QFileDialog, QFrame,
     QInputDialog, QScrollArea, QObject, QEvent, QGraphicsOpacityEffect, QSplitter,
     QTextBrowser, QTableWidget, QTableWidgetItem, QHeaderView, QTimer, QColor,
 )
@@ -43,7 +43,7 @@ except ImportError:
 
 try:
     from ..backend import cards as _card_utils
-    from ..backend.config_service import DOCUMENT_MIX_VERSION, load_addon_config, normalize_document_mix, save_addon_config
+    from ..backend.config_service import DOCUMENT_MIX_VERSION, configured_day_end_time, load_addon_config, normalize_document_mix, save_addon_config
     from ..backend.scheduler_config import (
         MAX_SESSION_CARD_COUNT,
         SchedulerConfig,
@@ -51,7 +51,7 @@ try:
         build_ready_filter,
     )
     from ..backend.scheduler_preview import compute_expected_mix
-    from ..backend.session_selection import select_session_cards
+    from ..backend.session_selection import incremento_session_deck_name, select_session_cards
     from ..backend.pdf_manager import (
         PDF_NOTE_TYPE,
         get_page,
@@ -69,7 +69,7 @@ try:
     )
 except ImportError:
     import cards as _card_utils
-    from config_service import DOCUMENT_MIX_VERSION, load_addon_config, normalize_document_mix, save_addon_config  # type: ignore
+    from config_service import DOCUMENT_MIX_VERSION, configured_day_end_time, load_addon_config, normalize_document_mix, save_addon_config  # type: ignore
     from scheduler_config import (
         MAX_SESSION_CARD_COUNT,
         SchedulerConfig,
@@ -77,7 +77,7 @@ except ImportError:
         build_ready_filter,
     )
     from scheduler_preview import compute_expected_mix
-    from session_selection import select_session_cards
+    from session_selection import incremento_session_deck_name, select_session_cards
     from pdf_manager import (
         PDF_NOTE_TYPE,
         get_page,
@@ -281,6 +281,41 @@ def _preview_tag_label(value: object) -> str:
     return str(value) if value else t("admin_session_no_tag")
 
 
+_PREVIEW_CONTENT_COLUMNS = (
+    ("PDF", "session_document_topics"),
+    ("Topics", "session_non_document_topics"),
+    ("Items", "session_items"),
+)
+
+
+def _preview_content_kind(meta: dict) -> str:
+    if meta.get("card_type") == "items" or meta.get("study_kind") == "items":
+        return "Items"
+    if meta.get("card_type") in {"pdf", "epub"}:
+        return "PDF"
+    return "Topics"
+
+
+def _run_session_preview_query(*, parent, op, success, failure) -> None:
+    """Inspect eligible cards without opening a modal progress window."""
+    from aqt.operations import QueryOp
+
+    QueryOp(parent=parent, op=op, success=success).failure(failure).run_in_background()
+
+
+def _session_preview_data(result) -> dict:
+    """Detach the selected list and refill snapshot from worker-owned state."""
+    if isinstance(result, dict):
+        return copy.deepcopy(result)
+    return {
+        "selected_ids": list(result.selected_ids),
+        "picked_meta": copy.deepcopy(result.picked_meta),
+        "session_counts": copy.deepcopy(result.stats.session),
+        "session_time": copy.deepcopy(result.stats.session_time),
+        "picker_snapshot": copy.deepcopy(result.picker_snapshot),
+    }
+
+
 class _SortTableWidgetItem(QTableWidgetItem):
     """Table item that sorts by explicit key when provided."""
 
@@ -304,6 +339,7 @@ class _LiveSchedulerPreviewDialog(QDialog):
         super().__init__(owner)
         self._owner = owner
         self._entries: list[dict] = []
+        qconnect(self.finished, lambda *_args: setattr(owner, "_preview_details_requested", False))
 
         self.setWindowTitle(t("session_live_preview_title"))
         self.resize(980, 620)
@@ -563,15 +599,16 @@ class _LiveSchedulerPreviewDialog(QDialog):
         return ", ".join(f"{k}: {v}" for k, v in sorted(counts.items(), key=lambda x: x[0]))
 
     def _update_summary(self, selected_ids: list[int], picked_meta: dict[int, dict], target: int) -> None:
-        type_counts: dict[str, int] = {}
+        type_labels = {kind: t(message_id) for kind, message_id in _PREVIEW_CONTENT_COLUMNS}
+        type_counts = {label: 0 for label in type_labels.values()}
         mode_counts: dict[str, int] = {}
         tag_counts: dict[str, int] = {}
         prioritized_count = 0
         for cid in selected_ids:
             meta = picked_meta.get(cid, {})
-            ct = session_type_label(meta.get("card_type", "?"))
+            ct = type_labels[_preview_content_kind(meta)]
             md = session_mode_label(meta.get("mode", "?"))
-            tg = _preview_tag_label(meta.get("tag"))
+            tg = _preview_tag_label(meta.get("tag") or NO_TAGS_KEY)
             if meta.get("selection_stage") in {"prioritized_tags", "ordered_priority"}:
                 prioritized_count += 1
             type_counts[ct] = type_counts.get(ct, 0) + 1
@@ -649,109 +686,119 @@ class _LiveSchedulerPreviewDialog(QDialog):
         except Exception:
             return ""
 
+    @staticmethod
+    def _build_entries(selected_ids, picked_meta, *, col, profile) -> list[dict]:
+        """Load plain preview data using the operation's collection and profile."""
+        entries: list[dict] = []
+        for cid in selected_ids:
+            meta = picked_meta.get(cid, {})
+            card = col.get_card(cid)
+            note = col.get_note(card.nid)
+            note_fields = getattr(note, "fields", []) or []
+            try:
+                model = note.note_type()
+                field_names = [f.get("name", t("session_preview_field_number", number=ix + 1)) for ix, f in enumerate(model.get("flds", []))]
+            except Exception:
+                field_names = [t("session_preview_field_number", number=ix + 1) for ix, _ in enumerate(note_fields)]
+            if len(field_names) < len(note_fields):
+                for ix in range(len(field_names), len(note_fields)):
+                    field_names.append(t("session_preview_field_number", number=ix + 1))
+
+            readable_fields = []
+            for idx, raw_val in enumerate(note_fields):
+                readable_fields.append((field_names[idx], _field_to_plain_text(raw_val)))
+
+            card_type = str(meta.get("card_type", "?"))
+            mode = str(meta.get("mode", "?"))
+            tag = meta.get("tag")
+            tag_text = _preview_tag_label(tag or NO_TAGS_KEY)
+            title = _compact_text(note_fields[0] if note_fields else str(cid), max_len=160)
+            tags = ", ".join(getattr(note, "tags", []) or [])
+            pdf_filename = ""
+            pdf_page = None
+            pdf_read_page = None
+            pdf_exists = None
+            pdf_limit_status = None
+            pdf_limit_settings = None
+            if card_type == "pdf":
+                pdf_filename = _LiveSchedulerPreviewDialog._safe_note_field(note, "PDF_Filename")
+                try:
+                    pdf_page = int(get_page(_ADDON_DIR, profile, cid))
+                except Exception:
+                    pdf_page = None
+                try:
+                    pdf_read_page = int(get_read_page(_ADDON_DIR, profile, cid))
+                except Exception:
+                    pdf_read_page = None
+                if pdf_filename:
+                    try:
+                        pdf_exists = os.path.exists(pdf_storage_abspath(pdf_filename, profile=profile))
+                    except Exception:
+                        pdf_exists = None
+                try:
+                    pdf_limit_settings = get_pdf_daily_limit_settings(
+                        _ADDON_DIR,
+                        profile,
+                        cid,
+                    )
+                except Exception:
+                    pdf_limit_settings = None
+                try:
+                    status = get_pdf_daily_limit_status(
+                        _ADDON_DIR,
+                        profile,
+                        cid,
+                        current_page=pdf_page,
+                        persist_usage=False,
+                    )
+                    if status.get("enabled"):
+                        pdf_limit_status = status
+                except Exception:
+                    pdf_limit_status = None
+
+            entries.append(
+                {
+                    "card_id": cid,
+                    "card_type": card_type,
+                    "study_kind": meta.get("study_kind"),
+                    "mode": mode,
+                    "tag": tag_text,
+                    "selection_stage": meta.get("selection_stage"),
+                    "priority_order": meta.get("priority_order"),
+                    "title": title or t("knowledge_tree_card_number", card_id=cid),
+                    "tags": tags,
+                    "fields": readable_fields,
+                    "pdf_filename": pdf_filename,
+                    "pdf_page": pdf_page,
+                    "pdf_read_page": pdf_read_page,
+                    "pdf_exists": pdf_exists,
+                    "pdf_limit_status": pdf_limit_status,
+                    "pdf_limit_settings": pdf_limit_settings,
+                }
+            )
+
+        return entries
+
     def refresh_now(self) -> None:
         self._refresh_btn.setEnabled(False)
-        try:
-            cfg = self._owner.to_config()
-            result = select_session_cards(
-                cfg,
-                _ADDON_DIR,
-                branch_scope=self._owner._branch_scope,
-            )
-            selected_ids = result.selected_ids
-            picked_meta = result.picked_meta
-            self._update_summary(selected_ids, picked_meta, cfg.session_card_count)
-            self._owner._cache_live_preview_result(result)
+        self._owner._preview_details_requested = True
+        self._owner._clear_live_preview_cache()
+        self._owner._schedule_mix_preview_refresh()
+        self._owner._refresh_available_mix()
 
-            entries: list[dict] = []
+    def _mark_pending(self) -> None:
+        self._summary_lbl.setText("…")
+        self._table.setRowCount(0)
+        self._entries = []
+        self._preview.setHtml("")
+        self._load_pdf_limit_editor(None)
+        self._refresh_btn.setEnabled(False)
+
+    def _render_result(self, cache: dict, entries: list[dict]) -> None:
+        try:
+            self._update_summary(cache["selected_ids"], cache["picked_meta"], self._owner._count_spin.value())
             self._table.setSortingEnabled(False)
             self._table.setRowCount(0)
-            for i, cid in enumerate(selected_ids):
-                meta = picked_meta.get(cid, {})
-                card = mw.col.get_card(cid)
-                note = mw.col.get_note(card.nid)
-                note_fields = getattr(note, "fields", []) or []
-                try:
-                    model = note.note_type()
-                    field_names = [f.get("name", t("session_preview_field_number", number=ix + 1)) for ix, f in enumerate(model.get("flds", []))]
-                except Exception:
-                    field_names = [t("session_preview_field_number", number=ix + 1) for ix, _ in enumerate(note_fields)]
-                if len(field_names) < len(note_fields):
-                    for ix in range(len(field_names), len(note_fields)):
-                        field_names.append(t("session_preview_field_number", number=ix + 1))
-
-                readable_fields = []
-                for idx, raw_val in enumerate(note_fields):
-                    readable_fields.append((field_names[idx], _field_to_plain_text(raw_val)))
-
-                card_type = str(meta.get("card_type", "?"))
-                mode = str(meta.get("mode", "?"))
-                tag = meta.get("tag")
-                tag_text = _preview_tag_label(tag)
-                title = _compact_text(note_fields[0] if note_fields else str(cid), max_len=160)
-                tags = ", ".join(getattr(note, "tags", []) or [])
-                pdf_filename = ""
-                pdf_page = None
-                pdf_read_page = None
-                pdf_exists = None
-                pdf_limit_status = None
-                pdf_limit_settings = None
-                if card_type == "pdf":
-                    pdf_filename = self._safe_note_field(note, "PDF_Filename")
-                    try:
-                        pdf_page = int(get_page(_ADDON_DIR, _active_profile(), cid))
-                    except Exception:
-                        pdf_page = None
-                    try:
-                        pdf_read_page = int(get_read_page(_ADDON_DIR, _active_profile(), cid))
-                    except Exception:
-                        pdf_read_page = None
-                    if pdf_filename:
-                        try:
-                            pdf_exists = os.path.exists(pdf_storage_abspath(pdf_filename))
-                        except Exception:
-                            pdf_exists = None
-                    try:
-                        pdf_limit_settings = get_pdf_daily_limit_settings(
-                            _ADDON_DIR,
-                            _active_profile(),
-                            cid,
-                        )
-                    except Exception:
-                        pdf_limit_settings = None
-                    try:
-                        status = get_pdf_daily_limit_status(
-                            _ADDON_DIR,
-                            _active_profile(),
-                            cid,
-                            current_page=pdf_page,
-                            persist_usage=False,
-                        )
-                        if status.get("enabled"):
-                            pdf_limit_status = status
-                    except Exception:
-                        pdf_limit_status = None
-
-                entries.append(
-                    {
-                        "card_id": cid,
-                        "card_type": card_type,
-                        "mode": mode,
-                        "tag": tag_text,
-                        "selection_stage": meta.get("selection_stage"),
-                        "priority_order": meta.get("priority_order"),
-                        "title": title or t("knowledge_tree_card_number", card_id=cid),
-                        "tags": tags,
-                        "fields": readable_fields,
-                        "pdf_filename": pdf_filename,
-                        "pdf_page": pdf_page,
-                        "pdf_read_page": pdf_read_page,
-                        "pdf_exists": pdf_exists,
-                        "pdf_limit_status": pdf_limit_status,
-                        "pdf_limit_settings": pdf_limit_settings,
-                    }
-                )
-
             self._entries = entries
             self._table.setRowCount(len(entries))
             for row, entry in enumerate(entries):
@@ -792,25 +839,24 @@ class _LiveSchedulerPreviewDialog(QDialog):
                 )
                 self._load_pdf_limit_editor(None)
         except Exception as e:
+            self._owner._clear_live_preview_cache()
+            self._owner._clear_available_mix()
             self._summary_lbl.setText(t("session_preview_failed", error=e))
             self._preview.setHtml("")
             self._table.setRowCount(0)
             self._entries = []
-            self._owner._clear_live_preview_cache()
             self._load_pdf_limit_editor(None)
         finally:
             self._refresh_btn.setEnabled(True)
 
     def load_cached_or_refresh(self) -> None:
-        if self._owner._live_preview_cache_is_current() and self._entries:
+        self._owner._preview_details_requested = True
+        if self._owner._live_preview_cache_is_current() and self._owner._live_preview_entries is not None:
+            self._render_result(self._owner._live_preview_cache, self._owner._live_preview_entries)
             self.sync_use_preview_checkbox()
             return
-        if self._owner._live_preview_cache_is_current():
-            cached = self._owner._live_preview_cache or {}
-            if cached.get("selected_ids") is not None and cached.get("picked_meta") is not None:
-                self.refresh_now()
-                return
-        self.refresh_now()
+        self._refresh_btn.setEnabled(False)
+        self._owner._refresh_available_mix()
 
 
 # ─── Phase funnel ─────────────────────────────────────────────────────────────
@@ -1141,18 +1187,6 @@ class FunnelWidget(QWidget):
 
 # ─── End funnel ───────────────────────────────────────────────────────────────
 
-def _day_end_presets() -> list[tuple[str | None, str]]:
-    return [
-        ("00:00", t("session_day_end_midnight")),
-        ("01:00", t("session_day_end_one_am")),
-        ("02:00", t("session_day_end_two_am")),
-        ("03:00", t("session_day_end_three_am")),
-        ("04:00", t("session_day_end_four_am")),
-        ("05:00", t("session_day_end_five_am")),
-        ("06:00", t("session_day_end_six_am")),
-        (None, t("common_custom")),
-    ]
-
 def _priority_dims() -> list[tuple[str, str]]:
     return [
         ("tags", t("session_priority_dimension_tags")),
@@ -1196,10 +1230,23 @@ class SchedulerConfigDialog(QDialog):
         self._live_preview_dialog: _LiveSchedulerPreviewDialog | None = None
         self._live_preview_cache: dict | None = None
         self._live_preview_signature: str | None = None
+        self._live_preview_entries: list[dict] | None = None
+        self._live_preview_profile: str | None = None
+        self._live_preview_collection = None
+        self._preview_details_requested = False
         self._preview_refresh_timer = QTimer(self)
         self._preview_refresh_timer.setSingleShot(True)
         self._preview_refresh_timer.setInterval(180)
         qconnect(self._preview_refresh_timer.timeout, self._refresh_live_preview_if_open)
+        self._mix_preview_ready = False
+        self._mix_preview_closed = False
+        self._mix_preview_running = False
+        self._mix_preview_generation = 0
+        self._mix_preview_timer = QTimer(self)
+        self._mix_preview_timer.setSingleShot(True)
+        self._mix_preview_timer.setInterval(180)
+        qconnect(self._mix_preview_timer.timeout, self._refresh_available_mix)
+        qconnect(self.finished, self._stop_mix_preview)
         config = load_addon_config(mw.addonManager, _ADDON_PKG)
         self._profiles: dict[str, dict] = config.get("scheduler_presets", {})
         self._selected_profile_name = _normalize_selected_scheduler_profile(
@@ -1218,6 +1265,8 @@ class SchedulerConfigDialog(QDialog):
         self._setup_ui()
         self._refresh_pdf_limit_targets()
         self._apply_initial_size()
+        self._mix_preview_ready = True
+        self._schedule_mix_preview_refresh()
 
     def _apply_initial_size(self) -> None:
         """Open at about 2x area of the natural layout size to reduce manual resizing."""
@@ -1701,46 +1750,9 @@ class SchedulerConfigDialog(QDialog):
             t("session_scheduler_scope_help")
         ))
 
-        self._day_end_label = QLabel(t("session_day_ends_at"))
-        self._day_end_label.setToolTip(
-            t("session_day_end_tooltip")
-        )
-        scope_row.addWidget(self._day_end_label)
-
-        self._day_end_preset = QComboBox()
-        self._day_end_preset.setToolTip(
-            t("session_day_end_tooltip")
-        )
-        for value, label in _day_end_presets():
-            self._day_end_preset.addItem(label, value)
-        scope_row.addWidget(self._day_end_preset)
-
-        self._day_end_edit = QTimeEdit()
-        self._day_end_edit.setDisplayFormat("HH:mm")
-        scope_row.addWidget(self._day_end_edit)
-
         scope_row.addStretch()
         layout.addLayout(scope_row)
-
-        saved_time = self._saved.get("day_end_time", "04:00")
-        preset_idx = next(
-            (i for i in range(self._day_end_preset.count())
-             if self._day_end_preset.itemData(i) == saved_time),
-            None,
-        )
-        if preset_idx is not None:
-            self._day_end_preset.setCurrentIndex(preset_idx)
-        else:
-            self._day_end_preset.setCurrentIndex(self._day_end_preset.count() - 1)
-            h, m = map(int, saved_time.split(":"))
-            self._day_end_edit.setTime(QTime(h, m))
-
-        self._update_day_end_visibility()
-        qconnect(self._scope_combo.currentIndexChanged, lambda _: self._update_day_end_visibility())
-        qconnect(self._day_end_preset.currentIndexChanged, lambda _: self._on_day_end_preset_changed())
         qconnect(self._scope_combo.currentIndexChanged, lambda _: self._schedule_live_preview_refresh())
-        qconnect(self._day_end_preset.currentIndexChanged, lambda _: self._schedule_live_preview_refresh())
-        qconnect(self._day_end_edit.timeChanged, lambda _: self._schedule_live_preview_refresh())
 
         self._current_profile_tags = sorted(set(mw.col.tags.all()))
         self._current_profile_tags_map = {t.casefold(): t for t in self._current_profile_tags}
@@ -1785,7 +1797,14 @@ class SchedulerConfigDialog(QDialog):
 
         add_tag_row = QHBoxLayout()
         self._tag_combo = QComboBox()
+        self._tag_combo.setEditable(True)
+        self._tag_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self._tag_combo.setAccessibleName(t("session_tag_quotas"))
         self._tag_combo.addItems(self._current_profile_tags)
+        tag_completer = self._tag_combo.completer()
+        tag_completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        tag_completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        tag_completer.setFilterMode(Qt.MatchFlag.MatchContains)
         add_tag_row.addWidget(self._tag_combo)
         add_btn = QPushButton(t("common_add"))
         qconnect(add_btn.clicked, lambda: self._add_tag_row(self._tag_combo.currentText(), group_name="tags"))
@@ -2412,23 +2431,8 @@ class SchedulerConfigDialog(QDialog):
                 getattr(self, left).setText(t("session_percent", value=docs))
                 getattr(self, right).setText(t("session_percent", value=100 - docs))
 
-    def _update_day_end_visibility(self) -> None:
-        is_daily = self._scope_combo.currentData() == "daily"
-        self._day_end_label.setVisible(is_daily)
-        self._day_end_preset.setVisible(is_daily)
-        self._day_end_edit.setVisible(is_daily and self._day_end_preset.currentData() is None)
-
-    def _on_day_end_preset_changed(self) -> None:
-        self._day_end_edit.setVisible(
-            self._scope_combo.currentData() == "daily"
-            and self._day_end_preset.currentData() is None
-        )
-
     def _get_day_end_time(self) -> str:
-        preset = self._day_end_preset.currentData()
-        if preset is None:
-            return self._day_end_edit.time().toString("HH:mm")
-        return preset
+        return configured_day_end_time(load_addon_config(mw.addonManager, _ADDON_PKG))
 
     # ------------------------------------------------------------------
     # Priority order helpers
@@ -3236,27 +3240,6 @@ class SchedulerConfigDialog(QDialog):
     def _format_pct(value: float) -> str:
         return f"{value * 100:.1f}%"
 
-    @staticmethod
-    def _apportion_counts(total: int, shares: dict[str, float]) -> dict[str, int]:
-        if total <= 0:
-            return {k: 0 for k in shares}
-        raw = {k: max(0.0, v) * total for k, v in shares.items()}
-        if sum(raw.values()) <= 0:
-            return {k: 0 for k in shares}
-        counts = {k: int(raw[k]) for k in shares}
-        remainder = total - sum(counts.values())
-        if remainder <= 0:
-            return counts
-        ranked = sorted(
-            shares.keys(),
-            key=lambda k: (raw[k] - counts[k], k),
-            reverse=True,
-        )
-        for i in range(remainder):
-            counts[ranked[i % len(ranked)]] += 1
-        return counts
-
-
     def _set_heatmap_cell(
         self,
         table: QTableWidget,
@@ -3276,32 +3259,29 @@ class SchedulerConfigDialog(QDialog):
 
     def _update_tag_content_heatmap(
         self,
-        rows: list[tuple[str, float]],
-        tag_shares_for_content: dict[str, float],
-        tags_normalized: bool,
-        cc: dict[str, int],
+        selected_ids: list[int],
+        picked_meta: dict[int, dict],
     ) -> None:
         if not hasattr(self, "_tag_content_table"):
             return
 
         table = self._tag_content_table
-        content_cols = [("PDF", cc["pdf"]), ("Topics", cc["topics"]), ("Items", cc["items"])]
-
-        if rows:
-            tag_labels = [tag for tag, _ in rows]
-            if NO_TAGS_KEY in tag_shares_for_content:
-                tag_labels.append(NO_TAGS_KEY)
-        else:
-            tag_labels = [NO_TAGS_KEY]
-
-        matrix: dict[str, dict[str, int]] = {tag: {"PDF": 0, "Topics": 0, "Items": 0} for tag in tag_labels}
-        for content_name, content_count in content_cols:
-            per_content_counts = self._apportion_counts(content_count, tag_shares_for_content)
-            for tag in tag_labels:
-                matrix[tag][content_name] = int(per_content_counts.get(tag, 0))
+        tag_labels = [str(row["tag"]) for row in self._linked_rows if row["tag"] != NO_TAGS_KEY]
+        tag_labels.append(NO_TAGS_KEY)
+        matrix = {tag: {"PDF": 0, "Topics": 0, "Items": 0} for tag in tag_labels}
+        column_totals = {"PDF": 0, "Topics": 0, "Items": 0}
+        for cid in selected_ids:
+            meta = picked_meta.get(cid, {})
+            tag = meta.get("tag") or NO_TAGS_KEY
+            if tag not in matrix:
+                tag_labels.insert(len(tag_labels) - 1, tag)
+                matrix[tag] = {"PDF": 0, "Topics": 0, "Items": 0}
+            content_name = _preview_content_kind(meta)
+            matrix[tag][content_name] += 1
+            column_totals[content_name] += 1
+        content_cols = list(column_totals.items())
 
         table.setRowCount(len(tag_labels) + 1)
-        column_totals = {content_name: 0 for content_name, _ in content_cols}
         for r, tag in enumerate(tag_labels, start=1):
             tag_item = QTableWidgetItem(_preview_tag_label(tag))
             table.setItem(r, 0, tag_item)
@@ -3309,7 +3289,6 @@ class SchedulerConfigDialog(QDialog):
             for c, (content_name, content_total) in enumerate(content_cols, start=1):
                 count = matrix[tag][content_name]
                 total += count
-                column_totals[content_name] += count
                 self._set_heatmap_cell(table, r, c, count, content_total)
             tot_item = QTableWidgetItem(str(total))
             tot_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -3330,10 +3309,7 @@ class SchedulerConfigDialog(QDialog):
         )
         table.setItem(total_row, 4, grand_total_item)
 
-        note = t("session_heatmap_note")
-        if tags_normalized:
-            note += " " + t("session_heatmap_normalized")
-        self._tag_content_note_lbl.setText(note)
+        self._tag_content_note_lbl.setText(t("session_heatmap_note"))
 
     def _refresh_expected_mix_preview(self) -> None:
         """Update the explanatory mix preview beneath the primary sliders."""
@@ -3349,40 +3325,114 @@ class SchedulerConfigDialog(QDialog):
 
         cs = mix["content_shares"]
         ms = mix["mode_shares"]
-        cc = mix["content_counts"]
-        mc = mix["mode_counts"]
-
         self._expected_mix_lbl.setText(t("session_expected_mix", pdf=self._format_pct(cs["pdf"]), topics=self._format_pct(cs["topics"]), items=self._format_pct(cs["items"]), random=self._format_pct(ms["random"]), priority=self._format_pct(ms["priority"])))
-        self._expected_counts_lbl.setText(t("session_expected_counts", count=self._count_spin.value(), pdf=cc["pdf"], topics=cc["topics"], items=cc["items"], random=mc["random"], priority=mc["priority"]))
         self._tag_content_title_lbl.setText(t("session_tag_content_estimate"))
-        real_rows = [
-            (str(r["tag"]), max(0.0, r["slider"].value() / 100.0))
-            for r in self._linked_rows
-            if r["tag"] != NO_TAGS_KEY and r["slider"].value() > 0
-        ]
-        other_row = self._find_other_tag_row()
-        cb = getattr(self, "_no_tags_cb", None)
-        include_rest = (int(other_row["slider"].value()) > 0) if other_row is not None else (bool(cb.isChecked()) if cb is not None else True)
-        tags_total = sum(w for _, w in real_rows)
-        tags_normalized = False
-        if not real_rows:
-            tag_shares_for_content = {NO_TAGS_KEY: 1.0 if include_rest else 0.0}
-        elif tags_total <= 1.0:
-            tag_shares_for_content = {tag: w for tag, w in real_rows}
-            tag_shares_for_content[NO_TAGS_KEY] = max(0.0, 1.0 - tags_total) if include_rest else 0.0
-        else:
-            tags_normalized = True
-            norm = 1.0 / tags_total
-            tag_shares_for_content = {tag: (w * norm) for tag, w in real_rows}
-            if include_rest:
-                tag_shares_for_content[NO_TAGS_KEY] = 0.0
+        self._clear_available_mix()
 
-        self._update_tag_content_heatmap(
-            rows=real_rows,
-            tag_shares_for_content=tag_shares_for_content,
-            tags_normalized=tags_normalized,
-            cc=cc,
+    def _clear_available_mix(self) -> None:
+        self._expected_counts_lbl.setText("…")
+        self._tag_content_table.setRowCount(0)
+        self._tag_content_note_lbl.setText("")
+        if self._live_preview_dialog is not None:
+            self._live_preview_dialog._mark_pending()
+
+    def _schedule_mix_preview_refresh(self) -> None:
+        if not getattr(self, "_mix_preview_ready", False) or self._mix_preview_closed:
+            return
+        self._mix_preview_generation += 1
+        self._clear_available_mix()
+        self._mix_preview_timer.start()
+
+    def _stop_mix_preview(self, *_args) -> None:
+        self._mix_preview_closed = True
+        self._mix_preview_generation += 1
+        self._mix_preview_timer.stop()
+        self._preview_refresh_timer.stop()
+
+    def _refresh_available_mix(self) -> None:
+        if self._mix_preview_closed or self._mix_preview_running:
+            return
+        generation = self._mix_preview_generation
+        profile = _active_profile()
+        collection = mw.col
+        cfg = self.to_config()
+        session_deck_name = incremento_session_deck_name(self.selected_dialog_profile_name())
+        self._mix_preview_deck_name = session_deck_name
+        cached = copy.deepcopy(self._live_preview_cache) if self._live_preview_cache_is_current() else None
+        cached_entries = copy.deepcopy(self._live_preview_entries) if cached is not None else None
+        include_entries = self._preview_details_requested
+        branch_scope = copy.deepcopy(self._branch_scope)
+        topic_classifier = _card_utils.resolve_topic_card_classifier(
+            copy.deepcopy(load_addon_config(mw.addonManager, _ADDON_PKG)),
+            scheduler_config=cfg,
         )
+        self._mix_preview_running = True
+
+        def select(col):
+            if (
+                self._mix_preview_closed
+                or generation != self._mix_preview_generation
+                or profile != _active_profile()
+                or col is not collection
+            ):
+                return None
+            cache = cached
+            if cache is None:
+                result = select_session_cards(
+                    cfg, _ADDON_DIR, col=col, profile=profile,
+                    branch_scope=branch_scope, topic_classifier=topic_classifier,
+                    session_deck_name=session_deck_name,
+                )
+                cache = _session_preview_data(result)
+            entries = cached_entries
+            if include_entries and entries is None:
+                entries = _LiveSchedulerPreviewDialog._build_entries(
+                    cache["selected_ids"], cache["picked_meta"], col=col, profile=profile,
+                )
+            return {"selection": cache, "entries": entries}
+
+        def current() -> bool:
+            self._mix_preview_running = False
+            if self._mix_preview_closed or profile != _active_profile() or mw.col is not collection:
+                return False
+            if generation != self._mix_preview_generation:
+                self._mix_preview_timer.start()
+                return False
+            return True
+
+        def success(result):
+            if not current() or result is None:
+                return
+            cache = result["selection"]
+            self._cache_live_preview_result(cache)
+            self._live_preview_entries = result["entries"]
+            selected_ids, picked_meta = cache["selected_ids"], cache["picked_meta"]
+            status = t("session_preview_scheduled", count=len(selected_ids), target=cfg.session_card_count)
+            if len(selected_ids) < cfg.session_card_count:
+                status += " " + t("session_preview_limited")
+            self._expected_counts_lbl.setText(status)
+            self._update_tag_content_heatmap(selected_ids, picked_meta)
+            if self._live_preview_dialog is not None:
+                if self._live_preview_entries is not None:
+                    self._live_preview_dialog._render_result(cache, self._live_preview_entries)
+                elif self._preview_details_requested:
+                    self._refresh_available_mix()
+
+        def failure(_error):
+            if current():
+                self._clear_available_mix()
+                self._expected_counts_lbl.setText(t("command_palette_unavailable"))
+                self._clear_live_preview_cache()
+                if self._live_preview_dialog is not None:
+                    self._live_preview_dialog._summary_lbl.setText(t("command_palette_unavailable"))
+                    self._live_preview_dialog._table.setRowCount(0)
+                    self._live_preview_dialog._entries = []
+                    self._live_preview_dialog._refresh_btn.setEnabled(True)
+
+        try:
+            _run_session_preview_query(parent=self, op=select, success=success, failure=failure)
+        except Exception as error:
+            failure(error)
 
     def _branch_scope_label(self) -> str:
         if not self._branch_scope:
@@ -3398,6 +3448,7 @@ class SchedulerConfigDialog(QDialog):
         d = self._build_current_dict()
         return {
             "session_card_count": d.get("session_card_count"),
+            "session_deck_name": incremento_session_deck_name(self.selected_dialog_profile_name()),
             "auto_refill_session": d.get("auto_refill_session"),
             "topics_slider": d.get("topics_slider"),
             "random_slider": d.get("random_slider"),
@@ -3409,7 +3460,7 @@ class SchedulerConfigDialog(QDialog):
             "phases_enabled": d.get("phases_enabled"),
             "enforce_priority": d.get("enforce_priority"),
             "scheduler_scope": d.get("scheduler_scope"),
-            "day_end_time": d.get("day_end_time"),
+            "day_end_time": self._get_day_end_time(),
             "priority_order_enabled": d.get("priority_order_enabled"),
             "priority_order_entries": d.get("priority_order_entries"),
             "tag_rows": d.get("tag_rows"),
@@ -3428,30 +3479,29 @@ class SchedulerConfigDialog(QDialog):
         return json.dumps(self._selection_signature_payload(), sort_keys=True, ensure_ascii=True)
 
     def _cache_live_preview_result(self, result) -> None:
-        self._live_preview_cache = {
-            "selected_ids": list(result.selected_ids),
-            "picked_meta": copy.deepcopy(result.picked_meta),
-            "session_counts": copy.deepcopy(result.stats.session),
-            "session_time": copy.deepcopy(result.stats.session_time),
-            "picker_snapshot": copy.deepcopy(result.picker_snapshot),
-        }
+        self._live_preview_cache = _session_preview_data(result)
         self._live_preview_signature = self._selection_signature()
+        self._live_preview_profile = _active_profile()
+        self._live_preview_collection = mw.col
 
     def _clear_live_preview_cache(self) -> None:
         self._live_preview_cache = None
         self._live_preview_signature = None
+        self._live_preview_entries = None
 
     def _live_preview_cache_is_current(self) -> bool:
         if not self._live_preview_cache or not self._live_preview_signature:
             return False
-        return self._live_preview_signature == self._selection_signature()
+        return (
+            self._live_preview_signature == self._selection_signature()
+            and self._live_preview_profile == _active_profile()
+            and self._live_preview_collection is mw.col
+        )
 
     def set_use_live_preview_enabled(self, enabled: bool) -> None:
         self._use_live_preview_enabled = bool(enabled)
 
     def get_preview_override(self) -> dict | None:
-        if not self._use_live_preview_enabled:
-            return None
         if not self._live_preview_cache_is_current():
             return None
         return copy.deepcopy(self._live_preview_cache)
@@ -3473,12 +3523,13 @@ class SchedulerConfigDialog(QDialog):
 
     def _schedule_live_preview_refresh(self) -> None:
         self._clear_live_preview_cache()
+        self._schedule_mix_preview_refresh()
         if self._live_preview_dialog and self._live_preview_dialog.isVisible():
             self._preview_refresh_timer.start()
 
     def _refresh_live_preview_if_open(self) -> None:
         if self._live_preview_dialog and self._live_preview_dialog.isVisible():
-            self._live_preview_dialog.refresh_now()
+            self._live_preview_dialog.load_cached_or_refresh()
 
     def _ready_filter_from_checks(self) -> str:
         """Build the is:… clause from the card-type checkboxes."""
@@ -3749,7 +3800,6 @@ class SchedulerConfigDialog(QDialog):
             "phases_enabled":     self._funnel.get_enabled(),
             "enforce_priority":   self._enforce_cb.isChecked(),
             "scheduler_scope":    self._scope_combo.currentData(),
-            "day_end_time":       self._get_day_end_time(),
             "priority_order_enabled": self._priority_order_cb.isChecked(),
             "priority_order_entries": self._current_priority_order_entries(),
             "prioritized_tags_first": [],
@@ -3836,6 +3886,15 @@ class SchedulerConfigDialog(QDialog):
         self._profile_combo.blockSignals(False)
         self._sync_profile_button_state()
         self._refresh_basic_profile_combo()
+        self._refresh_mix_for_session_deck()
+
+    def _refresh_mix_for_session_deck(self) -> None:
+        if not getattr(self, "_mix_preview_ready", False) or self._mix_preview_closed:
+            return
+        name = incremento_session_deck_name(self.selected_dialog_profile_name())
+        if name != getattr(self, "_mix_preview_deck_name", None):
+            self._clear_live_preview_cache()
+            self._schedule_mix_preview_refresh()
 
     def _sync_profile_button_state(self) -> None:
         has_selected_profile = self.selected_dialog_profile_name() is not None
@@ -3852,6 +3911,7 @@ class SchedulerConfigDialog(QDialog):
         self._sync_profile_button_state()
         self._refresh_basic_profile_combo()
         self._sync_basic_controls_from_advanced()
+        self._refresh_mix_for_session_deck()
 
     def _load_profile(self) -> None:
         name = self.selected_dialog_profile_name()
@@ -3987,23 +4047,6 @@ class SchedulerConfigDialog(QDialog):
             if self._scope_combo.itemData(i) == saved_scope:
                 self._scope_combo.setCurrentIndex(i)
                 break
-
-        saved_time = d.get("day_end_time", "04:00")
-        preset_idx = next(
-            (i for i in range(self._day_end_preset.count())
-             if self._day_end_preset.itemData(i) == saved_time),
-            None,
-        )
-        if preset_idx is not None:
-            self._day_end_preset.setCurrentIndex(preset_idx)
-        else:
-            self._day_end_preset.setCurrentIndex(self._day_end_preset.count() - 1)
-            try:
-                h, m = map(int, saved_time.split(":"))
-                self._day_end_edit.setTime(QTime(h, m))
-            except Exception:
-                pass
-        self._update_day_end_visibility()
 
         self._saved_priority_order_map = self._priority_order_map_from_dict(d)
         priority_order_enabled = bool(d.get("priority_order_enabled", False))

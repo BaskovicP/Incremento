@@ -161,7 +161,7 @@ def test_statistics_history_schema_rejects_invalid_rows(tmp_path):
     db.close_connection()
     conn = db.get_connection(str(tmp_path), "TestProfile")
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 11
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 "INSERT INTO reading_page_history "
@@ -203,6 +203,31 @@ def test_pdf_appearance_migration_rolls_back_column_and_version():
         row[1] for row in conn.execute("PRAGMA table_info(pdf_progress)")
     }
     assert conn.execute("SELECT max(version) FROM schema_migrations").fetchone()[0] == 10
+    conn.close()
+
+
+def test_video_watch_history_migration_rolls_back_table_and_ledger():
+    import db
+
+    conn = sqlite3.connect(":memory:")
+    previous = tuple(m for m in db._SCHEMA_MIGRATIONS if m[0] <= 11)
+    initialize_schema(conn, bootstrap=db._create_tables, migrations=previous)
+
+    def fail(connection):
+        db._migration_12_video_watch_history(connection)
+        raise RuntimeError("watch migration interrupted")
+
+    with pytest.raises(RuntimeError, match="interrupted"):
+        initialize_schema(
+            conn, bootstrap=db._create_tables,
+            migrations=previous + ((12, "video_watch_history", fail),),
+        )
+
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 11
+    assert conn.execute(
+        "SELECT name FROM sqlite_master WHERE name = 'video_watch_history'"
+    ).fetchone() is None
+    assert conn.execute("SELECT max(version) FROM schema_migrations").fetchone()[0] == 11
     conn.close()
 
 

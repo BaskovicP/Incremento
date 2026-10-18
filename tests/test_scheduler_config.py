@@ -18,6 +18,24 @@ _config_from_dialog_dict = _mod._config_from_dialog_dict
 NO_TAGS_KEY = _mod.NO_TAGS_KEY
 
 
+def test_scheduler_and_stats_consume_shared_cutoff_instead_of_preset_value(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    import aqt
+
+    manager = Mock()
+    manager.getConfig.return_value = {
+        "day_end_time": "01:30",
+        "dialog": {"day_end_time": "06:00", "scheduler_scope": "daily"},
+    }
+    monkeypatch.setattr(aqt, "mw", SimpleNamespace(addonManager=manager))
+
+    cfg = _mod.load_scheduler_config()
+
+    assert cfg.day_end_time == "01:30"
+    assert cfg.scheduler_scope == "daily"
+
+
 class TestReadyFilter:
     def test_all_included(self):
         cfg = SchedulerConfig(include_new=True, include_learning=True, include_due=True)

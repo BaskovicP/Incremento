@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 try:
-    from .config_service import load_addon_config, normalize_document_mix
+    from .config_service import configured_day_end_time, load_addon_config, normalize_document_mix
 except ImportError:
-    from config_service import load_addon_config, normalize_document_mix  # type: ignore
+    from config_service import configured_day_end_time, load_addon_config, normalize_document_mix  # type: ignore
 
 NO_TAGS_KEY = "__no_tags__"
 READY_NEW_CLAUSE = "is:new"
@@ -148,6 +148,7 @@ def load_scheduler_config() -> SchedulerConfig:
     from aqt import mw
     config = load_addon_config(mw.addonManager, _ADDON_PKG)
     cfg = _config_from_dialog_dict(config.get("dialog", {}))
+    cfg.day_end_time = configured_day_end_time(config)
     cfg.priority_lower_is_more_important = _config_bool(
         config.get(
             "priority_lower_is_more_important",

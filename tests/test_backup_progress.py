@@ -130,6 +130,7 @@ def test_failed_close_backup_hides_progress_before_resuming_profile_close(
         setattr(database, name, object())
     sys.modules["incremento.backend.backup_media"].FullBackupPackageExporter = object
     sys.modules["incremento.backend.export_bundle"].snapshot_tree = object()
+    sys.modules["incremento.backend.export_bundle"].snapshot_database = object()
 
     progress_module = types.ModuleType("incremento.frontend.backup_progress")
 

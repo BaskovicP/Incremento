@@ -40,6 +40,40 @@ function paintedRects(nodes) {
   }));
 }
 
+test('PDF highlights keep their color and other actions when the persistent setting hides the delete X', () => {
+  const highlight = { id: 'saved', color: 'yellow', note: 'A note', rects: [{ x: 10, y: 20, w: 100, h: 20 }] };
+  const visible = render([highlight]);
+  const hidden = render([highlight], { showHighlightDeleteButtons: false });
+  assert.ok(visible.some(node => node.type === 'button' && node.props?.children === '×'));
+  assert.equal(hidden.some(node => node.type === 'button' && node.props?.children === '×'), false);
+  assert.ok(hidden.some(node => node.type === 'button' && node.props?.className === 'incremento-pdf-note-action'));
+  assert.deepEqual(paintedRects(hidden), paintedRects(visible));
+});
+
+test('hiding highlight controls keeps saved colors and geometry while removing every editing target', () => {
+  const highlights = [
+    { id: 'text', color: 'yellow', note: 'Saved note', rects: [{ x: 10, y: 20, w: 100, h: 20 }] },
+    { id: 'snapshot', color: 'snapshot', rects: [{ x: 10, y: 60, w: 100, h: 30 }] },
+  ];
+  const original = structuredClone(highlights);
+  const options = { resizingHighlightId: 'text', focusedHighlightId: 'text' };
+  const visible = render(highlights, options);
+  const hidden = render(highlights, { ...options, showHighlightControls: false });
+
+  assert.ok(visible.some(node => node.type === 'button'));
+  assert.equal(hidden.filter(node => node.type === 'button').length, 0);
+  assert.equal(hidden.filter(node => node.props?.onMouseEnter).length, 0, 'note popups stay out of screenshots');
+  assert.deepEqual(paintedRects(hidden), paintedRects(visible));
+  const paint = nodes => nodes.filter(node => node.props?.style?.zIndex === 1).map(node => node.props.style.background);
+  assert.deepEqual(paint(hidden), paint(visible));
+  assert.ok(hidden.filter(node => node.props?.style?.zIndex === 1).every(node => (
+    node.props.style.outline === 'none' && node.props.style.boxShadow === 'none'
+  )), 'a previously focused highlight must not leave a selection ring');
+  assert.deepEqual(highlights, original, 'hiding controls must not edit saved annotations');
+  assert.equal(render(highlights, { ...options, showHighlightControls: true }).filter(node => node.type === 'button').length,
+    visible.filter(node => node.type === 'button').length, 'showing controls restores all editing actions');
+});
+
 test('one multiline highlight paints each line once and joins the small gaps around italic text', () => {
   const rects = [
     { x: 50, y: 10, w: 400, h: 24 },

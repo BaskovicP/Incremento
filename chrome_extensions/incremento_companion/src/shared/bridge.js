@@ -4,6 +4,7 @@ import { t } from "./i18n.js";
 const BRIDGE_URL = "http://127.0.0.1:8766/incremento/add-content";
 const BROWSER_CAPTURE_META_URL = "http://127.0.0.1:8766/incremento/browser-capture-meta";
 const BROWSER_MEDIA_REF_URL = "http://127.0.0.1:8766/incremento/browser-media-ref";
+const WEBSITE_TAGS_URL = "http://127.0.0.1:8766/incremento/website-tags";
 const BRIDGE_ERROR_CODES = new Set([
   "authorization_required", "bridge_busy", "unknown_path", "invalid_request",
   "operation_failed", "unsupported_transfer_encoding", "invalid_content_length",
@@ -33,6 +34,24 @@ export async function loadBrowserCaptureMeta() {
   const response = await bridgeFetch(BROWSER_CAPTURE_META_URL, {
     method: "POST",
   }, { safeToRetry: true });
+  return parseBridgeResponse(response);
+}
+
+export async function loadWebsiteTags(url) {
+  const response = await bridgeFetch(WEBSITE_TAGS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({action: "load", url}),
+  }, {safeToRetry: true});
+  return parseBridgeResponse(response);
+}
+
+export async function saveWebsiteTags(payload) {
+  const response = await bridgeFetch(WEBSITE_TAGS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({...payload, action: "save"}),
+  });
   return parseBridgeResponse(response);
 }
 

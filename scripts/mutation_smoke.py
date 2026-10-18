@@ -79,6 +79,7 @@ def run_config_tests(source: str) -> subprocess.CompletedProcess[str]:
         tests_dir = temp_root / "tests"
         backend_dir.mkdir()
         tests_dir.mkdir()
+        shutil.copy2(ROOT / "config.json", temp_root / "config.json")
         (backend_dir / "config_service.py").write_text(source, encoding="utf-8")
         for dependency in CONFIG_DEPENDENCIES:
             shutil.copy2(dependency, backend_dir / dependency.name)

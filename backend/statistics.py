@@ -22,9 +22,12 @@ _MAX_STAT_KEY_LENGTH = 128
 _MAX_STAT_KEYS_PER_GROUP = 512
 _MAX_STAT_VALUE = 1_000_000_000_000.0
 _MAX_HISTORY_DAYS = 3660
+_MAX_DAILY_REVIEW_ROWS = 10_000
 _DOCUMENT_TYPES = frozenset({"pdf", "epub"})
 _STATISTICS_GOAL_KEYS = ("cards", "pages", "minutes")
 _MAX_DAILY_GOAL = 1_000_000.0
+_TAG_BREAKDOWN_KINDS = ("topics", "items")
+UNTAGGED_STATS_TAG = "(untagged)"
 
 
 def _stats_lock(addon_dir: str, profile: str) -> threading.RLock:
@@ -43,6 +46,13 @@ def _empty() -> dict:
 
 def _empty_time() -> dict:
     return {"type": {}, "tags": {}}
+
+
+def _empty_tag_breakdown() -> dict:
+    return {
+        "counts": {kind: {} for kind in _TAG_BREAKDOWN_KINDS},
+        "seconds": {kind: {} for kind in _TAG_BREAKDOWN_KINDS},
+    }
 
 
 def normalize_statistics_goals(raw) -> dict[str, float]:
@@ -192,6 +202,23 @@ def _normalize_time_block(raw) -> dict:
     }
 
 
+def _normalize_tag_breakdown_block(raw) -> dict:
+    if not isinstance(raw, dict):
+        return _empty_tag_breakdown()
+    counts: dict = raw.get("counts") if isinstance(raw.get("counts"), dict) else {}
+    seconds: dict = raw.get("seconds") if isinstance(raw.get("seconds"), dict) else {}
+    return {
+        "counts": {
+            kind: _normalize_number_map(counts.get(kind), integer=True)
+            for kind in _TAG_BREAKDOWN_KINDS
+        },
+        "seconds": {
+            kind: _normalize_number_map(seconds.get(kind), integer=False)
+            for kind in _TAG_BREAKDOWN_KINDS
+        },
+    }
+
+
 def _normalize_stats(raw) -> dict:
     if not isinstance(raw, dict):
         return {}
@@ -233,6 +260,30 @@ def _normalize_stats(raw) -> dict:
         if time_result:
             result["time"] = time_result
 
+    if "tag_breakdown" in raw:
+        breakdown_raw = raw.get("tag_breakdown")
+        breakdown_result: dict = {}
+        if isinstance(breakdown_raw, dict):
+            if "daily" in breakdown_raw:
+                daily_breakdown = breakdown_raw.get("daily")
+                if isinstance(daily_breakdown, dict):
+                    normalized_daily = _normalize_tag_breakdown_block(daily_breakdown)
+                    normalized_daily["date"] = (
+                        _normalize_logical_date(daily_breakdown.get("date")) or ""
+                    )
+                    breakdown_result["daily"] = normalized_daily
+                else:
+                    breakdown_result["daily"] = {
+                        "date": "",
+                        **_empty_tag_breakdown(),
+                    }
+            if "lifetime" in breakdown_raw:
+                breakdown_result["lifetime"] = _normalize_tag_breakdown_block(
+                    breakdown_raw.get("lifetime")
+                )
+        if breakdown_result:
+            result["tag_breakdown"] = breakdown_result
+
     return result
 
 
@@ -253,6 +304,293 @@ def _effective_date(day_end: str = "04:00") -> str:
     if current_minutes < boundary_minutes:
         return (now.date() - timedelta(days=1)).isoformat()
     return now.date().isoformat()
+
+
+def _logical_day_bounds_ms(day_end: str = "04:00") -> tuple[int, int]:
+    logical_date = date.fromisoformat(_effective_date(day_end))
+    return _logical_date_bounds_ms(logical_date, day_end)
+
+
+def _logical_date_bounds_ms(logical_date: date, day_end: str) -> tuple[int, int]:
+    """Use local calendar boundaries, including 23/25-hour daylight-saving days."""
+    hour, minute = map(int, day_end.split(":"))
+    start = datetime.combine(logical_date, datetime.min.time()).replace(
+        hour=hour,
+        minute=minute,
+    )
+    end = start + timedelta(days=1)
+    return int(start.timestamp() * 1000), int(end.timestamp() * 1000)
+
+
+def _daily_breakdown_tag(note, classifier) -> str:
+    excluded = {
+        str(tag or "").strip().casefold()
+        for tag in (
+            *(getattr(classifier, "topic_tags", ()) or ()),
+            *(getattr(classifier, "item_tags", ()) or ()),
+        )
+        if str(tag or "").strip()
+    }
+    for raw_tag in getattr(note, "tags", None) or ():
+        tag = str(raw_tag or "").strip()
+        if tag and not tag.startswith("__") and tag.casefold() not in excluded:
+            return tag
+    return UNTAGGED_STATS_TAG
+
+
+def learning_card_states_from_collection(collection, *, classifier=None, should_cancel=None):
+    """Current memory-card types, including suspended/buried cards in their stage.
+
+    These are Anki types, not queue numbers (day-learning queue 3 is still
+    learning). Relearning stays separate; Review never means permanently done.
+    Read in bounded batches through a background collection operation.
+    """
+    if collection is None:
+        return None
+    try:
+        try:
+            from .cards import _bulk_classify_candidate_ids
+            from .topic_scheduler import resolve_topic_card_classifier
+        except ImportError:
+            from cards import _bulk_classify_candidate_ids
+            from topic_scheduler import resolve_topic_card_classifier
+        classifier = classifier if classifier is not None else resolve_topic_card_classifier()
+        result = dict.fromkeys(("new", "learning", "review", "relearning", "total", "suspended", "buried"), 0)
+        reader_names = {"Incremento PDF", "Incremento EPUB", "Incremento Video",
+                        "Incremento Web", "Incremento Writing", "Incremento Local File"}
+        reader_models = {int(model["id"]) for name in reader_names if (model := collection.models.by_name(name))}
+        last_id = 0
+        while True:
+            if should_cancel is not None and should_cancel():
+                return None
+            rows = collection.db.all(
+                "SELECT c.id, c.type, c.queue, n.mid FROM cards c JOIN notes n ON n.id=c.nid "
+                "WHERE c.id > ? ORDER BY c.id LIMIT 500", last_id,
+            )
+            if not rows:
+                return result
+            partition = _bulk_classify_candidate_ids(
+                [row[0] for row in rows], collection=collection, classifier=classifier,
+            )
+            if partition is None:
+                return None
+            memory_ids = set(partition[1])
+            for cid, stage, queue, mid in rows:
+                if cid not in memory_ids or mid in reader_models or stage not in range(4):
+                    continue
+                result[("new", "learning", "review", "relearning")[stage]] += 1
+                result["total"] += 1
+                result["suspended"] += int(queue == -1)
+                result["buried"] += int(queue in (-2, -3))
+            last_id = int(rows[-1][0])
+    except Exception:
+        return None
+
+
+def daily_learning_outcomes_from_collection(
+    collection,
+    day_end_time: str = "04:00",
+    *,
+    classifier=None,
+    topic_predicate=None,
+    should_cancel=None,
+) -> dict | None:
+    """Read today's canonical memory grades off the UI thread; None = unknown."""
+    try:
+        ranges = [(_effective_date(day_end_time), *_logical_day_bounds_ms(day_end_time))]
+    except (ValueError, TypeError, OverflowError):
+        return None
+    history = _learning_outcomes_for_ranges(
+        collection, ranges, classifier=classifier,
+        topic_predicate=topic_predicate, should_cancel=should_cancel,
+    )
+    return history[0] if history is not None else None
+
+
+def learning_outcome_history_from_collection(
+    collection, day_end_time: str = "04:00", *, days: int = 60,
+    classifier=None, topic_predicate=None, should_cancel=None,
+) -> list[dict] | None:
+    """Read up to 60 zero-filled logical days, including today.
+
+    The extra 30 days support comparison with the previous equal-size period.
+    Read off the UI thread. No second persisted ledger is created: Undo/Redo
+    and historical backfill follow Anki's revlog and current Topic/Item rules.
+    """
+    try:
+        count = max(1, min(60, int(days)))
+        end_date = date.fromisoformat(_effective_date(day_end_time))
+        dates = [end_date - timedelta(days=offset) for offset in reversed(range(count))]
+        ranges = [(day.isoformat(), *_logical_date_bounds_ms(day, day_end_time)) for day in dates]
+    except (ValueError, TypeError, OverflowError):
+        return None
+    return _learning_outcomes_for_ranges(
+        collection, ranges, classifier=classifier,
+        topic_predicate=topic_predicate, should_cancel=should_cancel,
+    )
+
+
+def _learning_outcomes_for_ranges(collection, ranges, *, classifier, topic_predicate, should_cancel):
+    """Bound grouped rows with a (card, day) cursor without truncating totals."""
+    if collection is None:
+        return None
+    try:
+        try:
+            from .topic_scheduler import is_topic_card, resolve_topic_card_classifier
+            from .cards import _bulk_classify_candidate_ids, _supports_bulk_topic_classification
+        except ImportError:
+            from topic_scheduler import is_topic_card, resolve_topic_card_classifier  # type: ignore
+            from cards import _bulk_classify_candidate_ids, _supports_bulk_topic_classification  # type: ignore
+
+        classifier = classifier if classifier is not None else resolve_topic_card_classifier()
+        use_bulk = topic_predicate is None and _supports_bulk_topic_classification(collection, classifier)
+        topic_predicate = topic_predicate or is_topic_card
+        stages = ("learning", "review", "relearning")
+        ratings = ("again", "hard", "good", "easy")
+        result = [{
+            "date": logical_date,
+            "cards": 0,
+            "failed_cards": 0,
+            "stages": {stage: dict.fromkeys(ratings, 0) for stage in stages},
+        } for logical_date, _start, _end in ranges]
+        # Explicit timestamp boundaries avoid SQLite/host timezone differences.
+        day_case = "CASE " + " ".join(
+            f"WHEN id < ? THEN {index}" for index in range(len(ranges))
+        ) + " END"
+        day_ends = [end for _day, _start, end in ranges]
+        sums = ", ".join(
+            f"SUM(CASE WHEN type = {stage} AND ease = {ease} THEN 1 ELSE 0 END)"
+            for stage in range(3) for ease in range(1, 5)
+        )
+        last_card_id = 0
+        last_day_index = -1
+        while True:
+            if should_cancel is not None and should_cancel():
+                return None
+            rows = collection.db.all(
+                f"SELECT cid, {day_case} AS day_index, {sums} FROM revlog "
+                "WHERE id >= ? AND id < ? AND cid >= ? "
+                "AND type IN (0, 1, 2) AND ease BETWEEN 1 AND 4 "
+                "GROUP BY cid, day_index HAVING cid > ? OR day_index > ? "
+                "ORDER BY cid, day_index LIMIT 500",
+                *day_ends, ranges[0][1], ranges[-1][2], last_card_id,
+                last_card_id, last_day_index,
+            )
+            if not rows:
+                break
+            item_ids = None
+            if use_bulk:
+                partition = _bulk_classify_candidate_ids(
+                    sorted({row[0] for row in rows}), collection=collection, classifier=classifier,
+                )
+                if partition is not None:
+                    item_ids = set(partition[1])
+            for row in rows:
+                if should_cancel is not None and should_cancel():
+                    return None
+                card_id = int(row[0])
+                if item_ids is not None:
+                    if card_id not in item_ids:
+                        continue
+                elif topic_predicate(
+                    collection.get_card(card_id), classifier=classifier, col=collection,
+                ):
+                    continue
+                day = result[int(row[1])]
+                day["cards"] += 1
+                day["failed_cards"] += int(any(row[index] for index in (2, 6, 10)))
+                for stage_index, stage in enumerate(stages):
+                    for rating_index, rating in enumerate(ratings):
+                        day["stages"][stage][rating] += int(row[2 + stage_index * 4 + rating_index])
+            last_card_id = int(rows[-1][0])
+            last_day_index = int(rows[-1][1])
+        return result
+    except Exception:
+        return None
+
+
+def daily_tag_breakdown_from_collection(
+    collection,
+    day_end_time: str = "04:00",
+    *,
+    classifier=None,
+    topic_predicate=None,
+) -> dict | None:
+    """Rebuild today's card-count pies from Anki's canonical review log.
+
+    ``None`` means the collection could not be read. A successful day with no
+    reviews returns an empty normalized breakdown.
+    """
+    if collection is None:
+        return None
+    try:
+        if classifier is None or topic_predicate is None:
+            try:
+                from .topic_scheduler import (
+                    is_topic_card,
+                    resolve_topic_card_classifier,
+                )
+            except ImportError:
+                from topic_scheduler import (  # type: ignore
+                    is_topic_card,
+                    resolve_topic_card_classifier,
+                )
+            if classifier is None:
+                classifier = resolve_topic_card_classifier()
+            if topic_predicate is None:
+                topic_predicate = is_topic_card
+
+        start_ms, end_ms = _logical_day_bounds_ms(day_end_time)
+        review_rows = collection.db.all(
+            "SELECT cid, COUNT(*) FROM revlog WHERE id >= ? AND id < ? "
+            "GROUP BY cid ORDER BY MIN(id) LIMIT ?",
+            start_ms,
+            end_ms,
+            _MAX_DAILY_REVIEW_ROWS,
+        )
+    except Exception:
+        return None
+
+    result = _empty_tag_breakdown()
+    context_by_card: dict[int, tuple[str, str] | None] = {}
+    for row in review_rows:
+        try:
+            raw_card_id, raw_review_count = row
+            card_id = int(raw_card_id)
+            review_count = int(raw_review_count)
+            if review_count <= 0:
+                continue
+        except (TypeError, ValueError, OverflowError):
+            continue
+        if card_id not in context_by_card:
+            try:
+                card = collection.get_card(card_id)
+                try:
+                    note = card.note()
+                except Exception:
+                    note = collection.get_note(card.nid)
+                kind = (
+                    "topics"
+                    if topic_predicate(
+                        card,
+                        classifier=classifier,
+                        col=collection,
+                    )
+                    else "items"
+                )
+                context_by_card[card_id] = (
+                    kind,
+                    _daily_breakdown_tag(note, classifier),
+                )
+            except Exception:
+                context_by_card[card_id] = None
+        context = context_by_card[card_id]
+        if context is None:
+            continue
+        kind, tag = context
+        counts = result["counts"][kind]
+        counts[tag] = counts.get(tag, 0) + review_count
+    return result
 
 
 def _is_valid_counts_block(d) -> bool:
@@ -316,6 +654,8 @@ def _load_stats_from_db(addon_dir: str, profile: str) -> dict:
             result["daily"] = {"date": date, "counts": parsed}
         elif scope == "time":
             result["time"] = parsed if isinstance(parsed, dict) else {}
+        elif scope == "tag_breakdown":
+            result["tag_breakdown"] = parsed if isinstance(parsed, dict) else {}
         else:
             result[scope] = parsed
     return _normalize_stats(result)
@@ -408,6 +748,20 @@ def _mirror_stats_to_db(addon_dir: str, profile: str, stats: dict) -> bool:
                 )
             else:
                 conn.execute("DELETE FROM stats WHERE scope = 'time'")
+
+            if "tag_breakdown" in stats:
+                conn.execute(
+                    "INSERT INTO stats (scope, date, data) VALUES (?, ?, ?) "
+                    "ON CONFLICT(scope) DO UPDATE SET "
+                    "date = excluded.date, data = excluded.data",
+                    (
+                        "tag_breakdown",
+                        None,
+                        _json_payload(stats["tag_breakdown"]),
+                    ),
+                )
+            else:
+                conn.execute("DELETE FROM stats WHERE scope = 'tag_breakdown'")
 
             daily = stats.get("daily")
             daily_date = (
@@ -533,6 +887,91 @@ def record_reading_page(
             except Exception:
                 pass
             raise
+
+
+def record_video_watch(
+    addon_dir: str,
+    profile: str,
+    card_id,
+    seconds,
+    *,
+    day_end_time: str = "04:00",
+    logical_date: str | None = None,
+) -> None:
+    """Add a bounded sample of observed playback to one profile's logical day."""
+    cid = _positive_identifier(card_id, "card_id")
+    if isinstance(seconds, bool):
+        raise ValueError("watch seconds must be positive and at most 300")
+    try:
+        elapsed = float(seconds)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("watch seconds must be positive and at most 300") from exc
+    if not math.isfinite(elapsed) or not 0 < elapsed <= 300:
+        raise ValueError("watch seconds must be positive and at most 300")
+    resolved_date = _normalize_logical_date(
+        logical_date if logical_date is not None else _effective_date(day_end_time)
+    )
+    if resolved_date is None:
+        raise ValueError("logical date is invalid")
+
+    with _stats_lock(addon_dir, profile):
+        conn = get_connection(addon_dir, profile)
+        try:
+            with conn:
+                conn.execute(
+                    "INSERT INTO video_watch_history "
+                    "(logical_date, card_id, watched_seconds) VALUES (?, ?, ?) "
+                    "ON CONFLICT(logical_date, card_id) DO UPDATE SET "
+                    "watched_seconds = MIN(86400, watched_seconds + excluded.watched_seconds)",
+                    (resolved_date, cid, elapsed),
+                )
+        except Exception:
+            conn.rollback()
+            raise
+
+
+def load_media_activity(
+    addon_dir: str,
+    profile: str,
+    *,
+    days: int | None = None,
+    day_end_time: str = "04:00",
+) -> dict:
+    """Count recorded document pages and observed video playback by period."""
+    result = {
+        "pdf_pages": 0,
+        "epub_pages": 0,
+        "pages": 0,
+        "videos_watched": 0,
+        "video_watch_seconds": 0.0,
+    }
+    params: tuple[str, ...] = ()
+    where = ""
+    if days is not None:
+        day_count = _bounded_history_days(days)
+        end = date.fromisoformat(_effective_date(day_end_time))
+        start = (end - timedelta(days=day_count - 1)).isoformat()
+        where = " WHERE logical_date BETWEEN ? AND ?"
+        params = (start, end.isoformat())
+
+    with _stats_lock(addon_dir, profile):
+        conn = get_connection(addon_dir, profile)
+        page_rows = conn.execute(
+            "SELECT document_type, COUNT(*) FROM reading_page_history"
+            + where + " GROUP BY document_type", params,
+        ).fetchall()
+        for kind, count in page_rows:
+            if kind in {"pdf", "epub"}:
+                result[f"{kind}_pages"] = max(0, int(count or 0))
+        result["pages"] = result["pdf_pages"] + result["epub_pages"]
+        videos, seconds = conn.execute(
+            "SELECT COUNT(DISTINCT card_id), COALESCE(SUM(watched_seconds), 0) "
+            "FROM video_watch_history" + where, params,
+        ).fetchone()
+        result["videos_watched"] = max(0, int(videos or 0))
+        value = float(seconds or 0.0)
+        result["video_watch_seconds"] = round(value, 1) if math.isfinite(value) and value > 0 else 0.0
+    return result
 
 
 def _history_json(value, *, counts: bool) -> dict:
@@ -754,6 +1193,67 @@ def _increment_map(block: dict, group: str, key: str | None, amount) -> None:
     target[key] = target.get(key, 0) + amount
 
 
+def record_tag_breakdown(
+    addon_dir: str,
+    profile: str,
+    *,
+    study_kind: str,
+    tag: str | None,
+    include_count: bool,
+    seconds: float,
+    day_end_time: str = "04:00",
+) -> dict:
+    """Record one Topic/Item contribution without changing legacy aggregates.
+
+    This joint attribution powers pie charts where each slice must belong to
+    exactly one semantic card kind and one tag. Existing count/time blocks stay
+    unchanged so session-owned statistics cannot be double-counted.
+    """
+    kind = str(study_kind or "").strip().casefold()
+    if kind not in _TAG_BREAKDOWN_KINDS:
+        raise ValueError("study_kind must be 'topics' or 'items'")
+    clean_tag = _clean_stat_key(tag if tag is not None else UNTAGGED_STATS_TAG)
+    if clean_tag is None:
+        clean_tag = UNTAGGED_STATS_TAG
+    try:
+        clean_seconds = float(seconds or 0.0)
+    except Exception:
+        clean_seconds = 0.0
+    if not math.isfinite(clean_seconds):
+        clean_seconds = 0.0
+    clean_seconds = max(0.0, min(_MAX_STAT_VALUE, clean_seconds))
+    logical_date = _effective_date(day_end_time)
+
+    def apply_delta(stats: dict) -> dict:
+        raw_value = stats.get("tag_breakdown")
+        raw: dict = raw_value if isinstance(raw_value, dict) else {}
+        daily_value = raw.get("daily")
+        daily_raw: dict = daily_value if isinstance(daily_value, dict) else {}
+        if daily_raw.get("date") == logical_date:
+            daily = _normalize_tag_breakdown_block(daily_raw)
+        else:
+            daily = _empty_tag_breakdown()
+        lifetime = _normalize_tag_breakdown_block(raw.get("lifetime"))
+
+        for block in (daily, lifetime):
+            if include_count:
+                counts = block["counts"][kind]
+                counts[clean_tag] = counts.get(clean_tag, 0) + 1
+            if clean_seconds > 0:
+                time_values = block["seconds"][kind]
+                time_values[clean_tag] = (
+                    time_values.get(clean_tag, 0.0) + clean_seconds
+                )
+
+        stats["tag_breakdown"] = {
+            "daily": {"date": logical_date, **daily},
+            "lifetime": lifetime,
+        }
+        return stats
+
+    return mutate_stats(addon_dir, profile, apply_delta)
+
+
 def _record_persistent_delta(
     addon_dir: str,
     profile: str,
@@ -791,14 +1291,13 @@ def _record_persistent_delta(
                 _increment_map(block, "type", result.card_type, seconds)
                 _increment_map(block, "tags", result.tag, seconds)
 
-        return {
-            "daily": {"date": logical_date, "counts": daily},
-            "lifetime": lifetime,
-            "time": {
-                "daily": {"date": logical_date, "seconds": daily_time},
-                "lifetime": lifetime_time,
-            },
+        stats["daily"] = {"date": logical_date, "counts": daily}
+        stats["lifetime"] = lifetime
+        stats["time"] = {
+            "daily": {"date": logical_date, "seconds": daily_time},
+            "lifetime": lifetime_time,
         }
+        return stats
 
     return mutate_stats(addon_dir, profile, apply_delta)
 
@@ -823,6 +1322,10 @@ def _delete_history_dates(addon_dir: str, profile: str, dates: set[str]) -> None
                 f"DELETE FROM reading_page_history WHERE logical_date IN ({placeholders})",
                 clean_dates,
             )
+            conn.execute(
+                f"DELETE FROM video_watch_history WHERE logical_date IN ({placeholders})",
+                clean_dates,
+            )
     except Exception:
         try:
             conn.rollback()
@@ -842,6 +1345,10 @@ def delete_daily_stats(
             stats["time"].pop("daily", None)
             if not stats["time"]:
                 stats.pop("time", None)
+        if isinstance(stats.get("tag_breakdown"), dict):
+            stats["tag_breakdown"].pop("daily", None)
+            if not stats["tag_breakdown"]:
+                stats.pop("tag_breakdown", None)
         return stats
 
     with _stats_lock(addon_dir, profile):
@@ -866,6 +1373,10 @@ def delete_lifetime_stats(addon_dir: str, profile: str) -> None:
             stats["time"].pop("lifetime", None)
             if not stats["time"]:
                 stats.pop("time", None)
+        if isinstance(stats.get("tag_breakdown"), dict):
+            stats["tag_breakdown"].pop("lifetime", None)
+            if not stats["tag_breakdown"]:
+                stats.pop("tag_breakdown", None)
         return stats
 
     mutate_stats(addon_dir, profile, remove_lifetime)
@@ -884,6 +1395,7 @@ def delete_all_stats(addon_dir: str, profile: str) -> None:
                 conn.execute("DELETE FROM stats")
                 conn.execute("DELETE FROM stats_daily_history")
                 conn.execute("DELETE FROM reading_page_history")
+                conn.execute("DELETE FROM video_watch_history")
         except Exception:
             try:
                 conn.rollback()

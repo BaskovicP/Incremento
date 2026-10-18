@@ -42,6 +42,19 @@ def test_document_preview_read_model(tmp_path):
     )
 
 
+def test_pdf_page_text_can_bound_hover_preview_reads(tmp_path):
+    addon_dir = str(tmp_path)
+    db.replace_pdf_text_index(addon_dir, "Profile", 7, ["0123456789"])
+
+    assert search_repository.pdf_page_text(
+        addon_dir,
+        "Profile",
+        7,
+        1,
+        max_chars=6,
+    ) == "012345"
+
+
 @pytest.mark.parametrize(
     ("insert_sql", "values", "kind", "expected"),
     [

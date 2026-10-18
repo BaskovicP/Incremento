@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { selectionCleaned } from '../src/pdfTextSelection.mjs';
+import { annotatePdfTextStyles, selectionCleaned, selectionFormatted } from '../src/pdfTextSelection.mjs';
 
 function selection(words, { start = 0, end = words.at(-1)[0].length, nested = false } = {}) {
   const elements = words.map(([text, x, y, w, h = 10]) => ({
@@ -74,4 +74,56 @@ test('copying joins hyphenated line wraps and preserves a visible paragraph gap'
   assert.equal(selectionCleaned(...selection([
     ['inter-', 0, 0, 30], ['esting.', 0, 16, 35], ['Next', 0, 45, 25],
   ])), 'interesting.\n\nNext');
+});
+
+test('extracting PDF text retains bold and italic runs across a paragraph gap', () => {
+  const [selected, layer] = selection([
+    ['The goal:', 0, 0, 46], ['The ', 50, 0, 24], ['goal', 74, 0, 23],
+    [' explains why.', 97, 0, 70], ['The process:', 0, 30, 68],
+  ]);
+  layer.children[0].dataset = { incBold: '1' };
+  layer.children[2].dataset = { incItalic: '1' };
+  layer.children[4].dataset = { incBold: '1' };
+
+  assert.deepEqual(selectionFormatted(selected, layer), {
+    text: 'The goal: The goal explains why.\n\nThe process:',
+    runs: [
+      { text: 'The goal:', bold: true, italic: false },
+      { text: ' The ', bold: false, italic: false },
+      { text: 'goal', bold: false, italic: true },
+      { text: ' explains why.\n\n', bold: false, italic: false },
+      { text: 'The process:', bold: true, italic: false },
+    ],
+  });
+});
+
+test('PDF text styles come from font metadata only when text spans match', () => {
+  const spans = [
+    { textContent: 'The goal:', dataset: {} },
+    { textContent: ' goal', dataset: {} },
+  ];
+  const textContent = { items: [
+    { str: 'The goal:', fontName: 'bold-font' },
+    { str: ' goal', fontName: 'italic-font' },
+  ] };
+  const fonts = {
+    get: name => ({
+      'bold-font': { bold: true },
+      'italic-font': { italic: true },
+    })[name],
+  };
+
+  assert.equal(annotatePdfTextStyles(spans, textContent, fonts), true);
+  assert.equal(spans[0].dataset.incBold, '1');
+  assert.equal(spans[1].dataset.incItalic, '1');
+  assert.equal(annotatePdfTextStyles(spans, { items: [{ str: 'wrong' }] }, fonts), false);
+  assert.equal(spans[0].dataset.incBold, '1');
+});
+
+test('extracting a new PDF callout keeps its bullet on a separate paragraph', () => {
+  const [selected, layer] = selection([
+    ['why.', 0, 0, 24], ['» ', 0, 16, 12], ['The process:', 13, 16, 60],
+  ]);
+
+  assert.equal(selectionFormatted(selected, layer).text, 'why.\n\n» The process:');
 });

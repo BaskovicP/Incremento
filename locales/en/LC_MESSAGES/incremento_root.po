@@ -26,6 +26,9 @@ msgstr "Activity Center…"
 msgid "root_menu_add_content"
 msgstr "Add Content"
 
+msgid "root_menu_import_supermemo"
+msgstr "Import SuperMemo Collection…"
+
 #. Menu or action: Add Audio
 msgid "root_menu_add_audio"
 msgstr "Add Audio"
@@ -66,9 +69,9 @@ msgstr "Clean Up Orphaned PDF Files…"
 msgid "root_menu_cleanup_orphan_videos"
 msgstr "Clean Up Orphaned Video Files…"
 
-#. Menu or action: Clean Non-Active Profile Data…
+#. Menu or action: Clean Up Unused Incremento Data…
 msgid "root_menu_cleanup_profile_data"
-msgstr "Clean Non-Active Profile Data…"
+msgstr "Clean Up Unused Incremento Data…"
 
 #. Menu or action: Clean Up Stale Progress / Search Index / OCR Rows…
 msgid "root_menu_cleanup_stale_rows"
@@ -145,6 +148,10 @@ msgstr "Reindex OCR Search Cache (From Hidden Field)"
 #. Menu or action: Reindex PDF Text (Existing Cards)
 msgid "root_menu_reindex_pdf_text"
 msgstr "Reindex PDF Text (Existing Cards)"
+
+#. Menu or action: Rebuild PDF Context on Cards…
+msgid "root_menu_rebuild_pdf_card_contexts"
+msgstr "Build PDF Snapshot Previews on Cards…"
 
 #. Menu or action: Restore Full Backup…
 msgid "root_menu_restore_full_backup"
@@ -1116,21 +1123,21 @@ msgstr[1] "Incremento settings updated. Inverted {count} stored priorities."
 msgid "root_cleanup_stale_failed"
 msgstr "Could not clean stale Incremento rows:\n{error}"
 
-#. Cleanup UI: Could not scan non-active profile artifacts:
+#. Cleanup UI: Could not scan unused Incremento data:
 msgid "root_cleanup_profile_scan_failed"
-msgstr "Could not scan non-active profile artifacts:\n{error}"
+msgstr "Could not scan unused Incremento data:\n{error}"
 
-#. Cleanup UI: No deletable cross-profile artifacts detected.
+#. Cleanup UI: No files or records can be safely cleaned.
 msgid "root_cleanup_profile_none"
-msgstr "No deletable cross-profile artifacts detected.\n\nNothing is safe to delete without affecting some profile."
+msgstr "No files or records can be safely cleaned."
 
 #. Cleanup UI: Active profile: {profile}
 msgid "root_cleanup_active_profile"
 msgstr "Active profile: {profile}"
 
-#. Cleanup UI: The following data is not referenced by this profile and may belong to another profile (or be truly orphaned):
+#. Cleanup UI: The following unused Incremento files and stale records can be cleaned:
 msgid "root_cleanup_profile_explanation"
-msgstr "The following data is not referenced by this profile and may belong to another profile (or be truly orphaned):"
+msgstr "The following unused Incremento files and stale records can be cleaned:"
 
 #. Cleanup UI: • PDF files: {count}
 msgid "root_cleanup_pdf_files"
@@ -1139,6 +1146,14 @@ msgstr "• PDF files: {count}"
 #. Cleanup UI: • Video files: {count}
 msgid "root_cleanup_video_files"
 msgstr "• Video files: {count}"
+
+#. Cleanup UI: • Unused PDF screenshots in Anki media: {count} ({size})
+msgid "root_cleanup_snapshot_files"
+msgstr "• Unused PDF screenshots in Anki media: {count} ({size})"
+
+#. Cleanup UI: PDF screenshots move to Anki's media trash.
+msgid "root_cleanup_snapshot_trash_note"
+msgstr "PDF screenshots move to Anki's media trash. Empty that trash later to free disk space."
 
 #. Cleanup UI: • Progress rows: {count} (PDF {pdf}, Video {video}, Web {web})
 msgid "root_cleanup_progress_rows"
@@ -1184,9 +1199,9 @@ msgstr "Skipped videos (kept):"
 msgid "root_cleanup_file_profiles"
 msgstr "  - {filename}  (profiles: {profiles})"
 
-#. Cleanup UI: Delete these now?
+#. Cleanup UI: Clean up the items listed above?
 msgid "root_cleanup_delete_now"
-msgstr "Delete these now?"
+msgstr "Clean up the items listed above?"
 
 #. Cleanup UI: Rows: {error}
 msgid "root_cleanup_rows_error"
@@ -1299,3 +1314,52 @@ msgstr "Export Privacy-Safe Incremento Support Bundle"
 #. Item reviewer action; the command remains incremento_item_skip.
 msgid "root_reviewer_skip"
 msgstr "Skip"
+
+#. Bulk PDF card-context maintenance UI.
+msgid "root_pdf_context_rebuild_confirm"
+msgstr "Build a highlighted PDF screenshot for every matching citation using {rows} rows before and after?\n\nThe images are added to Anki media, note fields are updated, and both will sync to your other devices. You can undo the note changes in Anki."
+
+msgid "root_pdf_context_rebuild_progress"
+msgstr "Building PDF screenshot previews on cards…"
+
+msgid "root_pdf_context_rebuild_undo"
+msgstr "Build PDF card snapshots"
+
+msgid "root_pdf_context_rebuild_stale"
+msgstr "The active Anki profile changed. No PDF screenshots were built."
+
+msgid "root_pdf_context_rebuild_complete"
+msgstr "PDF screenshot build finished.\n\nCandidate notes: {scanned}\nChanged notes: {changed}\nUpdated previews: {updated}\nSkipped previews: {skipped}"
+
+msgid "root_pdf_context_rebuild_failed"
+msgstr "Could not build PDF screenshot previews:\n{error}"
+
+msgid "root_pdf_context_source_preview"
+msgstr "Source page preview"
+
+msgid "root_menu_cleanup_pdf_snapshots"
+msgstr "Clean Up Unused PDF Screenshots…"
+
+msgid "root_pdf_snapshot_cleanup_close_add"
+msgstr "Close Add Cards before cleaning PDF screenshots so an unsaved image is not removed."
+
+msgid "root_pdf_snapshot_cleanup_invalid_draft"
+msgstr "The saved extraction draft could not be read safely. Cleanup was cancelled."
+
+msgid "root_pdf_snapshot_cleanup_stale"
+msgstr "The active Anki profile changed. No PDF screenshots were removed."
+
+msgid "root_pdf_snapshot_cleanup_none"
+msgstr "No unused Incremento PDF screenshots were found in Anki media."
+
+msgid "root_pdf_snapshot_cleanup_more"
+msgstr "…and {count} more files"
+
+msgid "root_pdf_snapshot_cleanup_confirm"
+msgstr "Move {count} unused Incremento PDF screenshots ({size}) to Anki's media trash? They are not referenced by saved notes or the saved extraction draft.\n\n{files}"
+
+msgid "root_pdf_snapshot_cleanup_complete"
+msgstr "Moved {count} PDF screenshots ({size}) to Anki's media trash."
+
+msgid "root_pdf_snapshot_cleanup_failed"
+msgstr "Could not clean up PDF screenshots:\n{error}"

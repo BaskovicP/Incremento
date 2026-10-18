@@ -1579,6 +1579,60 @@ msgstr "刷新"
 msgid "reader_video_add_card_here"
 msgstr "+ 在此处添加卡片"
 
+msgid "reader_video_create_mobile_clip"
+msgstr "创建移动端剪辑片段…"
+
+msgid "reader_video_clip_hint"
+msgstr "创建已剪辑的 H.264/AAC 片段并存入 Anki 媒体。远程视频只下载所选时间范围。"
+
+msgid "reader_video_clip_download_first"
+msgstr "请先下载此视频的本地副本，再创建移动端片段。"
+
+msgid "reader_video_clip_title"
+msgstr "创建移动端视频片段"
+
+msgid "reader_video_clip_intro"
+msgstr "选择准确的开始和结束时间。如果没有本地副本，Incremento 只下载该时间范围。片段将添加到“添加卡片”草稿。"
+
+msgid "reader_video_clip_no_source"
+msgstr "此卡片既没有本地视频副本，也没有受支持的 YouTube 或 Vimeo 网址。"
+
+msgid "reader_video_clip_start"
+msgstr "开始"
+
+msgid "reader_video_clip_end"
+msgstr "结束"
+
+msgid "reader_video_clip_source_duration"
+msgstr "源视频时长：{duration}"
+
+msgid "reader_video_clip_invalid_time"
+msgstr "请输入如 7:55 或 1:02:03 的时间。"
+
+msgid "reader_video_clip_invalid_range"
+msgstr "请选择晚于开始时间、不超出视频且最长不超过 10 分钟的结束时间。"
+
+msgid "reader_video_clip_local_missing"
+msgstr "本地视频副本丢失。请重新下载后再试。"
+
+msgid "reader_video_clip_activity"
+msgstr "正在创建移动端视频片段"
+
+msgid "reader_video_clip_encoding"
+msgstr "正在编码 H.264/AAC 片段…"
+
+msgid "reader_video_clip_failed"
+msgstr "无法创建移动端视频片段。\n\n{error}"
+
+msgid "reader_video_clip_stale"
+msgstr "片段完成前视频或 Anki 配置已更改，因此已丢弃该片段。"
+
+msgid "reader_video_clip_add_card_failed"
+msgstr "片段已创建，但 Incremento 无法将其添加到“添加卡片”草稿。"
+
+msgid "reader_video_clip_ready"
+msgstr "移动端视频片段已添加到“添加卡片”草稿。"
+
 msgid "reader_video_bookmark_comment"
 msgstr "视频书签评论"
 
@@ -3266,6 +3320,15 @@ msgstr "PDF 页面内容已更改，或所选原始文件属于不同文档。�
 msgid "reader_pdf_sync_protected"
 msgstr "无法同步已签名、受密码保护或限制批注的 PDF。Incremento 批注仍已保存。"
 
+msgid "reader_pdf_sync_password"
+msgstr "此 PDF 需要密码，解锁前无法同步。Incremento 批注仍已保存。"
+
+msgid "reader_pdf_sync_signed"
+msgstr "此 PDF 被标记为已进行数字签名。同步会重写文件，可能导致签名失效。Incremento 批注仍已保存。"
+
+msgid "reader_pdf_sync_restricted"
+msgstr "此 PDF 的权限禁止更改批注，因此批注同步已被阻止。Incremento 批注仍已保存。"
+
 msgid "reader_pdf_sync_file_changed"
 msgstr "同步期间 PDF 发生了变化。较新的修改仍已保存；请点击“立即同步”重试。"
 
@@ -3300,3 +3363,10 @@ msgstr "更多颜色…"
 #. Annotation palette and hex color picker.
 msgid "reader_choose_annotation_color"
 msgstr "选择批注颜色"
+
+#. Saved card screenshot shown on desktop hover and mobile tap.
+msgid "reader_pdf_source_preview"
+msgstr "源页面预览"
+
+msgid "reader_pdf_citation_page_both"
+msgstr "{label}（PDF {page}）"

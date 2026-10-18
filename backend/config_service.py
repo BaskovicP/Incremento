@@ -21,6 +21,7 @@ except ImportError:
 CONFIG_SCHEMA_VERSION = 3
 DOCUMENT_MIX_VERSION = 2
 DEFAULT_TOPIC_DONE_TAG = "topic/done"
+DEFAULT_LEARNING_LEECH_TAG = "learning_leech"
 DEFAULT_REVIEWER_BUTTON_VISIBILITY = {
     "done": True,
     "postpone": True,
@@ -49,6 +50,8 @@ _BOOLEAN_DEFAULTS = {
     "auto_create_topics_deck": True,
     "topic_postpone_enabled": False,
     "pdf_force_default_appearance": False,
+    "pdf_link_hover_preview_enabled": True,
+    "pdf_show_highlight_delete_buttons": True,
 }
 
 _NUMBER_LIMITS: dict[
@@ -61,6 +64,7 @@ _NUMBER_LIMITS: dict[
     "topic_less_adjustment_percent": (10.0, 0.0, 100.0, float),
     "topic_maximum_interval_days": (36_500, 1, 365_000, int),
     "default_topic_a_factor": (3.5, 1.1, 100.0, float),
+    "pdf_context_rows": (5, 1, 20, int),
 }
 
 
@@ -138,6 +142,22 @@ def _normalize_dialog(raw: Any) -> dict:
     return dialog
 
 
+def configured_day_end_time(config: Mapping[str, Any] | None = None) -> str:
+    """Resolve the shared study-day cutoff, retaining the old dialog value.
+
+    The shipped default is null because Anki merges defaults before reading
+    user config. This lets an existing dialog cutoff migrate on the first read.
+    Session presets no longer own this setting.
+    """
+    config = config or {}
+    value = config.get("day_end_time")
+    if value is None:
+        dialog = config.get("dialog")
+        value = dialog.get("day_end_time") if isinstance(dialog, Mapping) else None
+    text = value.strip() if isinstance(value, str) else ""
+    return text if _DAY_END_RE.fullmatch(text) else "04:00"
+
+
 def normalize_topic_done_tag(value: object) -> str:
     """Validate one note tag; an empty setting uses the shipped default."""
     if value is None:
@@ -160,6 +180,29 @@ def configured_topic_done_tag(config: Mapping[str, Any] | None = None) -> str:
         return normalize_topic_done_tag((config or {}).get("topic_done_tag"))
     except ValueError:
         return DEFAULT_TOPIC_DONE_TAG
+
+
+def normalize_learning_leech_tag(value: object) -> str:
+    """Validate a single learning-leech tag, retaining its stored spelling."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return DEFAULT_LEARNING_LEECH_TAG
+    try:
+        return normalize_topic_done_tag(value)
+    except ValueError as exc:
+        raise ValueError("Enter one valid learning-leech tag.") from exc
+
+
+def configured_learning_leech(config: Mapping[str, Any] | None = None) -> tuple[bool, int, str]:
+    values = config or {}
+    try:
+        tag = normalize_learning_leech_tag(values.get("learning_leech_tag"))
+    except ValueError:
+        tag = DEFAULT_LEARNING_LEECH_TAG
+    return (
+        _bool(values.get("learning_leech_enabled"), False),
+        _number(values.get("learning_leech_threshold"), 5, 1, 9999, int),
+        tag,
+    )
 
 
 def configured_reviewer_button_visibility(
@@ -205,6 +248,17 @@ def configured_pdf_snapshot_auto_field_enabled(
     return _bool((config or {}).get("pdf_snapshot_auto_field_enabled"), False)
 
 
+def configured_pdf_context_rows(config: Mapping[str, Any] | None = None) -> int:
+    """Return the shared before/after row count for PDF context previews."""
+    return _number((config or {}).get("pdf_context_rows"), 5, 1, 20, int)
+
+
+def configured_pdf_citation_page_numbering(config: Mapping[str, Any] | None = None) -> str:
+    value = (config or {}).get("pdf_citation_page_numbering")
+    mode = value.strip().casefold() if isinstance(value, str) else "printed"
+    return mode if mode in {"printed", "pdf", "both"} else "printed"
+
+
 def normalize_pdf_snapshot_auto_fields(value: Any) -> dict[str, str]:
     """Return a bounded note-type-to-field preference map."""
     if not isinstance(value, Mapping):
@@ -225,10 +279,17 @@ def normalize_pdf_snapshot_auto_fields(value: Any) -> dict[str, str]:
 def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     """Return a validated config while preserving forward-compatible keys."""
     config = copy.deepcopy(dict(raw or {}))
+    config["day_end_time"] = configured_day_end_time(config)
     config["ui_language"] = normalize_language_choice(config.get("ui_language"))
     config["config_schema_version"] = CONFIG_SCHEMA_VERSION
     config["topic_done_tag"] = configured_topic_done_tag(config)
+    (
+        config["learning_leech_enabled"],
+        config["learning_leech_threshold"],
+        config["learning_leech_tag"],
+    ) = configured_learning_leech(config)
     config["pdf_default_appearance"] = configured_pdf_default_appearance(config)
+    config["pdf_citation_page_numbering"] = configured_pdf_citation_page_numbering(config)
     config["pdf_force_default_appearance"] = configured_pdf_force_default_appearance(config)
     config["pdf_snapshot_auto_field_enabled"] = (
         configured_pdf_snapshot_auto_field_enabled(config)

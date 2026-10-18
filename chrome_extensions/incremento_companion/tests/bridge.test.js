@@ -6,6 +6,8 @@ import {
   importIntoIncremento,
   loadBrowserCaptureMeta,
   loadBrowserMediaRef,
+  loadWebsiteTags,
+  saveWebsiteTags,
   saveBrowserMediaRef,
   submitBrowserCapture,
 } from "../src/shared/bridge.js";
@@ -13,6 +15,25 @@ import { resetBridgeAuthorizationForTests } from "../src/shared/bridgeAuth.js";
 import { applyStoredLanguageChange } from "../src/shared/i18n.js";
 
 beforeEach(() => resetBridgeAuthorizationForTests());
+
+test("website preference reads and writes use the authenticated bridge with profile binding", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = withHandshake(async (url, options) => {
+    calls.push(JSON.parse(options.body));
+    assert.equal(url, "http://127.0.0.1:8766/incremento/website-tags");
+    assert.equal(options.headers.get("X-Incremento-Token"), "test-token");
+    return Response.json({ok: true, site: "example.org", enabled: false, tags: [], profileToken: "a"});
+  });
+  try {
+    const loaded = await loadWebsiteTags("https://example.org");
+    await saveWebsiteTags({url: "https://example.org", enabled: true, tags: ["topic"], profileToken: loaded.profileToken});
+    assert.deepEqual(calls, [{action: "load", url: "https://example.org"},
+      {action: "save", url: "https://example.org", enabled: true, tags: ["topic"], profileToken: "a"}]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 function withHandshake(handler) {
   return async (url, options) => {

@@ -46,6 +46,13 @@
     "add-current-page-as-pdf": {
       "description": "__MSG_command_add_pdf__"
     },
+    "capture-opened-page-as-pdf": {
+      "suggested_key": {
+        "default": "Alt+Shift+P",
+        "mac": "Alt+Shift+P"
+      },
+      "description": "__MSG_command_capture_opened_page_pdf__"
+    },
     "add-current-page-as-video": {
       "description": "__MSG_command_add_video__"
     },
@@ -59,12 +66,14 @@
       "description": "__MSG_command_add_page_markdown__"
     },
     "browser-capture-selection": {
+      "global": false,
       "suggested_key": {
         "default": "Alt+X"
       },
       "description": "__MSG_command_capture_selection__"
     },
     "browser-capture-snapshot": {
+      "global": false,
       "suggested_key": {
         "default": "Alt+Shift+X"
       },

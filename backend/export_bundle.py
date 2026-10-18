@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import shutil
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 
@@ -15,6 +17,27 @@ TRANSIENT_USER_FILE_NAMES = {
     "singletonlock",
     "singletonsocket",
 }
+
+
+def snapshot_database(source: Path, destination: Path) -> dict[str, str | int]:
+    """Copy and validate through a fresh reader, independent of cached FTS state."""
+    source_uri = source.resolve().as_uri() + "?mode=ro"
+    with closing(sqlite3.connect(source_uri, uri=True)) as reader:
+        if reader.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
+            raise RuntimeError("Incremento database integrity check failed")
+        destination.touch(exist_ok=False)
+        try:
+            with closing(sqlite3.connect(str(destination))) as snapshot:
+                reader.backup(snapshot)
+                if snapshot.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
+                    raise RuntimeError("Incremento database snapshot integrity check failed")
+                return {
+                    "integrity_check": "ok",
+                    "schema_version": int(snapshot.execute("PRAGMA user_version").fetchone()[0]),
+                }
+        except BaseException:
+            destination.unlink(missing_ok=True)
+            raise
 
 
 def _normalize_relpath(rel_path: str) -> str:

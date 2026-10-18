@@ -14,7 +14,8 @@ test("import context options request HTML only for actions that consume it", () 
     pageContextOptionsForImport("writing", { writingMode: "selection" }),
     { includeHtml: false, htmlScope: "full" },
   );
-  assert.deepEqual(pageContextOptionsForImport("pdf"), { includeHtml: true, htmlScope: "full" });
+  assert.deepEqual(pageContextOptionsForImport("pdf"), { includeHtml: true, htmlScope: "full", preserveStyles: true });
+  assert.deepEqual(pageContextOptionsForImport("pdf", {pdfOptions: {dynamic: true}}), { includeHtml: false, htmlScope: "full", preserveStyles: true });
   assert.deepEqual(
     pageContextOptionsForImport("writing", { writingMode: "webpage_markdown", pageContentScope: "main" }),
     { includeHtml: true, htmlScope: "main" },
@@ -124,4 +125,21 @@ test("full-content page context removes backend-ignored nodes before enforcing t
 
   assert.equal(result.ok, true);
   assert.equal(result.html, "<html><body>Useful</body></html>");
+});
+
+test("PDF capture preserves embedded CSS while still removing active content", () => {
+  const selectors = [];
+  const page = {
+    document: {
+      documentElement: {cloneNode: () => ({outerHTML: "<html><style>p{color:red}</style><p>Article</p></html>", querySelectorAll: selector => {selectors.push(selector); return [];}})},
+      title: "Article",
+    },
+    window: {getSelection: () => ({toString: () => ""}), location: {href: "https://example.test/article"}}, globalThis: {},
+  };
+  const injected = vm.runInNewContext(`(${readPageContextFromTab.toString()})`, page);
+  const result = injected(1000, 100, pageContextOptionsForImport("pdf"));
+  assert.ok(result.html.includes("<style>"));
+  const ignored = selectors[0].split(", ");
+  assert.ok(!ignored.includes("style"));
+  assert.ok(ignored.includes("script") && ignored.includes("iframe"));
 });

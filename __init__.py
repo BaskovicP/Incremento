@@ -39,6 +39,7 @@ from aqt.qt import (
 )
 
 from .frontend.stats_dialog import StatsDialog
+from .frontend import deck_browser_stats as _deck_browser_stats_mod
 from .backend.scheduler_config import load_scheduler_config
 from .backend.statistics import (
     load_daily_history as _load_daily_stat_history,
@@ -52,6 +53,7 @@ from .backend.pdf_manager import (
     get_zoom,
     get_read_page,
     extract_pdf_pages_text,
+    pdf_storage_abspath,
     regenerate_pdf_card_cover,
     sync_pdf_card_file_references,
 )
@@ -139,6 +141,7 @@ from .backend.item_skip import (
     store_timed_item_skip as _store_timed_item_skip,
 )
 from .backend import browser_bridge as _browser_bridge_mod
+from .frontend.browser_capture_source import dispatch_browser_capture, open_browser_capture_note, render_browser_capture_source
 from .backend import diagnostics as _diagnostics_mod
 from .backend.decks import create_topics_deck as _create_topics_deck
 from .frontend.priority_dialog import PriorityDialog
@@ -191,8 +194,14 @@ from .frontend import browser_quick_tags as _browser_quick_tags_mod
 from .frontend.extract_batch_dialog import ExtractBatchDialog
 from .frontend import browser_priority_toolbar as _browser_priority_toolbar_mod
 from .backend import review_time_tracker as _review_time_mod
+from .backend.learning_leech import LearningLeechTracker
 from .backend import anki_compat as _anki_compat
 from .backend import reconciliation as _reconciliation_mod
+from .backend import pdf_context_cards as _pdf_context_cards_mod
+from .backend import pdf_context_snapshot as _pdf_context_snapshot_mod
+from .backend import pdf_snapshot_cleanup as _pdf_snapshot_cleanup_mod
+from .backend.pdf_highlights import load_highlights as _load_pdf_highlights
+from .backend.search_repository import pdf_page_text as _pdf_page_text
 from .backend.note_type_updates import (
     NoteTypeApplyError as _NoteTypeApplyError,
     apply_incremento_note_type_updates as _apply_incremento_note_type_updates,
@@ -295,6 +304,8 @@ from .backend.reviewer_extract import (
 
 _activate_pymupdf()
 
+_learning_leech_tracker = LearningLeechTracker()
+
 # Resolve only at addon startup. Saving Settings deliberately keeps the running
 # reviewer/docks in their current language until the next Anki restart.
 _startup_ui_language_choice = _load_initial_config(mw.addonManager, __name__).get("ui_language", "auto")
@@ -320,6 +331,31 @@ _diagnostic_pending_final_interval: int | None = None
 _command_palette_dialog = None
 _onboarding_dialog = None
 _activity_center_dialog = None
+def _render_deck_browser_daily_stats(_deck_browser, content) -> None:
+    _deck_browser_stats_mod.render_deck_browser_daily_stats(
+        content,
+        addon_dir=_ADDON_DIR,
+        profile=_active_profile(),
+        show_charts=False,
+        show_learning_results=False,
+    )
+
+
+def _install_deck_browser_stats_hook(*_args) -> None:
+    hook = getattr(gui_hooks, "deck_browser_will_render_content", None)
+    if hook is None:
+        return
+    try:
+        hook.remove(_render_deck_browser_daily_stats)
+    except ValueError:
+        pass
+    hook.append(_render_deck_browser_daily_stats)
+
+
+# Install immediately, then move the renderer to the end once all add-ons have
+# loaded so it can remove Session Timer's inaccurate idle-time suffix.
+_install_deck_browser_stats_hook()
+gui_hooks.main_window_did_init.append(_install_deck_browser_stats_hook)
 
 
 def configured_show_incremento_fields(cfg: dict | None = None) -> bool:
@@ -1043,6 +1079,27 @@ def _topic_reviewer_will_answer_card(response, _reviewer, card):
     if _reviewer_items_fail_pass(card):
         return (proceed, _remap_item_fail_pass_ease(card, ease))
     return response
+
+
+def _learning_leech_reviewer_will_answer_card(response, _reviewer, card):
+    _learning_leech_tracker.clear()
+    proceed, ease = response
+    if proceed:
+        try:
+            _learning_leech_tracker.prepare_answer(
+                mw.col, _current_profile_name(), card, ease,
+                _load_addon_config(mw.addonManager, __name__),
+            )
+        except Exception:
+            _learning_leech_tracker.clear()
+    return response
+
+
+def _learning_leech_on_card_answered(_reviewer, card, ease):
+    try:
+        _learning_leech_tracker.finish_answer(mw.col, _current_profile_name(), card, ease)
+    except Exception:
+        _learning_leech_tracker.clear()
 
 
 def _direct_review_v3_info(card):
@@ -2513,9 +2570,31 @@ def _on_js_message(handled, message, context) -> tuple:
 
 def _repair_legacy_pdf_reference_links(text: str, card, context: str) -> str:
     try:
-        return _pdf_dock_mod.repair_legacy_pdf_reference_links_html(text)
+        repaired = _pdf_dock_mod.repair_legacy_pdf_reference_links_html(text)
     except Exception:
-        return text
+        repaired = text
+    try:
+        repaired = _reader_links_mod.collapsible_pdf_snapshot_previews(repaired)
+    except Exception:
+        pass
+    try:
+        cfg = _load_addon_config(mw.addonManager, __name__)
+        if not bool(cfg.get("pdf_link_hover_preview_enabled", True)):
+            return repaired
+        profile = _active_profile()
+        return _reader_links_mod.decorate_pdf_reference_link_previews(
+            repaired,
+            lambda card_id, page: _pdf_page_text(
+                _ADDON_DIR,
+                profile,
+                card_id,
+                page,
+                max_chars=250_000,
+            ),
+            context_rows=_pdf_dock_mod.configured_pdf_context_rows(cfg),
+        )
+    except Exception:
+        return repaired
 
 
 gui_hooks.add_cards_did_add_note.append(_pdf_dock_mod.on_add_cards_did_add_note)
@@ -2534,14 +2613,17 @@ gui_hooks.reviewer_did_show_question.append(_local_file_dock_mod.on_local_file_q
 gui_hooks.reviewer_did_show_answer.append(_review_time_mod.on_reviewer_answer_shown)
 gui_hooks.state_did_change.append(_review_time_mod.on_state_did_change)
 gui_hooks.reviewer_did_answer_card.append(_timer_on_card_answered)
+gui_hooks.reviewer_did_answer_card.append(_review_time_mod.on_reviewer_card_answered)
 gui_hooks.reviewer_did_answer_card.append(_on_topic_card_answered)
 gui_hooks.reviewer_did_answer_card.append(_apply_custom_schedule_after_answer)
+gui_hooks.reviewer_did_answer_card.append(_learning_leech_on_card_answered)
 gui_hooks.reviewer_will_init_answer_buttons.append(_topic_review_buttons)
 gui_hooks.reviewer_will_show_context_menu.append(_topic_review_actions.add_context_menu)
 gui_hooks.reviewer_will_show_context_menu.append(_add_reviewer_button_visibility_menu)
 gui_hooks.profile_will_close.append(_topic_review_actions.reset)
 gui_hooks.profile_will_close.append(_pdf_dock_mod.reset_for_profile_switch)
 gui_hooks.reviewer_will_answer_card.append(_topic_reviewer_will_answer_card)
+gui_hooks.reviewer_will_answer_card.append(_learning_leech_reviewer_will_answer_card)
 gui_hooks.reviewer_will_end.append(_clear_direct_review_queue)
 gui_hooks.reviewer_will_end.append(lambda: _release_session_postponed_cards())
 gui_hooks.state_did_change.append(_release_expired_topic_postpones_on_overview)
@@ -2555,6 +2637,7 @@ gui_hooks.reviewer_will_end.append(_local_file_dock_mod.on_local_file_reviewer_w
 gui_hooks.profile_will_close.append(_video_dock_mod.flush_video_progress)
 if hasattr(gui_hooks, "card_will_show"):
     gui_hooks.card_will_show.append(_repair_legacy_pdf_reference_links)
+    gui_hooks.card_will_show.append(render_browser_capture_source)
 gui_hooks.webview_did_receive_js_message.append(_on_js_message)
 
 
@@ -2856,6 +2939,7 @@ def _on_profile_did_open() -> None:
     cfg = _load_addon_config(mw.addonManager, __name__)
     _reset_topic_answer_runtime_state()
     _reset_custom_schedule_answer_runtime_state()
+    _learning_leech_tracker.clear()
     _diagnostic_pending_final_interval = None
     # Reset Qt WebEngine profile singletons before migration so they are
     # recreated with the correct per-profile storage path on next use.
@@ -2947,6 +3031,7 @@ gui_hooks.profile_did_open.append(_start_profile_reconciliation)
 def _reset_answer_schedule_runtime_state() -> None:
     _reset_topic_answer_runtime_state()
     _reset_custom_schedule_answer_runtime_state()
+    _learning_leech_tracker.clear()
 
 
 gui_hooks.profile_will_close.append(_reset_answer_schedule_runtime_state)
@@ -3061,6 +3146,7 @@ def _initialize_item_skip_runtime() -> None:
 
 gui_hooks.main_window_did_init.append(_initialize_topic_postpone_runtime)
 gui_hooks.main_window_did_init.append(_initialize_item_skip_runtime)
+_browser_bridge_mod.configure_browser_capture(dispatcher=dispatch_browser_capture, opener=open_browser_capture_note)
 gui_hooks.profile_did_open.append(
     lambda: _browser_bridge_mod.start_browser_bridge(_ADDON_DIR)
 )
@@ -3354,7 +3440,7 @@ def _check_deps_first_run() -> None:
     if config.get("deps_notified"):
         return
     s = status()
-    if s["pymupdf"] and s["tesseract"]:
+    if s["pymupdf"] and s["tesseract"] and s["ffmpeg"]:
         # Everything present — mark as notified and skip
         config["deps_notified"] = True
         _save_addon_config(mw.addonManager, __name__, config)
@@ -3768,6 +3854,315 @@ def showStatsFunction() -> None:
     dlg.exec()
 
 
+def importSuperMemoFunction() -> None:
+    """Select, preflight, and import a native SuperMemo collection."""
+    import tempfile
+    from pathlib import Path
+
+    from aqt.operations import CollectionOp
+    from aqt.qt import QMessageBox
+
+    from .backend.supermemo_format import (
+        extract_supermemo_archive,
+        locate_supermemo_collection,
+        parse_supermemo_collection,
+    )
+    from .backend.supermemo_import import (
+        import_supermemo_collection,
+        is_supermemo_cloze_element,
+    )
+
+    source_path, _selected_filter = QFileDialog.getOpenFileName(
+        mw,
+        _t("imports_supermemo_select"),
+        "",
+        _t("imports_supermemo_file_filter"),
+    )
+    if not source_path:
+        return
+
+    source = Path(source_path)
+    if source.suffix.casefold() not in {".zip", ".kno"}:
+        showInfo(
+            _t(
+                "imports_supermemo_failed",
+                error=_t("imports_supermemo_unsupported_file"),
+            )
+        )
+        return
+
+    profile = _active_profile()
+    collection = mw.col
+    mw.progress.start(label=_t("imports_supermemo_preparing"), immediate=True)
+
+    def prepare():
+        temporary = None
+        try:
+            if source.suffix.casefold() == ".zip":
+                temporary = tempfile.TemporaryDirectory(prefix="incremento-supermemo-")
+                kno_path, collection_dir = extract_supermemo_archive(
+                    source,
+                    Path(temporary.name),
+                )
+            else:
+                kno_path, collection_dir = locate_supermemo_collection(source)
+            parsed = parse_supermemo_collection(kno_path, collection_dir)
+            return parsed, temporary
+        except Exception:
+            if temporary is not None:
+                temporary.cleanup()
+            raise
+
+    def prepared_done(future) -> None:
+        mw.progress.finish()
+        try:
+            parsed, temporary = future.result()
+        except Exception as exc:
+            showInfo(_t("imports_supermemo_failed", error=exc))
+            return
+        if collection is not mw.col or profile != _active_profile():
+            if temporary is not None:
+                temporary.cleanup()
+            showInfo(_t("imports_supermemo_stale"))
+            return
+
+        importable = [
+            element
+            for element in parsed.elements
+            if element.element_type in {0, 1, 4} and not element.deleted
+        ]
+        topics = sum(element.element_type in {0, 4} for element in importable)
+        items = sum(element.element_type == 1 for element in importable)
+        cloze = sum(is_supermemo_cloze_element(element) for element in importable)
+        media = len({media.file_id for element in importable for media in element.media})
+        skipped = len(parsed.elements) - len(importable)
+        history = sum(len(element.history) for element in importable)
+        summary = _t(
+            "imports_supermemo_preflight_summary",
+            collection=parsed.name,
+            elements=len(importable),
+            topics=topics,
+            items=items,
+            cloze=cloze,
+            media=media,
+            history=history,
+            optimization=len(parsed.optimization_files),
+            skipped=skipped,
+        )
+        summary += "\n\n" + _t("imports_supermemo_non_undoable")
+        answer = QMessageBox.question(
+            mw,
+            _t("imports_supermemo_preflight_title"),
+            summary,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            if temporary is not None:
+                temporary.cleanup()
+            return
+
+        default_deck = _t("imports_supermemo_default_deck", collection=parsed.name)
+        deck_name, accepted = QInputDialog.getText(
+            mw,
+            _t("imports_supermemo_deck_title"),
+            _t("imports_supermemo_deck_prompt"),
+            text=default_deck,
+        )
+        deck_name = str(deck_name or "").strip()
+        if not accepted or not deck_name:
+            if temporary is not None:
+                temporary.cleanup()
+            return
+
+        def operation(col):
+            if col is not collection or profile != _active_profile():
+                raise RuntimeError(_t("imports_supermemo_stale"))
+            return import_supermemo_collection(
+                _ADDON_DIR,
+                profile,
+                col,
+                parsed,
+                deck_name=deck_name,
+            )
+
+        def success(result) -> None:
+            if temporary is not None:
+                temporary.cleanup()
+            if profile != _active_profile():
+                return
+            mw.col.reset()
+            showInfo(
+                _t(
+                    "imports_supermemo_complete",
+                    created=result.created,
+                    existing=result.skipped_existing,
+                    history=result.history_rows,
+                    cloze=result.cloze_cards,
+                    media=result.media_files,
+                    deck=deck_name,
+                )
+            )
+
+        def failed(exc) -> None:
+            if temporary is not None:
+                temporary.cleanup()
+            if profile == _active_profile():
+                showInfo(_t("imports_supermemo_failed", error=exc))
+
+        CollectionOp(mw, operation).success(success).failure(failed).run_in_background()
+
+    mw.taskman.run_in_background(prepare, prepared_done, uses_collection=False)
+
+
+def rebuildPdfCardContextsFunction() -> None:
+    """Rebuild syncable PDF passage screenshots on every matching Anki note."""
+    from anki.collection import OpChanges
+    from aqt.operations import CollectionOp
+    from aqt.utils import askUser
+
+    cfg = _load_addon_config(mw.addonManager, __name__)
+    context_rows = _pdf_dock_mod.configured_pdf_context_rows(cfg)
+    if not askUser(
+        _t("root_pdf_context_rebuild_confirm", rows=context_rows),
+        parent=mw,
+    ):
+        return
+
+    profile = _active_profile()
+    collection = mw.col
+    progress_state = (0, 0)
+
+    def progress(completed: int, total: int) -> None:
+        nonlocal progress_state
+        progress_state = (int(completed), int(total))
+
+    def progress_update(_backend_progress, update) -> None:
+        completed, total = progress_state
+        update.label = f"{_t('root_pdf_context_rebuild_progress')} {completed}/{total}"
+        update.value = completed
+        update.max = total
+
+    def operation(col):
+        if col is not collection or profile != _active_profile():
+            raise RuntimeError(_t("root_pdf_context_rebuild_stale"))
+        snapshot_cache: dict[tuple[int, int, str, str], str] = {}
+        highlight_cache: dict[int, list] = {}
+
+        def snapshot_loader(payload: dict, excerpt: str) -> str:
+            if profile != _active_profile():
+                raise RuntimeError(_t("root_pdf_context_rebuild_stale"))
+            try:
+                card_id = int(payload["card_id"])
+                page = int(payload["page"])
+                highlight_id = str(payload.get("highlight_id") or "").strip()
+            except (KeyError, TypeError, ValueError, OverflowError):
+                return ""
+            key = (card_id, page, str(excerpt or ""), highlight_id)
+            if key in snapshot_cache:
+                return snapshot_cache[key]
+            try:
+                card = col.get_card(card_id)
+                note = col.get_note(card.nid)
+                filename = str(note["PDF_Filename"] or "").strip()
+            except (KeyError, TypeError, ValueError, AttributeError):
+                snapshot_cache[key] = ""
+                return ""
+            pdf_path = pdf_storage_abspath(filename, profile=profile)
+            if not pdf_path:
+                snapshot_cache[key] = ""
+                return ""
+            if card_id not in highlight_cache:
+                try:
+                    highlight_cache[card_id] = _load_pdf_highlights(
+                        _ADDON_DIR,
+                        profile,
+                        card_id,
+                    )
+                except Exception:
+                    highlight_cache[card_id] = []
+            highlight_rects = None
+            if highlight_id:
+                for highlight in highlight_cache[card_id]:
+                    if (
+                        str(highlight.get("id") or "") == highlight_id
+                        and int(highlight.get("page", 0) or 0) == page
+                    ):
+                        highlight_rects = highlight.get("rects")
+                        break
+            image = _pdf_context_snapshot_mod.render_pdf_context_snapshot(
+                pdf_path,
+                page_number=page,
+                excerpt=excerpt,
+                context_rows=context_rows,
+                highlight_rects=highlight_rects,
+            )
+            stored = _pdf_context_snapshot_mod.add_snapshot_to_anki_media(col, image)
+            snapshot_cache[key] = stored
+            return stored
+
+        def transform_field(field_html: str) -> tuple[str, int, int]:
+            return _reader_links_mod.rebuild_pdf_reference_card_snapshots(
+                field_html,
+                snapshot_loader,
+                preview_label=_t("root_pdf_context_source_preview"),
+            )
+
+        return _pdf_context_cards_mod.rebuild_all_pdf_context_cards(
+            col,
+            transform_field,
+            undo_label=_t("root_pdf_context_rebuild_undo"),
+            empty_changes_factory=OpChanges,
+            progress=progress,
+        )
+
+    def success(result) -> None:
+        if profile != _active_profile():
+            return
+        showInfo(
+            _t(
+                "root_pdf_context_rebuild_complete",
+                scanned=result.scanned_notes,
+                changed=result.changed_notes,
+                updated=result.updated_contexts,
+                skipped=result.skipped_contexts,
+            )
+        )
+
+    def failure(exc: Exception) -> None:
+        if profile == _active_profile():
+            showInfo(_t("root_pdf_context_rebuild_failed", error=exc))
+
+    (
+        CollectionOp(mw, operation)
+        .success(success)
+        .failure(failure)
+        .with_backend_progress(progress_update)
+        .run_in_background()
+    )
+
+
+def _snapshot_cleanup_add_cards_is_open() -> bool:
+    return any(
+        widget.__class__.__name__ == "AddCards" and widget.isVisible()
+        for widget in QApplication.allWidgets()
+    )
+
+
+def _snapshot_cleanup_draft_fields(profile: str) -> tuple[str, ...]:
+    from .backend.extraction_drafts import (
+        extraction_draft_path,
+        load_extraction_draft,
+    )
+    path = extraction_draft_path(_ADDON_DIR, profile)
+    if not path.exists() and not path.is_symlink():
+        return ()
+    draft = load_extraction_draft(_ADDON_DIR, profile)
+    if draft is None:
+        raise RuntimeError(_t("root_pdf_snapshot_cleanup_invalid_draft"))
+    return tuple(str(field) for field in draft.get("fields", ()))
+
+
 def addPdfFunction() -> None:
     from .frontend.pdf_dialog import AddPdfDialog
 
@@ -4074,7 +4469,7 @@ def _start_full_backup(
         export_highlights_json,
         export_stats_json,
     )
-    from .backend.export_bundle import snapshot_tree
+    from .backend.export_bundle import snapshot_database, snapshot_tree
     from .frontend.backup_progress import AutomaticBackupProgress
     from .backend.activity_log import (
         start_activity, update_activity, finish_activity, fail_activity,
@@ -4179,15 +4574,6 @@ def _start_full_backup(
         conn = get_connection(_ADDON_DIR, profile)
         conn.commit()
 
-        database_integrity = str(
-            conn.execute("PRAGMA integrity_check").fetchone()[0]
-        )
-        if database_integrity.casefold() != "ok":
-            raise RuntimeError("Incremento database integrity check failed")
-        database_schema_version = int(
-            conn.execute("PRAGMA user_version").fetchone()[0]
-        )
-
         priority_count = conn.execute("SELECT COUNT(*) FROM priorities").fetchone()[0]
         highlight_count = conn.execute("SELECT COUNT(*) FROM pdf_highlights").fetchone()[0]
         pdf_progress_count = conn.execute("SELECT COUNT(*) FROM pdf_progress").fetchone()[0]
@@ -4197,6 +4583,11 @@ def _start_full_backup(
             tmp_root = Path(tmp_dir)
             apkg_path = tmp_root / "all_decks.apkg"
             db_snapshot_path = tmp_root / DB_NAME
+
+            _progress(_t("root_backup_activity_snapshotting"))
+            database = snapshot_database(
+                _paths.get_db_path(_ADDON_DIR, profile), db_snapshot_path,
+            )
 
             _progress(_t("root_backup_activity_creating_package"))
             exporter = FullBackupPackageExporter(collection)
@@ -4216,13 +4607,6 @@ def _start_full_backup(
 
             if _active_profile() != profile:
                 raise RuntimeError("The active profile changed while backup was running")
-
-            _progress(_t("root_backup_activity_snapshotting"))
-            snapshot_conn = sqlite3.connect(str(db_snapshot_path))
-            try:
-                conn.backup(snapshot_conn)
-            finally:
-                snapshot_conn.close()
 
             stage_root = tmp_root / "bundle"
             user_files_stage = stage_root / "user_files"
@@ -4270,10 +4654,7 @@ def _start_full_backup(
                     ),
                     "profile": profile_display_name,
                     "profile_storage_key": profile,
-                    "database": {
-                        "integrity_check": database_integrity,
-                        "schema_version": database_schema_version,
-                    },
+                    "database": database,
                     "counts": {
                         "anki_cards_exported": int(getattr(exporter, "count", 0) or 0),
                         "priorities": int(priority_count or 0),
@@ -4756,7 +5137,6 @@ def addAudioFunction() -> None:
         CollectionOp(mw, operation)
         .success(success)
         .failure(failure)
-        .with_progress(_t("root_audio_importing"))
         .run_in_background()
     )
 
@@ -5034,12 +5414,16 @@ def addLocalFileFunction() -> None:
 def addWebpageFunction() -> None:
     from .frontend.webpage_dialog import WebpageToPdfDialog
     from .backend.pdf_manager import add_pdf_card
+    from .frontend.file_shell import activate_anki_window
 
+    profile = _active_profile()
     dlg = WebpageToPdfDialog(mw)
     if not dlg.exec():
         return
     pdf_path = str(dlg.pdf_path or "")
     try:
+        if _active_profile() != profile:
+            return
         add_pdf_card(
             _ADDON_DIR,
             mw.col,
@@ -5052,7 +5436,11 @@ def addWebpageFunction() -> None:
                 source_link=dlg.source_url or "",
             ),
         )
-        showInfo(_t("root_webpage_pdf_added", title=dlg.title_text))
+        if dlg.browser_handoff_completed:
+            activate_anki_window(mw)
+            tooltip(_t("root_webpage_pdf_added", title=dlg.title_text), period=5000)
+        else:
+            showInfo(_t("root_webpage_pdf_added", title=dlg.title_text))
     except Exception as e:
         showInfo(_t("root_webpage_pdf_failed", error=e))
     finally:
@@ -5994,10 +6382,25 @@ def _scan_orphan_videos() -> tuple[str, list[str], int]:
 
 def cleanupNonActiveProfileDataFunction() -> None:
     """
-    Offer one-shot cleanup of artifacts not referenced by the active profile:
-    orphan PDFs, orphan local videos, stale progress rows, stale search-index rows,
-    and stale OCR cache rows.
+    Clean orphan files, stale rows, and unused Anki-media PDF screenshots together.
     """
+    from anki.collection import OpChanges
+    from aqt.operations import CollectionOp
+
+    if _snapshot_cleanup_add_cards_is_open():
+        showInfo(_t("root_pdf_snapshot_cleanup_close_add"))
+        return
+
+    profile = _active_profile()
+    collection = mw.col
+
+    def format_size(size: int) -> str:
+        if size >= 1_048_576:
+            return f"{size / 1_048_576:.1f} MB"
+        if size >= 1024:
+            return f"{size / 1024:.1f} KB"
+        return f"{size} B"
+
     try:
         pdf_dir, orphan_pdfs_all, _pdf_bytes_all = _scan_orphan_pdfs()
         videos_dir, orphan_videos_all, _video_bytes_all = _scan_orphan_videos()
@@ -6018,6 +6421,10 @@ def cleanupNonActiveProfileDataFunction() -> None:
         stale_counts = _count_stale_progress_rows()
         stale_text_index_counts = _count_stale_document_text_index_rows()
         stale_ocr_counts = _count_stale_ocr_rows()
+        snapshot_preview = _pdf_snapshot_cleanup_mod.find_unused_pdf_snapshots(
+            collection,
+            protected_fields=_snapshot_cleanup_draft_fields(profile),
+        )
     except Exception as e:
         showInfo(_t("root_cleanup_profile_scan_failed", error=e))
         return
@@ -6031,6 +6438,7 @@ def cleanupNonActiveProfileDataFunction() -> None:
         and stale_total <= 0
         and stale_text_index_total <= 0
         and stale_ocr_total <= 0
+        and not snapshot_preview.filenames
     ):
         showInfo(_t("root_cleanup_profile_none"))
         return
@@ -6050,6 +6458,11 @@ def cleanupNonActiveProfileDataFunction() -> None:
         "",
         _t("root_cleanup_pdf_files", count=len(orphan_pdfs)),
         _t("root_cleanup_video_files", count=len(orphan_videos)),
+        _t(
+            "root_cleanup_snapshot_files",
+            count=len(snapshot_preview.filenames),
+            size=format_size(snapshot_preview.total_bytes),
+        ),
         _t("root_cleanup_progress_rows", count=stale_total, pdf=stale_counts.get('pdf_progress', 0), video=stale_counts.get('video_progress', 0), web=stale_counts.get('web_progress', 0)),
         _t("root_cleanup_index_rows", count=stale_text_index_total, pdf=stale_text_index_counts.get('pdf_text_index', 0), epub=stale_text_index_counts.get('epub_text_index', 0)),
         _t("root_cleanup_cache_rows", count=stale_ocr_total, notes=stale_ocr_counts.get('note_ocr_index_missing_note', 0), cards=stale_ocr_counts.get('note_ocr_index_missing_card', 0)),
@@ -6064,6 +6477,8 @@ def cleanupNonActiveProfileDataFunction() -> None:
         lines.append(_t("root_cleanup_video_folder", path=videos_dir))
     if total_bytes > 0:
         lines.append(_t("root_cleanup_recoverable_space", size=total_str))
+    if snapshot_preview.filenames:
+        lines.append(_t("root_cleanup_snapshot_trash_note"))
     if protected_pdfs:
         lines.append("")
         lines.append(_t("root_cleanup_skipped_pdfs_heading"))
@@ -6087,6 +6502,12 @@ def cleanupNonActiveProfileDataFunction() -> None:
 
     from aqt.utils import askUser
     if not askUser("\n".join(lines), title=_t("root_menu_cleanup_profile_data")):
+        return
+    if profile != _active_profile() or collection is not mw.col:
+        showInfo(_t("root_pdf_snapshot_cleanup_stale"))
+        return
+    if _snapshot_cleanup_add_cards_is_open():
+        showInfo(_t("root_pdf_snapshot_cleanup_close_add"))
         return
 
     deleted_pdfs = 0
@@ -6159,7 +6580,46 @@ def cleanupNonActiveProfileDataFunction() -> None:
         if len(errors) > 20:
             summary.append("• " + _t("root_more_failures", count=len(errors) - 20))
 
-    showInfo("\n".join(summary))
+    if not snapshot_preview.filenames:
+        showInfo("\n".join(summary))
+        return
+
+    def remove_snapshots(col):
+        if col is not collection or profile != _active_profile():
+            raise RuntimeError(_t("root_pdf_snapshot_cleanup_stale"))
+        return _pdf_snapshot_cleanup_mod.trash_unused_pdf_snapshots(
+            col,
+            snapshot_preview.filenames,
+            protected_fields=_snapshot_cleanup_draft_fields(profile),
+            empty_changes_factory=OpChanges,
+        )
+
+    def snapshots_removed(result) -> None:
+        if profile != _active_profile() or collection is not mw.col:
+            return
+        summary.append("")
+        summary.append(
+            _t(
+                "root_pdf_snapshot_cleanup_complete",
+                count=len(result.filenames),
+                size=format_size(result.total_bytes),
+            )
+        )
+        showInfo("\n".join(summary))
+
+    def snapshots_failed(exc: Exception) -> None:
+        if profile != _active_profile() or collection is not mw.col:
+            return
+        summary.append("")
+        summary.append(_t("root_pdf_snapshot_cleanup_failed", error=exc))
+        showInfo("\n".join(summary))
+
+    (
+        CollectionOp(mw, remove_snapshots)
+        .success(snapshots_removed)
+        .failure(snapshots_failed)
+        .run_in_background()
+    )
 
 
 def cleanupStaleProgressFunction() -> None:
@@ -6457,8 +6917,12 @@ def openSettingsFunction() -> None:
         current_extract_mark_topic=_add_card_dock_mod.configured_extract_mark_topic(cfg),
         current_extract_copy_source_tags=_add_card_dock_mod.configured_extract_copy_source_tags(cfg),
         current_extract_highlight_when_extracting=_pdf_dock_mod.configured_highlight_when_extracting(cfg),
+        current_pdf_show_highlight_delete_buttons=_pdf_dock_mod.configured_pdf_show_highlight_delete_buttons(cfg),
         current_pdf_highlight_extract_field=_pdf_dock_mod.configured_pdf_highlight_extract_field(cfg),
         current_pdf_snapshot_auto_field_enabled=_pdf_dock_mod.configured_pdf_snapshot_auto_field_enabled(cfg),
+        current_pdf_link_hover_preview_enabled=bool(cfg.get("pdf_link_hover_preview_enabled", True)),
+        current_pdf_context_rows=_pdf_dock_mod.configured_pdf_context_rows(cfg),
+        current_pdf_citation_page_numbering=_pdf_dock_mod.configured_pdf_citation_page_numbering(cfg),
         extract_source_links=_add_card_dock_mod.configured_extract_source_links(cfg),
         current_priority_lower_is_more_important=configured_priority_lower_is_more_important(cfg),
         current_show_priority_dialog_after_answer=configured_show_priority_dialog_after_answer(cfg),
@@ -6466,6 +6930,7 @@ def openSettingsFunction() -> None:
         current_reviewer_button_visibility=configured_reviewer_button_visibility(cfg),
         current_reviewer_button_group_visible=configured_reviewer_button_group_visible(cfg),
         current_show_incremento_fields=configured_show_incremento_fields(cfg),
+        current_day_end_time=cfg.get("day_end_time", "04:00"),
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
         current_pdf_scroll_to_top_on_page_change=_pdf_dock_mod.configured_scroll_to_top_on_page_change(cfg),
         current_pdf_default_appearance=_pdf_dock_mod.configured_pdf_default_appearance(cfg),
@@ -6473,6 +6938,9 @@ def openSettingsFunction() -> None:
         current_prefer_web_card_resume_in_original_page=configured_prefer_web_card_resume_in_original_page(cfg),
         current_track_web_window_with_extension=configured_track_web_window_with_extension(cfg),
         current_use_fail_pass_on_items=_configured_use_fail_pass_on_items(cfg),
+        current_learning_leech_enabled=cfg["learning_leech_enabled"],
+        current_learning_leech_threshold=cfg["learning_leech_threshold"],
+        current_learning_leech_tag=cfg["learning_leech_tag"],
         current_item_skip_enabled=_configured_item_skip_enabled(cfg),
         current_item_skip_minutes=_configured_item_skip_minutes(cfg),
         current_auto_timer_enabled=_timer_mod.configured_auto_timer_enabled(cfg),
@@ -6525,8 +6993,12 @@ def openSettingsFunction() -> None:
     cfg["extract_mark_topic"] = dlg.extract_mark_topic
     cfg["extract_copy_source_tags"] = dlg.extract_copy_source_tags
     cfg["highlight_when_extracting"] = dlg.extract_highlight_when_extracting
+    cfg["pdf_show_highlight_delete_buttons"] = dlg.pdf_show_highlight_delete_buttons
     cfg["pdf_highlight_extract_field"] = dlg.pdf_highlight_extract_field
     cfg["pdf_snapshot_auto_field_enabled"] = dlg.pdf_snapshot_auto_field_enabled
+    cfg["pdf_link_hover_preview_enabled"] = dlg.pdf_link_hover_preview_enabled
+    cfg["pdf_context_rows"] = dlg.pdf_context_rows
+    cfg["pdf_citation_page_numbering"] = dlg.pdf_citation_page_numbering
     cfg["extract_source_links"] = dlg.extract_source_links
     cfg["priority_lower_is_more_important"] = dlg.priority_lower_is_more_important
     cfg["show_priority_dialog_after_answer"] = dlg.show_priority_dialog_after_answer
@@ -6536,6 +7008,7 @@ def openSettingsFunction() -> None:
     cfg["reviewer_button_visibility"] = visibility
     cfg["reviewer_button_group_visible"] = dlg.reviewer_button_group_visible
     cfg["show_incremento_fields"] = dlg.show_incremento_fields
+    cfg["day_end_time"] = dlg.day_end_time
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
     cfg["pdf_scroll_to_top_on_page_change"] = dlg.pdf_scroll_to_top_on_page_change
     cfg["pdf_default_appearance"] = dlg.pdf_default_appearance
@@ -6543,6 +7016,9 @@ def openSettingsFunction() -> None:
     cfg["prefer_web_card_resume_in_original_page"] = dlg.prefer_web_card_resume_in_original_page
     cfg["track_web_window_with_extension"] = dlg.track_web_window_with_extension
     cfg["use_fail_pass_on_items"] = dlg.use_fail_pass_on_items
+    cfg["learning_leech_enabled"] = dlg.learning_leech_enabled
+    cfg["learning_leech_threshold"] = dlg.learning_leech_threshold
+    cfg["learning_leech_tag"] = dlg.learning_leech_tag
     cfg["item_skip_enabled"] = dlg.item_skip_enabled
     cfg["item_skip_minutes"] = dlg.item_skip_minutes
     cfg["auto_timer_enabled"] = dlg.auto_timer_enabled
@@ -6581,6 +7057,11 @@ def openSettingsFunction() -> None:
     except Exception:
         showInfo(_t("settings_save_failed"))
         return
+    try:
+        if mw.state == "deckBrowser":
+            mw.deckBrowser.refresh()
+    except Exception:
+        pass
     _sync_reviewer_priority_badge()
     if mw.state == "review" and getattr(mw, "reviewer", None) is not None:
         _sync_reviewer_button_visibility(mw.reviewer)
@@ -6594,6 +7075,13 @@ def openSettingsFunction() -> None:
     try:
         _pdf_dock_mod._pdf_dock._view.page().runJavaScript(
             f"window.incrementoSetAutoHighlightOnExtract && window.incrementoSetAutoHighlightOnExtract({json.dumps(dlg.extract_highlight_when_extracting)});"
+        )
+    except Exception:
+        pass
+    try:
+        _pdf_dock_mod._pdf_dock._view.page().runJavaScript(
+            "window.incrementoSetPdfHighlightDeleteButtons && "
+            f"window.incrementoSetPdfHighlightDeleteButtons({json.dumps(dlg.pdf_show_highlight_delete_buttons)});"
         )
     except Exception:
         pass
@@ -6955,10 +7443,25 @@ def _build_incremento_menu() -> None:
 
     _utilsMenu.addSeparator()
 
+    _importSuperMemoAction = QAction(_t("root_menu_import_supermemo"), mw)
+    _importSuperMemoAction.setProperty("incremento_translation_key", "root_menu_import_supermemo")
+    qconnect(_importSuperMemoAction.triggered, importSuperMemoFunction)
+    _utilsMenu.addAction(_importSuperMemoAction)
+
     _reindexPdfTextAction = QAction(_t("root_menu_reindex_pdf_text"), mw)
     _reindexPdfTextAction.setProperty("incremento_translation_key", "root_menu_reindex_pdf_text")
     qconnect(_reindexPdfTextAction.triggered, reindexPdfTextFunction)
     _utilsMenu.addAction(_reindexPdfTextAction)
+
+    _rebuildPdfCardContextsAction = QAction(_t("root_menu_rebuild_pdf_card_contexts"), mw)
+    _rebuildPdfCardContextsAction.setProperty(
+        "incremento_translation_key", "root_menu_rebuild_pdf_card_contexts"
+    )
+    qconnect(
+        _rebuildPdfCardContextsAction.triggered,
+        rebuildPdfCardContextsFunction,
+    )
+    _utilsMenu.addAction(_rebuildPdfCardContextsAction)
 
     _importNotebookCitationsAction = QAction(_t("root_menu_import_notebook_citations"), mw)
     _importNotebookCitationsAction.setProperty("incremento_translation_key", "root_menu_import_notebook_citations")
@@ -6979,23 +7482,6 @@ def _build_incremento_menu() -> None:
     _cleanupNonActiveProfileDataAction.setProperty("incremento_translation_key", "root_menu_cleanup_profile_data")
     qconnect(_cleanupNonActiveProfileDataAction.triggered, cleanupNonActiveProfileDataFunction)
     _utilsMenu.addAction(_cleanupNonActiveProfileDataAction)
-
-    _utilsMenu.addSeparator()
-
-    _cleanupOrphanPdfsAction = QAction(_t("root_menu_cleanup_orphan_pdfs"), mw)
-    _cleanupOrphanPdfsAction.setProperty("incremento_translation_key", "root_menu_cleanup_orphan_pdfs")
-    qconnect(_cleanupOrphanPdfsAction.triggered, cleanupOrphanPdfsFunction)
-    _utilsMenu.addAction(_cleanupOrphanPdfsAction)
-
-    _cleanupOrphanVideosAction = QAction(_t("root_menu_cleanup_orphan_videos"), mw)
-    _cleanupOrphanVideosAction.setProperty("incremento_translation_key", "root_menu_cleanup_orphan_videos")
-    qconnect(_cleanupOrphanVideosAction.triggered, cleanupOrphanVideosFunction)
-    _utilsMenu.addAction(_cleanupOrphanVideosAction)
-
-    _cleanupStaleProgressAction = QAction(_t("root_menu_cleanup_stale_rows"), mw)
-    _cleanupStaleProgressAction.setProperty("incremento_translation_key", "root_menu_cleanup_stale_rows")
-    qconnect(_cleanupStaleProgressAction.triggered, cleanupStaleProgressFunction)
-    _utilsMenu.addAction(_cleanupStaleProgressAction)
 
     _statsAction = QAction(_t("root_menu_statistics"), mw)
     _statsAction.setProperty("incremento_translation_key", "root_menu_statistics")

@@ -84,7 +84,9 @@ def test_selected_node_shows_compact_tree_browser_layout(tmp_path, theme):
         dialog.show()
         app.processEvents()
 
-        assert [button.text() for button in dialog._toolbar_buttons] == ['Study', 'Add', 'Refresh']
+        assert [button.text() for button in dialog._toolbar_buttons] == [
+            'Study', 'Add', 'Mind Map', 'Refresh'
+        ]
         assert [action.text() for action in dialog._add_btn.menu().actions()] == [
             'Add Topic Child', 'Add Item Child'
         ]
@@ -94,7 +96,12 @@ def test_selected_node_shows_compact_tree_browser_layout(tmp_path, theme):
         assert 'Root › Child' in dialog._breadcrumb.text()
         assert not dialog._add_btn.icon().isNull()
         text_color = dialog.palette().color(QPalette.ColorRole.Text)
-        for button in (dialog._study_btn, dialog._add_btn, dialog._refresh_btn):
+        for button in (
+            dialog._study_btn,
+            dialog._add_btn,
+            dialog._mind_map_btn,
+            dialog._refresh_btn,
+        ):
             assert button.iconSize() == QSize(18, 18), button.text()
             icon = button.icon().pixmap(18, 18).toImage()
             opaque = [icon.pixelColor(x, y) for x in range(icon.width())
@@ -118,6 +125,95 @@ def test_selected_node_shows_compact_tree_browser_layout(tmp_path, theme):
         app.processEvents()
         assert dialog._add_btn.menu().isVisible()
         dialog._add_btn.menu().hide()
+
+        mind_map_rows = rows + [
+            {'card_id': 3, 'title': 'Grandchild detail', 'node_kind': 'item',
+             'priority': 40, 'parent_card_id': 2, 'sort_order': 0},
+        ]
+        activated_cards = []
+        mind_map = tree.KnowledgeTreeMindMapDialog(
+            mind_map_rows,
+            selected_card_id=2,
+            on_card_activated=activated_cards.append,
+            parent=dialog,
+        )
+        mind_map.show()
+        app.processEvents()
+        assert [mind_map._scope_combo.itemText(i)
+                for i in range(mind_map._scope_combo.count())] == [
+            'Whole tree', 'Selected branch'
+        ]
+        assert mind_map._summary.text() == '3 of 3 nodes visible · 3 visual levels'
+        assert mind_map._canvas._layout.center_key == 1
+        assert mind_map._canvas.accessibleName() == 'Knowledge tree mind map'
+        assert mind_map._zoom_label.text().endswith('%')
+
+        mind_map._toggle_branch(2)
+        assert 3 not in mind_map._canvas._layout.nodes_by_key
+        assert mind_map._canvas._layout.nodes_by_key[2].hidden_descendant_count == 1
+        assert mind_map._summary.text() == '2 of 3 nodes visible · 2 visual levels'
+        mind_map._search_edit.setText('Grandchild')
+        mind_map._find_next()
+        assert mind_map._canvas.selected_key == 3
+        assert 3 in mind_map._canvas._layout.nodes_by_key
+
+        mind_map._focus_selected_branch()
+        assert mind_map._scope_combo.currentData() == 'selected_branch'
+        assert mind_map._canvas._layout.center_key == 3
+        mind_map._show_full_map()
+        assert mind_map._scope_combo.currentData() == 'whole_tree'
+
+        mind_map._collapse_all()
+        assert mind_map._canvas._layout.visible_card_count < 3
+        mind_map._expand_all()
+        assert mind_map._canvas._layout.visible_card_count == 3
+
+        initial_zoom = mind_map._canvas.zoom
+        mind_map._zoom_by(1.2)
+        assert mind_map._canvas.zoom > initial_zoom
+        assert mind_map._zoom_label.text() != '100%'
+        mind_map._actual_size()
+        assert mind_map._canvas.zoom == 1.0
+        assert mind_map._zoom_label.text() == '100%'
+
+        exported = mind_map._canvas.render_pixmap()
+        assert not exported.isNull()
+        assert exported.width() == mind_map._canvas.base_size.width()
+
+        selected_scope = mind_map._scope_combo.findData('selected_branch')
+        mind_map._selected_card_id = 2
+        mind_map._map_selected_card_id = 2
+        mind_map._scope_combo.setCurrentIndex(selected_scope)
+        mind_map._priority_toggle.setChecked(True)
+        app.processEvents()
+        assert mind_map._summary.text() == '2 of 2 nodes visible · 2 visual levels'
+        assert mind_map._canvas._layout.center_key == 2
+        assert mind_map._canvas._show_priorities is True
+        mind_map_image = mind_map._canvas.grab().toImage()
+        sample = {
+            mind_map_image.pixelColor(x, y).name()
+            for x in range(0, mind_map_image.width(), max(1, mind_map_image.width() // 40))
+            for y in range(0, mind_map_image.height(), max(1, mind_map_image.height() // 30))
+        }
+        assert len(sample) > 2
+        mind_map.close()
+
+        opened_maps = []
+
+        class FakeMindMapDialog:
+            def __init__(self, rows, **kwargs):
+                opened_maps.append((list(rows), kwargs))
+
+            def exec(self):
+                opened_maps.append('exec')
+
+        tree.KnowledgeTreeMindMapDialog = FakeMindMapDialog
+        dialog._mind_map_btn.click()
+        assert opened_maps[0][0] == rows
+        assert opened_maps[0][1]['selected_card_id'] == 2
+        assert opened_maps[0][1]['initial_scope'] == 'whole_tree'
+        assert callable(opened_maps[0][1]['on_card_activated'])
+        assert opened_maps[1] == 'exec'
         assert isinstance(dialog._tree.itemDelegateForColumn(1), tree._PriorityDelegate)
         assert child.data(1, tree._ROLE_PRIORITY_VALUE) == 10
         assert dialog._kind_badge.text() == 'Item'
@@ -126,6 +222,8 @@ def test_selected_node_shows_compact_tree_browser_layout(tmp_path, theme):
         assert dialog._meta_card_id.text() == '2'
         assert dialog._meta_source.text() == 'Reference'
         assert dialog._inspect_btn.isEnabled() and dialog._more_btn.isEnabled()
+        opened_maps[0][1]['on_card_activated'](1)
+        assert dialog._single_selected_card_id() == 1
 
         def luminance(color):
             components = [color.redF(), color.greenF(), color.blueF()]

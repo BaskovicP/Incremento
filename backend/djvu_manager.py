@@ -422,7 +422,9 @@ def _convert_flattened_snapshot(snapshot, directory, tools, fitz, compression, *
                 progress_cb(index + 1, len(doc))
         _check_cancel(cancel_cb)
         doc.subset_fonts()
-        doc.save(str(staged), garbage=4, deflate=True)
+        # Random replacement IDs can serialize at different lengths, making
+        # full-document compression previews disagree with the actual import.
+        doc.save(str(staged), garbage=4, deflate=True, no_new_id=True)
     if staged.stat().st_size > budget:
         raise DjvuImportError(t("backend_djvu_budget"))
     _check_cancel(cancel_cb)
@@ -559,7 +561,7 @@ def _convert_mrc_snapshot(snapshot, directory, tools, fitz, *,
 
         _check_cancel(cancel_cb)
         output.subset_fonts()
-        output.save(str(staged), garbage=4, deflate=True)
+        output.save(str(staged), garbage=4, deflate=True, no_new_id=True)
     if staged.stat().st_size > budget:
         raise DjvuImportError(t("backend_djvu_budget"))
     _check_cancel(cancel_cb)

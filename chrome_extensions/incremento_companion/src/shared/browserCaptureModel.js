@@ -100,6 +100,14 @@ export function normalizeFieldMappings(rawMappings, fields) {
   };
 }
 
+export function browserCaptureTagsText(rawSettings, meta) {
+  const remembered = meta?.websiteTags;
+  if (remembered?.enabled === true && Array.isArray(remembered.tags)) {
+    return remembered.tags.join(" ");
+  }
+  return String(rawSettings?.tagsText || "");
+}
+
 export function normalizeBrowserCaptureSettings(rawSettings, meta) {
   const noteTypes = Array.isArray(meta?.noteTypes) ? meta.noteTypes : [];
   const deckNames = Array.isArray(meta?.deckNames) ? meta.deckNames.filter(Boolean) : [];
@@ -121,7 +129,8 @@ export function normalizeBrowserCaptureSettings(rawSettings, meta) {
     noteTypeName,
     deckName,
     priority: clampPriority(rawSettings?.priority),
-    tagsText: String(rawSettings?.tagsText || ""),
+    linkToPassage: rawSettings?.linkToPassage !== false,
+    tagsText: browserCaptureTagsText(rawSettings, meta),
     fieldMappings,
     mappingsByNoteType,
   };
@@ -151,6 +160,11 @@ export function buildBrowserCapturePayload(context, formState) {
     url: String(context?.url || "").trim(),
     title: String(context?.title || "").trim() || String(context?.url || "").trim() || "Untitled",
     selectedText: String(context?.selectedText || "").trim(),
+    selectedHtml: String(context?.selectedText || "").trim() === String(context?.originalSelectedText || "").trim()
+      ? String(context?.selectedHtml || "") : "",
+    sourceText: String(context?.originalSelectedText ?? context?.selectedText ?? "").trim(),
+    linkToPassage: formState?.linkToPassage !== false,
+    profileToken: String(context?.profileToken || ""),
     noteTypeName: String(formState?.noteTypeName || "").trim(),
     deckName: String(formState?.deckName || "").trim(),
     tags: parseTags(formState?.tagsText),
@@ -172,6 +186,10 @@ export function buildBrowserCapturePayload(context, formState) {
 }
 
 export function validateBrowserCapturePayload(payload) {
+  if (String(payload?.selectedHtml || "").length > MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS
+      || String(payload?.sourceText || "").length > MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS) {
+    return captureSizeError("Selected text", MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS, "characters");
+  }
   if (!String(payload?.noteTypeName || "").trim() || !String(payload?.deckName || "").trim()) {
     return { ok: false, error: "Choose a note type and deck.", errorCode: "choose_note_type_deck", errorParams: {} };
   }

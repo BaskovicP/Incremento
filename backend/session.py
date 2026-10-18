@@ -41,7 +41,7 @@ except Exception:
 from .scheduler import NO_TAGS_KEY
 from .config_service import load_addon_config
 from .statistics import StatsManager, _empty, _empty_time
-from .session_selection import SessionPicker
+from .session_selection import INCREMENTO_DECK, SessionPicker, incremento_session_deck_name
 from .paths import get_active_profile as _active_profile
 from .topic_scheduler import resolve_topic_card_classifier
 from .topic_postpone import release_expired_timed_postpones
@@ -57,7 +57,6 @@ _ADDON_DIR = os.path.normpath(
 )
 _ADDON_PKG = __name__.split(".")[0]  # "incremento"
 
-INCREMENTO_DECK = "Incremento Session"
 INCREMENTO_PDF_REVIEW_DECK = "Incremento PDF Review"
 INCREMENTO_EPUB_REVIEW_DECK = "Incremento EPUB Review"
 INCREMENTO_VIDEO_REVIEW_DECK = "Incremento Video Review"
@@ -278,13 +277,6 @@ def _defer_profile_ui_action(profile: str, callback) -> None:
 
 def _optional_col_kwargs(col) -> dict:
     return {"col": col} if col is not None else {}
-
-
-def incremento_session_deck_name(dialog_profile_name: str | None = None) -> str:
-    name = str(dialog_profile_name or "").strip()
-    if not name:
-        return INCREMENTO_DECK
-    return f"{INCREMENTO_DECK} ({name})"
 
 
 def is_incremento_session_deck_name(deck_name: str | None) -> bool:
@@ -1751,6 +1743,7 @@ def learnFunction(
             col=col,
             topic_classifier=topic_classifier,
             profile=profile,
+            session_deck_name=session_deck_name,
         )
         if not preview_copy:
             picker.pick_until(cfg.session_card_count)

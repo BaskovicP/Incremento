@@ -138,8 +138,71 @@ def test_processing_deadline_starts_after_waiting_for_the_global_sync_lock(tmp_p
     result = sync(tmp_path)
 
     assert result == {'reader_path': 'unused'}
-    assert remaining[0] >= 60
+    assert remaining[0] == pytest.approx(600)
     assert lock.released
+
+
+def test_annotation_sync_accepts_a_15000_page_pdf_but_keeps_a_page_ceiling():
+    class Page:
+        cropbox = (0, 0, 400, 500)
+        rotation = 0
+
+        @staticmethod
+        def get_contents():
+            return []
+
+        @staticmethod
+        def get_images():
+            return []
+
+        @staticmethod
+        def get_xobjects():
+            return []
+
+        @staticmethod
+        def get_fonts():
+            return []
+
+        @staticmethod
+        def widgets(types):
+            return []
+
+    class Document:
+        is_pdf = True
+        needs_pass = False
+        permissions = 32
+
+        def __init__(self, page_count):
+            self.page_count = page_count
+
+        @staticmethod
+        def get_sigflags():
+            return 0
+
+        def __iter__(self):
+            return iter([Page()] * self.page_count)
+
+    assert annotations._content_digest(Document(15000), None, float('inf'))
+    with pytest.raises(annotations.PdfAnnotationSyncError, match='limits'):
+        annotations._content_digest(Document(20001), None, float('inf'))
+
+
+def test_annotation_sync_accepts_a_512_mib_pdf_but_keeps_a_file_size_ceiling(tmp_path):
+    filename = tmp_path / 'large.pdf'
+    with filename.open('wb') as stream:
+        stream.write(b'%PDF-1.7\n')
+        stream.truncate(512 * 1024 * 1024)
+
+    annotations._check_file(filename)
+
+    with filename.open('r+b') as stream:
+        stream.truncate(512 * 1024 * 1024 + 1)
+    with pytest.raises(annotations.PdfAnnotationSyncError, match='limits'):
+        annotations._check_file(filename)
+
+
+def test_annotation_sync_retains_up_to_32_mib_of_serialized_metadata():
+    assert annotations.MAX_BASELINE_CHARS == 32 * 1024 * 1024
 
 
 def test_unchanged_sync_reuses_cached_reader_without_resaving_the_pdf(tmp_path, monkeypatch):
@@ -538,8 +601,57 @@ def test_cancelled_sync_does_not_change_pdf_or_lose_saved_incremento_note(tmp_pa
     assert not paths.get_pdf_annotation_reader_path(str(tmp_path), PROFILE, CARD).exists()
 
 
-@pytest.mark.parametrize('protection', ['password', 'signed', 'restricted'])
-def test_protected_pdf_is_not_rewritten_and_saved_incremento_notes_survive(tmp_path, protection):
+def add_signature_field(doc, *, signed=False, flags=1):
+    page = doc[0]
+    widget = fitz.Widget()
+    widget.field_name = 'Approval'
+    widget.field_type = fitz.PDF_WIDGET_TYPE_SIGNATURE
+    widget.rect = fitz.Rect(250, 350, 350, 400)
+    page.add_widget(widget)
+    field = next(page.widgets(types=[fitz.PDF_WIDGET_TYPE_SIGNATURE]))
+    if signed:
+        # A populated signature dictionary exercises detection without requiring
+        # a certificate or falsely equating an empty field with a signature.
+        doc.xref_set_key(field.xref, 'V',
+                         '<</Type /Sig /ByteRange [0 10 20 30] /Contents <00>>>')
+    doc.xref_set_key(doc.pdf_catalog(), 'AcroForm/SigFlags', 'null' if flags < 0 else str(flags))
+
+
+def test_unsigned_signature_field_does_not_block_editable_annotation_sync(tmp_path):
+    filename = pdf_file(tmp_path)
+    change_pdf(filename, add_signature_field)
+    add_highlight(str(tmp_path), PROFILE, CARD, local_highlight())
+    with fitz.open(filename) as doc:
+        assert doc.get_sigflags() == 1
+        assert not next(doc[0].widgets(types=[fitz.PDF_WIDGET_TYPE_SIGNATURE])).is_signed
+
+    sync(tmp_path)
+
+    assert native_rows(filename)[0]['note'] == 'My saved note'
+    with fitz.open(filename) as doc:
+        field = next(doc[0].widgets(types=[fitz.PDF_WIDGET_TYPE_SIGNATURE]))
+        assert field.field_name == 'Approval' and not field.is_signed
+
+
+@pytest.mark.parametrize('flags', [-1, 0, 1], ids=['absent', 'zero', 'fields-only'])
+def test_populated_signature_blocks_sync_even_without_signed_document_flags(tmp_path, flags):
+    filename = pdf_file(tmp_path)
+    change_pdf(filename, lambda doc: add_signature_field(doc, signed=True, flags=flags))
+    add_highlight(str(tmp_path), PROFILE, CARD, local_highlight())
+    before = filename.read_bytes()
+
+    with pytest.raises(annotations.PdfAnnotationSyncError, match='digitally_signed'):
+        sync(tmp_path)
+
+    assert filename.read_bytes() == before
+    assert load_highlights(str(tmp_path), PROFILE, CARD)[0]['note'] == 'My saved note'
+    assert not paths.get_pdf_annotation_reader_path(str(tmp_path), PROFILE, CARD).exists()
+
+
+@pytest.mark.parametrize(('protection', 'reason'), [
+    ('password', 'password_protected'), ('signed', 'digitally_signed'), ('restricted', 'annotation_restricted'),
+])
+def test_protected_pdf_is_not_rewritten_and_saved_incremento_notes_survive(tmp_path, protection, reason):
     filename = pdf_file(tmp_path)
     if protection == 'signed':
         change_pdf(filename, lambda doc: doc.xref_set_key(doc.pdf_catalog(), 'AcroForm', '<</SigFlags 3>>'))
@@ -552,7 +664,7 @@ def test_protected_pdf_is_not_rewritten_and_saved_incremento_notes_survive(tmp_p
         temporary.replace(filename)
     add_highlight(str(tmp_path), PROFILE, CARD, local_highlight())
     before = filename.read_bytes()
-    with pytest.raises(annotations.PdfAnnotationSyncError, match='protected_pdf'):
+    with pytest.raises(annotations.PdfAnnotationSyncError, match=reason):
         sync(tmp_path)
     assert filename.read_bytes() == before
     assert load_highlights(str(tmp_path), PROFILE, CARD)[0]['note'] == 'My saved note'

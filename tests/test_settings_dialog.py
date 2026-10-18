@@ -8,13 +8,27 @@ import pytest
 
 
 class _Signal:
+    def __init__(self):
+        self._callbacks = []
+
     def connect(self, _callback):
-        return None
+        self._callbacks.append(_callback)
+
+    def emit(self, *args):
+        for callback in self._callbacks:
+            callback(*args)
 
 
 class _BaseWidget:
     def __init__(self, *args, **kwargs):
         self._enabled = True
+        self._visible = True
+
+    def setVisible(self, visible):
+        self._visible = bool(visible)
+
+    def isVisible(self):
+        return self._visible
 
     def setEnabled(self, enabled):
         self._enabled = bool(enabled)
@@ -129,7 +143,10 @@ class _CheckBox(_BaseWidget):
         self.toggled = _Signal()
 
     def setChecked(self, value):
+        changed = self._checked != bool(value)
         self._checked = bool(value)
+        if changed:
+            self.toggled.emit(self._checked)
 
     def isChecked(self):
         return self._checked
@@ -161,6 +178,22 @@ class _PlainTextEdit(_BaseWidget):
 
     def toPlainText(self):
         return self._text
+
+
+class _Time:
+    def __init__(self, hour, minute):
+        self.hour, self.minute = hour, minute
+
+    def toString(self, _format):
+        return f"{self.hour:02d}:{self.minute:02d}"
+
+
+class _TimeEdit(_BaseWidget):
+    def setTime(self, value):
+        self._time = value
+
+    def time(self):
+        return self._time
 
 
 class _ComboBox(_BaseWidget):
@@ -337,6 +370,8 @@ _qt_module.QDoubleSpinBox = _DoubleSpinBox
 _qt_module.QSpinBox = _SpinBox
 _qt_module.QTabWidget = _TabWidget
 _qt_module.QToolButton = _ToolButton
+_qt_module.QTime = _Time
+_qt_module.QTimeEdit = _TimeEdit
 _qt_module.QVBoxLayout = _Layout
 _qt_module.QWidget = _Widget
 
@@ -373,6 +408,71 @@ IncrementoSettingsDialog = _MOD.IncrementoSettingsDialog
 default_shortcuts = _MOD.default_shortcuts
 resolved_runtime_shortcuts = _MOD.resolved_runtime_shortcuts
 SHORTCUT_ACTION_SPECS = _MOD.SHORTCUT_ACTION_SPECS
+
+
+@pytest.mark.parametrize("saved", ["00:00", "04:00", "05:45", "23:59"])
+def test_review_settings_loads_shared_cutoff_and_exposes_edits(saved):
+    dialog = IncrementoSettingsDialog({}, current_day_end_time=saved)
+
+    assert dialog.day_end_time == saved
+    assert dialog._day_end_edit.isVisible()
+    dialog._day_end_edit.setTime(_Time(2, 15))
+    assert dialog.day_end_time == "02:15"
+
+
+@pytest.mark.parametrize("accepted", [True, False], ids=["save", "cancel"])
+def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted):
+    import ast
+    import builtins
+    import copy
+    from pathlib import Path
+    from types import SimpleNamespace
+    import config_service
+
+    path = Path(__file__).resolve().parents[1] / "__init__.py"
+    tree = ast.parse(path.read_text())
+    function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "openSettingsFunction")
+    helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_save_settings_with_language_pack")
+    namespace = {n.id: Mock(name=n.id) for n in ast.walk(function) if isinstance(n, ast.Name)}
+    namespace.update(vars(builtins))
+    saved = config_service.normalize_config({
+        "day_end_time": "05:30", "dialog": {"day_end_time": "06:00"},
+        "scheduler_presets": {"Evening": {"day_end_time": "23:00"}},
+        "future_setting": {"keep": True},
+    })
+    original = copy.deepcopy(saved)
+    manager = Mock()
+    manager.getConfig.side_effect = lambda _name: saved
+    col = Mock()
+    col.models.all_names_and_ids.return_value = []
+
+    def open_dialog(shortcuts, **kwargs):
+        assert kwargs["current_day_end_time"] == "05:30"
+        dialog = IncrementoSettingsDialog(shortcuts, current_day_end_time=kwargs["current_day_end_time"])
+        dialog._day_end_edit.setTime(_Time(0, 0))
+        dialog.exec = lambda: accepted
+        return dialog
+
+    namespace.update({
+        "__name__": "incremento", "copy": copy,
+        "mw": SimpleNamespace(addonManager=manager, col=col, state="overview"),
+        "IncrementoSettingsDialog": open_dialog,
+        "configured_priority_lower_is_more_important": lambda _cfg: True,
+        "_load_addon_config": config_service.load_addon_config,
+        "_save_addon_config": config_service.save_addon_config,
+    })
+    exec(compile(ast.Module(body=[helper, function], type_ignores=[]), str(path), "exec"), namespace)
+    namespace["openSettingsFunction"]()
+
+    assert saved == original
+    if accepted:
+        stored = manager.writeConfig.call_args.args[1]
+        assert stored["day_end_time"] == "00:00"
+        assert stored["scheduler_presets"] == original["scheduler_presets"]
+        assert stored["dialog"] == original["dialog"]
+        assert stored["future_setting"] == {"keep": True}
+    else:
+        manager.writeConfig.assert_not_called()
 
 
 @pytest.mark.parametrize("choice,expected", [("auto", "auto"),("hr", "hr"),("zh_CN", "zh-Hans")])
@@ -456,6 +556,85 @@ class TestIncrementoSettingsDialogTopicAdjustments:
         )
         assert low.topic_more_adjustment_percent == 0.0
         assert high.topic_less_adjustment_percent == 100.0
+
+
+class TestIncrementoSettingsDialogLearningLeech:
+    def test_defaults_and_edits_are_exposed_for_save(self):
+        dialog = IncrementoSettingsDialog({})
+        assert (dialog.learning_leech_enabled, dialog.learning_leech_threshold,
+                dialog.learning_leech_tag) == (False, 5, "learning_leech")
+        assert not dialog._learning_leech_threshold_spin.isEnabled()
+        dialog._learning_leech_enabled_cb.setChecked(True)
+        dialog._learning_leech_threshold_spin.setValue(8)
+        dialog._learning_leech_tag_edit.setText(" needs::rewrite ")
+        assert dialog._learning_leech_threshold_spin.isEnabled()
+        assert (dialog.learning_leech_enabled, dialog.learning_leech_threshold,
+                dialog.learning_leech_tag) == (True, 8, "needs::rewrite")
+
+    def test_loads_saved_values(self):
+        dialog = IncrementoSettingsDialog({}, current_learning_leech_enabled=True,
+            current_learning_leech_threshold=7, current_learning_leech_tag="rewrite")
+        assert (dialog.learning_leech_enabled, dialog.learning_leech_threshold,
+                dialog.learning_leech_tag) == (True, 7, "rewrite")
+
+    @pytest.mark.parametrize("invalid", ["two tags", "bad\u0000tag", "::", "x" * 256])
+    def test_invalid_tag_blocks_save(self, invalid):
+        dialog = IncrementoSettingsDialog({})
+        dialog.accept = Mock()
+        dialog._learning_leech_tag_edit.setText(invalid)
+        assert not dialog._accept_if_shortcuts_valid()
+        dialog.accept.assert_not_called()
+        assert dialog._learning_leech_tag_error.isVisible()
+        dialog._learning_leech_tag_edit.setText("learning_leech")
+        assert dialog._accept_if_shortcuts_valid()
+        dialog.accept.assert_called_once()
+
+
+    def test_settings_entrypoint_loads_and_persists_learning_leech(self):
+        import ast
+        from pathlib import Path
+        from types import SimpleNamespace
+        import config_service
+
+        path = Path(__file__).resolve().parents[1] / "__init__.py"
+        tree = ast.parse(path.read_text())
+        function = next(node for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "openSettingsFunction")
+        namespace = {node.id: Mock(name=node.id) for node in ast.walk(function) if isinstance(node, ast.Name)}
+        manager = Mock()
+        manager.getConfig.return_value = {"learning_leech_enabled": True,
+            "learning_leech_threshold": 7, "learning_leech_tag": "saved_tag", "future": 42}
+        col = Mock()
+        col.models.all_names_and_ids.return_value = []
+
+        def open_dialog(shortcuts, **kwargs):
+            values = {key: kwargs[key] for key in ("current_learning_leech_enabled",
+                "current_learning_leech_threshold", "current_learning_leech_tag")}
+            assert tuple(values.values()) == (True, 7, "saved_tag")
+            dialog = IncrementoSettingsDialog(shortcuts, **values)
+            dialog._learning_leech_threshold_spin.setValue(5)
+            dialog._learning_leech_tag_edit.setText("learning_leech")
+            dialog.exec = Mock(return_value=True)
+            return dialog
+
+        class Saved(BaseException):
+            pass
+
+        def save(cfg, *_args):
+            config_service.save_addon_config(manager, "incremento", cfg)
+            raise Saved
+
+        namespace.update({"__name__": "incremento", "mw": SimpleNamespace(addonManager=manager, col=col),
+            "copy": __import__("copy"), "Exception": Exception, "sorted": sorted,
+            "IncrementoSettingsDialog": open_dialog, "_load_addon_config": config_service.load_addon_config,
+            "_save_settings_with_language_pack": save})
+        exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), "exec"), namespace)
+        with pytest.raises(Saved):
+            namespace["openSettingsFunction"]()
+        stored = manager.writeConfig.call_args.args[1]
+        assert (stored["learning_leech_enabled"], stored["learning_leech_threshold"],
+                stored["learning_leech_tag"]) == (True, 5, "learning_leech")
+        assert stored["future"] == 42
 
 
 class TestIncrementoSettingsDialogTopicDoneTag:
@@ -553,6 +732,12 @@ class TestIncrementoSettingsDialogTopicMaximumInterval:
 
 
 class TestIncrementoSettingsDialogExtractionHighlight:
+    def test_pdf_highlight_delete_x_can_be_hidden_and_restored(self):
+        dialog = IncrementoSettingsDialog({}, current_pdf_show_highlight_delete_buttons=False)
+        assert dialog.pdf_show_highlight_delete_buttons is False
+        dialog._pdf_show_highlight_delete_buttons_cb.setChecked(True)
+        assert dialog.pdf_show_highlight_delete_buttons is True
+
     def test_highlight_when_extracting_defaults_enabled(self):
         dialog = IncrementoSettingsDialog({})
         assert dialog.extract_highlight_when_extracting is True
@@ -621,6 +806,89 @@ class TestIncrementoSettingsDialogPdfSnapshotAutoField:
         ) in function_source
 
 
+class TestIncrementoSettingsDialogPdfLinkHoverPreview:
+    def test_pdf_citation_numbering_defaults_to_printed(self):
+        dialog = IncrementoSettingsDialog({})
+
+        assert dialog.pdf_citation_page_numbering == "printed"
+
+    @pytest.mark.parametrize("mode", ["printed", "pdf", "both"])
+    def test_pdf_citation_numbering_loads_saved_value_and_allows_switching(self, mode):
+        dialog = IncrementoSettingsDialog({}, current_pdf_citation_page_numbering=mode)
+        combo = dialog._pdf_citation_page_numbering_combo
+
+        assert dialog.pdf_citation_page_numbering == mode
+        assert [combo.itemData(i) for i in range(combo.count())] == ["printed", "pdf", "both"]
+        combo.setCurrentIndex(1)
+        assert dialog.pdf_citation_page_numbering == "pdf"
+
+    def test_settings_entrypoint_loads_and_saves_pdf_citation_numbering(self):
+        import ast
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "__init__.py").read_text()
+        function = next(node for node in ast.parse(source).body
+                        if isinstance(node, ast.FunctionDef) and node.name == "openSettingsFunction")
+        function_source = ast.get_source_segment(source, function)
+
+        assert "current_pdf_citation_page_numbering=_pdf_dock_mod.configured_pdf_citation_page_numbering(cfg)" in function_source
+        assert 'cfg["pdf_citation_page_numbering"] = dlg.pdf_citation_page_numbering' in function_source
+
+    def test_pdf_link_hover_preview_defaults_enabled(self):
+        dialog = IncrementoSettingsDialog({})
+
+        assert dialog.pdf_link_hover_preview_enabled is True
+
+    def test_pdf_link_hover_preview_can_be_disabled(self):
+        dialog = IncrementoSettingsDialog(
+            {},
+            current_pdf_link_hover_preview_enabled=False,
+        )
+
+        assert dialog._pdf_link_hover_preview_enabled_cb.isChecked() is False
+        dialog._pdf_link_hover_preview_enabled_cb.setChecked(True)
+        assert dialog.pdf_link_hover_preview_enabled is True
+
+    def test_pdf_context_rows_default_and_saved_value(self):
+        default_dialog = IncrementoSettingsDialog({})
+        configured_dialog = IncrementoSettingsDialog(
+            {},
+            current_pdf_context_rows=9,
+        )
+
+        assert default_dialog.pdf_context_rows == 5
+        assert configured_dialog._pdf_context_rows_spin.value() == 9
+        configured_dialog._pdf_context_rows_spin.setValue(12)
+        assert configured_dialog.pdf_context_rows == 12
+
+    def test_settings_entrypoint_loads_and_saves_pdf_link_hover_preview(self):
+        import ast
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "__init__.py").read_text()
+        function = next(
+            node
+            for node in ast.parse(source).body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "openSettingsFunction"
+        )
+        function_source = ast.get_source_segment(source, function)
+
+        assert (
+            "current_pdf_link_hover_preview_enabled="
+            'bool(cfg.get("pdf_link_hover_preview_enabled", True))'
+        ) in function_source
+        assert (
+            'cfg["pdf_link_hover_preview_enabled"] = '
+            "dlg.pdf_link_hover_preview_enabled"
+        ) in function_source
+        assert (
+            "current_pdf_context_rows="
+            "_pdf_dock_mod.configured_pdf_context_rows(cfg)"
+        ) in function_source
+        assert 'cfg["pdf_context_rows"] = dlg.pdf_context_rows' in function_source
+
+
 class TestIncrementoSettingsDialogExtractCopySourceTags:
     def test_checkbox_reflects_incoming_value(self):
         dialog = IncrementoSettingsDialog(
@@ -651,6 +919,29 @@ class TestIncrementoSettingsDialogTimerCompletionBeep:
         dialog = IncrementoSettingsDialog({})
         dialog._timer_completion_beep_cb.setChecked(False)
         assert dialog.timer_completion_beep is False
+
+
+class TestIncrementoSettingsDialogDeckBrowserTagCharts:
+    def test_deck_browser_chart_toggle_is_removed_after_charts_move_to_statistics(self):
+        dialog = IncrementoSettingsDialog({})
+
+        assert "_show_deck_browser_tag_charts_cb" not in dialog.__dict__
+        assert "show_deck_browser_tag_charts" not in type(dialog).__dict__
+
+    def test_settings_entrypoint_does_not_save_retired_chart_visibility(self):
+        import ast
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "__init__.py").read_text()
+        function = next(
+            node
+            for node in ast.parse(source).body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "openSettingsFunction"
+        )
+        function_source = ast.get_source_segment(source, function)
+
+        assert "show_deck_browser_tag_charts" not in function_source
 
 
 class TestIncrementoSettingsDialogReviewerButtons:

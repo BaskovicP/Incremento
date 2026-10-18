@@ -33,13 +33,13 @@ except ImportError:
     from highlight_colors import highlight_appearance, color_from_rgb
 
 
-MAX_PDF_BYTES = 256 * 1024 * 1024
-MAX_PAGES = 5000
+MAX_PDF_BYTES = 512 * 1024 * 1024
+MAX_PAGES = 20000
 MAX_ANNOTATIONS = 10000
 MAX_RECTS = 2000
-MAX_BASELINE_CHARS = 8388608
+MAX_BASELINE_CHARS = 32 * 1024 * 1024
 MAX_SYNC_LOCK_WAIT_SECONDS = 300
-MAX_SYNC_PROCESSING_SECONDS = 120
+MAX_SYNC_PROCESSING_SECONDS = 600
 SUPPORTED_KINDS = {'Highlight', 'Underline', 'Squiggly', 'StrikeOut', 'Text', 'FreeText', 'Square', 'Circle'}
 MARKUP_KINDS = {'Highlight', 'Underline', 'Squiggly', 'StrikeOut'}
 # PyMuPDF's process-global runtime and multi-file writes are serialized. SQLite
@@ -122,6 +122,8 @@ def _checkpoint(cancel, deadline):
 
 
 def _content_digest(doc, cancel, deadline):
+    import pymupdf as fitz
+
     digest = sha256()
     resources = {}
     def resource_hash(xref, *, font=False):
@@ -136,10 +138,28 @@ def _content_digest(doc, cancel, deadline):
         return resources[key]
     if not doc.is_pdf or doc.page_count > MAX_PAGES:
         raise PdfAnnotationSyncError('limits')
-    if doc.needs_pass or doc.get_sigflags() > 0 or not (doc.permissions & 32):
-        raise PdfAnnotationSyncError('protected_pdf')
+    if doc.needs_pass:
+        raise PdfAnnotationSyncError('password_protected')
+    sigflags = doc.get_sigflags()
+    # Bit 1 records signature fields, including empty ones. Only bit 2 warns
+    # that rewriting the document can invalidate an existing signature.
+    # Missing flags are reported as -1; do not interpret that as a bit mask.
+    if sigflags > 0 and sigflags & 2:
+        raise PdfAnnotationSyncError('digitally_signed')
+    if not (doc.permissions & fitz.PDF_PERM_ANNOTATE):
+        raise PdfAnnotationSyncError('annotation_restricted')
+    signature_fields = 0
     for page in doc:
         _checkpoint(cancel, deadline)
+        # SigFlags are optional. A populated field must also stop sync when a
+        # creator omits the flags or records only the presence of form fields.
+        for widget in page.widgets(types=[fitz.PDF_WIDGET_TYPE_SIGNATURE]) or []:
+            _checkpoint(cancel, deadline)
+            signature_fields += 1
+            if signature_fields > MAX_ANNOTATIONS:
+                raise PdfAnnotationSyncError('limits')
+            if widget.is_signed:
+                raise PdfAnnotationSyncError('digitally_signed')
         digest.update(json.dumps([list(page.cropbox), page.rotation]).encode())
         for xref in page.get_contents():
             content = doc.xref_stream(xref)

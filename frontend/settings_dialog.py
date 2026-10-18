@@ -20,6 +20,8 @@ from aqt.qt import (
     QSpinBox,
     QTabWidget,
     QToolButton,
+    QTime,
+    QTimeEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -27,9 +29,11 @@ from aqt.qt import (
 try:
     from ..backend.i18n import LANGUAGES, normalize_language_choice, t
     from ..backend.config_service import (
-        DEFAULT_TOPIC_DONE_TAG, configured_reviewer_button_visibility,
+        DEFAULT_TOPIC_DONE_TAG, DEFAULT_LEARNING_LEECH_TAG, configured_learning_leech,
+        normalize_learning_leech_tag, configured_reviewer_button_visibility,
         configured_reviewer_button_group_visible,
-        configured_topic_done_tag, normalize_pdf_appearance_mode,
+        configured_pdf_citation_page_numbering,
+        configured_topic_done_tag, configured_day_end_time, normalize_pdf_appearance_mode,
         normalize_topic_done_tag,
     )
     from ..backend.custom_schedule import (
@@ -41,9 +45,11 @@ try:
 except ImportError:
     from backend.i18n import LANGUAGES, normalize_language_choice, t
     from backend.config_service import (  # type: ignore
-        DEFAULT_TOPIC_DONE_TAG, configured_reviewer_button_visibility,
+        DEFAULT_TOPIC_DONE_TAG, DEFAULT_LEARNING_LEECH_TAG, configured_learning_leech,
+        normalize_learning_leech_tag, configured_reviewer_button_visibility,
         configured_reviewer_button_group_visible,
-        configured_topic_done_tag, normalize_pdf_appearance_mode,
+        configured_pdf_citation_page_numbering,
+        configured_topic_done_tag, configured_day_end_time, normalize_pdf_appearance_mode,
         normalize_topic_done_tag,
     )
     from backend.custom_schedule import (  # type: ignore
@@ -357,8 +363,11 @@ class IncrementoSettingsDialog(QDialog):
         current_extract_mark_topic: bool = True,
         current_extract_copy_source_tags: bool = False,
         current_extract_highlight_when_extracting: bool = True,
+        current_pdf_show_highlight_delete_buttons: bool = True,
         current_pdf_highlight_extract_field: int = 1,
         current_pdf_snapshot_auto_field_enabled: bool = False,
+        current_pdf_link_hover_preview_enabled: bool = True,
+        current_pdf_context_rows: int = 5,
         extract_source_links: dict[str, bool] | bool | None = None,
         current_priority_lower_is_more_important: bool = True,
         current_show_priority_dialog_after_answer: bool = False,
@@ -411,6 +420,11 @@ class IncrementoSettingsDialog(QDialog):
         parent=None,
         current_ui_language: str = "auto",
         language_pack_context: tuple[str, str] | None = None,
+        current_learning_leech_enabled: bool = False,
+        current_learning_leech_threshold: int = 5,
+        current_learning_leech_tag: str = DEFAULT_LEARNING_LEECH_TAG,
+        current_day_end_time: str = "04:00",
+        current_pdf_citation_page_numbering: str = "printed",
     ):
         super().__init__(parent)
         self.setWindowTitle(t('settings_incremento_settings'))
@@ -618,6 +632,14 @@ class IncrementoSettingsDialog(QDialog):
         )
         extraction_form.addRow("", self._extract_highlight_when_extracting_cb)
 
+        self._pdf_show_highlight_delete_buttons_cb = QCheckBox(
+            t('settings_show_pdf_highlight_delete_buttons')
+        )
+        self._pdf_show_highlight_delete_buttons_cb.setChecked(
+            bool(current_pdf_show_highlight_delete_buttons)
+        )
+        extraction_form.addRow("", self._pdf_show_highlight_delete_buttons_cb)
+
         self._pdf_highlight_extract_field_spin = QSpinBox()
         self._pdf_highlight_extract_field_spin.setRange(1, 20)
         try:
@@ -674,6 +696,46 @@ class IncrementoSettingsDialog(QDialog):
                 t('settings_examples_a_pdf_page_reference_the_current_web_page'),
             ),
             self._extract_pdf_links_cb,
+        )
+
+        self._pdf_link_hover_preview_enabled_cb = QCheckBox(
+            t("settings_show_pdf_context_when_hovering_page_links")
+        )
+        self._pdf_link_hover_preview_enabled_cb.setChecked(
+            bool(current_pdf_link_hover_preview_enabled)
+        )
+        provenance_form.addRow("", self._pdf_link_hover_preview_enabled_cb)
+
+        self._pdf_citation_page_numbering_combo = QComboBox()
+        for mode, label in (
+            ("printed", t("settings_pdf_citation_numbering_printed")),
+            ("pdf", t("settings_pdf_citation_numbering_pdf")),
+            ("both", t("settings_pdf_citation_numbering_both")),
+        ):
+            self._pdf_citation_page_numbering_combo.addItem(label, mode)
+        numbering = configured_pdf_citation_page_numbering({
+            "pdf_citation_page_numbering": current_pdf_citation_page_numbering,
+        })
+        for index in range(self._pdf_citation_page_numbering_combo.count()):
+            if self._pdf_citation_page_numbering_combo.itemData(index) == numbering:
+                self._pdf_citation_page_numbering_combo.setCurrentIndex(index)
+                break
+        self._pdf_citation_page_numbering_combo.setAccessibleName(t("settings_pdf_citation_numbering"))
+        provenance_form.addRow(
+            _label_with_info(t("settings_pdf_citation_numbering"), t("settings_pdf_citation_numbering_hint")),
+            self._pdf_citation_page_numbering_combo,
+        )
+
+        self._pdf_context_rows_spin = QSpinBox()
+        self._pdf_context_rows_spin.setRange(1, 20)
+        try:
+            pdf_context_rows = int(current_pdf_context_rows)
+        except Exception:
+            pdf_context_rows = 5
+        self._pdf_context_rows_spin.setValue(max(1, min(20, pdf_context_rows)))
+        provenance_form.addRow(
+            t("settings_pdf_context_rows_before_and_after"),
+            self._pdf_context_rows_spin,
         )
 
         self._extract_web_links_cb = QCheckBox(t('settings_web_pages_urls'))
@@ -765,6 +827,43 @@ class IncrementoSettingsDialog(QDialog):
         )
 
         review_layout.addLayout(review_priority_form)
+
+        review_layout.addWidget(_subsection_title(t("settings_learning_leech")))
+        leech_form = _section_form()
+        enabled, threshold, tag = configured_learning_leech({
+            "learning_leech_enabled": current_learning_leech_enabled,
+            "learning_leech_threshold": current_learning_leech_threshold,
+            "learning_leech_tag": current_learning_leech_tag,
+        })
+        self._learning_leech_enabled_cb = QCheckBox(t("settings_learning_leech_enabled"))
+        self._learning_leech_enabled_cb.setChecked(enabled)
+        leech_form.addRow(self._learning_leech_enabled_cb)
+        leech_hint = QLabel(t("settings_learning_leech_hint"))
+        leech_hint.setWordWrap(True)
+        leech_form.addRow(leech_hint)
+        self._learning_leech_threshold_spin = QSpinBox()
+        self._learning_leech_threshold_spin.setRange(1, 9999)
+        self._learning_leech_threshold_spin.setValue(threshold)
+        self._learning_leech_threshold_spin.setAccessibleName(t("settings_learning_leech_threshold"))
+        leech_form.addRow(t("settings_learning_leech_threshold"), self._learning_leech_threshold_spin)
+        self._learning_leech_tag_edit = QLineEdit()
+        self._learning_leech_tag_edit.setText(tag)
+        self._learning_leech_tag_edit.setPlaceholderText(DEFAULT_LEARNING_LEECH_TAG)
+        self._learning_leech_tag_edit.setAccessibleName(t("settings_learning_leech_tag"))
+        leech_form.addRow(t("settings_learning_leech_tag"), self._learning_leech_tag_edit)
+        self._learning_leech_tag_error = QLabel("")
+        self._learning_leech_tag_error.setWordWrap(True)
+        self._learning_leech_tag_error.setVisible(False)
+        leech_form.addRow(self._learning_leech_tag_error)
+
+        def _sync_learning_leech_widgets(*_args) -> None:
+            active = self._learning_leech_enabled_cb.isChecked()
+            self._learning_leech_threshold_spin.setEnabled(active)
+            self._learning_leech_tag_edit.setEnabled(active)
+
+        self._learning_leech_enabled_cb.toggled.connect(_sync_learning_leech_widgets)
+        _sync_learning_leech_widgets()
+        review_layout.addLayout(leech_form)
 
         review_layout.addWidget(_subsection_title(t('settings_reviewer_controls')))
         reviewer_controls_layout = _section_body()
@@ -927,6 +1026,22 @@ class IncrementoSettingsDialog(QDialog):
         )
         _sync_item_skip_widgets()
         review_layout.addLayout(item_skip_layout)
+
+        review_layout.addWidget(_section_title(t('settings_statistics')))
+        statistics_layout = _section_body()
+        day_end_form = _section_form()
+        self._day_end_edit = QTimeEdit()
+        self._day_end_edit.setDisplayFormat("HH:mm")
+        self._day_end_edit.setMaximumWidth(120)
+        hour, minute = map(int, configured_day_end_time(
+            {"day_end_time": current_day_end_time}
+        ).split(":"))
+        self._day_end_edit.setTime(QTime(hour, minute))
+        self._day_end_edit.setAccessibleName(t("session_day_ends_at"))
+        self._day_end_edit.setToolTip(t("session_day_end_tooltip"))
+        day_end_form.addRow(t("session_day_ends_at"), self._day_end_edit)
+        statistics_layout.addLayout(day_end_form)
+        review_layout.addLayout(statistics_layout)
 
         review_layout.addWidget(_section_title(t('settings_focus_timer')))
         timer_hint = QLabel(
@@ -1719,6 +1834,15 @@ class IncrementoSettingsDialog(QDialog):
 
     def _accept_if_shortcuts_valid(self) -> bool:
         try:
+            self.learning_leech_tag
+        except ValueError:
+            self._learning_leech_tag_error.setText(t("settings_learning_leech_tag_invalid"))
+            self._learning_leech_tag_error.setVisible(True)
+            self._learning_leech_tag_edit.setFocus()
+            return False
+        self._learning_leech_tag_error.setText("")
+        self._learning_leech_tag_error.setVisible(False)
+        try:
             self.topic_done_tag
         except ValueError:
             self._topic_done_tag_error.setText(t("settings_done_tag_invalid"))
@@ -1779,12 +1903,30 @@ class IncrementoSettingsDialog(QDialog):
         return bool(self._extract_highlight_when_extracting_cb.isChecked())
 
     @property
+    def pdf_show_highlight_delete_buttons(self) -> bool:
+        return bool(self._pdf_show_highlight_delete_buttons_cb.isChecked())
+
+    @property
     def pdf_highlight_extract_field(self) -> int:
         return max(1, min(20, int(self._pdf_highlight_extract_field_spin.value())))
 
     @property
     def pdf_snapshot_auto_field_enabled(self) -> bool:
         return bool(self._pdf_snapshot_auto_field_enabled_cb.isChecked())
+
+    @property
+    def pdf_link_hover_preview_enabled(self) -> bool:
+        return bool(self._pdf_link_hover_preview_enabled_cb.isChecked())
+
+    @property
+    def pdf_context_rows(self) -> int:
+        return max(1, min(20, int(self._pdf_context_rows_spin.value())))
+
+    @property
+    def pdf_citation_page_numbering(self) -> str:
+        return configured_pdf_citation_page_numbering({
+            "pdf_citation_page_numbering": self._pdf_citation_page_numbering_combo.currentData(),
+        })
 
     @property
     def extract_source_links(self) -> dict[str, bool]:
@@ -1844,6 +1986,10 @@ class IncrementoSettingsDialog(QDialog):
         return bool(self._show_incremento_fields_cb.isChecked())
 
     @property
+    def day_end_time(self) -> str:
+        return self._day_end_edit.time().toString("HH:mm")
+
+    @property
     def prefer_web_card_resume_in_original_page(self) -> bool:
         return bool(self._prefer_web_card_resume_in_original_page_cb.isChecked())
 
@@ -1858,6 +2004,18 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def item_skip_enabled(self) -> bool:
         return bool(self._item_skip_enabled_cb.isChecked())
+
+    @property
+    def learning_leech_enabled(self) -> bool:
+        return bool(self._learning_leech_enabled_cb.isChecked())
+
+    @property
+    def learning_leech_threshold(self) -> int:
+        return int(self._learning_leech_threshold_spin.value())
+
+    @property
+    def learning_leech_tag(self) -> str:
+        return normalize_learning_leech_tag(self._learning_leech_tag_edit.text())
 
     @property
     def item_skip_minutes(self) -> int:

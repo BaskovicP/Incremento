@@ -61,6 +61,11 @@ try:
     from .reader_links import (
         normalize_reader_anchor_scroll_ratio,
         open_external_reader_link,
+        pdf_context_card_html,
+        pdf_snapshot_reference_html,
+        pdf_text_context_reference_html,
+        reader_anchor_command_from_html,
+        repair_legacy_pdf_reference_links_html,
         set_reader_anchor_clipboard,
         show_reader_anchor_context_menu,
     )
@@ -68,6 +73,11 @@ except ImportError:
     from reader_links import (  # type: ignore
         normalize_reader_anchor_scroll_ratio,
         open_external_reader_link,
+        pdf_context_card_html,
+        pdf_snapshot_reference_html,
+        pdf_text_context_reference_html,
+        reader_anchor_command_from_html,
+        repair_legacy_pdf_reference_links_html,
         set_reader_anchor_clipboard,
         show_reader_anchor_context_menu,
     )
@@ -77,6 +87,8 @@ try:
     from ..backend.content_safety import external_plain_text_to_anki_html
     from ..backend.config_service import (
         configured_pdf_default_appearance as _configured_pdf_default_appearance,
+        configured_pdf_context_rows as _configured_pdf_context_rows,
+        configured_pdf_citation_page_numbering as _configured_pdf_citation_page_numbering,
         configured_pdf_force_default_appearance as _configured_pdf_force_default_appearance,
         configured_pdf_snapshot_auto_field_enabled as _configured_pdf_snapshot_auto_field_enabled,
         load_addon_config,
@@ -85,12 +97,20 @@ try:
         normalize_pdf_appearance_mode,
         save_addon_config,
     )
+    from ..backend.search_repository import pdf_page_text as _pdf_page_text
+    from ..backend.pdf_context_snapshot import (
+        MAX_EXCERPT_CHARS,
+        add_snapshot_to_anki_media,
+        render_pdf_context_snapshot,
+    )
     from ..backend.anki_compat import show_reviewer_question
 except ImportError:
     from paths import get_active_profile as _active_profile, get_pdf_annotation_reader_path
     from content_safety import external_plain_text_to_anki_html  # type: ignore
     from config_service import (  # type: ignore
         configured_pdf_default_appearance as _configured_pdf_default_appearance,
+        configured_pdf_context_rows as _configured_pdf_context_rows,
+        configured_pdf_citation_page_numbering as _configured_pdf_citation_page_numbering,
         configured_pdf_force_default_appearance as _configured_pdf_force_default_appearance,
         configured_pdf_snapshot_auto_field_enabled as _configured_pdf_snapshot_auto_field_enabled,
         load_addon_config,
@@ -98,6 +118,12 @@ except ImportError:
         normalize_pdf_snapshot_auto_fields,
         normalize_pdf_appearance_mode,
         save_addon_config,
+    )
+    from search_repository import pdf_page_text as _pdf_page_text  # type: ignore
+    from pdf_context_snapshot import (  # type: ignore
+        MAX_EXCERPT_CHARS,
+        add_snapshot_to_anki_media,
+        render_pdf_context_snapshot,
     )
     from anki_compat import show_reviewer_question  # type: ignore
 
@@ -251,6 +277,7 @@ _pdf_showing_missing_screen = False
 _shortcuts_registered = False
 _current_pdf_card_id = None
 _current_pdf_filename = None
+_current_pdf_page_labels: tuple[str, ...] = ()
 _current_pdf_search_query = ""
 _current_pdf_search_hits: list[dict] = []
 _current_pdf_search_hit_index = -1
@@ -377,6 +404,10 @@ def configured_highlight_when_extracting(config: dict | None = None) -> bool:
     return bool(cfg.get("highlight_when_extracting", True))
 
 
+def configured_pdf_show_highlight_delete_buttons(config: dict | None = None) -> bool:
+    return bool(_config(config).get("pdf_show_highlight_delete_buttons", True))
+
+
 def configured_pdf_highlight_extract_field(config: dict | None = None) -> int:
     cfg = _config(config)
     try:
@@ -388,6 +419,14 @@ def configured_pdf_highlight_extract_field(config: dict | None = None) -> int:
 
 def configured_pdf_snapshot_auto_field_enabled(config: dict | None = None) -> bool:
     return _configured_pdf_snapshot_auto_field_enabled(_config(config))
+
+
+def configured_pdf_context_rows(config: dict | None = None) -> int:
+    return _configured_pdf_context_rows(_config(config))
+
+
+def configured_pdf_citation_page_numbering(config: dict | None = None) -> str:
+    return _configured_pdf_citation_page_numbering(_config(config))
 
 
 def configured_pdf_snapshot_auto_fields(config: dict | None = None) -> dict[str, str]:
@@ -490,6 +529,7 @@ def current_pdf_card_id() -> int | None:
 
 def _clear_current_pdf_context() -> int | None:
     global _current_pdf_card_id, _current_pdf_filename
+    global _current_pdf_page_labels
     global _current_pdf_search_query, _current_pdf_search_hits, _current_pdf_search_hit_index
     global _pdf_via_link, _pdf_preserve_history, _pdf_showing_missing_screen
     global _pdf_annotation_generation
@@ -497,6 +537,7 @@ def _clear_current_pdf_context() -> int | None:
     previous_card_id = current_pdf_card_id()
     _current_pdf_card_id = None
     _current_pdf_filename = None
+    _current_pdf_page_labels = ()
     _current_pdf_search_query = ""
     _current_pdf_search_hits = []
     _current_pdf_search_hit_index = -1
@@ -1139,14 +1180,19 @@ def _current_reviewer_card_id() -> int | None:
 # ── Citation helper (called by _fill_dock_field in __init__.py) ───────────────
 
 
-def _normalize_pdf_reference_excerpt(text: str | None) -> str:
+def _normalize_pdf_reference_excerpt(
+    text: str | None,
+    *,
+    max_chars: int = _PDF_REF_EXCERPT_MAX_CHARS,
+) -> str:
     raw = str(text or "")
     if not raw.strip():
         return ""
-    raw = re.sub(r"<[^>]+>", " ", raw)
+    raw = re.sub(r"</?(?:br|p|div|li)\b[^>]*>", " ", raw, flags=re.I)
+    raw = re.sub(r"<[^>]+>", "", raw)
     raw = unescape(raw)
     raw = re.sub(r"\s+", " ", raw).strip()
-    return raw[:_PDF_REF_EXCERPT_MAX_CHARS].strip()
+    return raw[:max_chars].strip()
 
 
 def _pdf_search_snippet(text: str, query: str, max_len: int = 180) -> str:
@@ -1248,18 +1294,67 @@ def _emit_pdf_search_state() -> None:
         pass
 
 
+def _normalize_pdf_page_label(value: object) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) > 128
+        or any(ord(char) < 32 or ord(char) == 127 for char in value)
+    ):
+        return ""
+    return value.strip()
+
+
+def _receive_pdf_page_labels(data: object) -> None:
+    global _current_pdf_page_labels
+    if (
+        not isinstance(data, dict)
+        or "labels" not in data
+        or isinstance(data.get("cardId"), bool)
+        or not isinstance(data.get("cardId"), int)
+        or data.get("cardId") != current_pdf_card_id()
+        or not _current_pdf_filename
+        or data.get("filename") != _current_pdf_filename
+    ):
+        return
+    labels = data.get("labels")
+    if labels is None:
+        _current_pdf_page_labels = ()
+    elif (
+        isinstance(labels, list)
+        and 0 < len(labels) <= 20_000
+        and all(isinstance(label, str) and len(label) <= 128
+                and not any(ord(char) < 32 or ord(char) == 127 for char in label)
+                for label in labels)
+    ):
+        _current_pdf_page_labels = tuple(label.strip() for label in labels)
+
+
+def _pdf_citation_display_page(page: int, page_label: object = None) -> str:
+    label = _normalize_pdf_page_label(page_label)
+    if not label and 0 < page <= len(_current_pdf_page_labels):
+        label = _current_pdf_page_labels[page - 1]
+    mode = configured_pdf_citation_page_numbering()
+    if mode == "pdf" or not label:
+        return str(page)
+    if mode == "both" and label != str(page):
+        return t("reader_pdf_citation_page_both", label=label, page=page)
+    return label
+
+
 def pdf_citation(
     excerpt_text: str | None = None,
     *,
     highlight_id: str = "",
     page: int | None = None,
+    page_label: str | None = None,
     scroll_ratio: float | None = None,
 ) -> str:
-    """Return an HTML link 'Page N. of name' that reopens the PDF dock at that page."""
+    """Display a printed label while reopening the physical PDF page."""
     card_id = current_pdf_card_id()
     if not card_id or not _current_pdf_filename:
         return ""
     resolved_page = int(page or get_page(_ADDON_DIR, _active_profile(), card_id) or 1)
+    display_page = _pdf_citation_display_page(resolved_page, page_label)
     name = pdf_display_label_from_filename(_current_pdf_filename)
     payload = {
         "card_id": int(card_id),
@@ -1280,11 +1375,120 @@ def pdf_citation(
     return (
         f"<a onclick=\"{onclick}\" "
         f'style="cursor:pointer; color:#4a90d9; text-decoration:none;">'
-        f'{escape(t("reader_pdf_citation_label", page=resolved_page, title=name))}</a>'
+        f'{escape(t("reader_pdf_citation_label", page=display_page, title=name))}</a>'
     )
 
 
-def _normalize_pdf_context_anchor(data: object) -> dict[str, int | float] | None:
+def pdf_context_html_for_citation(
+    citation_html: object,
+    *,
+    excerpt_text: object = "",
+) -> str:
+    """Build syncable card context from one validated local PDF citation."""
+    command = reader_anchor_command_from_html(citation_html)
+    prefix = "incremento_open_pdf_ref:"
+    if command is None or not command.startswith(prefix):
+        return ""
+    try:
+        payload = json.loads(command[len(prefix) :])
+        card_id = int(payload["card_id"])
+        page = int(payload["page"])
+    except (KeyError, TypeError, ValueError, OverflowError, json.JSONDecodeError):
+        return ""
+    try:
+        page_text = _pdf_page_text(
+            _ADDON_DIR,
+            _active_profile(),
+            card_id,
+            page,
+            max_chars=250_000,
+        )
+    except Exception:
+        return ""
+    excerpt = str(payload.get("excerpt") or "").strip()
+    if not excerpt:
+        excerpt = _normalize_pdf_reference_excerpt(str(excerpt_text or ""))
+    return pdf_context_card_html(
+        page_text,
+        excerpt=excerpt,
+        scroll_ratio=payload.get("scroll_ratio"),
+        context_rows=configured_pdf_context_rows(),
+    )
+
+
+def pdf_reference_html_for_citation(
+    excerpt_html: object,
+    citation_html: object,
+) -> str:
+    """Build a PDF reference with a screenshot or matched indexed-text preview."""
+    command = reader_anchor_command_from_html(citation_html)
+    prefix = "incremento_open_pdf_ref:"
+    if command is None or not command.startswith(prefix):
+        return ""
+    try:
+        payload = json.loads(command[len(prefix) :])
+        card_id = int(payload["card_id"])
+        page = int(payload["page"])
+        filename = str(payload["filename"] or "").strip()
+    except (KeyError, TypeError, ValueError, OverflowError, json.JSONDecodeError):
+        return ""
+    profile = _active_profile()
+    pdf_path = pdf_storage_abspath(filename, profile=profile)
+    if not pdf_path:
+        return ""
+    excerpt = _normalize_pdf_reference_excerpt(
+        str(excerpt_html or ""), max_chars=MAX_EXCERPT_CHARS
+    ) or str(payload.get("excerpt") or "").strip()
+
+    highlight_rects = None
+    highlight_id = str(payload.get("highlight_id") or "").strip()
+    if highlight_id:
+        try:
+            for highlight in load_highlights(_ADDON_DIR, profile, card_id):
+                if (
+                    str(highlight.get("id") or "") == highlight_id
+                    and int(highlight.get("page", 0) or 0) == page
+                ):
+                    highlight_rects = highlight.get("rects")
+                    break
+        except Exception:
+            highlight_rects = None
+    context_rows = configured_pdf_context_rows()
+    preview_label = t("reader_pdf_source_preview")
+    try:
+        image = render_pdf_context_snapshot(
+            pdf_path,
+            page_number=page,
+            excerpt=excerpt,
+            context_rows=context_rows,
+            highlight_rects=highlight_rects,
+        )
+        media_filename = add_snapshot_to_anki_media(mw.col, image) if image else ""
+        if media_filename:
+            return pdf_snapshot_reference_html(
+                excerpt_html,
+                citation_html,
+                media_filename,
+                preview_label=preview_label,
+            )
+    except Exception:
+        # Optional rendering/media failures must not hide available text context.
+        pass
+    try:
+        page_text = _pdf_page_text(_ADDON_DIR, profile, card_id, page, max_chars=250_000)
+    except Exception:
+        return ""
+    return pdf_text_context_reference_html(
+        excerpt_html,
+        citation_html,
+        page_text,
+        excerpt=excerpt,
+        context_rows=context_rows,
+        preview_label=preview_label,
+    )
+
+
+def _normalize_pdf_context_anchor(data: object) -> dict[str, int | float | str] | None:
     if not isinstance(data, dict):
         return None
     try:
@@ -1302,11 +1506,15 @@ def _normalize_pdf_context_anchor(data: object) -> dict[str, int | float] | None
         or scroll_ratio is None
     ):
         return None
-    return {
+    anchor: dict[str, int | float | str] = {
         "card_id": card_id,
         "page": page,
         "scroll_ratio": scroll_ratio,
     }
+    page_label = _normalize_pdf_page_label(data.get("pageLabel"))
+    if page_label:
+        anchor["page_label"] = page_label
+    return anchor
 
 
 def _copy_pdf_context_anchor(data: object) -> bool:
@@ -1314,12 +1522,15 @@ def _copy_pdf_context_anchor(data: object) -> bool:
     if anchor is None or not _current_pdf_filename:
         return False
     page = int(anchor["page"])
+    page_label = str(anchor.get("page_label") or "")
     html = pdf_citation(
         page=page,
+        page_label=page_label,
         scroll_ratio=float(anchor["scroll_ratio"]),
     )
     label = pdf_display_label_from_filename(str(_current_pdf_filename), fallback="PDF")
-    if not html or not set_reader_anchor_clipboard(html, t("reader_pdf_copied_label", title=label, page=page)):
+    display_page = _pdf_citation_display_page(page, page_label)
+    if not html or not set_reader_anchor_clipboard(html, t("reader_pdf_copied_label", title=label, page=display_page)):
         return False
     tooltip(t("reader_pdf_link_copied"))
     return True
@@ -1344,45 +1555,8 @@ def _show_pdf_reader_context_menu(view, position) -> bool:
     )
 
 
-_LEGACY_PDF_REF_ANCHOR_RE = re.compile(
-    r"(?P<open><a\b[^>]*incremento_open_pdf_ref:[^>]*>)(?P<label>.*?)(?P<close></a>)",
-    re.IGNORECASE | re.DOTALL,
-)
 _PDF_REF_HIGHLIGHT_RE = re.compile(r'"highlight_id"\s*:\s*"([^"]+)"')
 _PDF_REF_PAGE_RE = re.compile(r'"page"\s*:\s*(\d+)')
-
-
-def repair_legacy_pdf_reference_links_html(html: str) -> str:
-    """Repair old malformed PDF citation anchors when existing note HTML is rendered."""
-    if not html or "incremento_open_pdf_ref:" not in html or 'onclick="pycmd("' not in html:
-        return html
-
-    def _replace(match: re.Match[str]) -> str:
-        open_tag = match.group("open")
-        label = match.group("label")
-
-        card_id_match = re.search(r'card_id\\?":(?:\s*=""\s*)?(?P<card_id>\d+)', open_tag)
-        filename_match = re.search(r'filename\\?":(?:\s*=""\s*)?\\?"(?P<filename>[^"]+)\\?"', open_tag)
-        page_match = re.search(r'page\\?":(?:\s*=""\s*)?(?P<page>\d+)', open_tag)
-        if not (card_id_match and filename_match and page_match):
-            return match.group(0)
-
-        cmd = "incremento_open_pdf_ref:" + json.dumps(
-            {
-                "card_id": int(card_id_match.group("card_id")),
-                "filename": str(filename_match.group("filename")).strip(),
-                "page": int(page_match.group("page")),
-            },
-            ensure_ascii=False,
-        )
-        onclick = escape(f"pycmd({json.dumps(cmd)}); return false;", quote=True)
-        return (
-            f"<a onclick=\"{onclick}\" "
-            f'style="cursor:pointer; color:#4a90d9; text-decoration:none;">'
-            f"{label}</a>"
-        )
-
-    return _LEGACY_PDF_REF_ANCHOR_RE.sub(_replace, html)
 
 
 def _extract_pdf_reference_from_note(note) -> dict[str, object]:
@@ -1412,6 +1586,7 @@ _MSG_NAV = "incremento_pdf_nav:"
 _MSG_ZOOM = "incremento_pdf_zoom:"
 _MSG_SCROLL = "incremento_pdf_scroll:"
 _MSG_APPEARANCE = "incremento_pdf_appearance:"
+_MSG_PAGE_LABELS = "incremento_pdf_page_labels:"
 _MSG_HL_ADD = "incremento_pdf_hl_add:"
 _MSG_HL_UPDATE = "incremento_pdf_hl_update:"
 _MSG_HL_COLOR = "incremento_pdf_hl_color:"
@@ -1886,7 +2061,8 @@ def _pdf_highlight_bulk_generated_text(highlight: dict) -> str:
         page=int(highlight.get("page", 1) or 1),
     )
     if citation_html and _add_card_dock_module().should_add_extract_source_link("pdf"):
-        return excerpt + "<br>" + citation_html
+        reference_html = pdf_reference_html_for_citation(excerpt, citation_html)
+        return reference_html or excerpt + "<br>" + citation_html
     return excerpt
 
 
@@ -2141,16 +2317,24 @@ def _push_pdf_bookmarks(card_id: int | None = None) -> None:
 
 def _update_pdf_search(query: str, *, active_index: int = 0) -> None:
     card_id = current_pdf_card_id()
-    normalized_query = str(query or "").strip()
-    if card_id is None or not normalized_query:
+    input_query = str(query or "")
+    normalized_query = input_query.strip()
+    if card_id is None:
         _sync_pdf_search_state("", [], -1)
+        _emit_pdf_search_state()
+        return
+    if not normalized_query:
+        _sync_pdf_search_state(input_query, [], -1)
         _emit_pdf_search_state()
         return
     hits = current_card_pdf_search_hits(card_id, normalized_query)
     resolved_index = -1
     if hits:
         resolved_index = max(0, min(int(active_index), len(hits) - 1))
-    _sync_pdf_search_state(normalized_query, hits, resolved_index)
+    # Keep the exact text in the controlled React input. In particular, a
+    # trailing space must survive this bridge round trip so the user can type
+    # the next word, while lookup continues to use the trimmed query above.
+    _sync_pdf_search_state(input_query, hits, resolved_index)
     _emit_pdf_search_state()
 
 
@@ -2410,8 +2594,49 @@ def _offer_due_review_for_pdf(
 # ── pycmd bridge (console.log interceptor) ───────────────────────────────────
 
 
+def _pdf_extract_html(payload: dict) -> str:
+    """Build field HTML from bounded PDF text runs without accepting document HTML."""
+    text = payload.get("text", "")
+    fallback = external_plain_text_to_anki_html(text)
+    runs = payload.get("runs")
+    if not isinstance(text, str) or not isinstance(runs, list) or len(runs) > 8192:
+        return fallback
+    if len(text) > 200_000:
+        return fallback
+    parts = []
+    plain_parts = []
+    total_chars = 0
+    for run in runs:
+        if not isinstance(run, dict) or not isinstance(run.get("text"), str):
+            return fallback
+        if not isinstance(run.get("bold", False), bool) or not isinstance(
+            run.get("italic", False), bool
+        ):
+            return fallback
+        piece = run["text"]
+        total_chars += len(piece)
+        if total_chars > len(text):
+            return fallback
+        plain_parts.append(piece)
+        rendered = external_plain_text_to_anki_html(piece)
+        if run.get("italic"):
+            rendered = f"<em>{rendered}</em>"
+        if run.get("bold"):
+            rendered = f"<strong>{rendered}</strong>"
+        parts.append(rendered)
+    if "".join(plain_parts) != text:
+        return fallback
+    return "".join(parts)
+
+
 def _handle_pdf_js_message(msg: str) -> None:
-    if msg.startswith(_MSG_NAV):
+    if msg.startswith(_MSG_PAGE_LABELS):
+        if len(msg) <= 1_000_000:
+            try:
+                _receive_pdf_page_labels(json.loads(msg[len(_MSG_PAGE_LABELS):]))
+            except (TypeError, ValueError):
+                pass
+    elif msg.startswith(_MSG_NAV):
         parts = msg.split(":")
         if len(parts) == 3:
             try:
@@ -2573,7 +2798,8 @@ def _handle_pdf_js_message(msg: str) -> None:
             if _cb_fill_dock_field:
                 _cb_fill_dock_field(
                     int(data["idx"]),
-                    external_plain_text_to_anki_html(data["text"]),
+                    _pdf_extract_html(data),
+                    mark_topic=True,
                 )
         except Exception:
             pass
@@ -3229,7 +3455,10 @@ def _on_pdf_selection(idx: int, text: str) -> None:
         if _cb_open_add_card_dock:
             _cb_open_add_card_dock()
         if _cb_fill_dock_field:
-            QTimer.singleShot(150, lambda: _cb_fill_dock_field(idx, safe_html))
+            QTimer.singleShot(
+                150,
+                lambda: _cb_fill_dock_field(idx, safe_html, mark_topic=True),
+            )
 
 
 def trigger_viewer_action(action: str) -> None:
@@ -3344,6 +3573,7 @@ def show_pdf_in_dock(
     global _pdf_dock, _current_pdf_card_id, _current_pdf_filename, _pdf_via_link, _pdf_preserve_history
     global _pdf_showing_missing_screen
     global _pdf_annotation_generation
+    global _current_pdf_page_labels
     if _annotation_result is None:
         _pdf_annotation_generation += 1
         if _pdf_dock is not None:
@@ -3384,6 +3614,7 @@ def show_pdf_in_dock(
 
     _current_pdf_card_id = normalized_card_id if normalized_card_id > 0 else 0
     _current_pdf_filename = resolved_filename
+    _current_pdf_page_labels = ()
     _pdf_via_link = via_link
     _pdf_preserve_history = bool(preserve_history)
     if _pdf_dock is None:
@@ -3509,10 +3740,10 @@ def show_pdf_in_dock(
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._pdfNativeHighlightsVisible = {json.dumps(bool((_annotation_result or {}).get('native_highlights_visible')))};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)}, locale: {json.dumps(reader_locale)}, customLanguage: {json.dumps(custom_reader_language)}, appearanceMode: {json.dumps(appearance_mode)} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)}, locale: {json.dumps(reader_locale)}, customLanguage: {json.dumps(custom_reader_language)}, appearanceMode: {json.dumps(appearance_mode)}, showHighlightDeleteButtons: {json.dumps(configured_pdf_show_highlight_delete_buttons())} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}, {json.dumps(reader_locale)}, {json.dumps(custom_reader_language)}, {json.dumps(appearance_mode)}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}, {json.dumps(reader_locale)}, {json.dumps(custom_reader_language)}, {json.dumps(appearance_mode)}, {json.dumps(configured_pdf_show_highlight_delete_buttons())}));"
     )
 
     current = _pdf_dock._view.url().toString()

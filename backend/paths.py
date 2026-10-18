@@ -153,6 +153,14 @@ def get_local_files_dir(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "files"
 
 
+def get_supermemo_import_dir(addon_dir: str, profile: str, fingerprint: str) -> Path:
+    """Lossless, profile-scoped archive for one imported SuperMemo collection."""
+    normalized = str(fingerprint or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", normalized):
+        raise ValueError("Invalid SuperMemo collection fingerprint.")
+    return get_user_files_dir(addon_dir, profile) / "supermemo_imports" / normalized
+
+
 def get_video_profile_dir(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "video_profile"
 
