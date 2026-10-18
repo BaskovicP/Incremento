@@ -2,6 +2,13 @@ import add_card_dock as dock
 import sys
 import types
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def isolate_reviewer_extract_session(monkeypatch):
+    monkeypatch.setattr(dock, "_reviewer_extract_session", None)
+
 
 def test_transfer_button_tooltips_translate_and_keep_field_names_literal(monkeypatch):
     import json
@@ -1940,6 +1947,323 @@ def test_prepare_reviewer_extract_primes_native_add_dialog(monkeypatch):
     assert dock.pending_extract_options()["source"] == "reviewer"
     assert dock.pending_extract_options()["link_to_knowledge_tree"] is True
     assert dock.pending_extract_context()["parent_card_id"] == 5
+
+
+@pytest.fixture
+def reviewer_extract_workflow(monkeypatch):
+    """Exercise Extract → reviewer navigation → background Add → next blank note."""
+    from note_metadata import INCREMENTO_METADATA_FIELDS
+
+    profile = ["TestProfile"]
+    field_names = ["Front", "Back", *INCREMENTO_METADATA_FIELDS]
+    editor = _FakeEditor(_FakeNote(field_names=field_names), add_mode=True)
+    editor.web = _FakeWeb()
+    dlg = _FakeAddCardsDialog(editor)
+    dlg.deck_chooser = types.SimpleNamespace(selected_deck_id=7)
+    dlg._add_current_note = lambda: None
+    dlg._close = lambda: None
+    dlg._note_can_be_added = lambda note: True
+    dlg.addHistory = lambda note: None
+    sources = {}
+    for card_id, title in [(101, "First topic"), (202, "Second topic"), (303, "Third topic")]:
+        note = _FakeNote(tags=["topic", title.replace(" ", "_")])
+        note["Front"] = title
+        sources[card_id] = types.SimpleNamespace(id=card_id, note=lambda note=note: note)
+    reviewer = types.SimpleNamespace(card=sources[101])
+    col = types.SimpleNamespace(
+        get_card=lambda card_id: sources[card_id],
+        models=object(),
+        update_note=lambda note: None,
+        decks=_BatchFakeDecks(),
+    )
+    mw = types.SimpleNamespace(col=col, reviewer=reviewer, state="review")
+    fake_dock = _FakeDock(editor)
+    fake_dock._addcards_dialog = dlg
+    priorities, links, operations, clears = [], [], [], []
+
+    for name, value in {
+        "_pending_extract_options": None, "_pending_extract_context": None,
+        "_current_extract_priority": None, "_current_extract_mark_topic": None,
+        "_current_extract_link_to_knowledge_tree": None,
+        "_last_selection_source": "", "_last_selection_text": "", "_last_selection_seen": 0.0,
+        "_suppress_next_reviewer_queue_refresh": None,
+    }.items():
+        monkeypatch.setattr(dock, name, value)
+    monkeypatch.setattr(dock, "_reviewer_extract_session", None, raising=False)
+    monkeypatch.setattr(dock, "mw", mw)
+    monkeypatch.setattr(dock, "_active_profile", lambda: profile[0])
+    monkeypatch.setattr(dock, "_add_card_dock", fake_dock)
+    monkeypatch.setattr(dock, "_dock_editor", lambda: editor)
+    monkeypatch.setattr(dock, "open_add_card_dock", lambda: None)
+    monkeypatch.setattr(dock, "_iter_tracked_tag_button_editors", lambda: [editor])
+    monkeypatch.setattr(dock, "configured_extract_copy_source_tags", lambda config=None: True)
+    monkeypatch.setattr(dock, "_priority_for_card_id", lambda card_id: {101: 30, 202: 70, 303: 80}[card_id])
+    monkeypatch.setattr(dock, "_ensure_incremento_metadata_fields_saved", lambda *args: False)
+    monkeypatch.setattr(dock, "_card_ids_for_note", lambda note: [note.id + 1000])
+    monkeypatch.setattr(dock, "apply_priority_to_note_cards", lambda note, priority: priorities.append(priority) or 1)
+    monkeypatch.setattr(dock, "_clear_saved_extract_draft", lambda: clears.append(True))
+    for name in ("_schedule_extract_draft_autosave", "_inject_transfer_buttons",
+                 "_schedule_editor_tag_widget_sync", "_schedule_add_card_tag_button_refresh"):
+        monkeypatch.setattr(dock, name, lambda *args: None)
+    monkeypatch.setitem(sys.modules, "knowledge_tree", types.SimpleNamespace(
+        NODE_KIND_ITEM="item", NODE_KIND_TOPIC="topic",
+        ensure_extract_lineage_cards_in_tree=lambda addon_dir, profile, **kwargs: (
+            links.append(kwargs) or {"errors": []}
+        ),
+    ))
+
+    def load_new_note(sticky_fields_from):
+        editor.note = _FakeNote(tags=sticky_fields_from.tags, field_names=field_names)
+        editor.tags.setText(editor.note.string_tags())
+
+    dlg._load_new_note = load_new_note
+
+    class AddOperation:
+        def __init__(self, note):
+            self.note = note
+
+        def success(self, callback):
+            self.callback = callback
+            return self
+
+        def run_in_background(self):
+            operations.append(self)
+
+        def complete(self):
+            self.note.id = len(operations) + 10
+            self.callback(types.SimpleNamespace(count=1))
+            return self.note
+
+    monkeypatch.setitem(sys.modules, "aqt.operations.note", types.SimpleNamespace(
+        add_note=lambda parent, note, target_deck_id: AddOperation(note),
+    ))
+    monkeypatch.setitem(sys.modules, "aqt.sound", types.SimpleNamespace(
+        av_player=types.SimpleNamespace(stop_and_clear_queue=lambda: None),
+    ))
+    monkeypatch.setitem(sys.modules, "aqt.utils", types.SimpleNamespace(
+        tr=types.SimpleNamespace(importing_cards_added=lambda count: "Added"),
+    ))
+    monkeypatch.setattr(dock, "tooltip", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dock, "gui_hooks", types.SimpleNamespace(
+        add_cards_did_add_note=dock.on_add_cards_did_add_note,
+    ))
+    dock._install_embedded_add_dialog_hooks(dlg)
+    dock.prepare_reviewer_extract(
+        selected_text="Excerpt", note_type_name="", deck_name="",
+        field_values={"Front": "Excerpt"},
+        metadata=dock._source_extract_metadata_for_card("reviewer", 101),
+        parent_card_id=101, priority=30, mark_topic=False,
+        knowledge_tree_link_enabled=False, link_to_knowledge_tree=True,
+    )
+    return types.SimpleNamespace(
+        editor=editor, dialog=dlg, sources=sources, reviewer=reviewer, mw=mw,
+        operations=operations, priorities=priorities, links=links, profile=profile, clears=clears,
+    )
+
+
+def test_extract_once_then_add_on_successive_topics_uses_each_current_topic(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.editor.note.tags.append("manual")
+    flow.reviewer.card = flow.sources[202]
+    flow.dialog._add_current_note()
+    second = flow.operations[-1].complete()
+
+    flow.reviewer.card = flow.sources[303]
+    flow.editor.note["Front"] = "Another question"
+    flow.dialog._add_current_note()
+    third = flow.operations[-1].complete()
+
+    assert second["Incremento_Parent_Card_ID"] == "202"
+    assert second["Incremento_Parent"] == "Second topic"
+    assert second["Front"] == "Excerpt"
+    assert second.tags == ["manual", "Second_topic"]
+    assert third["Incremento_Parent_Card_ID"] == "303"
+    assert third.tags == ["manual", "Third_topic"]
+    assert flow.priorities == [70, 80]
+    assert [link["source_card_id"] for link in flow.links] == [202, 303]
+
+
+def test_topic_change_during_background_add_keeps_parent_from_add_click(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.reviewer.card = flow.sources[202]
+    flow.dialog._add_current_note()
+    flow.reviewer.card = flow.sources[303]
+    note = flow.operations[-1].complete()
+
+    assert note["Incremento_Parent_Card_ID"] == "202"
+    assert flow.links[0]["source_card_id"] == 202
+
+
+@pytest.mark.parametrize("review_state,has_card", [("review", False), ("overview", True)])
+def test_add_without_active_reviewer_does_not_reuse_previous_topic(
+    reviewer_extract_workflow, review_state, has_card,
+):
+    flow = reviewer_extract_workflow
+    flow.mw.state = review_state
+    if not has_card:
+        flow.reviewer.card = None
+    flow.dialog._add_current_note()
+    note = flow.operations[-1].complete()
+
+    assert note["Incremento_Parent_Card_ID"] == ""
+    assert note.tags == []
+    assert flow.links == []
+    assert flow.priorities == [50]
+
+
+def test_profile_switch_while_add_finishes_drops_stale_extraction_callback(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.dialog._add_current_note()
+    flow.profile[0] = "OtherProfile"
+    flow.operations[-1].complete()
+
+    assert flow.links == []
+    assert flow.priorities == []
+    assert flow.clears == []
+
+
+def test_batch_opened_after_topic_change_uses_current_topic(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.reviewer.card = flow.sources[202]
+
+    state = dock.snapshot_extract_batch_state(editor=flow.editor)
+
+    assert state["extract_context"]["parent_card_id"] == 202
+    assert state["extract_options"]["source_card_id"] == 202
+    assert state["extract_options"]["priority"] == 70
+
+
+def test_composer_controls_keep_following_reviewer_after_selection_in_another_reader(
+    reviewer_extract_workflow, monkeypatch,
+):
+    flow = reviewer_extract_workflow
+    flow.reviewer.card = flow.sources[202]
+    monkeypatch.setattr(dock, "_last_selection_source", "pdf")
+    dock.set_current_extract_options(priority=65)
+
+    options = dock.sync_pending_extract_options_from_current()
+
+    assert options["source"] == "reviewer"
+    assert options["source_card_id"] == 202
+    assert dock.pending_extract_context()["parent_card_id"] == 202
+
+
+def test_retry_after_failed_add_follows_the_new_current_topic(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.dialog._add_current_note()
+    # The failed operation never calls success; Anki leaves the draft editable.
+    flow.reviewer.card = flow.sources[202]
+    flow.dialog._add_current_note()
+    note = flow.operations[-1].complete()
+
+    assert note["Incremento_Parent_Card_ID"] == "202"
+
+
+def test_batch_without_review_does_not_fall_back_to_stale_reviewer_selection(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.mw.state = "overview"
+
+    state = dock.snapshot_extract_batch_state(editor=flow.editor)
+
+    assert state["extract_context"] == {}
+    assert state["extract_options"].get("source_card_id") is None
+
+
+def test_restored_reviewer_draft_follows_current_topic(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    draft = dock._capture_extract_draft(flow.editor)
+    dock._reviewer_extract_session = None
+    flow.reviewer.card = flow.sources[202]
+
+    assert dock._restore_extract_draft(flow.editor, draft, dialog=flow.dialog) is True
+    flow.dialog._add_current_note()
+    note = flow.operations[-1].complete()
+
+    assert note["Incremento_Parent_Card_ID"] == "202"
+    assert note["Front"] == "Excerpt"
+
+
+def test_explicit_document_extraction_keeps_its_source_after_reviewer_mode(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    dock.set_pending_extract_options(source="pdf", source_card_id=101, priority=25)
+    dock.set_pending_extract_context(
+        parent_card_id=101, metadata=dock._source_extract_metadata_for_card("pdf", 101),
+    )
+    flow.reviewer.card = flow.sources[202]
+
+    flow.dialog._add_current_note()
+    note = flow.operations[-1].complete()
+
+    assert note["Incremento_Parent_Card_ID"] == "101"
+    assert flow.priorities == [25]
+
+
+def test_closed_extract_dock_ignores_late_add_completion(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.dialog._add_current_note()
+    flow.dialog._close()
+    cleared_at_close = len(flow.clears)
+    flow.operations[-1].complete()
+
+    assert flow.links == []
+    assert flow.priorities == []
+    assert len(flow.clears) == cleared_at_close
+    assert dock._reviewer_extract_session is None
+
+
+def test_draft_after_successful_add_retains_reviewer_mode_when_restored(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.dialog._add_current_note()
+    flow.operations[-1].complete()
+    flow.editor.note["Front"] = "Next draft"
+    draft = dock._capture_extract_draft(flow.editor)
+    dock.reset_reviewer_extract_session()
+    flow.reviewer.card = flow.sources[202]
+    assert dock._restore_extract_draft(flow.editor, draft, dialog=flow.dialog) is True
+
+    flow.dialog._add_current_note()
+    note = flow.operations[-1].complete()
+
+    assert note["Incremento_Parent_Card_ID"] == "202"
+    assert note["Front"] == "Next draft"
+
+
+def test_reviewer_question_refresh_updates_tags_and_parent_without_replacing_draft(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    flow.editor.note["Back"] = "Unfinished answer"
+    flow.editor.note.tags.append("manual")
+    flow.reviewer.card = flow.sources[202]
+
+    dock.refresh_reviewer_extract_source(flow.reviewer.card)
+
+    assert flow.editor.note["Front"] == "Excerpt"
+    assert flow.editor.note["Back"] == "Unfinished answer"
+    assert flow.editor.note.tags == ["manual", "Second_topic"]
+    assert dock.pending_extract_context()["parent_card_id"] == 202
+    assert dock.pending_extract_options()["priority"] == 70
+
+
+def test_same_topic_repeated_adds_keep_user_priority_override(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+    dock.set_current_extract_options(priority=42)
+    flow.dialog._add_current_note()
+    flow.operations[-1].complete()
+    flow.editor.note["Front"] = "Another question"
+    flow.dialog._add_current_note()
+    flow.operations[-1].complete()
+
+    assert flow.priorities == [42, 42]
+    assert [link["source_card_id"] for link in flow.links] == [101, 101]
+
+
+def test_profile_reset_prevents_old_reviewer_selection_from_rearming_extraction(reviewer_extract_workflow):
+    flow = reviewer_extract_workflow
+
+    dock.reset_reviewer_extract_session()
+
+    assert dock.sync_pending_extract_options_from_current() is None
+    assert dock.pending_extract_context() is None
+    assert flow.clears == []  # Profile close must preserve the recoverable draft.
 
 
 def test_reviewer_extract_queue_refresh_suppression_is_one_shot(monkeypatch):

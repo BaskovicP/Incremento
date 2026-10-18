@@ -1156,9 +1156,13 @@ The **Apply to all cards** controls copy one priority, classification, and tag s
 
 ### Extract Card from the current reviewer card
 
-Press `Alt+X` to open the **Extract Card** dialog.
+Click **Extract** or press `Alt+X` to open the persistent **Add Card** dock.
 
-This is separate from PDF field-filling. It lets you:
+Reviewer extraction stays active while you use the dock. Each **Add** attaches the new card to the reviewer topic currently open when you press **Add**. After **Done** or another review action moves to the next topic, you can keep adding cards without pressing **Extract** again. Moving to another topic updates the parent, source metadata, copied source tags, and initial extract priority; your draft text stays in place. An in-progress save keeps the topic captured at the Add click.
+
+With no active reviewer card, Add creates a standalone note instead of reusing the previous topic. An explicit extraction from a PDF, EPUB, webpage, writing card, or video switches to that source's extraction workflow. Discarding or closing the embedded Add dialog ends reviewer extraction. Restoring a reviewer draft resumes attachment to the current reviewer card.
+
+Reviewer extraction lets you:
 
 - take the currently selected reviewer text
 - choose any note type

@@ -20,3 +20,10 @@ def test_profile_path_helper_owns_the_extract_draft_location():
     source = (ROOT / "backend" / "paths.py").read_text(encoding="utf-8")
 
     assert "def get_extraction_draft_path" in source
+
+
+def test_reviewer_extraction_follows_questions_and_resets_with_the_profile():
+    source = (ROOT / "__init__.py").read_text(encoding="utf-8")
+
+    assert "gui_hooks.reviewer_did_show_question.append(_add_card_dock_mod.refresh_reviewer_extract_source)" in source
+    assert "gui_hooks.profile_will_close.append(_add_card_dock_mod.reset_reviewer_extract_session)" in source

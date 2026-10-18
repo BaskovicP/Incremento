@@ -93,6 +93,7 @@ _current_extract_link_to_knowledge_tree: bool | None = None
 _pending_extract_options: dict | None = None
 _suspend_extract_mark_topic_sync_depth = 0
 _pending_extract_context: dict | None = None
+_reviewer_extract_session: dict | None = None
 _suppress_next_reviewer_queue_refresh: dict | None = None
 _last_fill_source = ""
 _last_fill_seen = 0.0
@@ -101,6 +102,7 @@ _scratch_priority_token_counter = 0
 _draft_autosave_generation = 0
 _restoring_extract_draft = False
 _DRAFT_OWNER_ATTR = "_incremento_add_card_draft_owner"
+_REVIEWER_EXTRACT_SNAPSHOT_ATTR = "_incremento_reviewer_extract_snapshot"
 _WEB_EXTRACT_RECORDS_ATTR = "_incremento_web_extract_records"
 _ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
 _ADDON_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -1847,7 +1849,9 @@ def set_pending_extract_options(
     source_card_id: int | None = None,
     source_position: float | None = None,
 ) -> dict:
-    global _pending_extract_options
+    global _pending_extract_options, _reviewer_extract_session
+    if source != "reviewer":
+        _reviewer_extract_session = None
     resolved_source_card_id = source_card_id
     if resolved_source_card_id is None:
         resolved_source_card_id = _source_card_id_for_transfer(source)
@@ -2148,6 +2152,9 @@ def _clear_pending_extract_context_except_web_records() -> None:
 
 
 def sync_pending_extract_options_from_current() -> dict | None:
+    if _reviewer_extract_session is not None:
+        refresh_reviewer_extract_source(refresh_controls=False)
+        return pending_extract_options()
     source = str(_last_selection_source or "").strip()
     if not source:
         return None
@@ -2379,6 +2386,8 @@ def snapshot_add_card_target_state(*, editor=None, min_visible_fields: int = 1) 
     editor = editor if _is_live_add_mode_editor(editor) else _dock_editor()
     if editor is None or getattr(editor, "note", None) is None:
         raise RuntimeError(t("add_card_dock_unavailable"))
+    if editor is _dock_editor():
+        refresh_reviewer_extract_source()
 
     note = editor.note
     note_type = note.note_type() or {}
@@ -2433,7 +2442,7 @@ def snapshot_add_card_target_state(*, editor=None, min_visible_fields: int = 1) 
     owns_dock_extract = editor is _dock_editor()
     options = (pending_extract_options() or {}) if owns_dock_extract else {}
     context = (pending_extract_context() or {}) if options else {}
-    if not options and owns_dock_extract and _has_recent_selection():
+    if not options and owns_dock_extract and _reviewer_extract_session is None and _has_recent_selection():
         source = str(_last_selection_source or "").strip()
         source_card_id = _source_card_id_for_transfer(source)
         options = {
@@ -2641,13 +2650,26 @@ def _notify_video_extract_note_added(note, options: dict | None) -> None:
 
 def on_add_cards_did_add_note(note) -> None:
     owns_dock_draft = note_owns_add_card_draft(note)
-    options = consume_pending_extract_options_for_note(note) if owns_dock_draft else None
+    snapshot = getattr(note, _REVIEWER_EXTRACT_SNAPSHOT_ATTR, None) if owns_dock_draft else None
+    if snapshot is not None:
+        saved_options, saved_context = snapshot
+        # A newer reviewer question may already have prepared the next draft.
+        # Finalize this note against the source captured when Add was pressed.
+        if _pending_extract_options is saved_options:
+            clear_pending_extract_options()
+        if _pending_extract_context is saved_context:
+            clear_pending_extract_context(discard_staged_media=False)
+        options = apply_extract_options_to_note(note, saved_options)
+        apply_extract_context_to_note(note, options=options, context=saved_context)
+    else:
+        options = consume_pending_extract_options_for_note(note) if owns_dock_draft else None
     if not options:
         apply_priority_to_note_cards(note, scratch_priority_for_note(note))
     if owns_dock_draft:
         _notify_video_extract_note_added(note, options)
         mark_reviewer_extract_note_added(options)
-        consume_pending_extract_context_for_note(note, options)
+        if snapshot is None:
+            consume_pending_extract_context_for_note(note, options)
         _notify_video_extract_note_added(note, options)
     _carry_auto_extract_tag_keys_after_add(note)
     if owns_dock_draft:
@@ -2670,6 +2692,7 @@ def _capture_extract_draft(editor=None) -> dict | None:
     fields = [str(value or "") for value in list(getattr(note, "fields", []) or [])]
     if not fields or not any(value.strip() for value in fields):
         return None
+    refresh_reviewer_extract_source(refresh_controls=False)
     try:
         setattr(note, _DRAFT_OWNER_ATTR, True)
     except Exception:
@@ -2750,6 +2773,7 @@ def _load_saved_extract_draft() -> dict | None:
 
 def _restore_extract_draft(editor, draft: dict, *, dialog=None) -> bool:
     global _pending_extract_options, _pending_extract_context
+    global _reviewer_extract_session
     global _current_extract_priority, _current_extract_mark_topic
     global _current_extract_link_to_knowledge_tree, _restoring_extract_draft
 
@@ -2776,6 +2800,9 @@ def _restore_extract_draft(editor, draft: dict, *, dialog=None) -> bool:
         context = dict(draft.get("extract_context") or {})
         _pending_extract_options = options or None
         _pending_extract_context = context or None
+        _reviewer_extract_session = None
+        if options.get("source") == "reviewer":
+            _start_reviewer_extract_session(options.get("source_card_id"))
         if options.get("priority") is not None:
             _current_extract_priority = _clamp_priority(options.get("priority"))
         if "mark_topic" in options:
@@ -2843,7 +2870,9 @@ def _clear_discarded_extract_draft() -> None:
     global _current_extract_link_to_knowledge_tree
     global _last_selection_source, _last_selection_text, _last_selection_seen
     global _last_fill_source, _last_fill_seen
+    global _reviewer_extract_session
 
+    _reviewer_extract_session = None
     _clear_saved_extract_draft()
     clear_pending_extract_options()
     clear_pending_extract_context()
@@ -2959,7 +2988,23 @@ def _install_embedded_add_dialog_hooks(dlg) -> None:
             except Exception:
                 pass
 
+            # A retry must resolve the current source again after a failed add.
+            if hasattr(note, _REVIEWER_EXTRACT_SNAPSHOT_ATTR):
+                delattr(note, _REVIEWER_EXTRACT_SNAPSHOT_ATTR)
+            refresh_reviewer_extract_source(refresh_controls=False)
+            if _reviewer_extract_session is not None:
+                setattr(note, _REVIEWER_EXTRACT_SNAPSHOT_ATTR, (
+                    _pending_extract_options, _pending_extract_context,
+                ))
+            collection = getattr(mw, "col", None)
+            profile = _active_profile()
+            owning_dock = get_add_card_dock()
+
             def on_success(changes) -> None:
+                if getattr(mw, "col", None) is not collection or _active_profile() != profile:
+                    return
+                if owning_dock is not None and get_add_card_dock() is not owning_dock:
+                    return
                 dlg._last_added_note = note
                 dlg.addHistory(note)
                 tooltip(tr.importing_cards_added(count=changes.count), period=500)
@@ -3120,6 +3165,7 @@ def prepare_reviewer_extract(
     knowledge_tree_tooltip: str = "",
 ) -> None:
     open_add_card_dock()
+    _start_reviewer_extract_session(parent_card_id)
     update_selection_state(
         "reviewer",
         text=selected_text,
@@ -3169,6 +3215,82 @@ def prepare_reviewer_extract(
         (pending_extract_options() or {}).get("source_tags") or [],
     )
     _inject_transfer_buttons(editor)
+
+
+def _start_reviewer_extract_session(source_card_id: int | None) -> None:
+    global _reviewer_extract_session
+    _reviewer_extract_session = {
+        "collection": getattr(mw, "col", None),
+        "profile": _active_profile(),
+        "source_card_id": source_card_id,
+    }
+
+
+def reset_reviewer_extract_session() -> None:
+    """Stop following a reviewer when its profile closes; retain saved drafts."""
+    global _reviewer_extract_session, _draft_autosave_generation
+    global _last_selection_source, _last_selection_text, _last_selection_seen
+    _reviewer_extract_session = None
+    _draft_autosave_generation += 1
+    if _last_selection_source == "reviewer":
+        _last_selection_source = ""
+        _last_selection_text = ""
+        _last_selection_seen = 0.0
+    if (pending_extract_options() or {}).get("source") == "reviewer":
+        clear_pending_extract_options()
+        clear_pending_extract_context(discard_staged_media=False)
+
+
+def refresh_reviewer_extract_source(_card=None, *, refresh_controls: bool = True) -> None:
+    """Keep an open reviewer extraction attached to the current review card."""
+    global _reviewer_extract_session
+    session = _reviewer_extract_session
+    if session is None:
+        return
+    if (
+        getattr(mw, "col", None) is not session["collection"]
+        or _active_profile() != session["profile"]
+    ):
+        reset_reviewer_extract_session()
+        return
+
+    editor = _dock_editor()
+    if not _is_live_add_mode_editor(editor):
+        return
+    # Never retag a note that has already been submitted for background saving.
+    if getattr(editor.note, "id", 0) != 0 or hasattr(editor.note, _REVIEWER_EXTRACT_SNAPSHOT_ATTR):
+        return
+    card_id = (
+        _source_card_id_for_transfer("reviewer")
+        if getattr(mw, "state", None) == "review" else None
+    )
+    if card_id is None:
+        session["source_card_id"] = None
+        clear_pending_extract_options()
+        clear_pending_extract_context()
+        _apply_pending_extract_tags_to_editor(editor)
+        return
+
+    if session["source_card_id"] != card_id:
+        set_current_extract_options(priority=source_card_priority_for_card(card_id))
+    session["source_card_id"] = card_id
+    mark_topic = _extract_mark_topic_for_transfer()
+    set_pending_extract_options(
+        priority=_extract_priority_for_transfer(),
+        mark_topic=mark_topic,
+        link_to_knowledge_tree=True,
+        source="reviewer",
+        source_card_id=card_id,
+    )
+    set_pending_extract_context(
+        metadata=_source_extract_metadata_for_card("reviewer", card_id),
+        parent_card_id=card_id,
+        link_to_knowledge_tree=True,
+        knowledge_tree_tooltip=t("add_card_knowledge_tree_lineage_tooltip"),
+    )
+    _apply_pending_extract_tags_to_editor(editor, mark_topic=mark_topic)
+    if refresh_controls:
+        _inject_transfer_buttons(editor)
 
 
 def refresh_add_card_tag_buttons() -> None:

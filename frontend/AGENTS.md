@@ -79,6 +79,7 @@ npm --prefix frontend test
 
 - Main file: `frontend/add_card_dock.py`.
 - The dock embeds Anki's Add dialog persistently and injects transfer buttons for recent selections.
+- Reviewer Extract enables a profile/collection-scoped mode that follows the current reviewer card across repeated Adds and Done. Refresh parent metadata, automatic source tags, and source priority without replacing draft fields; capture the source at Add dispatch so background completion cannot redirect it. Explicit reader extraction ends this mode, restored reviewer drafts resume it, and profile close/discard clears it.
 - When Anki closes the embedded Add dialog after a confirmed discard, retire the parent dock too and clear the abandoned extract options, provenance context, selection snapshot, and editor reference. A later extract must build a fresh dialog instead of leaving or reusing an empty shell.
 - Register `T` and `I` toolbar buttons in both Add Card and edit-note editors.
 - `T` toggles config-driven topic tags.
