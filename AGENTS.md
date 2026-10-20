@@ -2,6 +2,12 @@
 
 Compact repo guide for coding agents. Keep this file high-signal and current.
 
+## Git Account
+
+- Always use `pbaskovi@gmail.com` as the commit email in this repository.
+- Authenticate GitHub operations for this repository as `BaskovicP`. Never use `paulobaskovic-master-fb` here.
+- Keep account selection scoped to this repository. Do not change the global Git/GitHub account used by other projects; explicitly select `BaskovicP` for GitHub CLI operations.
+
 ## Repo Shape
 
 - `__init__.py`: addon entry point, hook registration, settings save/load, reviewer patches, bridge startup.
