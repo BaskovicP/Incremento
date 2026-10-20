@@ -27,6 +27,7 @@
     "pdf_force_default_appearance": false,
     "priority_lower_is_more_important": true,
     "remember_browser_card_scroll": true,
+    "companion_browser": "chrome",
     "show_priority_dialog_after_answer": false,
     "reviewer_priority_badge_card_types": {
         "topics": true,

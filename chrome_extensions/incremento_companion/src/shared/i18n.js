@@ -1,3 +1,4 @@
+import { extensionApi as chrome, isFirefox } from "./extensionApi.js";
 import enMessages from "../../_locales/en/messages.json" with { type: "json" };
 import hrMessages from "../../_locales/hr/messages.json" with { type: "json" };
 import zhMessages from "../../_locales/zh_CN/messages.json" with { type: "json" };
@@ -67,12 +68,12 @@ function setLanguage(value, chromeApi, nextPacks = packs) {
   broadcast();
 }
 
-export function applyStoredLanguageChange(value, chromeApi = globalThis.chrome) {
+export function applyStoredLanguageChange(value, chromeApi = chrome) {
   revision += 1;
   setLanguage(value, chromeApi);
 }
 
-export async function initializeLanguage(chromeApi = globalThis.chrome) {
+export async function initializeLanguage(chromeApi = chrome) {
   const readRevision = revision;
   try {
     const data = await chromeApi?.storage?.local?.get?.([LANGUAGE_KEY, LANGUAGE_PACKS_KEY]);
@@ -95,7 +96,7 @@ export function subscribeLanguage(callback) {
   return () => listeners.delete(callback);
 }
 
-export function watchLanguageStorage(chromeApi = globalThis.chrome) {
+export function watchLanguageStorage(chromeApi = chrome) {
   const changed = chromeApi?.storage?.onChanged;
   if (!changed?.addListener) return () => {};
   const listener = (changes, area) => {
@@ -112,7 +113,7 @@ export function watchLanguageStorage(chromeApi = globalThis.chrome) {
   return () => changed.removeListener?.(listener);
 }
 
-export async function saveLanguage(value, chromeApi = globalThis.chrome) {
+export async function saveLanguage(value, chromeApi = chrome) {
   const normalized = normalizeLanguagePreference(value);
   await chromeApi.storage.local.set({ [LANGUAGE_KEY]: normalized });
   applyStoredLanguageChange(normalized, chromeApi);
@@ -172,7 +173,10 @@ export function createTranslator(chosenLocale, catalogs = CATALOGS, customPack =
 function activeTranslator() {
   return createTranslator(locale, CATALOGS, preference.startsWith("custom:") ? packs[preference.slice(7)] : null);
 }
-export function t(key, params = {}, fallback = "") { return activeTranslator().text(key, params, fallback); }
+export function t(key, params = {}, fallback = "") {
+  const browserKey = isFirefox() && enMessages[`${key}_firefox`] ? `${key}_firefox` : key;
+  return activeTranslator().text(browserKey, params, fallback);
+}
 export function tn(key, count, params = {}) { return activeTranslator().plural(key, count, params); }
 export function formatNumber(value) { return numberFormatter(locale).format(Number(value)); }
 export function message(key, params = {}, pluralCount = null) { return { key, params, pluralCount }; }
@@ -194,7 +198,7 @@ export function localizeDocument(titleKey) {
 // Only this final Save step commits an imported draft. A single storage write
 // keeps the preference and its catalog available together in every context.
 // Other Settings drafts join this write so a failed save cannot apply only part.
-export async function saveLanguageSettings(value, pending = {}, chromeApi = globalThis.chrome, additionalSettings = {}) {
+export async function saveLanguageSettings(value, pending = {}, chromeApi = chrome, additionalSettings = {}) {
   const stored = await chromeApi.storage.local.get(LANGUAGE_PACKS_KEY);
   const merged = validatedStoredPacks(stored?.[LANGUAGE_PACKS_KEY]);
   for (const candidate of Object.values(pending)) {

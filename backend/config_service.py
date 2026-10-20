@@ -239,6 +239,12 @@ def normalize_pdf_appearance_mode(value: Any) -> str:
     return normalized if normalized in PDF_APPEARANCE_MODES else "original"
 
 
+def configured_companion_browser(config: Mapping[str, Any] | None = None) -> str:
+    value = (config or {}).get("companion_browser")
+    browser = value.strip().casefold() if isinstance(value, str) else ""
+    return browser if browser in {"chrome", "firefox"} else "chrome"
+
+
 def configured_pdf_default_appearance(
     config: Mapping[str, Any] | None = None,
 ) -> str:
@@ -288,6 +294,7 @@ def normalize_pdf_snapshot_auto_fields(value: Any) -> dict[str, str]:
 def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     """Return a validated config while preserving forward-compatible keys."""
     config = copy.deepcopy(dict(raw or {}))
+    config["companion_browser"] = configured_companion_browser(config)
     config["day_end_time"] = configured_day_end_time(config)
     config["ui_language"] = normalize_language_choice(config.get("ui_language"))
     config["config_schema_version"] = CONFIG_SCHEMA_VERSION

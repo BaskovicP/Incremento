@@ -220,5 +220,17 @@
     "sink": "getSaveFileName",
     "text": "incremento-translations.csv",
     "reason": "Stable portable export filename, not a translatable UI label."
+  },
+  {
+    "file": "frontend/settings_dialog.py",
+    "sink": "addItem",
+    "text": "Chrome",
+    "reason": "Browser product name; the persisted browser identifier is separate."
+  },
+  {
+    "file": "frontend/settings_dialog.py",
+    "sink": "addItem",
+    "text": "Firefox",
+    "reason": "Browser product name; the persisted browser identifier is separate."
   }
 ]

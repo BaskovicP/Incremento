@@ -1,3 +1,4 @@
+import { extensionApi as chrome } from "../shared/extensionApi.js";
 "use strict";
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

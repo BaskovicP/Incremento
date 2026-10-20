@@ -1,3 +1,5 @@
+import { extensionApi as chrome } from "./extensionApi.js";
+
 export async function readPdfHandoffInfo(ticket, api = chrome) {
   const tab = await api.tabs.getCurrent();
   if (!Number.isInteger(tab?.id)) throw new Error("handoff_expired");

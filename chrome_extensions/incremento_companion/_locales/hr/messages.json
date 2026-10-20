@@ -1463,5 +1463,43 @@
   },
   "snapshot_warning_dismiss": {
     "message": "Zatvori upozorenje"
+  },
+  "not_assigned_chrome_firefox": {
+    "message": "Nije dodijeljeno u Firefoxu"
+  },
+  "bridge_origin_conflict_firefox": {
+    "message": "Ova kopija Companiona nije ovlaštena. Odaberite Firefox u postavkama Incrementa → Ponavljanje. Ako je već odabran, ponovno pokrenite Anki i otvorite skočni prozor. Onemogućite druge kopije Companiona u drugim profilima Firefoxa."
+  },
+  "open_shortcuts_failed_firefox": {
+    "message": "Nije moguće otvoriti pomoć za prečace Firefoxa."
+  },
+  "site_access_still_enabled_firefox": {
+    "message": "Firefox je zadržao pristup stranicama. Promijenite ga u postavkama proširenja."
+  },
+  "send_chrome_bookmarks_firefox": {
+    "message": "Pošalji oznake Firefoxa u Incremento"
+  },
+  "extension_runtime_unavailable_firefox": {
+    "message": "Incremento Companion nije povezan. Ponovno učitajte privremeni dodatak na Firefoxovoj stranici about:debugging, zatim ovu stranicu i pokušajte ponovno."
+  },
+  "pdf_export_dynamic_help_firefox": {
+    "message": "Najprije postavite komponentu preglednika u Anki → Incremento → Dodaj sadržaj → Web stranica u PDF. Javna se stranica učitava bez vaše prijave u Firefoxu."
+  },
+  "snapshot_permission_required_firefox": {
+    "message": "Firefox nije odobrio ovu snimku. Kliknite ikonu Companiona i pokrenite snimanje ili upotrijebite prečac dok je Firefox aktivan."
+  },
+  "snapshot_registered_shortcut_firefox": {
+    "message": "Koristite $SHORTCUT$ za snimke dok je Firefox aktivan ili pokrenite snimanje kroz Companion. Prečace mijenjajte u Firefox → Dodaci i teme → Proširenja → izbornik zupčanika → Upravljanje prečacima proširenja.",
+    "placeholders": {
+      "shortcut": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshot_shortcut_unassigned_firefox": {
+    "message": "Dodijelite prečac za snimanje u Firefox → Dodaci i teme → Proširenja → izbornik zupčanika → Upravljanje prečacima proširenja ili pokrenite snimanje kroz Companion."
+  },
+  "snapshot_shortcut_scope_firefox": {
+    "message": "Firefox mora biti aktivan pri korištenju prečaca za snimanje. Firefox ne podržava globalne prečace proširenja."
   }
 }

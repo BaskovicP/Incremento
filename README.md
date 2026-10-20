@@ -77,6 +77,8 @@ The support bundle is separate from **Export Full Backup**. It never contains ca
 
 ## Companion Extension
 
+**Incremento → Settings → Review → Companion browser** defaults to **Chrome** and also offers **Firefox**. Firefox 140+ has an unsigned local preview built from the same source: after `npm --prefix frontend run build:extension`, run `.venv/bin/python scripts/prepare_firefox_companion.py`, then load `dist/firefox-companion/manifest.json` through Firefox's `about:debugging`. See the [Firefox installation and testing notes](chrome_extensions/incremento_companion/README.md#firefox-local-preview). This does not publish or automatically install the extension.
+
 The optional Chrome/Brave extension lives in `chrome_extensions/incremento_companion/`. It can send PDFs, videos, web pages, and writing notes into Incremento, and it can capture watched video time.
 
 Extension details and install steps:

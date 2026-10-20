@@ -228,6 +228,7 @@ from .backend.paths import get_active_profile as _active_profile
 from .backend import paths as _paths
 from .backend import backup_schedule as _backup_schedule
 from .backend.config_service import (
+    configured_companion_browser,
     configured_reviewer_button_group_visible,
     configured_reviewer_button_visibility,
     configured_topic_done_tag as _configured_topic_done_tag,
@@ -3150,6 +3151,17 @@ def _initialize_item_skip_runtime() -> None:
 gui_hooks.main_window_did_init.append(_initialize_topic_postpone_runtime)
 gui_hooks.main_window_did_init.append(_initialize_item_skip_runtime)
 _browser_bridge_mod.configure_browser_capture(dispatcher=dispatch_browser_capture, opener=open_browser_capture_note)
+
+
+def _configure_companion_browser(config=None) -> None:
+    from .frontend.file_shell import configure_companion_browser
+    cfg = config if config is not None else _load_addon_config(mw.addonManager, __name__)
+    selected = configured_companion_browser(cfg)
+    configure_companion_browser(selected)
+    _browser_bridge_mod.configure_companion_browser(selected)
+
+
+gui_hooks.profile_did_open.append(_configure_companion_browser)
 gui_hooks.profile_did_open.append(
     lambda: _browser_bridge_mod.start_browser_bridge(_ADDON_DIR)
 )
@@ -6946,6 +6958,7 @@ def openSettingsFunction() -> None:
         current_pdf_force_default_appearance=_pdf_dock_mod.configured_pdf_force_default_appearance(cfg),
         current_prefer_web_card_resume_in_original_page=configured_prefer_web_card_resume_in_original_page(cfg),
         current_track_web_window_with_extension=configured_track_web_window_with_extension(cfg),
+        current_companion_browser=configured_companion_browser(cfg),
         current_use_fail_pass_on_items=_configured_use_fail_pass_on_items(cfg),
         current_learning_leech_enabled=cfg["learning_leech_enabled"],
         current_learning_leech_threshold=cfg["learning_leech_threshold"],
@@ -7028,6 +7041,7 @@ def openSettingsFunction() -> None:
     cfg["pdf_force_default_appearance"] = dlg.pdf_force_default_appearance
     cfg["prefer_web_card_resume_in_original_page"] = dlg.prefer_web_card_resume_in_original_page
     cfg["track_web_window_with_extension"] = dlg.track_web_window_with_extension
+    cfg["companion_browser"] = dlg.companion_browser
     cfg["use_fail_pass_on_items"] = dlg.use_fail_pass_on_items
     cfg["learning_leech_enabled"] = dlg.learning_leech_enabled
     cfg["learning_leech_threshold"] = dlg.learning_leech_threshold
@@ -7070,6 +7084,7 @@ def openSettingsFunction() -> None:
     except Exception:
         showInfo(_t("settings_save_failed"))
         return
+    _configure_companion_browser(cfg)
     if extract_default_type_changed:
         _add_card_dock_mod.set_current_extract_options(
             mark_topic=dlg.extract_default_type == "topic",

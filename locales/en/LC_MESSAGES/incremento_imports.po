@@ -1534,10 +1534,13 @@ msgid "imports_webpage_access_blocked"
 msgstr "The site refused the automated download (HTTP {status}). Use the browser options below."
 
 msgid "imports_webpage_browser_waiting"
-msgstr "Finish verification in the browser. Incremento will save the page and return to Anki automatically."
+msgstr "Opening the page with Incremento Companion. If nothing happens, install or reload Companion in the browser selected in Incremento Settings → Review, then try again from Anki."
 
 msgid "imports_webpage_browser_handoff_failed"
 msgstr "Automatic browser capture did not finish. Keep Incremento Companion enabled and allow access to this site, then try again."
 
 msgid "imports_webpage_browser_landing"
 msgstr "Opening the page with Incremento Companion. If nothing happens, install or reload Companion in Chrome/Brave, then try again from Anki."
+
+msgid "imports_companion_browser_unavailable"
+msgstr "Could not open the selected Companion browser. Check Companion browser in Incremento Settings → Review."

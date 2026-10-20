@@ -2074,7 +2074,7 @@ msgid "reader_web_status_accessible"
 msgstr "Status web čitača i trenutačna adresa"
 
 msgid "reader_web_track_extension"
-msgstr "Prati putem proširenja Chrome"
+msgstr "Prati putem Companiona"
 
 msgid "reader_web_track_extension_hint"
 msgstr "Kad je uključeno, otvaranje ove stranice izvana omogućuje proširenju Incremento Companion da usklađuje web karticu s posljednjom posjećenom stranicom na toj kartici preglednika."
@@ -3482,3 +3482,6 @@ msgstr "Sažmi sve"
 
 msgid "reader_contents_folds_search_hint"
 msgstr "Očistite pretraživanje za proširivanje ili sažimanje poglavlja."
+
+msgid "reader_open_companion_browser_failed"
+msgstr "Nije moguće otvoriti odabrani preglednik za Companion. Instalirajte ga ili promijenite preglednik u postavkama Incrementa → Ponavljanje."

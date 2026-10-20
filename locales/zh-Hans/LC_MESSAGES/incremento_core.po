@@ -513,7 +513,7 @@ msgid "settings_topics_deck"
 msgstr "Topics 牌组"
 
 msgid "settings_track_web_card_external_pages_via_chrome_extension_by"
-msgstr "默认通过 Chrome 扩展跟踪网页卡片的外部页面"
+msgstr "默认通过 Companion 跟踪网页卡片的外部页面"
 
 msgid "settings_treat_these_card_types_as_topics"
 msgstr "将以下卡片类型视为主题："
@@ -781,3 +781,9 @@ msgstr "无"
 
 msgid "shortcut_document_contents"
 msgstr "文档目录"
+
+msgid "settings_companion_browser"
+msgstr "Companion 浏览器"
+
+msgid "settings_companion_browser_hint"
+msgstr "默认为 Chrome。加载 Firefox 版 Companion 扩展后，可选择 Firefox。此设置也用于网页卡片、视频链接和网页验证。"

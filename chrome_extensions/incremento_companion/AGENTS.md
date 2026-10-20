@@ -4,7 +4,7 @@ Use this file for work in `chrome_extensions/incremento_companion/`.
 
 ## Ownership
 
-- This is a Manifest V3 Chrome extension for Incremento imports, browser capture, bookmark import, link saving, and tracked playback/resume.
+- This is a shared Manifest V3 Chrome/Firefox extension for Incremento imports, browser capture, bookmark import, link saving, and tracked playback/resume.
 - The extension gathers browser-owned data and sends it to bounded backend endpoints. The addon backend owns Anki note creation, provenance fields, profile storage, and final validation; extension-side capture/fetch memory limits still matter before transport.
 - `manifest.json` is a security boundary. Permissions, host access, commands, service-worker entry points, content-script scope, and web-accessible resources must match real behavior; do not broaden them as a convenience.
 
@@ -21,6 +21,8 @@ Use this file for work in `chrome_extensions/incremento_companion/`.
 - `src/shared/bridge.js`: typed Incremento endpoints and payload transport.
 - `src/shared/chromeApi.js`: promise wrappers, tab capture, injection, storage, and Chrome capability fallbacks.
 - `src/shared/browserCaptureModel.js`, `linkSaveModel.js`, `pdfFetch.js`, `siteAccess.js`, `url.js`, and `writingTitle.js`: deterministic input normalization and capability boundaries used by popup/background/content flows and covered by Node tests.
+- `src/shared/extensionApi.js` preserves Chrome API objects and adapts Firefox Promise calls while retaining callback error handling. Detect Firefox by its runtime API/origin, not the existence of the `browser` namespace alone.
+- `scripts/prepare_firefox_companion.py` (repository root) prepares a separate unsigned Firefox folder from shared runtime assets; Chrome's manifest is unchanged. Firefox uses `background.scripts`, omits `offscreen`, and needs port-free loopback host permissions. Actual requests stay on 8765/8766; never broaden website permissions.
 - `content-loader.js`: hand-maintained bootstrap that dynamically imports `dist/content.js`; supported YouTube/Vimeo frames receive it automatically, while ordinary HTTP(S) pages receive it only after a user gesture through `activeTab`/`scripting`.
 - `popup.html`, `popup.css`, `bookmarks.html`, `bookmarks.css`, `offscreen.html`, `manifest.json`, `icons/`, `package.json`, and `README.md`: hand-maintained static/configuration files. The package file intentionally uses Node's built-in test runner and does not own the Vite dependency tree.
 - `dist/`: committed generated runtime output. `frontend/vite.extension.config.js` maps the five source entry points to `background.js`, `content.js`, `offscreen.js`, `popup.js`, and `bookmarks.js`, plus shared chunks under `dist/assets/`.
@@ -30,7 +32,7 @@ Use this file for work in `chrome_extensions/incremento_companion/`.
 
 - Port `8766` is Incremento bridge protocol 2. Obtain the ephemeral token with a bodyless `POST /incremento/handshake`, then send `X-Incremento-Token` and `X-Incremento-Protocol` on every data request through `bridgeAuth.js`. Keep read-only bridge RPCs as retry-safe bodyless POSTs: privileged Chromium GETs may omit the extension `Origin`.
 - A `401` allows exactly one fresh handshake and retry. Keep the token only in module memory; never place it in `chrome.storage`, a URL, DOM, log, or clipboard.
-- The addon binds one exact `chrome-extension://<id>` origin and enforces request-size/concurrency limits. Preserve the extension `Origin`; do not add proxy/server relays or a direct unauthenticated `fetch()` to port `8766`.
+- The addon defaults to Chrome and binds one exact `chrome-extension://<id>` origin, or one `moz-extension://<uuid>` origin when Firefox is selected in Settings. Switching the browser revokes the previous origin and token. It enforces request-size/concurrency limits. Preserve the extension `Origin`; do not add proxy/server relays or a direct unauthenticated `fetch()` to port `8766`.
 - Port `8765` is the optional AnkiConnect API and is intentionally separate from the Incremento bridge. Its direct JSON request in the background worker must not be copied to Incremento endpoints or treated as bridge authentication.
 - The current-tab URL, title, selection, HTML snapshot, bookmark row, provider metadata, media progress, filenames, and fetched bytes are all untrusted. Shared models should normalize early, but backend validation remains mandatory.
 - `src/shared/pdfFetch.js` is the browser-side fallback for document URLs that Python cannot retrieve. Preserve HTTP(S)-only source/final URLs without credentials, status/captcha checks, streamed `Content-Length` and actual-byte enforcement under the 48 MiB ceiling, unconditional PDF-signature validation, bounded filename sanitization, and backend validation as final authority.

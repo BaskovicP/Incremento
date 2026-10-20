@@ -34,6 +34,7 @@ try:
         configured_reviewer_button_group_visible,
         configured_pdf_citation_page_numbering,
         configured_extract_default_type,
+        configured_companion_browser,
         configured_topic_done_tag, configured_day_end_time, normalize_pdf_appearance_mode,
         normalize_topic_done_tag,
     )
@@ -51,6 +52,7 @@ except ImportError:
         configured_reviewer_button_group_visible,
         configured_pdf_citation_page_numbering,
         configured_extract_default_type,
+        configured_companion_browser,
         configured_topic_done_tag, configured_day_end_time, normalize_pdf_appearance_mode,
         normalize_topic_done_tag,
     )
@@ -388,6 +390,7 @@ class IncrementoSettingsDialog(QDialog):
         current_pdf_force_default_appearance: bool = False,
         current_prefer_web_card_resume_in_original_page: bool = True,
         current_track_web_window_with_extension: bool = True,
+        current_companion_browser: str = "chrome",
         current_use_fail_pass_on_items: bool = True,
         current_item_skip_enabled: bool = False,
         current_item_skip_minutes: int = 30,
@@ -983,6 +986,26 @@ class IncrementoSettingsDialog(QDialog):
             bool(current_prefer_web_card_resume_in_original_page)
         )
         reviewer_controls_layout.addWidget(self._prefer_web_card_resume_in_original_page_cb)
+
+        browser_row = QHBoxLayout()
+        browser_label = QLabel(t("settings_companion_browser"))
+        browser_row.addWidget(browser_label)
+        self._companion_browser_combo = QComboBox()
+        self._companion_browser_combo.addItem("Chrome", "chrome")
+        self._companion_browser_combo.addItem("Firefox", "firefox")
+        self._companion_browser_combo.setCurrentIndex(
+            self._companion_browser_combo.findData(configured_companion_browser(
+                {"companion_browser": current_companion_browser}
+            ))
+        )
+        browser_label.setBuddy(self._companion_browser_combo)
+        self._companion_browser_combo.setAccessibleName(t("settings_companion_browser"))
+        browser_row.addWidget(self._companion_browser_combo)
+        browser_row.addStretch(1)
+        reviewer_controls_layout.addLayout(browser_row)
+        browser_hint = QLabel(t("settings_companion_browser_hint"))
+        browser_hint.setWordWrap(True)
+        reviewer_controls_layout.addWidget(browser_hint)
 
         self._track_web_window_with_extension_cb = QCheckBox(
             t('settings_track_web_card_external_pages_via_chrome_extension_by')
@@ -1986,6 +2009,10 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def remember_browser_card_scroll(self) -> bool:
         return bool(self._remember_browser_card_scroll_cb.isChecked())
+
+    @property
+    def companion_browser(self) -> str:
+        return configured_companion_browser({"companion_browser": self._companion_browser_combo.currentData()})
 
     @property
     def pdf_scroll_to_top_on_page_change(self) -> bool:

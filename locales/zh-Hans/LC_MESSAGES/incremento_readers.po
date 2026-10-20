@@ -2056,7 +2056,7 @@ msgid "reader_web_status_accessible"
 msgstr "网页阅读器状态和当前地址"
 
 msgid "reader_web_track_extension"
-msgstr "通过 Chrome 扩展跟踪"
+msgstr "通过 Companion 跟踪"
 
 msgid "reader_web_track_extension_hint"
 msgstr "勾选后，在外部打开此页面会让 Incremento Companion 扩展将网页卡片同步到该标签页最新访问的页面。"
@@ -3406,3 +3406,6 @@ msgstr "全部折叠"
 
 msgid "reader_contents_folds_search_hint"
 msgstr "清除搜索以展开或折叠章节。"
+
+msgid "reader_open_companion_browser_failed"
+msgstr "无法打开所选的 Companion 浏览器。请安装该浏览器，或在 Incremento 设置 → 复习中更改浏览器。"

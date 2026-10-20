@@ -167,7 +167,8 @@ def _browser_fallback_dialog(monkeypatch, tmp_path):
         "browser_pdf_handoffs": BrowserPdfHandoffs(), "HANDOFF_PATH": HANDOFF_PATH,
         "WebpageVerificationRequired": WebpageVerificationRequired, "QTimer": Timer,
         "_active_profile": lambda: profile["name"], "_t": Translator("en").t,
-        "openLink": opened.append, "QApplication": SimpleNamespace(processEvents=lambda: None),
+        "open_companion_url": lambda url: opened.append(url) or True,
+        "openLink": lambda _url: pytest.fail("must use selected Companion browser"), "QApplication": SimpleNamespace(processEvents=lambda: None),
         "QFileDialog": SimpleNamespace(getOpenFileName=lambda *_a: (str(tmp_path / "browser.pdf"), "")),
     }
     exec(compile(ast.Module(body=[dialog], type_ignores=[]), str(path), "exec"), namespace)
@@ -754,3 +755,16 @@ def test_import_routes_selected_options_and_drops_results_after_closing(tmp_path
     if not closed:
         assert state._pdf_path == output
         Path(output).unlink()
+
+
+def test_missing_companion_browser_leaves_no_pending_pdf_handoff(monkeypatch, tmp_path):
+    state, namespace, _profile, opened, accepted, pending, _finish = _browser_fallback_dialog(monkeypatch, tmp_path)
+    namespace["open_companion_url"] = lambda _url: False
+    def blocked(*_a, **_kw):
+        raise WebpageVerificationRequired()
+    namespace["render_webpage_to_pdf"] = blocked
+    state._on_import()
+    assert state._handoff_ticket is None
+    assert state._import_btn.enabled and not state._progress.visible
+    assert not opened and not accepted and not pending
+    assert list(tmp_path.iterdir()) == []

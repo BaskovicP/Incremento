@@ -1,3 +1,4 @@
+import { extensionApi as chrome } from "../shared/extensionApi.js";
 import { formatBridgeError, importIntoIncremento, loadBrowserMediaRef, loadWebsiteTags } from "../shared/bridge.js";
 import { websiteOrigin } from "../shared/websiteTags.js";
 import { bridgeFetch } from "../shared/bridgeAuth.js";

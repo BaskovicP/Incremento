@@ -1,3 +1,4 @@
+import { extensionApi as chrome, isFirefox } from "./extensionApi.js";
 import {
   MAX_BROWSER_CAPTURE_HTML_CHARS,
   MAX_BROWSER_CAPTURE_SELECTED_TEXT_CHARS,
@@ -244,7 +245,7 @@ export async function openBookmarksPage() {
 
 export async function openExtensionShortcutsPage() {
   await chrome.tabs.create({
-    url: "chrome://extensions/shortcuts",
+    url: isFirefox(chrome) ? chrome.runtime.getURL("firefox-help.html") : "chrome://extensions/shortcuts",
   });
 }
 

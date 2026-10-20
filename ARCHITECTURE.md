@@ -177,12 +177,12 @@ SQLite additionally owns the append-across-days trend data that the aggregate fi
 
 The companion talks to `127.0.0.1:8766` using bridge protocol 2:
 
-1. a Chrome/Brave extension performs a bodyless POST handshake, which preserves its browser-supplied origin even when privileged GET requests would omit it;
+1. a companion in the configured browser (Chrome/Chromium by default, or Firefox) performs a bodyless POST handshake, which preserves its browser-supplied origin even when privileged GET requests would omit it;
 2. the bridge binds that origin for the Anki run and returns an ephemeral token;
 3. every data request supplies the token and protocol headers;
 4. the bridge enforces exact origin, request-size, path, and concurrent-handler limits.
 
-Tokens reset when the bridge/profile stops. Read-only bridge RPCs also use bodyless POSTs and are explicitly retry-safe; mutating POSTs are never repeated after an ambiguous connection failure. The extension retries one handshake after a `401`. Only loopback clients are trusted; Incremento exposes no remote listener. Source and generated `dist/` extension files must remain aligned.
+Tokens reset when the bridge/profile stops or the configured Companion browser changes. Read-only bridge RPCs also use bodyless POSTs and are explicitly retry-safe; mutating POSTs are never repeated after an ambiguous connection failure. The extension retries one handshake after a `401`. Only loopback clients are trusted; Incremento exposes no remote listener. Source and generated `dist/` extension files must remain aligned.
 
 Browser text capture uses `backend/browser_capture.py` for bounded semantic HTML sanitization, escaped source anchors, text-fragment links, and excerpt fingerprints. The existing authenticated add-content RPC accepts read-only `preview`, normal `create`, and explicitly requested `open_existing` capture actions. Capture metadata supplies a profile/session-bound token so a stale dialog cannot write into another profile. Preview uses inert sandboxed field rendering; it creates no note, deck, media, or provenance fields. Creation uses `ImportOperation` and registers `content_items.kind = browser_capture`, with its URL/excerpt fingerprint in `storage_key`, before optional priority/tree updates. Anki still owns the note/card. Duplicate checks verify bounded live identities and also compare up to 100 older source-matched notes; metadata itself is excluded from excerpt matching. Existing note types are never expanded by capture. Source metadata is used when already available, explicit URL mappings receive clickable anchors, and `frontend/browser_capture_source.py` renders legacy browser provenance during review without changing templates.
 

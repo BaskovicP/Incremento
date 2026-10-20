@@ -1329,5 +1329,43 @@
   },
   "snapshot_warning_dismiss": {
     "message": "关闭警告"
+  },
+  "not_assigned_chrome_firefox": {
+    "message": "未在 Firefox 中分配"
+  },
+  "bridge_origin_conflict_firefox": {
+    "message": "此 Companion 副本未获授权。请在 Incremento 设置 → 复习中选择 Firefox。如果已选择，请重启 Anki 并重新打开弹出窗口。请禁用其他 Firefox 配置文件中的重复副本。"
+  },
+  "open_shortcuts_failed_firefox": {
+    "message": "无法打开 Firefox 快捷键帮助。"
+  },
+  "site_access_still_enabled_firefox": {
+    "message": "Firefox 保留了网站访问权限。请在扩展设置中更改。"
+  },
+  "send_chrome_bookmarks_firefox": {
+    "message": "将 Firefox 书签发送到 Incremento"
+  },
+  "extension_runtime_unavailable_firefox": {
+    "message": "Incremento Companion 已断开连接。请在 Firefox 的 about:debugging 中重新加载临时扩展，然后刷新此页面并重试。"
+  },
+  "pdf_export_dynamic_help_firefox": {
+    "message": "请先在 Anki → Incremento → 添加内容 → 网页转 PDF 中设置浏览器组件。该组件会重新加载公共页面，不会使用您的 Firefox 登录状态。"
+  },
+  "snapshot_permission_required_firefox": {
+    "message": "Firefox 未授权此次截图。请点击 Companion 工具栏图标并选择触发截图，或在 Firefox 处于焦点时使用截图快捷键。"
+  },
+  "snapshot_registered_shortcut_firefox": {
+    "message": "在 Firefox 处于焦点时使用 $SHORTCUT$ 截图，或点击 Companion 并选择触发截图。可在 Firefox → 附加组件和主题 → 扩展 → 齿轮菜单 → 管理扩展快捷键中更改快捷键。",
+    "placeholders": {
+      "shortcut": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshot_shortcut_unassigned_firefox": {
+    "message": "请在 Firefox → 附加组件和主题 → 扩展 → 齿轮菜单 → 管理扩展快捷键中分配截图快捷键，或从 Companion 弹出窗口触发截图。"
+  },
+  "snapshot_shortcut_scope_firefox": {
+    "message": "使用截图快捷键时请保持 Firefox 处于焦点。Firefox 不支持全局扩展快捷键。"
   }
 }

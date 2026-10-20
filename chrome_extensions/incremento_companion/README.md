@@ -1,4 +1,4 @@
-# Incremento Companion (Chrome/Brave)
+# Incremento Companion (Chrome and Firefox)
 
 Incremento Companion connects normal browser pages to the Incremento Anki add-on. It can import the current page, capture selected text or screenshots into any Anki note type, batch-import bookmarks, save links while browsing, and synchronize browser video progress with Incremento cards.
 
@@ -7,7 +7,7 @@ The extension is optional. Incremento's Anki-only workflows continue to work wit
 ## Requirements
 
 - Desktop Anki with the Incremento add-on installed
-- Chrome or Brave with permission to load an unpacked extension
+- Chrome/Brave with permission to load an unpacked extension, or Firefox 140+ for the local Firefox preview
 - Anki open while importing, capturing, or synchronizing linked web cards
 - AnkiConnect running on `http://127.0.0.1:8765` for automatic YouTube/Vimeo timestamp updates
 
@@ -26,6 +26,32 @@ Incremento itself provides the local browser bridge on `http://127.0.0.1:8766`. 
 The installed add-on folder may be named `1013949798` when Incremento came from AnkiWeb, or `incremento` when installed from source or a local package. Using **View Files** avoids having to find that folder manually.
 
 After updating Incremento, return to the browser's extensions page and click **Reload** on Incremento Companion. Reload any browser tabs that were already open so they receive the new content script.
+
+### Firefox: local preview
+
+Firefox uses the same source and built JavaScript with a separate generated manifest. The Chrome folder stays loadable in Chrome. This is an unsigned development build; it is not published or installed automatically.
+
+From the repository root, prepare a fresh folder:
+
+```bash
+npm --prefix frontend run build:extension
+.venv/bin/python scripts/prepare_firefox_companion.py
+```
+
+The output is `dist/firefox-companion/`. The preparation command refuses to overwrite an existing folder; use `--output /path/to/a/new-folder` for another build.
+
+1. In Firefox, open `about:debugging#/runtime/this-firefox`.
+2. Choose **Load Temporary Add-on** and select `dist/firefox-companion/manifest.json`.
+3. In Anki, choose **Incremento → Settings → Review → Reviewer Controls → Companion browser → Firefox**, then **OK**.
+4. Open a normal webpage and click Companion. Confirm that your decks load, then try a small test import and snapshot.
+
+Temporary extensions are removed when Firefox exits. Load the same folder again for your next test. A permanent normal Firefox installation would require signing; no signing or store submission is part of this workflow. Real Firefox interaction still needs a manual smoke test on a machine with Firefox installed.
+
+**Chrome is the default** in Anki. The setting selects which companion browser can connect and which browser opens web-card pages, video links, and webpage-verification handoffs. It takes effect when Settings saves. Changing it disconnects the old companion; select Chrome again to switch back. If the selected browser cannot be opened, Incremento reports an error. Chrome mode also accepts Chromium/Brave extension origins, but Anki's browser-opening actions specifically launch Chrome. Each browser keeps its own extension preferences and permissions.
+
+Firefox shortcuts are managed under **Add-ons and themes → Extensions → gear menu → Manage Extension Shortcuts**. Companion's **Open shortcut settings** button opens a local help page with these steps. Keep Firefox focused: it does not support global extension shortcuts. Chrome's “In Chrome” scope instructions below apply only to Chrome.
+
+Firefox uses an event background page instead of Chrome's service worker and its clipboard API instead of Chrome's offscreen document. Firefox host permissions cannot name a port, so its manifest allows `http://127.0.0.1/*`; the shared requests still target only ports 8765 and 8766. Ordinary website access remains optional, and the bridge still requires an exact extension origin and session token.
 
 ### Confirm the connection
 

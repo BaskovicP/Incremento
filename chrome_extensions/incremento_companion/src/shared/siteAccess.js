@@ -1,3 +1,4 @@
+import { extensionApi as chrome } from "./extensionApi.js";
 export const PERSISTENT_SITE_ACCESS_SCRIPT_ID = "incremento-persistent-http-content";
 export const PERSISTENT_SITE_ORIGINS = Object.freeze([
   "http://*/*",

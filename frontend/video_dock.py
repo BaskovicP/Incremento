@@ -33,7 +33,11 @@ from aqt.qt import (QAction, QApplication, QComboBox, QDialog, QDialogButtonBox,
                     Qt, qconnect)
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
-from PyQt6.QtGui import QDesktopServices
+try:
+    from .file_shell import open_companion_url
+except ImportError:
+    from file_shell import open_companion_url
+
 try:
     from ..backend.i18n import get_locale, t as _tr, tn
 except ImportError:
@@ -2930,11 +2934,11 @@ def _open_video_in_browser_at_seconds(seconds) -> None:
     _last_known_position = float(sec)
 
     try:
-        ok = bool(QDesktopServices.openUrl(QUrl(watch_url)))
+        ok = open_companion_url(watch_url)
     except Exception:
         ok = False
     if not ok:
-        tooltip(_tr("reader_open_system_browser_failed"))
+        tooltip(_tr("reader_open_companion_browser_failed"))
         return
 
     _browser_sync_pending = True

@@ -1,3 +1,5 @@
+import { extensionApi as chrome } from "./extensionApi.js";
+
 export const PDF_EXPORT_SETTINGS_KEY = "incremento_pdf_export_settings";
 export const DEFAULT_PDF_EXPORT_SETTINGS = Object.freeze({
   style: "print", dynamic: false, includeLinks: false,
@@ -12,7 +14,7 @@ export function normalizePdfExportSettings(value) {
   };
 }
 
-export async function loadPdfExportSettings(chromeApi = globalThis.chrome) {
+export async function loadPdfExportSettings(chromeApi = chrome) {
   const stored = await chromeApi.storage.local.get(PDF_EXPORT_SETTINGS_KEY);
   return normalizePdfExportSettings(stored?.[PDF_EXPORT_SETTINGS_KEY]);
 }

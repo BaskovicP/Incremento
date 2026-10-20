@@ -413,6 +413,17 @@ resolved_runtime_shortcuts = _MOD.resolved_runtime_shortcuts
 SHORTCUT_ACTION_SPECS = _MOD.SHORTCUT_ACTION_SPECS
 
 
+def test_companion_browser_defaults_to_chrome_and_can_select_firefox():
+    dialog = IncrementoSettingsDialog({})
+    assert dialog.companion_browser == "chrome"
+    combo = dialog._companion_browser_combo
+    assert [combo.itemData(i) for i in range(combo.count())] == ["chrome", "firefox"]
+    combo.setCurrentIndex(combo.findData("firefox"))
+    assert dialog.companion_browser == "firefox"
+    restored = IncrementoSettingsDialog({}, current_companion_browser="firefox")
+    assert restored.companion_browser == "firefox"
+
+
 @pytest.mark.parametrize("saved", ["00:00", "04:00", "05:45", "23:59"])
 def test_review_settings_loads_shared_cutoff_and_exposes_edits(saved):
     dialog = IncrementoSettingsDialog({}, current_day_end_time=saved)
@@ -423,8 +434,8 @@ def test_review_settings_loads_shared_cutoff_and_exposes_edits(saved):
     assert dialog.day_end_time == "02:15"
 
 
-@pytest.mark.parametrize("accepted", [True, False], ids=["save", "cancel"])
-def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted):
+@pytest.mark.parametrize("accepted,save_fails", [(True, False), (False, False), (True, True)], ids=["save", "cancel", "save-failed"])
+def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save_fails):
     import ast
     import builtins
     import copy
@@ -439,20 +450,24 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted):
     namespace = {n.id: Mock(name=n.id) for n in ast.walk(function) if isinstance(n, ast.Name)}
     namespace.update(vars(builtins))
     saved = config_service.normalize_config({
-        "day_end_time": "05:30", "dialog": {"day_end_time": "06:00"},
+        "companion_browser": "chrome", "day_end_time": "05:30", "dialog": {"day_end_time": "06:00"},
         "scheduler_presets": {"Evening": {"day_end_time": "23:00"}},
         "future_setting": {"keep": True},
     })
     original = copy.deepcopy(saved)
     manager = Mock()
     manager.getConfig.side_effect = lambda _name: saved
+    if save_fails:
+        manager.writeConfig.side_effect = OSError("Synthetic save failure")
     col = Mock()
     col.models.all_names_and_ids.return_value = []
 
     def open_dialog(shortcuts, **kwargs):
+        assert kwargs["current_companion_browser"] == "chrome"
         assert kwargs["current_day_end_time"] == "05:30"
         dialog = IncrementoSettingsDialog(shortcuts, current_day_end_time=kwargs["current_day_end_time"])
         dialog._day_end_edit.setTime(_Time(0, 0))
+        dialog._companion_browser_combo.setCurrentIndex(1)
         dialog.exec = lambda: accepted
         return dialog
 
@@ -461,6 +476,7 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted):
         "mw": SimpleNamespace(addonManager=manager, col=col, state="overview"),
         "IncrementoSettingsDialog": open_dialog,
         "configured_priority_lower_is_more_important": lambda _cfg: True,
+        "configured_companion_browser": config_service.configured_companion_browser,
         "_load_addon_config": config_service.load_addon_config,
         "_save_addon_config": config_service.save_addon_config,
     })
@@ -468,14 +484,18 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted):
     namespace["openSettingsFunction"]()
 
     assert saved == original
-    if accepted:
+    if accepted and not save_fails:
         stored = manager.writeConfig.call_args.args[1]
+        assert stored["companion_browser"] == "firefox"
+        namespace["_configure_companion_browser"].assert_called_once_with(stored)
         assert stored["day_end_time"] == "00:00"
         assert stored["scheduler_presets"] == original["scheduler_presets"]
         assert stored["dialog"] == original["dialog"]
         assert stored["future_setting"] == {"keep": True}
     else:
-        manager.writeConfig.assert_not_called()
+        if not accepted:
+            manager.writeConfig.assert_not_called()
+        namespace["_configure_companion_browser"].assert_not_called()
 
 
 @pytest.mark.parametrize("choice,expected", [("auto", "auto"),("hr", "hr"),("zh_CN", "zh-Hans")])

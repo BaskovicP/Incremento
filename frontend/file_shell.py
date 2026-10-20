@@ -1,6 +1,66 @@
 import os
+import shutil
 import subprocess
 import sys
+
+_companion_browser = "chrome"
+
+
+def configure_companion_browser(browser: str) -> None:
+    global _companion_browser
+    try:
+        from ..backend.config_service import configured_companion_browser
+    except ImportError:
+        from config_service import configured_companion_browser
+    _companion_browser = configured_companion_browser({"companion_browser": browser})
+
+
+def _browser_executable(browser: str, platform: str) -> str | None:
+    names = ("firefox",) if browser == "firefox" else ("google-chrome", "google-chrome-stable", "chrome")
+    for name in names:
+        executable = shutil.which(name)
+        if executable:
+            return executable
+    if platform.startswith("win"):
+        suffix = ("Mozilla Firefox", "firefox.exe") if browser == "firefox" else ("Google", "Chrome", "Application", "chrome.exe")
+        for variable in ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"):
+            base = os.environ.get(variable)
+            if base:
+                executable = os.path.join(base, *suffix)
+                if os.path.isfile(executable):
+                    return executable
+    return None
+
+
+def open_companion_url(url: str, *, browser: str | None = None, platform: str | None = None) -> bool:
+    """Open a validated HTTP(S) URL in the selected browser, without fallback."""
+    try:
+        from ..backend.content_safety import normalize_external_http_url
+        from ..backend.config_service import configured_companion_browser
+    except ImportError:
+        from content_safety import normalize_external_http_url
+        from config_service import configured_companion_browser
+    try:
+        target = normalize_external_http_url(url)
+    except (TypeError, ValueError):
+        return False
+    selected = configured_companion_browser({"companion_browser": browser or _companion_browser})
+    current_platform = platform or sys.platform
+    try:
+        if current_platform == "darwin":
+            app = "org.mozilla.firefox" if selected == "firefox" else "com.google.Chrome"
+            result = subprocess.run(["/usr/bin/open", "-b", app, target],
+                                    timeout=3, capture_output=True, check=False)
+            return result.returncode == 0
+        executable = _browser_executable(selected, current_platform)
+        if not executable:
+            return False
+        subprocess.Popen([executable, "--new-tab", target],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
 
 def activate_anki_window(window, platform: str | None = None) -> None:
     window.showNormal()

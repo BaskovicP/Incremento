@@ -745,3 +745,14 @@ def test_incremento_menu_wires_the_support_bundle_action() -> None:
         "def _close_diagnostic_profile", 1
     )[0]
     assert "mw.col.get_card" not in answer_logger
+
+
+def test_companion_browser_diagnostics_allow_only_the_two_browser_names() -> None:
+    for browser in ("chrome", "firefox"):
+        snapshot = diagnostics.sanitize_config({"companion_browser": browser})
+        assert snapshot["settings"]["companion_browser"] == browser
+        assert snapshot["redacted_unknown_setting_count"] == 0
+    for private in PRIVATE_VALUES:
+        snapshot = diagnostics.sanitize_config({"companion_browser": private})
+        assert snapshot["settings"]["companion_browser"]["redacted"] is True
+        assert private not in json.dumps(snapshot)

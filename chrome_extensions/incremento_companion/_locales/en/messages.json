@@ -1463,5 +1463,43 @@
   },
   "snapshot_warning_dismiss": {
     "message": "Dismiss warning"
+  },
+  "not_assigned_chrome_firefox": {
+    "message": "Not assigned in Firefox"
+  },
+  "bridge_origin_conflict_firefox": {
+    "message": "This Companion copy is not authorized. Select Firefox in Incremento Settings → Review. If Firefox is already selected, restart Anki and reopen the popup. Disable duplicate Companion copies in other Firefox profiles."
+  },
+  "open_shortcuts_failed_firefox": {
+    "message": "Failed to open Firefox shortcut help."
+  },
+  "site_access_still_enabled_firefox": {
+    "message": "Firefox kept site access enabled. Change it in extension settings."
+  },
+  "send_chrome_bookmarks_firefox": {
+    "message": "Send Firefox bookmarks to Incremento"
+  },
+  "extension_runtime_unavailable_firefox": {
+    "message": "Incremento Companion is disconnected. Reload the temporary add-on in Firefox about:debugging, then reload this page and try again."
+  },
+  "pdf_export_dynamic_help_firefox": {
+    "message": "First set up the browser component in Anki → Incremento → Add Content → Webpage to PDF. This reloads the public page without your Firefox sign-in."
+  },
+  "snapshot_permission_required_firefox": {
+    "message": "Firefox has not authorized this snapshot. Click the Companion toolbar icon and choose Trigger snapshot capture, or use a capture shortcut while Firefox is focused."
+  },
+  "snapshot_registered_shortcut_firefox": {
+    "message": "Use $SHORTCUT$ for snapshots while Firefox is focused, or click Companion and choose Trigger snapshot capture. Change shortcuts in Firefox → Add-ons and themes → Extensions → gear menu → Manage Extension Shortcuts.",
+    "placeholders": {
+      "shortcut": {
+        "content": "$1"
+      }
+    }
+  },
+  "snapshot_shortcut_unassigned_firefox": {
+    "message": "Assign Snapshot capture in Firefox → Add-ons and themes → Extensions → gear menu → Manage Extension Shortcuts, or trigger it from the Companion popup."
+  },
+  "snapshot_shortcut_scope_firefox": {
+    "message": "Keep Firefox focused when using snapshot shortcuts. Firefox does not support global extension shortcuts."
   }
 }

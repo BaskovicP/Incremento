@@ -1528,10 +1528,13 @@ msgid "imports_webpage_access_blocked"
 msgstr "网站拒绝了自动下载（HTTP {status}）。请使用下方的浏览器选项。"
 
 msgid "imports_webpage_browser_waiting"
-msgstr "请在浏览器中完成验证。Incremento 将保存网页并自动返回 Anki。"
+msgstr "正在通过 Incremento Companion 打开页面。如无响应，请在 Incremento 设置 → 复习中所选的浏览器内安装或重新加载 Companion，然后从 Anki 重试。"
 
 msgid "imports_webpage_browser_handoff_failed"
 msgstr "浏览器自动导入未完成。请启用 Incremento Companion，允许访问此网站，然后重试。"
 
 msgid "imports_webpage_browser_landing"
 msgstr "正在通过 Incremento Companion 打开网页。如果没有响应，请在 Chrome/Brave 中安装或重新加载 Companion，然后从 Anki 重试。"
+
+msgid "imports_companion_browser_unavailable"
+msgstr "无法打开所选的 Companion 浏览器。请检查 Incremento 设置 → 复习中的浏览器选择。"

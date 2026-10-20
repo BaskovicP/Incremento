@@ -513,7 +513,7 @@ msgid "settings_topics_deck"
 msgstr "Topics Deck"
 
 msgid "settings_track_web_card_external_pages_via_chrome_extension_by"
-msgstr "Track web-card external pages via Chrome extension by default"
+msgstr "Track web-card external pages via Companion by default"
 
 msgid "settings_treat_these_card_types_as_topics"
 msgstr "Treat these card types as topics:"
@@ -781,3 +781,9 @@ msgstr "None"
 
 msgid "shortcut_document_contents"
 msgstr "Document Contents"
+
+msgid "settings_companion_browser"
+msgstr "Companion browser"
+
+msgid "settings_companion_browser_hint"
+msgstr "Chrome is the default. Choose Firefox after loading its Companion extension. This also selects the browser for web cards, video links, and webpage verification."

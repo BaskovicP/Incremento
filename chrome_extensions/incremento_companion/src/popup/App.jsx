@@ -1,3 +1,4 @@
+import { extensionApi as chrome } from "../shared/extensionApi.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   captureSnapshot,
@@ -249,7 +250,7 @@ export function PopupApp() {
     setLanguageBusy(true);
     setLanguageError("");
     try {
-      await saveLanguageSettings(languageDraft, languagePacksDraft, globalThis.chrome, {
+      await saveLanguageSettings(languageDraft, languagePacksDraft, chrome, {
         [PDF_EXPORT_SETTINGS_KEY]: normalizePdfExportSettings(pdfExportDraft),
       });
       setSettingsOpen(false);

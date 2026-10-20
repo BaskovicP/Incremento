@@ -2065,7 +2065,7 @@ msgid "reader_web_status_accessible"
 msgstr "Web reader status and current address"
 
 msgid "reader_web_track_extension"
-msgstr "Track via Chrome extension"
+msgstr "Track via Companion"
 
 msgid "reader_web_track_extension_hint"
 msgstr "When checked, opening this page externally lets the Incremento Companion extension keep the web card synced to the latest page visited in that tab."
@@ -3444,3 +3444,6 @@ msgstr "Collapse all"
 
 msgid "reader_contents_folds_search_hint"
 msgstr "Clear search to expand or collapse chapters."
+
+msgid "reader_open_companion_browser_failed"
+msgstr "Could not open the selected Companion browser. Install it or change Companion browser in Incremento Settings → Review."

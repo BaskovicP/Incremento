@@ -513,7 +513,7 @@ msgid "settings_topics_deck"
 msgstr "Špil Topics"
 
 msgid "settings_track_web_card_external_pages_via_chrome_extension_by"
-msgstr "Prema zadanim postavkama prati vanjske stranice web-kartica Chrome ekstenzijom"
+msgstr "Zadano prati vanjske stranice web kartica putem Companiona"
 
 msgid "settings_treat_these_card_types_as_topics"
 msgstr "Ove tipove kartica tretiraj kao teme:"
@@ -781,3 +781,9 @@ msgstr "Bez oznake"
 
 msgid "shortcut_document_contents"
 msgstr "Sadržaj dokumenta"
+
+msgid "settings_companion_browser"
+msgstr "Preglednik za Companion"
+
+msgid "settings_companion_browser_hint"
+msgstr "Chrome je zadani preglednik. Odaberite Firefox nakon učitavanja njegova proširenja Companion. Odabir vrijedi i za web kartice, videopoveznice i provjeru web stranica."

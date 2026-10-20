@@ -1,3 +1,4 @@
+import { extensionApi as chrome } from "../shared/extensionApi.js";
 import {
   buildLinkSaveTitleFromCandidates,
   DEFAULT_LINK_SAVE_SETTINGS,

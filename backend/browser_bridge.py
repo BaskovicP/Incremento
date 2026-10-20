@@ -61,8 +61,10 @@ BROWSER_MEDIA_REF_PATH = "/incremento/browser-media-ref"
 WEBSITE_TAGS_PATH = "/incremento/website-tags"
 BRIDGE_HANDSHAKE_PATH = "/incremento/handshake"
 BRIDGE_PROTOCOL_VERSION = 2
-_ALLOWED_ORIGIN_PREFIX = "chrome-extension://"
-_EXTENSION_ORIGIN_RE = re.compile(r"^chrome-extension://[a-p]{32}$")
+_EXTENSION_ORIGIN_PATTERNS = {
+    "chrome": re.compile(r"chrome-extension://[a-p]{32}"),
+    "firefox": re.compile(r"moz-extension://[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}"),
+}
 _MAX_REQUEST_BYTES = 64 * 1024 * 1024
 _MAX_ACTIVE_REQUESTS = 8
 _REQUEST_SOCKET_TIMEOUT_SECONDS = 15.0
@@ -134,6 +136,22 @@ class _BoundedThreadingHTTPServer(ThreadingHTTPServer):
 _addon_dir: str = ""
 _bridge_token: str = ""
 _allowed_extension_origin: str = ""
+_companion_browser = "chrome"
+
+
+def configure_companion_browser(browser: str) -> None:
+    """Switch the one permitted browser and revoke the previous session token."""
+    global _companion_browser, _allowed_extension_origin, _bridge_token
+    try:
+        from .config_service import configured_companion_browser
+    except ImportError:
+        from config_service import configured_companion_browser
+    selected = configured_companion_browser({"companion_browser": browser})
+    with _bridge_identity_lock:
+        if selected != _companion_browser:
+            _companion_browser = selected
+            _allowed_extension_origin = ""
+            _bridge_token = secrets.token_urlsafe(32)
 
 
 def _collapse_ws(value) -> str:
@@ -1768,9 +1786,9 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         origin = str(self.headers.get("Origin") or "")
         if not origin:
             return False
-        if not _EXTENSION_ORIGIN_RE.fullmatch(origin):
-            return False
         with _bridge_identity_lock:
+            if not _EXTENSION_ORIGIN_PATTERNS[_companion_browser].fullmatch(origin):
+                return False
             if _allowed_extension_origin:
                 return hmac.compare_digest(origin, _allowed_extension_origin)
         return bool(allow_unbound)
@@ -1780,9 +1798,9 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         origin = str(self.headers.get("Origin") or "")
         if not origin:
             return False
-        if not _EXTENSION_ORIGIN_RE.fullmatch(origin):
-            return False
         with _bridge_identity_lock:
+            if not _EXTENSION_ORIGIN_PATTERNS[_companion_browser].fullmatch(origin):
+                return False
             if not _allowed_extension_origin:
                 _allowed_extension_origin = origin
             return hmac.compare_digest(origin, _allowed_extension_origin)
@@ -1800,7 +1818,7 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
 
     def _send_cors_headers(self) -> None:
         origin = str(self.headers.get("Origin") or "")
-        if _EXTENSION_ORIGIN_RE.fullmatch(origin):
+        if self._request_origin_allowed(allow_unbound=True):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")

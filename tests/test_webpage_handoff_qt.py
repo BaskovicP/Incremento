@@ -24,7 +24,6 @@ def test_native_dialog_resumes_after_authenticated_browser_response_without_anot
         from aqt.taskman import TaskManager
         from PyQt6.QtCore import QEventLoop
         from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
-        from PyQt6.QtWebEngineWidgets import QWebEngineView
         from PyQt6.QtQuick import QQuickWindow, QSGRendererInterface
         from PyQt6 import sip
 
@@ -34,10 +33,8 @@ def test_native_dialog_resumes_after_authenticated_browser_response_without_anot
         app = QApplication(['incremento-handoff-test'])
         main_profile = QWebEngineProfile()
         main_page = QWebEnginePage(main_profile)
-        view = QWebEngineView()
-        view.setPage(main_page)
-        view.setWindowTitle('Incremento synthetic import test')
-        view.show()
+        # Initialize Chromium without an offscreen QWebEngineView compositor.
+        # The real import dialog below still exercises the native Qt event loop.
         ready = QEventLoop()
         loaded = []
         main_page.loadFinished.connect(lambda ok: (loaded.append(ok), ready.quit()))
@@ -91,7 +88,8 @@ def test_native_dialog_resumes_after_authenticated_browser_response_without_anot
             worker = threading.Thread(target=send_browser_result)
             workers.append(worker)
             worker.start()
-        frontend.openLink = open_browser
+            return True
+        frontend.open_companion_url = open_browser
         dialog = frontend.WebpageToPdfDialog()
         dialog._url_edit.setText('https://example.test/article')
         dialog._title_edit.setText('Original title')
@@ -113,7 +111,6 @@ def test_native_dialog_resumes_after_authenticated_browser_response_without_anot
         server_thread.join(1)
         main.taskman._no_collection_executor.shutdown()
         main.taskman._collection_executor.shutdown()
-        sip.delete(view)
         if not sip.isdeleted(main_page):
             sip.delete(main_page)
         sip.delete(main_profile)

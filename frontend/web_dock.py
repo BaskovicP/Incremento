@@ -53,9 +53,14 @@ from aqt.qt import (
     qconnect,
 )
 from PyQt6.QtCore import QRectF, QUrl
-from PyQt6.QtGui import QColor, QDesktopServices, QPainter, QPen, QPixmap
+from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap
 from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineScript
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+
+try:
+    from .file_shell import open_companion_url
+except ImportError:
+    from file_shell import open_companion_url
 
 try:
     from ..backend.i18n import get_locale, t, tn
@@ -1517,11 +1522,11 @@ class _WebDockController:
             pass
 
         try:
-            ok = bool(QDesktopServices.openUrl(QUrl(open_url)))
+            ok = open_companion_url(open_url)
         except Exception:
             ok = False
         if not ok:
-            tooltip(t("reader_open_system_browser_failed"))
+            tooltip(t("reader_open_companion_browser_failed"))
             return
 
         if track_enabled:
@@ -1604,11 +1609,11 @@ class _WebDockController:
                 pass
 
         try:
-            ok = bool(QDesktopServices.openUrl(QUrl(open_url)))
+            ok = open_companion_url(open_url)
         except Exception:
             ok = False
         if not ok:
-            tooltip(t("reader_open_system_browser_failed"))
+            tooltip(t("reader_open_companion_browser_failed"))
             return
 
         if prefer_original_page:
@@ -1644,11 +1649,11 @@ class _WebDockController:
         )
 
         try:
-            ok = bool(QDesktopServices.openUrl(QUrl(open_url)))
+            ok = open_companion_url(open_url)
         except Exception:
             ok = False
         if not ok:
-            tooltip(t("reader_open_system_browser_failed"))
+            tooltip(t("reader_open_companion_browser_failed"))
             return
 
         if track_enabled:

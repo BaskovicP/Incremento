@@ -4991,6 +4991,14 @@
     },
     {
       "component": "addon",
+      "key": "imports_companion_browser_unavailable",
+      "form": "",
+      "source": "Could not open the selected Companion browser. Check Companion browser in Incremento Settings → Review.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_deck_label",
       "form": "",
       "source": "Deck:",
@@ -7699,7 +7707,7 @@
       "component": "addon",
       "key": "imports_webpage_browser_waiting",
       "form": "",
-      "source": "Finish verification in the browser. Incremento will save the page and return to Anki automatically.",
+      "source": "Opening the page with Incremento Companion. If nothing happens, install or reload Companion in the browser selected in Incremento Settings → Review, then try again from Anki.",
       "tokens": [],
       "markup": []
     },
@@ -15266,6 +15274,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_open_companion_browser_failed",
+      "form": "",
+      "source": "Could not open the selected Companion browser. Install it or change Companion browser in Incremento Settings → Review.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_open_external_link",
       "form": "",
       "source": "Open external link",
@@ -20474,7 +20490,7 @@
       "component": "addon",
       "key": "reader_web_track_extension",
       "form": "",
-      "source": "Track via Chrome extension",
+      "source": "Track via Companion",
       "tokens": [],
       "markup": []
     },
@@ -27666,6 +27682,22 @@
     },
     {
       "component": "addon",
+      "key": "settings_companion_browser",
+      "form": "",
+      "source": "Companion browser",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_companion_browser_hint",
+      "form": "",
+      "source": "Chrome is the default. Choose Firefox after loading its Companion extension. This also selects the browser for web cards, video links, and webpage verification.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "settings_controls_the_floating_priority_a_factor_saved_time_and",
       "form": "",
       "source": "Controls the floating priority, A-factor, saved-time, and schedule badge. Topic classification follows the Topics settings; every other card uses the item option.",
@@ -29077,7 +29109,7 @@
       "component": "addon",
       "key": "settings_track_web_card_external_pages_via_chrome_extension_by",
       "form": "",
-      "source": "Track web-card external pages via Chrome extension by default",
+      "source": "Track web-card external pages via Companion by default",
       "tokens": [],
       "markup": []
     },
@@ -32706,6 +32738,14 @@
     },
     {
       "component": "extension",
+      "key": "bridge_origin_conflict_firefox",
+      "form": "",
+      "source": "This Companion copy is not authorized. Select Firefox in Incremento Settings → Review. If Firefox is already selected, restart Anki and reopen the popup. Disable duplicate Companion copies in other Firefox profiles.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "bridge_request_failed",
       "form": "",
       "source": "Request failed ($STATUS$)",
@@ -33405,6 +33445,14 @@
       "key": "extension_runtime_unavailable",
       "form": "",
       "source": "Incremento Companion is disconnected. Reload the extension in Chrome → Extensions, then reload this page and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "extension_runtime_unavailable_firefox",
+      "form": "",
+      "source": "Incremento Companion is disconnected. Reload the temporary add-on in Firefox about:debugging, then reload this page and try again.",
       "tokens": [],
       "markup": []
     },
@@ -34323,6 +34371,14 @@
     },
     {
       "component": "extension",
+      "key": "not_assigned_chrome_firefox",
+      "form": "",
+      "source": "Not assigned in Firefox",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "not_linked_card_status",
       "form": "",
       "source": "This tab is not linked to an Incremento card yet. Open it from a card's browser action first.",
@@ -34411,6 +34467,14 @@
     },
     {
       "component": "extension",
+      "key": "open_shortcuts_failed_firefox",
+      "form": "",
+      "source": "Failed to open Firefox shortcut help.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "open_video_page",
       "form": "",
       "source": "Open a YouTube or Vimeo page to add a video card.",
@@ -34488,6 +34552,14 @@
       "key": "pdf_export_dynamic_help",
       "form": "",
       "source": "First set up the browser component in Anki → Incremento → Add Content → Webpage to PDF. This reloads the public page without your Chrome sign-in.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "pdf_export_dynamic_help_firefox",
+      "form": "",
+      "source": "First set up the browser component in Anki → Incremento → Add Content → Webpage to PDF. This reloads the public page without your Firefox sign-in.",
       "tokens": [],
       "markup": []
     },
@@ -34829,6 +34901,14 @@
     },
     {
       "component": "extension",
+      "key": "send_chrome_bookmarks_firefox",
+      "form": "",
+      "source": "Send Firefox bookmarks to Incremento",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "send_to_incremento",
       "form": "",
       "source": "Send to Incremento",
@@ -34901,6 +34981,14 @@
     },
     {
       "component": "extension",
+      "key": "site_access_still_enabled_firefox",
+      "form": "",
+      "source": "Firefox kept site access enabled. Change it in extension settings.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "snapshot_capture",
       "form": "",
       "source": "Snapshot capture",
@@ -34960,6 +35048,14 @@
       "key": "snapshot_permission_required",
       "form": "",
       "source": "Chrome has not authorized this snapshot. Set Snapshot capture’s scope to “In Chrome” in Chrome → Extensions → Keyboard shortcuts and retry on the page, or click the Incremento Companion toolbar icon first. “Global” shortcuts do not grant screenshot access.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "snapshot_permission_required_firefox",
+      "form": "",
+      "source": "Firefox has not authorized this snapshot. Click the Companion toolbar icon and choose Trigger snapshot capture, or use a capture shortcut while Firefox is focused.",
       "tokens": [],
       "markup": []
     },
@@ -35035,6 +35131,16 @@
     },
     {
       "component": "extension",
+      "key": "snapshot_registered_shortcut_firefox",
+      "form": "",
+      "source": "Use $SHORTCUT$ for snapshots while Firefox is focused, or click Companion and choose Trigger snapshot capture. Change shortcuts in Firefox → Add-ons and themes → Extensions → gear menu → Manage Extension Shortcuts.",
+      "tokens": [
+        "$SHORTCUT$"
+      ],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "snapshot_shortcut_scope",
       "form": "",
       "source": "For snapshot capture, set the shortcut’s scope to “In Chrome” in Chrome → Extensions → Keyboard shortcuts. “Global” does not grant screenshot access.",
@@ -35043,9 +35149,25 @@
     },
     {
       "component": "extension",
+      "key": "snapshot_shortcut_scope_firefox",
+      "form": "",
+      "source": "Keep Firefox focused when using snapshot shortcuts. Firefox does not support global extension shortcuts.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "snapshot_shortcut_unassigned",
       "form": "",
       "source": "Assign Snapshot capture with scope “In Chrome” in Chrome → Extensions → Keyboard shortcuts, or click the Companion toolbar icon and choose Trigger snapshot capture.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "snapshot_shortcut_unassigned_firefox",
+      "form": "",
+      "source": "Assign Snapshot capture in Firefox → Add-ons and themes → Extensions → gear menu → Manage Extension Shortcuts, or trigger it from the Companion popup.",
       "tokens": [],
       "markup": []
     },

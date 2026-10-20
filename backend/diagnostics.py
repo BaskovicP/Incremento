@@ -344,6 +344,7 @@ _EVENT_SCHEMAS: dict[str, dict[str, str]] = {
 }
 
 _KNOWN_CONFIG_KEYS = {
+    "companion_browser",
     "ui_language",
     "add_card_item_tags",
     "add_card_topic_tags",
@@ -1180,6 +1181,8 @@ def _sanitize_config_value(value: object, path: tuple[str, ...], default: object
             return _sanitize_shortcut(text)
         if _key_is_sensitive(key):
             return _redacted("private_string", text)
+        if key == "companion_browser":
+            return text if text in {"chrome", "firefox"} else _redacted("free_text", text)
         if key == "extract_default_type":
             return text if text in {"item", "topic", "none"} else _redacted("free_text", text)
         if text.casefold() in _SAFE_ENUM_STRINGS:

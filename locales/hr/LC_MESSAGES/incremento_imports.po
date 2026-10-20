@@ -1540,10 +1540,13 @@ msgid "imports_webpage_access_blocked"
 msgstr "Stranica je odbila automatsko preuzimanje (HTTP {status}). Upotrijebite mogućnosti preglednika u nastavku."
 
 msgid "imports_webpage_browser_waiting"
-msgstr "Dovršite provjeru u pregledniku. Incremento će spremiti stranicu i automatski vas vratiti u Anki."
+msgstr "Otvaranje stranice putem Incremento Companiona. Ako se ništa ne dogodi, instalirajte ili ponovno učitajte Companion u pregledniku odabranom u postavkama Incrementa → Ponavljanje pa pokušajte ponovno iz Ankija."
 
 msgid "imports_webpage_browser_handoff_failed"
 msgstr "Automatsko snimanje u pregledniku nije dovršeno. Uključite Incremento Companion i dopustite pristup ovoj stranici pa pokušajte ponovno."
 
 msgid "imports_webpage_browser_landing"
 msgstr "Otvaranje stranice putem Incremento Companiona. Ako se ništa ne dogodi, instalirajte ili ponovno učitajte Companion u Chromeu/Braveu pa pokušajte ponovno iz Ankija."
+
+msgid "imports_companion_browser_unavailable"
+msgstr "Nije moguće otvoriti odabrani preglednik za Companion. Provjerite odabir u postavkama Incrementa → Ponavljanje."

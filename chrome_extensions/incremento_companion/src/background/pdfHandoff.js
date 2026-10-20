@@ -55,7 +55,7 @@ export function watchVerifiedPage(ticket, expiresAt) {
     const sample = text.slice(0, 8000);
     if (sample !== previousText) {previousText = sample; return;}
     clearInterval(timer);
-    void chrome.runtime.sendMessage({type: "PDF_HANDOFF_READY", ticket}).catch(() => {});
+    void (globalThis.browser || globalThis.chrome).runtime.sendMessage({type: "PDF_HANDOFF_READY", ticket}).catch(() => {});
   }, 1000);
   globalThis.__incrementoPdfHandoffWatch = {ticket, timer};
 }

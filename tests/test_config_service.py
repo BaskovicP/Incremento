@@ -3,6 +3,23 @@ import pytest
 
 
 @pytest.mark.parametrize("raw, expected", [
+    ({}, "chrome"), ({"companion_browser": "firefox"}, "firefox"),
+    ({"companion_browser": " CHROME "}, "chrome"),
+    ({"companion_browser": "safari"}, "chrome"),
+    ({"companion_browser": []}, "chrome"),
+])
+def test_companion_browser_defaults_to_chrome_and_preserves_other_settings(raw, expected):
+    from copy import deepcopy
+    original = {**raw, "future": {"keep": True}}
+    before = deepcopy(original)
+    result = config_service.normalize_config(original)
+    assert result["companion_browser"] == expected
+    assert result["future"] == {"keep": True}
+    assert config_service.normalize_config(result) == result
+    assert original == before
+
+
+@pytest.mark.parametrize("raw, expected", [
     ({}, "item"),
     ({"extract_default_type": "topic"}, "topic"),
     ({"extract_default_type": " NONE "}, "none"),

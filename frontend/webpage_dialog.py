@@ -5,7 +5,10 @@ import threading
 from urllib.error import HTTPError
 
 from PyQt6 import sip
-from aqt.utils import openLink
+try:
+    from .file_shell import open_companion_url
+except ImportError:
+    from file_shell import open_companion_url
 from aqt.qt import (
     QDialog,
     QFileDialog,
@@ -478,7 +481,9 @@ class WebpageToPdfDialog(QDialog):
         except ValueError:
             self._status_lbl.setText(_t("imports_webpage_browser_url_invalid"))
             return
-        openLink(url)
+        if not open_companion_url(url):
+            self._status_lbl.setText(_t("imports_companion_browser_unavailable"))
+            return
         self._status_lbl.setText("")
 
     def _on_saved_pdf(self) -> None:
@@ -584,7 +589,8 @@ class WebpageToPdfDialog(QDialog):
         self._handoff_timer.timeout.connect(self._poll_browser_handoff)
         self._handoff_timer.start(500)
         try:
-            openLink(f"http://127.0.0.1:8766{HANDOFF_PATH}#{self._handoff_ticket}")
+            if not open_companion_url(f"http://127.0.0.1:8766{HANDOFF_PATH}#{self._handoff_ticket}"):
+                raise OSError(_t("imports_companion_browser_unavailable"))
         except Exception:
             self._stop_browser_handoff()
             raise
