@@ -46,6 +46,10 @@ def prepare(source: Path, destination: Path) -> Path:
         "http://127.0.0.1/*" if host in {"http://127.0.0.1:8765/*", "http://127.0.0.1:8766/*"} else host
         for host in manifest["host_permissions"]
     ))
+    # Firefox extension commands are browser-scoped and reject Chromium's
+    # explicit global flag even when its value is false.
+    for command in manifest.get("commands", {}).values():
+        command.pop("global", None)
     manifest["browser_specific_settings"] = {"gecko": {
         "id": "incremento-companion@incremento.local", "strict_min_version": "140.0",
     }}

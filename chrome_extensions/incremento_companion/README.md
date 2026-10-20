@@ -45,7 +45,9 @@ The output is `dist/firefox-companion/`. The preparation command refuses to over
 3. In Anki, choose **Incremento → Settings → Review → Reviewer Controls → Companion browser → Firefox**, then **OK**.
 4. Open a normal webpage and click Companion. Confirm that your decks load, then try a small test import and snapshot.
 
-Temporary extensions are removed when Firefox exits. Load the same folder again for your next test. A permanent normal Firefox installation would require signing; no signing or store submission is part of this workflow. Real Firefox interaction still needs a manual smoke test on a machine with Firefox installed.
+Temporary extensions are removed when Firefox exits. Load the same folder again for your next test. A permanent normal Firefox installation would require signing; no signing or store submission is part of this workflow.
+
+Manual Firefox smoke checks: confirm the background script is running without manifest warnings, open Companion on an HTTP(S) page and verify that no unsupported-page warning remains after startup, load Anki's deck list, open the shortcut help, and open then cancel both a text-selection draft and a rectangular snapshot draft. Finally, switch Anki back to Chrome and confirm Firefox's connection is revoked. Installation, connection, text and snapshot drafts were checked in Firefox 158.0.1 on macOS; these checks do not create cards or validate final imports, playback sync, or bookmark imports.
 
 **Chrome is the default** in Anki. The setting selects which companion browser can connect and which browser opens web-card pages, video links, and webpage-verification handoffs. It takes effect when Settings saves. Changing it disconnects the old companion; select Chrome again to switch back. If the selected browser cannot be opened, Incremento reports an error. Chrome mode also accepts Chromium/Brave extension origins, but Anki's browser-opening actions specifically launch Chrome. Each browser keeps its own extension preferences and permissions.
 

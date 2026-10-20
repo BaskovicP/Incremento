@@ -174,7 +174,8 @@ export function PopupApp() {
   const languageFileInput = useRef(null);
   const [activeTab, setActiveTab] = useState(null);
   const [snapshot, setSnapshot] = useState(null);
-  const [operationBusy, setBusy] = useState(false);
+  // Page inspection starts on mount; don't report an unsupported page before it finishes.
+  const [operationBusy, setBusy] = useState(true);
   const addOperationInFlight = useRef(false);
   const outcomeFlashController = useRef(null);
   const [outcomeFlash, setOutcomeFlash] = useState({ kind: "", revision: 0 });

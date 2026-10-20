@@ -28,6 +28,7 @@ def test_local_firefox_build_has_working_entry_points_and_no_private_inputs(tmp_
         "*://*.youtube.com/*", "*://*.youtu.be/*", "*://*.vimeo.com/*", "http://127.0.0.1/*"}
     assert manifest["optional_host_permissions"] == chrome["optional_host_permissions"]
     assert manifest["content_scripts"] == chrome["content_scripts"]
+    assert all("global" not in command for command in manifest["commands"].values())
     assert manifest["browser_specific_settings"]["gecko"]["strict_min_version"] == "140.0"
     for name in ("dist/background.js", "dist/content.js", "popup.html", "bookmarks.html",
                  "content-loader.js", "firefox-help.html", "icons/icon-128.png", "_locales/en/messages.json"):
