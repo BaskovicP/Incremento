@@ -786,4 +786,34 @@ msgid "settings_companion_browser"
 msgstr "Preglednik za Companion"
 
 msgid "settings_companion_browser_hint"
-msgstr "Chrome je zadani preglednik. Odaberite Firefox nakon učitavanja njegova proširenja Companion. Odabir vrijedi i za web kartice, videopoveznice i provjeru web stranica."
+msgstr "Chrome je zadani preglednik. Odaberite Firefox nakon učitavanja njegova proširenja Companion. Odabir vrijedi za web kartice, videopoveznice, vanjske poveznice u PDF/EPUB dokumentima i provjeru web stranica."
+
+msgid "settings_companion_setup"
+msgstr "Postavi proširenje preglednika…"
+
+msgid "companion_setup_title"
+msgstr "Postavljanje proširenja preglednika"
+
+msgid "companion_setup_file"
+msgstr "Datoteka ili mapa proširenja"
+
+msgid "companion_setup_folder"
+msgstr "Prikaži mapu proširenja za Chrome"
+
+msgid "companion_setup_export"
+msgstr "Izvezi proširenje za Firefox…"
+
+msgid "companion_setup_filter"
+msgstr "Proširenje za Firefox (*.xpi)"
+
+msgid "companion_setup_saved"
+msgstr "Spremljeno. U Firefoxu otvori about:debugging#/runtime/this-firefox, odaberi Učitaj privremeni dodatak i odaberi ovu datoteku."
+
+msgid "companion_setup_failed"
+msgstr "Nije moguće pripremiti ili prikazati proširenje. Odaberi novi naziv datoteke u mapi u koju možeš pisati. Ako i dalje ne uspijeva, ponovno instaliraj Incremento kako bi obnovio datoteke proširenja."
+
+msgid "companion_setup_chrome_steps"
+msgstr "1. Klikni Prikaži mapu proširenja za Chrome.\n2. U Chromeu otvori chrome://extensions i uključi Način rada za razvojne programere.\n3. Klikni Učitaj raspakirano i odaberi prikazanu mapu (ne podmapu dist).\n4. Prikvači Incremento Companion na alatnu traku.\n5. Zatvori ove upute i spremi Postavke uz odabran Chrome. Ostavi Anki otvoren, otvori Companion na običnoj web-stranici i provjeri učitavaju li se tvoji špilovi.\n\nNakon ažuriranja Incrementa klikni Ponovno učitaj na kartici proširenja u chrome://extensions i ponovno učitaj otvorene web-stranice."
+
+msgid "companion_setup_firefox_steps"
+msgstr "Firefox 140 ili noviji\n\n1. Klikni Izvezi proširenje za Firefox i spremi .xpi datoteku na mjesto koje ćeš lako pronaći. Terminal i dodatni alati nisu potrebni.\n2. U Firefoxu otvori about:debugging#/runtime/this-firefox.\n3. Klikni Učitaj privremeni dodatak i odaberi izvezenu .xpi datoteku. Koristi ovu stranicu za otklanjanje pogrešaka, a ne instalaciju iz datoteke u običnom upravitelju dodataka.\n4. Zatvori ove upute i spremi Postavke uz odabran Firefox. Ostavi Anki otvoren, otvori Companion na običnoj web-stranici i provjeri učitavaju li se tvoji špilovi.\n\nFirefox uklanja privremena proširenja kada se zatvori. Nakon ponovnog pokretanja ponovno učitaj spremljeni .xpi. Nakon ažuriranja Incrementa izvezi novu datoteku i učitaj tu verziju. Ništa se ne objavljuje.\n\nNa stranicama s CAPTCHA provjerom ili prijavom sam dovrši provjeru u odabranom pregledniku. Companion potom vraća čitljivu stranicu u uvoz PDF-a koji čeka."

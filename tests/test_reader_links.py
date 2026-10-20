@@ -71,6 +71,18 @@ def test_external_reader_link_opening_uses_only_the_normalized_url(monkeypatch):
     assert opened == ["https://example.test/docs"]
 
 
+@pytest.mark.parametrize("browser,app", [("chrome", "com.google.Chrome"), ("firefox", "org.mozilla.firefox")])
+def test_pdf_and_epub_external_links_follow_the_selected_browser(monkeypatch, browser, app):
+    import file_shell
+    from types import SimpleNamespace
+    calls = []
+    monkeypatch.setattr(file_shell, "_companion_browser", browser)
+    monkeypatch.setattr(file_shell.sys, "platform", "darwin")
+    monkeypatch.setattr(file_shell.subprocess, "run", lambda args, **_kw: calls.append(args) or SimpleNamespace(returncode=0))
+    assert reader_links.open_external_reader_link("https://example.test/article#passage")
+    assert calls == [["/usr/bin/open", "-b", app, "https://example.test/article#passage"]]
+
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [

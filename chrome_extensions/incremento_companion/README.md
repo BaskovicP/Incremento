@@ -15,6 +15,10 @@ Incremento itself provides the local browser bridge on `http://127.0.0.1:8766`. 
 
 ## Install the extension
 
+In **Incremento → Settings → Review → Reviewer Controls**, choose the browser and click **Set up browser extension…** for the matching guide. For Chrome, **Show Chrome extension folder** locates the folder used below.
+
+### Chrome
+
 1. In Anki, open **Tools → Add-ons**.
 2. Select **Incremento**, then click **View Files**.
 3. Open `chrome_extensions/incremento_companion/`. This is the extension folder; it contains `manifest.json` and `dist/`.
@@ -31,25 +35,26 @@ After updating Incremento, return to the browser's extensions page and click **R
 
 Firefox uses the same source and built JavaScript with a separate generated manifest. The Chrome folder stays loadable in Chrome. This is an unsigned development build; it is not published or installed automatically.
 
-From the repository root, prepare a fresh folder:
+1. In Anki, open **Incremento → Settings → Review → Reviewer Controls**.
+2. Select **Firefox**, click **Set up browser extension…**, then **Export Firefox extension…**. Save the `.xpi` file to a folder such as Downloads. No terminal or build tools are needed with an installed Incremento package.
+3. In Firefox 140+, open `about:debugging#/runtime/this-firefox`.
+4. Click **Load Temporary Add-on** and choose the exported `.xpi`. Use this debugging page, not the normal **Install Add-on From File** command, which requires a signed extension.
+5. Close the setup guide and save Anki Settings with **OK**. Open a normal webpage, click Companion, and confirm your decks load while Anki is open.
+
+Temporary extensions are removed when Firefox exits. Keep the exported file and load it again the same way next time. After updating Incremento, export a new file, load it, and reload any open pages you want to use with Companion. Existing export files are never overwritten. Nothing is signed, uploaded, or published by this workflow. Later, a signed, privately distributed Firefox extension could provide persistent installation without a public listing; that is not needed for this local preview.
+
+Developers can still prepare an unpacked folder from the repository root:
 
 ```bash
 npm --prefix frontend run build:extension
 .venv/bin/python scripts/prepare_firefox_companion.py
 ```
 
-The output is `dist/firefox-companion/`. The preparation command refuses to overwrite an existing folder; use `--output /path/to/a/new-folder` for another build.
+The output is `dist/firefox-companion/`. Load its `manifest.json` with **Load Temporary Add-on**. The command refuses to overwrite an existing folder; use `--output /path/to/a/new-folder` for another build.
 
-1. In Firefox, open `about:debugging#/runtime/this-firefox`.
-2. Choose **Load Temporary Add-on** and select `dist/firefox-companion/manifest.json`.
-3. In Anki, choose **Incremento → Settings → Review → Reviewer Controls → Companion browser → Firefox**, then **OK**.
-4. Open a normal webpage and click Companion. Confirm that your decks load, then try a small test import and snapshot.
+Manual Firefox smoke checks: confirm the background script is running without manifest warnings, open Companion on an HTTP(S) page and verify that no unsupported-page warning remains after startup, load Anki's deck list, open the shortcut help, and open then cancel both a text-selection draft and a rectangular snapshot draft. Finally, switch Anki back to Chrome and confirm Firefox's connection is revoked. Installation (including the exported XPI), connection, text and snapshot drafts were checked in Firefox 158.0.1 on macOS. The matching setup guides and Webpage to PDF’s Open in browser action were checked in Anki with both Firefox and Chrome selected, then Chrome was restored. Automated tests cover each browser-opening route, Firefox permission patterns, verification waiting/return, and actual PDF generation through an authenticated simulated response for both browser origins. These live checks do not create cards or validate real-site CAPTCHA completion, final collection imports, playback sync, or bookmark imports.
 
-Temporary extensions are removed when Firefox exits. Load the same folder again for your next test. A permanent normal Firefox installation would require signing; no signing or store submission is part of this workflow.
-
-Manual Firefox smoke checks: confirm the background script is running without manifest warnings, open Companion on an HTTP(S) page and verify that no unsupported-page warning remains after startup, load Anki's deck list, open the shortcut help, and open then cancel both a text-selection draft and a rectangular snapshot draft. Finally, switch Anki back to Chrome and confirm Firefox's connection is revoked. Installation, connection, text and snapshot drafts were checked in Firefox 158.0.1 on macOS; these checks do not create cards or validate final imports, playback sync, or bookmark imports.
-
-**Chrome is the default** in Anki. The setting selects which companion browser can connect and which browser opens web-card pages, video links, and webpage-verification handoffs. It takes effect when Settings saves. Changing it disconnects the old companion; select Chrome again to switch back. If the selected browser cannot be opened, Incremento reports an error. Chrome mode also accepts Chromium/Brave extension origins, but Anki's browser-opening actions specifically launch Chrome. Each browser keeps its own extension preferences and permissions.
+**Chrome is the default** in Anki. The setting selects which companion browser can connect and which browser opens web-card pages and homepages, video/resume links, PDF/EPUB external links, and webpage-verification handoffs. It takes effect when Settings saves. Changing it disconnects the old companion; select Chrome again to switch back. If the selected browser cannot be opened, Incremento reports an error. Chrome mode also accepts Chromium/Brave extension origins, but Anki's browser-opening actions specifically launch Chrome. Each browser keeps its own extension preferences and permissions.
 
 Firefox shortcuts are managed under **Add-ons and themes → Extensions → gear menu → Manage Extension Shortcuts**. Companion's **Open shortcut settings** button opens a local help page with these steps. Keep Firefox focused: it does not support global extension shortcuts. Chrome's “In Chrome” scope instructions below apply only to Chrome.
 
@@ -99,7 +104,7 @@ Open **Settings → Webpage to PDF** in the popup, choose your defaults, and cli
 
 Direct PDF downloads are imported unchanged. These preferences are separate from the choices in Anki's own Webpage to PDF dialog. After updating the add-on, restart Anki and reload the extension on your browser's extensions page.
 
-When **Webpage to PDF → Import** in Anki encounters HTTP 403/429 or a recognized CAPTCHA/login page, it automatically opens a browser verification handoff. Keep Companion installed in the default Chrome/Brave browser. On first use, allow capture of that site; archive.is also asks for its known archive aliases so verification redirects continue to work. This is optional site access under the existing optional HTTP(S) permissions, not a new required browsing permission. On later imports, just finish verification: Companion waits for readable, stable page content, returns the rendered HTML to that one waiting import, and Anki saves the PDF, activates its window, and shows a success message. The original Anki title, tags, layout, links setting, and source URL are preserved. No capture click, shortcut, file save, or import confirmation is required. Closing the tab cancels the handoff; the Anki dialog also drops late responses after cancellation/profile changes. Pending requests expire after ten minutes. The handoff uses an opaque, single-import identifier and the authenticated protocol-2 bridge; it never transfers browser cookies. The temporary tab association survives service-worker restarts in session storage and is removed after completion or tab closure. Unexpected redirects to another article cannot complete the import.
+When **Webpage to PDF → Import** in Anki encounters HTTP 403/429 or a recognized CAPTCHA/login page, it automatically opens a browser verification handoff. Keep Companion installed in the browser selected in Anki Settings (Chrome or Firefox). On first use, allow capture of that site; archive.is also asks for its known archive aliases so verification redirects continue to work. This is optional site access under the existing optional HTTP(S) permissions, not a new required browsing permission. On later imports, just finish verification: Companion waits for readable, stable page content, returns the rendered HTML to that one waiting import, and Anki saves the PDF, activates its window, and shows a success message. The original Anki title, tags, layout, links setting, and source URL are preserved. No capture click, shortcut, file save, or import confirmation is required. Closing the tab cancels the handoff; the Anki dialog also drops late responses after cancellation/profile changes. Pending requests expire after ten minutes. The handoff uses an opaque, single-import identifier and the authenticated protocol-2 bridge; it never transfers browser cookies. The temporary tab association survives service-worker restarts in session storage and is removed after completion or tab closure. Unexpected redirects to another article cannot complete the import.
 
 Alternatively, start directly in your normal browser, finish verification, then press **Alt+Shift+P** (**Option+Shift+P** on macOS), or choose **Capture opened page as PDF** in the popup. The opened-page action always uses the current tab's rendered HTML, even if **Load content added by JavaScript** is selected for ordinary exports. It does not change that saved preference or require Incremento's separate browser component. Anki must be open. Scripts and embedded frames are removed, and optional images/styles/fonts still use the guarded public downloader; resources requiring sign-in may be missing.
 

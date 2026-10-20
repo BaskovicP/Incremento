@@ -106,8 +106,9 @@ def test_absent_firefox_never_opens_an_available_chrome(monkeypatch):
     assert not file_shell.open_companion_url("https://example.org", browser="firefox", platform="linux")
 
 
+@pytest.mark.parametrize("browser,app", [("chrome", "com.google.Chrome"), ("firefox", "org.mozilla.firefox")])
 @pytest.mark.parametrize("launched", [True, False])
-def test_video_browser_action_only_starts_sync_after_selected_browser_opens(launched):
+def test_video_browser_action_only_starts_sync_after_selected_browser_opens(monkeypatch, browser, app, launched):
     import ast
     from pathlib import Path
     from video_manager import build_remote_video_watch_url
@@ -115,25 +116,30 @@ def test_video_browser_action_only_starts_sync_after_selected_browser_opens(laun
     node = next(n for n in ast.parse(path.read_text()).body
                 if isinstance(n, ast.FunctionDef) and n.name == "_open_video_in_browser_at_seconds")
     opened, notices = [], []
+    monkeypatch.setattr(file_shell, "_companion_browser", browser)
+    monkeypatch.setattr(file_shell.sys, "platform", "darwin")
+    monkeypatch.setattr(file_shell.subprocess, "run", lambda argv, **_kw: opened.append(argv) or type("Result", (), {"returncode": 0 if launched else 1})())
     namespace = {
         "_current_video_card_id": 42, "_current_video_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         "_last_known_position": 0, "_browser_sync_pending": False,
         "build_remote_video_watch_url": build_remote_video_watch_url,
         "_ADDON_DIR": "/unused", "_active_profile": lambda: "TestProfile",
         "set_video_position": lambda *_args: None,
-        "open_companion_url": lambda url: opened.append(url) or launched,
+        "open_companion_url": file_shell.open_companion_url,
         "tooltip": notices.append, "_tr": lambda key: key,
     }
     exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), namespace)
     namespace[node.name](35)
-    assert len(opened) == 1 and "inc_card_id=42" in opened[0] and "t=35" in opened[0]
+    assert len(opened) == 1 and "inc_card_id=42" in opened[0][-1] and "t=35" in opened[0][-1]
+    assert opened[0][:3] == ["/usr/bin/open", "-b", app]
     assert namespace["_browser_sync_pending"] is launched
     if not launched:
         assert notices == ["reader_open_companion_browser_failed"]
 
 
+@pytest.mark.parametrize("browser,app", [("chrome", "com.google.Chrome"), ("firefox", "org.mozilla.firefox")])
 @pytest.mark.parametrize("action", ["open_in_window", "open_homepage_in_window"])
-def test_web_reader_opens_the_companion_browser_with_linked_card_context(action):
+def test_web_reader_opens_the_companion_browser_with_linked_card_context(monkeypatch, browser, app, action):
     import ast
     from pathlib import Path
     from types import SimpleNamespace
@@ -142,8 +148,11 @@ def test_web_reader_opens_the_companion_browser_with_linked_card_context(action)
     node = next(n for n in ast.walk(ast.parse(path.read_text()))
                 if isinstance(n, ast.FunctionDef) and n.name == action)
     opened = []
+    monkeypatch.setattr(file_shell, "_companion_browser", browser)
+    monkeypatch.setattr(file_shell.sys, "platform", "darwin")
+    monkeypatch.setattr(file_shell.subprocess, "run", lambda argv, **_kw: opened.append(argv) or type("Result", (), {"returncode": 0})())
     namespace = {"build_external_web_url": build_external_web_url,
-        "open_companion_url": lambda url: opened.append(url) or True,
+        "open_companion_url": file_shell.open_companion_url,
         "set_web_url": lambda *_args: None, "_ADDON_DIR": "/unused",
         "_active_profile": lambda: "TestProfile", "tooltip": lambda _text: None, "t": lambda key: key}
     exec(compile(ast.Module(body=[node], type_ignores=[]), str(path), "exec"), namespace)
@@ -151,4 +160,5 @@ def test_web_reader_opens_the_companion_browser_with_linked_card_context(action)
     instance = SimpleNamespace(current_display_url=lambda: url,
         runtime=SimpleNamespace(current_card_id=42, current_home_url=url, dock=None))
     namespace[action](instance)
-    assert len(opened) == 1 and opened[0].startswith(url) and "inc_card_id=42" in opened[0]
+    assert len(opened) == 1 and opened[0][-1].startswith(url) and "inc_card_id=42" in opened[0][-1]
+    assert opened[0][:3] == ["/usr/bin/open", "-b", app]

@@ -12,7 +12,7 @@ Use this file for work in `scripts/`. These utilities are developer/release tool
 - `llm_repair_eval.py`: validates the synthetic eval corpus, runs deterministic guard cases in CI, and optionally scores authorized end-to-end repair artifacts.
 - `disposable_anki_smoke.py`: copies shipped addon code into an empty external Anki base, launches only that copy under a restricted environment/sandbox, and records bounded startup evidence.
 - `mutation_smoke.py`: deterministic targeted mutation gate that copies config normalization and its regressions into a temporary directory and fails if a high-risk mutant survives; it never edits the checkout.
-- `prepare_firefox_companion.py`: creates a new unsigned local Firefox companion folder from the shared runtime build, using a Firefox manifest and rejecting overwrite/symlink inputs. It never installs or publishes.
+- `prepare_firefox_companion.py`: is the developer CLI wrapper around `backend/companion_install.py`, which creates a new unsigned local Firefox companion folder or XPI from shipped assets and rejects overwrite/symlink inputs. It never installs or publishes.
 - `generate_icons.py`: deterministic Pillow-based source for the companion extension PNG icon set.
 
 ## Release Packaging

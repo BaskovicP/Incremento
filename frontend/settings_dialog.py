@@ -1001,6 +1001,9 @@ class IncrementoSettingsDialog(QDialog):
         browser_label.setBuddy(self._companion_browser_combo)
         self._companion_browser_combo.setAccessibleName(t("settings_companion_browser"))
         browser_row.addWidget(self._companion_browser_combo)
+        self._companion_setup_button = QPushButton(t("settings_companion_setup"))
+        self._companion_setup_button.clicked.connect(self._open_companion_setup)
+        browser_row.addWidget(self._companion_setup_button)
         browser_row.addStretch(1)
         reviewer_controls_layout.addLayout(browser_row)
         browser_hint = QLabel(t("settings_companion_browser_hint"))
@@ -2013,6 +2016,13 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def companion_browser(self) -> str:
         return configured_companion_browser({"companion_browser": self._companion_browser_combo.currentData()})
+
+    def _open_companion_setup(self) -> None:
+        try:
+            from .companion_setup import show_companion_setup
+        except ImportError:
+            from companion_setup import show_companion_setup
+        show_companion_setup(self.companion_browser, self)
 
     @property
     def pdf_scroll_to_top_on_page_change(self) -> bool:

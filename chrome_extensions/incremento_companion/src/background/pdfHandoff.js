@@ -1,3 +1,5 @@
+import { isFirefox } from "../shared/extensionApi.js";
+
 const ARCHIVE_HOSTS = new Set(["archive.is", "archive.ph", "archive.today", "archive.md", "archive.li", "archive.fo", "archive.vn"]);
 const KEY_PREFIX = "incremento_pdf_handoff_";
 
@@ -30,10 +32,10 @@ function sameHandoffPage(original, current) {
   return first.pathname.replace(/\/$/, "") === second.pathname.replace(/\/$/, "") && first.search === second.search;
 }
 
-function originPatterns(value) {
+function originPatterns(value, api) {
   const url = new URL(value);
   return url.protocol === "https:" && ARCHIVE_HOSTS.has(url.hostname)
-    ? [...ARCHIVE_HOSTS].map(host => `https://${host}/*`) : [`${url.origin}/*`];
+    ? [...ARCHIVE_HOSTS].map(host => `https://${host}/*`) : [`${isFirefox(api) ? `${url.protocol}//${url.hostname}` : url.origin}/*`];
 }
 
 // Runs only in the handoff tab's isolated world. It observes verification;
@@ -70,7 +72,7 @@ export function createPdfHandoffController({api, rpc, readPage, now = Date.now})
     const job = await get(tabId);
     if (!job || job.ticket !== ticket || job.expiresAt <= now()) throw new Error("handoff_expired");
     await rpc({action: "describe", ticket});
-    if (!await api.permissions.contains({origins: originPatterns(job.url)})) throw new Error("handoff_permission");
+    if (!await api.permissions.contains({origins: originPatterns(job.url, api)})) throw new Error("handoff_permission");
     await api.tabs.update(tabId, {url: job.url});
     return {ok: true};
   }
@@ -84,7 +86,7 @@ export function createPdfHandoffController({api, rpc, readPage, now = Date.now})
       // inserting a target URL into the handoff link.
       if (!sameHandoffSite(result.url, result.url)) throw new Error("handoff_expired");
       await set(tabId, {ticket, url: result.url, expiresAt: now() + Math.min(600, Number(result.remainingSeconds) || 0) * 1000});
-      if (await api.permissions.contains({origins: originPatterns(result.url)})) {
+      if (await api.permissions.contains({origins: originPatterns(result.url, api)})) {
         await begin(tabId, ticket);
       } else {
         await api.tabs.update(tabId, {url: api.runtime.getURL(`popup.html?pdfHandoff=${ticket}`)});
@@ -96,7 +98,7 @@ export function createPdfHandoffController({api, rpc, readPage, now = Date.now})
     if (!job) return;
     if (job.expiresAt <= now()) {await remove(tabId); return;}
     if (!sameHandoffPage(job.url, url)) return;
-    if (!await api.permissions.contains({origins: originPatterns(url)})) return;
+    if (!await api.permissions.contains({origins: originPatterns(url, api)})) return;
     await api.scripting.executeScript({target: {tabId, frameIds: [0]}, func: watchVerifiedPage, args: [job.ticket, job.expiresAt]});
   }
   async function ready(tabId, ticket, frameId) {
@@ -116,7 +118,7 @@ export function createPdfHandoffController({api, rpc, readPage, now = Date.now})
   async function info(tabId, ticket) {
     const job = await get(tabId);
     if (!job || job.ticket !== ticket || job.expiresAt <= now()) throw new Error("handoff_expired");
-    return {ok: true, url: job.url, origins: originPatterns(job.url)};
+    return {ok: true, url: job.url, origins: originPatterns(job.url, api)};
   }
   async function closed(tabId) {
     const job = await get(tabId);

@@ -1212,17 +1212,15 @@ def normalize_external_reader_url(raw_url: object) -> str | None:
 
 
 def _open_normalized_external_url(url: str) -> bool:
-    from PyQt6.QtCore import QUrl
-    from PyQt6.QtGui import QDesktopServices
-
-    target = QUrl(url)
-    if not target.isValid():
-        return False
-    return bool(QDesktopServices.openUrl(target))
+    try:
+        from .file_shell import open_companion_url
+    except ImportError:
+        from file_shell import open_companion_url
+    return open_companion_url(url)
 
 
 def open_external_reader_link(raw_url: object) -> bool:
-    """Open an explicit HTTP(S) reader link in the system browser."""
+    """Open an explicit HTTP(S) reader link in the selected Companion browser."""
     normalized = normalize_external_reader_url(raw_url)
     if normalized is None:
         return False

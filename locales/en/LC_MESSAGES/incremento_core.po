@@ -786,4 +786,34 @@ msgid "settings_companion_browser"
 msgstr "Companion browser"
 
 msgid "settings_companion_browser_hint"
-msgstr "Chrome is the default. Choose Firefox after loading its Companion extension. This also selects the browser for web cards, video links, and webpage verification."
+msgstr "Chrome is the default. Choose Firefox after loading its Companion extension. This selects the browser for web cards, video links, PDF/EPUB external links, and webpage verification."
+
+msgid "settings_companion_setup"
+msgstr "Set up browser extension…"
+
+msgid "companion_setup_title"
+msgstr "Browser extension setup"
+
+msgid "companion_setup_file"
+msgstr "Extension file or folder"
+
+msgid "companion_setup_folder"
+msgstr "Show Chrome extension folder"
+
+msgid "companion_setup_export"
+msgstr "Export Firefox extension…"
+
+msgid "companion_setup_filter"
+msgstr "Firefox extension (*.xpi)"
+
+msgid "companion_setup_saved"
+msgstr "Saved. In Firefox, open about:debugging#/runtime/this-firefox, choose Load Temporary Add-on, and select this file."
+
+msgid "companion_setup_failed"
+msgstr "Could not prepare or show the extension. Choose a new filename in a writable folder. If it still fails, reinstall Incremento to restore its extension files."
+
+msgid "companion_setup_chrome_steps"
+msgstr "1. Click Show Chrome extension folder below.\n2. In Chrome, open chrome://extensions and turn on Developer mode.\n3. Click Load unpacked and select the folder shown below (not its dist subfolder).\n4. Pin Incremento Companion to the toolbar.\n5. Close this guide and save Settings with Chrome selected. Keep Anki open, then open Companion on a normal webpage and check that your decks load.\n\nAfter updating Incremento, click Reload on its extension card in chrome://extensions and reload existing webpage tabs."
+
+msgid "companion_setup_firefox_steps"
+msgstr "Firefox 140 or newer\n\n1. Click Export Firefox extension below and save the .xpi file somewhere easy to find. No terminal or extra tools are needed.\n2. In Firefox, open about:debugging#/runtime/this-firefox.\n3. Click Load Temporary Add-on and select the exported .xpi file. Use this debugging page, not Install Add-on From File in the regular add-ons manager.\n4. Close this guide and save Settings with Firefox selected. Keep Anki open, then open Companion on a normal webpage and check that your decks load.\n\nFirefox removes temporary extensions when it closes. Load the saved .xpi again after restarting Firefox. After updating Incremento, export a new file and load that version. Nothing is published.\n\nFor CAPTCHA/login pages, complete verification yourself in the selected browser. Companion then returns the readable page to the waiting PDF import."

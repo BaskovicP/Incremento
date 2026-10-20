@@ -424,6 +424,17 @@ def test_companion_browser_defaults_to_chrome_and_can_select_firefox():
     assert restored.companion_browser == "firefox"
 
 
+def test_extension_setup_uses_the_current_choice_without_saving_settings(monkeypatch):
+    shown = []
+    monkeypatch.setitem(sys.modules, "companion_setup", types.SimpleNamespace(
+        show_companion_setup=lambda browser, parent: shown.append((browser, parent))))
+    dialog = IncrementoSettingsDialog({})
+    dialog._companion_setup_button.clicked.emit()
+    dialog._companion_browser_combo.setCurrentIndex(1)
+    dialog._companion_setup_button.clicked.emit()
+    assert shown == [("chrome", dialog), ("firefox", dialog)]
+
+
 @pytest.mark.parametrize("saved", ["00:00", "04:00", "05:45", "23:59"])
 def test_review_settings_loads_shared_cutoff_and_exposes_edits(saved):
     dialog = IncrementoSettingsDialog({}, current_day_end_time=saved)

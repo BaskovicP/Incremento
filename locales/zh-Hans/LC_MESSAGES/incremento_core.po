@@ -786,4 +786,34 @@ msgid "settings_companion_browser"
 msgstr "Companion 浏览器"
 
 msgid "settings_companion_browser_hint"
-msgstr "默认为 Chrome。加载 Firefox 版 Companion 扩展后，可选择 Firefox。此设置也用于网页卡片、视频链接和网页验证。"
+msgstr "默认为 Chrome。加载 Firefox 版 Companion 扩展后，可选择 Firefox。此设置用于网页卡片、视频链接、PDF/EPUB 外部链接和网页验证。"
+
+msgid "settings_companion_setup"
+msgstr "设置浏览器扩展…"
+
+msgid "companion_setup_title"
+msgstr "浏览器扩展设置"
+
+msgid "companion_setup_file"
+msgstr "扩展文件或文件夹"
+
+msgid "companion_setup_folder"
+msgstr "显示 Chrome 扩展文件夹"
+
+msgid "companion_setup_export"
+msgstr "导出 Firefox 扩展…"
+
+msgid "companion_setup_filter"
+msgstr "Firefox 扩展 (*.xpi)"
+
+msgid "companion_setup_saved"
+msgstr "已保存。在 Firefox 中打开 about:debugging#/runtime/this-firefox，选择“临时载入附加组件”，然后选择此文件。"
+
+msgid "companion_setup_failed"
+msgstr "无法准备或显示扩展。请在可写文件夹中选择新的文件名。如果仍然失败，请重新安装 Incremento 以恢复扩展文件。"
+
+msgid "companion_setup_chrome_steps"
+msgstr "1. 点击下方的“显示 Chrome 扩展文件夹”。\n2. 在 Chrome 中打开 chrome://extensions 并开启开发者模式。\n3. 点击“加载已解压的扩展程序”，选择下方显示的文件夹（不是其中的 dist 子文件夹）。\n4. 将 Incremento Companion 固定到工具栏。\n5. 关闭本指南，在设置中选择 Chrome 并保存。保持 Anki 打开，在普通网页上打开 Companion，检查牌组是否加载。\n\n更新 Incremento 后，在 chrome://extensions 中重新加载该扩展，并重新加载已打开的网页标签页。"
+
+msgid "companion_setup_firefox_steps"
+msgstr "Firefox 140 或更新版本\n\n1. 点击下方的“导出 Firefox 扩展”，将 .xpi 文件保存到容易找到的位置。无需终端或额外工具。\n2. 在 Firefox 中打开 about:debugging#/runtime/this-firefox。\n3. 点击“临时载入附加组件”，选择导出的 .xpi 文件。请使用此调试页面，而不是普通附加组件管理器中的“从文件安装附加组件”。\n4. 关闭本指南，在设置中选择 Firefox 并保存。保持 Anki 打开，在普通网页上打开 Companion，检查牌组是否加载。\n\nFirefox 关闭时会移除临时扩展。重启 Firefox 后，请再次载入保存的 .xpi 文件。更新 Incremento 后，请导出新文件并载入新版本。此操作不会发布任何内容。\n\n遇到 CAPTCHA 或登录页面时，请自行在所选浏览器中完成验证。之后 Companion 会将可读页面返回到正在等待的 PDF 导入。"

@@ -768,3 +768,28 @@ def test_missing_companion_browser_leaves_no_pending_pdf_handoff(monkeypatch, tm
     assert state._import_btn.enabled and not state._progress.visible
     assert not opened and not accepted and not pending
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("browser,app", [("chrome", "com.google.Chrome"), ("firefox", "org.mozilla.firefox")])
+@pytest.mark.parametrize("action", ["manual", "verification"])
+def test_webpage_browser_and_verification_use_the_saved_browser(monkeypatch, tmp_path, browser, app, action):
+    import file_shell
+    state, namespace, _profile, _opened, accepted, pending, _finish = _browser_fallback_dialog(monkeypatch, tmp_path)
+    calls = []
+    monkeypatch.setattr(file_shell, "_companion_browser", browser)
+    monkeypatch.setattr(file_shell.sys, "platform", "darwin")
+    monkeypatch.setattr(file_shell.subprocess, "run", lambda argv, **_kw: calls.append(argv) or SimpleNamespace(returncode=0))
+    namespace["open_companion_url"] = file_shell.open_companion_url
+    if action == "manual":
+        state._open_in_browser()
+        expected = "https://example.org/article"
+    else:
+        def blocked(*_args, **_kwargs):
+            raise WebpageVerificationRequired()
+        namespace["render_webpage_to_pdf"] = blocked
+        state._on_import()
+        expected = "http://127.0.0.1:8766/incremento/webpage-pdf#" + state._handoff_ticket
+        assert not state._import_btn.enabled and state._progress.visible
+    assert calls == [["/usr/bin/open", "-b", app, expected]]
+    assert accepted == pending == []
+    assert list(tmp_path.iterdir()) == []

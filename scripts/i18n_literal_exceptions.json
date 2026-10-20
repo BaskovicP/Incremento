@@ -232,5 +232,11 @@
     "sink": "addItem",
     "text": "Firefox",
     "reason": "Browser product name; the persisted browser identifier is separate."
+  },
+  {
+    "file": "frontend/companion_setup.py",
+    "sink": "getSaveFileName",
+    "text": "incremento-firefox.xpi",
+    "reason": "Stable portable extension export filename, not a translatable UI label."
   }
 ]

@@ -5,8 +5,11 @@ import subprocess
 import sys
 from textwrap import dedent
 
+import pytest
 
-def test_native_dialog_resumes_after_authenticated_browser_response_without_another_click(tmp_path):
+
+@pytest.mark.parametrize("browser", ["chrome", "firefox"])
+def test_native_dialog_resumes_after_authenticated_browser_response_without_another_click(tmp_path, browser):
     script = dedent(r'''
         import importlib
         import faulthandler
@@ -22,26 +25,14 @@ def test_native_dialog_resumes_after_authenticated_browser_response_without_anot
         import aqt
         from aqt.qt import QApplication, QTimer
         from aqt.taskman import TaskManager
-        from PyQt6.QtCore import QEventLoop
-        from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
         from PyQt6.QtQuick import QQuickWindow, QSGRendererInterface
-        from PyQt6 import sip
 
-        root, output = sys.argv[1:]
+        root, output, browser = sys.argv[1:]
         # Match Anki's software-graphics setup before Chromium initializes.
         QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.Software)
         app = QApplication(['incremento-handoff-test'])
-        main_profile = QWebEngineProfile()
-        main_page = QWebEnginePage(main_profile)
-        # Initialize Chromium without an offscreen QWebEngineView compositor.
-        # The real import dialog below still exercises the native Qt event loop.
-        ready = QEventLoop()
-        loaded = []
-        main_page.loadFinished.connect(lambda ok: (loaded.append(ok), ready.quit()))
-        main_page.setHtml('<p>Synthetic Anki window</p>')
-        QTimer.singleShot(5000, ready.quit)
-        ready.exec()
-        assert loaded == [True]
+        # Let the real PDF renderer initialize WebEngine. An unrelated warm-up
+        # page exercised macOS's offscreen compositor before any addon code.
         package = ModuleType('handoff_fixture_addon')
         package.__path__ = [root]
         sys.modules[package.__name__] = package
@@ -60,8 +51,10 @@ def test_native_dialog_resumes_after_authenticated_browser_response_without_anot
         def blocked(url, **_kwargs):
             raise HTTPError(url, 429, 'Too many requests', {}, None)
         frontend._fetch_webpage_html = blocked
+        bridge.configure_companion_browser(browser)
         bridge._bridge_token = 'synthetic-token'
-        origin = 'chrome-extension://' + 'a' * 32
+        origin = ('moz-extension://12345678-1234-4abc-8abc-123456789abc'
+                  if browser == 'firefox' else 'chrome-extension://' + 'a' * 32)
         bridge._allowed_extension_origin = origin
         server = bridge._BoundedThreadingHTTPServer(('127.0.0.1', 0), bridge._IncrementoBridgeHandler)
         server_thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -111,15 +104,14 @@ def test_native_dialog_resumes_after_authenticated_browser_response_without_anot
         server_thread.join(1)
         main.taskman._no_collection_executor.shutdown()
         main.taskman._collection_executor.shutdown()
-        if not sip.isdeleted(main_page):
-            sip.delete(main_page)
-        sip.delete(main_profile)
         print('Automatic browser return verified')
     ''')
     # Exercise the real dialog without presenting native windows during tests.
+    # Explicitly disable GPU compositing too: the offscreen macOS platform has
+    # no native surface for Chromium's compositor, even with GPU rendering off.
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen",
-               QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu")
-    result = subprocess.run([sys.executable, "-c", script, str(Path(__file__).resolve().parents[1]), str(tmp_path)],
+               QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu --disable-gpu-compositing")
+    result = subprocess.run([sys.executable, "-c", script, str(Path(__file__).resolve().parents[1]), str(tmp_path), browser],
                             env=env, capture_output=True, text=True, timeout=35)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Automatic browser return verified" in result.stdout

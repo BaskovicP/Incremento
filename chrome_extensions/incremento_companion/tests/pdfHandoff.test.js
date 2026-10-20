@@ -44,11 +44,11 @@ test("declining first-use access never opens or captures the target site", async
   assert.equal(began, false);
 });
 
-function fixture({permission = true} = {}) {
+function fixture({permission = true, firefox = false, source = "https://example.test/article"} = {}) {
   const storage = {}, updates = [], probes = [], requests = [];
   let currentUrl = landing;
   const api = {
-    runtime: {getURL: path => `chrome-extension://${"b".repeat(32)}/${path}`},
+    runtime: {getURL: path => `${firefox ? "moz-extension://12345678-1234-4abc-8abc-123456789abc" : `chrome-extension://${"b".repeat(32)}`}/${path}`},
     storage: {session: {
       get: async key => ({[key]: storage[key]}), set: async values => Object.assign(storage, values),
       remove: async key => {delete storage[key];},
@@ -59,11 +59,37 @@ function fixture({permission = true} = {}) {
   };
   const rpc = async body => {
     requests.push(body);
-    return body.action === "describe" ? {ok: true, url: "https://example.test/article", remainingSeconds: 600} : {ok: true};
+    return body.action === "describe" ? {ok: true, url: source, remainingSeconds: 600} : {ok: true};
   };
   const readPage = async () => ({ok: true, url: currentUrl, html: "<article>Verified content</article>"});
   const controller = createPdfHandoffController({api, rpc, readPage, now: () => 1000});
   return {api, controller, updates, probes, requests, setUrl: value => {currentUrl = value;}};
+}
+
+for (const firefox of [false, true]) {
+  test(`${firefox ? "Firefox" : "Chrome"} handoff requests valid site access and preserves the exact article port`, async () => {
+    const source = "https://example.test:8443/article";
+    const f = fixture({permission: false, firefox, source});
+    await f.controller.navigate(7, landing);
+    assert.equal(f.updates[0][1].url, f.api.runtime.getURL(`popup.html?pdfHandoff=${ticket}`));
+    const info = await f.controller.info(7, ticket);
+    assert.deepEqual(info.origins, [firefox ? "https://example.test/*" : "https://example.test:8443/*"]);
+    f.api.permissions.contains = async ({origins}) => {
+      assert.deepEqual(origins, info.origins);
+      return true;
+    };
+    await f.controller.begin(7, ticket);
+    assert.equal(f.updates.at(-1)[1].url, source);
+    await f.controller.loaded(7, source);
+    assert.equal(f.probes.length, 1);
+    f.setUrl("https://example.test:9443/article");
+    await f.controller.ready(7, ticket, 0);
+    assert.equal(f.requests.filter(value => value.action === "submit").length, 0);
+    f.setUrl(source);
+    await f.controller.ready(7, ticket, 0);
+    assert.equal(f.requests.at(-1).action, "submit");
+    assert.equal(f.requests.at(-1).url, source);
+  });
 }
 
 test("Anki handoff opens the article and completion sends its HTML without a capture click", async () => {
