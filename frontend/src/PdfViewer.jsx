@@ -8,6 +8,7 @@ import { pushPdfLinkHistory, takePdfLinkHistory } from './pdfLinkHistory.mjs';
 import { capturePdfFindStartPage, pdfFindReturnDelta } from './pdfFindHistory.mjs';
 import { pdfAnchorScrollRatio } from './pdfAnchorLocation.mjs';
 import { pdfPageLocation } from './pdfPageLabels.mjs';
+import { resolvePdfContentsLocation } from './pdfContents.mjs';
 import { createReaderLanguage } from './i18n.mjs';
 import { joinPdfTextParts, truncatePdfText } from './pdfCjkText.mjs';
 import { selectionCleaned, selectionFormatted } from './pdfTextSelection.mjs';
@@ -416,7 +417,7 @@ export default function PdfViewer() {
   const { tr, plural } = language;
   // ── Rendering pipeline (text layer, canvases, zoom, navigation) ────────────
   const {
-    page, totalPages, pageLabels, zoom, error, renderInfo, readPage, linkAnnotations,
+    page, totalPages, pageLabels, zoom, error, renderInfo, readPage, linkAnnotations, contents, contentsReady,
     canvasARef, canvasBRef, containerRef, textLayerRef,
     pdfDocRef, activeCvsRef, cardIdRef, pageRef, lastScaleRef,
     startViewer, nav: rawNav, adjustZoom, setReadProgress: rawSetReadProgress,
@@ -480,6 +481,8 @@ export default function PdfViewer() {
   const pendingReadAnchorScrollRef = useRef(false);
   const pendingPageTopScrollRef = useRef(false);
   const pendingResumeScrollRef = useRef(null);
+  const pendingContentsFractionRef = useRef(null);
+  const contentsGenerationRef = useRef(0);
   const pendingResumePageRef = useRef(null);
   const suppressScrollPersistUntilRef = useRef(0);
   const lastReadAnchorSpanRef = useRef(null);
@@ -524,6 +527,7 @@ export default function PdfViewer() {
   const clearPendingResumeScroll = useCallback(() => {
     pendingResumeScrollRef.current = null;
     pendingResumePageRef.current = null;
+    pendingContentsFractionRef.current = null;
   }, []);
 
   const openFind = useCallback(() => {
@@ -872,10 +876,13 @@ export default function PdfViewer() {
     ) {
       const metrics = getPdfViewportMetrics(wrapper);
       if (!metrics) return;
+      const pageFraction = pendingContentsFractionRef.current;
+      const ratio = pageFraction == null ? clampScrollRatio(pendingResumeScroll)
+        : metrics.maxOffset > 0 ? clampScrollRatio(pageFraction * metrics.pageHeight / metrics.maxOffset) : 0;
       clearPendingResumeScroll();
       suppressScrollPersistence(700);
       window.scrollTo({
-        top: Math.max(0, metrics.pageTop + (clampScrollRatio(pendingResumeScroll) * metrics.maxOffset)),
+        top: Math.max(0, metrics.pageTop + (ratio * metrics.maxOffset)),
         left: window.scrollX,
         behavior: 'auto',
       });
@@ -1449,10 +1456,51 @@ export default function PdfViewer() {
     pendingPageTopScrollRef.current = false;
     pendingResumePageRef.current = target.page;
     pendingResumeScrollRef.current = target.scrollRatio;
+    pendingContentsFractionRef.current = null;
     suppressScrollPersistence(700);
     setLinkBackHistory(taken.history);
     if (delta === 0) setLinkBackScrollNonce(value => value + 1);
   }, [limitAwareNav, linkBackHistory, pageRef, suppressScrollPersistence]);
+
+  const openContents = useCallback(() => {
+    if (!contentsReady || !cardIdRef.current) return;
+    window.pycmd('incremento_pdf_contents:' + JSON.stringify({
+      cardId: cardIdRef.current, totalPages, token: contentsGenerationRef.current,
+      location: capturePdfLinkLocation(),
+      entries: contents.map(({id, title, depth, page: targetPage}) => ({id, title, depth, page: targetPage})),
+    }));
+  }, [cardIdRef, capturePdfLinkLocation, contents, contentsReady, totalPages]);
+
+  useEffect(() => {
+    window.incrementoPdfOpenContents = openContents;
+    window.incrementoPdfContentsJump = async (entry, token) => {
+      if (token !== contentsGenerationRef.current) return;
+      const doc = pdfDocRef.current;
+      const source = capturePdfLinkLocation();
+      if (!doc || !source) return;
+      const target = entry.saved_place
+        ? {page: Number(entry.page), scrollRatio: clampScrollRatio(entry.scroll_ratio)}
+        : await resolvePdfContentsLocation(doc, contents.find(item => item.id === entry.id));
+      if (!target || doc !== pdfDocRef.current || token !== contentsGenerationRef.current || pageRef.current !== source.page) return;
+      if (!Number.isInteger(target.page) || target.page < 1 || target.page > doc.numPages) return;
+      const delta = target.page - source.page;
+      if (delta !== 0 && !limitAwareNav(delta, {scrollToTop: false})) return;
+      pendingHighlightScrollRef.current = null;
+      pendingExcerptJumpRef.current = '';
+      pendingReadAnchorScrollRef.current = false;
+      pendingPageTopScrollRef.current = false;
+      pendingResumePageRef.current = target.page;
+      pendingResumeScrollRef.current = target.scrollRatio ?? 0;
+      pendingContentsFractionRef.current = target.pageFraction ?? null;
+      suppressScrollPersistence(700);
+      setLinkBackHistory(history => pushPdfLinkHistory(history, source));
+      if (delta === 0) setLinkBackScrollNonce(value => value + 1);
+    };
+    return () => {
+      delete window.incrementoPdfOpenContents;
+      delete window.incrementoPdfContentsJump;
+    };
+  }, [capturePdfLinkLocation, contents, limitAwareNav, openContents, pageRef, pdfDocRef, suppressScrollPersistence]);
 
   const activatePdfLink = useCallback((event, link) => {
     if (!clickableLinks || !event?.nativeEvent?.isTrusted || !link) return;
@@ -1603,6 +1651,8 @@ export default function PdfViewer() {
       startAppearanceMode = 'original',
       startShowHighlightDeleteButtons = true,
     ) => {
+      contentsGenerationRef.current += 1;
+      pendingContentsFractionRef.current = null;
       if (Number(cardIdRef.current || 0) !== Number(cardId || 0)) {
         setFindStartPage(null);
       }
@@ -1913,6 +1963,10 @@ export default function PdfViewer() {
               flexWrap: 'wrap',
             }}
           >
+            <button type="button" disabled={!contentsReady} onClick={openContents}
+              title={tr('reader_contents_hint')} aria-haspopup="dialog">
+              {tr('reader_contents')}
+            </button>
             <button
               aria-label={tr("reader_previous_pdf_page")}
               onClick={() => limitAwareNav(-1)}
@@ -2032,6 +2086,10 @@ export default function PdfViewer() {
             <div style={TOOLBAR_STACK_STYLE}>
               <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_navigate')}</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <button type="button" disabled={!contentsReady} onClick={openContents}
+                  title={tr('reader_contents_hint')} aria-haspopup="dialog">
+                  {tr('reader_contents')}
+                </button>
                 <button
                   aria-label={tr("reader_previous_pdf_page")}
                   onClick={() => limitAwareNav(-1)}

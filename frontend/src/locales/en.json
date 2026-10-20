@@ -171,5 +171,7 @@
   "reader_page_location_labeled": "Printed {label} · PDF {current} / {total}",
   "reader_pdf_page": "PDF page",
   "reader_page_numbering_hint": "Printed page labels come from PDF metadata. PDF page numbers count every page, including covers and front matter.",
-  "reader_printed_page_unavailable": "Printed-page numbering is unavailable for this page. The PDF number counts every page, including covers and front matter."
+  "reader_printed_page_unavailable": "Printed-page numbering is unavailable for this page. The PDF number counts every page, including covers and front matter.",
+  "reader_contents": "Contents",
+  "reader_contents_hint": "Open chapters and saved places without changing your read marker"
 }

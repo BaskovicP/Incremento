@@ -151,6 +151,11 @@ SHORTCUT_ACTION_SPECS = [
         "default": "Ctrl+F",
     },
     {
+        "id": "document_contents",
+        "label": "Document Contents",
+        "default": "Ctrl+Alt+T",
+    },
+    {
         "id": "search_all",
         "label": "Search ALL",
         "default": "Ctrl+Alt+S",

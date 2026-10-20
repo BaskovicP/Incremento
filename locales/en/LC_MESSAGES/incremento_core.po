@@ -27,7 +27,7 @@ msgid "settings_all_time"
 msgstr "All-time"
 
 msgid "settings_anki_still_records_each_topic_answer_as_good_and"
-msgstr "Anki still records each topic answer as Good and updates that card's FSRS memory state. Keep topic cards in a dedicated deck-options preset if you want topic reviews isolated from item-card FSRS optimization."
+msgstr "Topics use Incremento's A-factor schedule and maximum interval in any deck. Anki records each topic answer as Good. Separate deck presets are optional for isolating topic history from item-card FSRS optimization."
 
 msgid "settings_any_card_with_one_of_these_tags_is_also"
 msgstr "Any card with one of these tags is also treated as a topic, even if its card type would normally behave like an item."
@@ -189,7 +189,7 @@ msgid "settings_for_example_10_schedules_90_of_the_normal_next"
 msgstr "For example, 10% schedules 90% of the normal next interval and multiplies the persistent A-factor by 0.9."
 
 msgid "settings_hard_cap_for_topic_intervals_the_deck_preset_s"
-msgstr "Hard cap for topic intervals. The deck preset's Maximum interval also applies; Incremento uses whichever cap is lower."
+msgstr "Hard cap for topic intervals in every deck, including filtered decks. Topic scheduling uses this limit independently of the deck preset's learning steps and maximum interval."
 
 msgid "settings_higher_priority_number_is_more_important"
 msgstr "Higher priority number is more important"
@@ -778,3 +778,6 @@ msgstr "Topic"
 
 msgid "settings_extract_type_none"
 msgstr "None"
+
+msgid "shortcut_document_contents"
+msgstr "Document Contents"

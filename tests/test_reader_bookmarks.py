@@ -7,6 +7,18 @@ import video_manager
 import web_manager
 
 
+def test_named_pdf_places_keep_exact_scroll_and_allow_explicit_rename(tmp_path):
+    location = {"page": 7, "scroll_ratio": 0.625}
+    first = reader_bookmarks.add_reader_bookmark(str(tmp_path), "A", 10, "pdf", location, label="Chapter")
+    renamed = reader_bookmarks.add_reader_bookmark(str(tmp_path), "A", 10, "pdf", location, label="Contents page", replace_label=True)
+    assert first["id"] == renamed["id"]
+    rows = reader_bookmarks.list_reader_bookmarks(str(tmp_path), "A", 10, "pdf")
+    assert len(rows) == 1
+    assert rows[0]["label"] == "Contents page"
+    assert rows[0]["location"] == location
+    assert reader_bookmarks.list_reader_bookmarks(str(tmp_path), "B", 10, "pdf") == []
+
+
 def test_pdf_bookmark_round_trips_and_sorts_by_page(tmp_path):
     addon_dir = str(tmp_path)
     second = reader_bookmarks.add_reader_bookmark(

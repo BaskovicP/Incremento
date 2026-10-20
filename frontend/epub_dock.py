@@ -3694,6 +3694,7 @@ def _build_epub_dock() -> None:
         _EPUB_TOOLBAR_TEXT["previous_page"],
         t("reader_epub_previous_tooltip"),
     )
+    dock._contents_btn = _make_epub_button(dock, t("reader_contents"), t("reader_contents_hint"))
     dock._next_btn = _make_epub_button(
         dock,
         _EPUB_TOOLBAR_TEXT["next_page"],
@@ -3954,6 +3955,7 @@ def _build_epub_dock() -> None:
     navigate_stack = _make_epub_toolbar_stack(
         groups_host,
         t("reader_navigate"),
+        dock._contents_btn,
         dock._prev_btn,
         dock._location_btn,
         dock._next_btn,
@@ -4056,6 +4058,7 @@ def _build_epub_dock() -> None:
     controls_compact = QWidget(controls_host)
     compact_layout = _FlowLayout(controls_compact, margin=0, h_spacing=6, v_spacing=4)
     controls_compact.setLayout(compact_layout)
+    dock._compact_contents_btn = _make_epub_button(controls_compact, t("reader_contents"), t("reader_contents_hint"))
     dock._compact_prev_btn = _make_epub_button(
         controls_compact,
         _EPUB_TOOLBAR_TEXT["previous_page"],
@@ -4108,6 +4111,7 @@ def _build_epub_dock() -> None:
     dock._compact_jump_back_btn.setAccessibleName(t("reader_epub_jump_back_accessible"))
     controls_host.setAccessibleName(t("reader_epub_controls_accessible"))
     for widget in (
+        dock._compact_contents_btn,
         dock._compact_prev_btn,
         dock._compact_location_btn,
         dock._compact_next_btn,
@@ -4257,6 +4261,8 @@ def _build_epub_dock() -> None:
     qconnect(dock._text_larger_btn.clicked, lambda: _adjust_epub_text_scale(0.1))
     qconnect(dock._links_btn.toggled, _toggle_epub_clickable_links)
     qconnect(dock._jump_back_btn.clicked, _jump_back_from_epub_link)
+    qconnect(dock._contents_btn.clicked, open_current_document_contents)
+    qconnect(dock._compact_contents_btn.clicked, open_current_document_contents)
     qconnect(dock._compact_prev_btn.clicked, lambda: _jump_relative(-1))
     qconnect(dock._compact_next_btn.clicked, lambda: _jump_relative(1))
     qconnect(dock._compact_location_btn.clicked, _open_epub_page_jump_dialog)
@@ -5453,6 +5459,118 @@ def _open_epub_reader_link(
     return True
 
 
+def _open_epub_contents_entry(entry: dict, *, source_scroll_ratio: object = None) -> bool:
+    """Explore chapters without advancing the separate read-to-here marker."""
+    global _epub_link_back_history
+    if _epub_dock is None or _current_epub_card_id is None:
+        return False
+    try:
+        target = int(entry["section_index"])
+        ratio = normalize_reader_anchor_scroll_ratio(entry.get("scroll_ratio", 0))
+        fragment = str(entry.get("fragment") or "")
+    except (KeyError, ValueError, TypeError, OverflowError):
+        return False
+    if not 0 <= target < len(_current_sections()) or ratio is None or len(fragment) > 1024:
+        return False
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in fragment):
+        return False
+    if target > _current_epub_section_index and not _check_epub_limit_before_navigation(_current_epub_page_index + 1):
+        return False
+    source_ratio = normalize_reader_anchor_scroll_ratio(source_scroll_ratio)
+    if source_ratio is None:
+        source_ratio = _current_epub_scroll_ratio
+    _epub_link_back_history = _push_epub_link_back_history(_epub_link_back_history, {
+        "card_id": int(_current_epub_card_id), "filename": str(_current_epub_filename),
+        "section_index": _current_epub_section_index, "scroll_ratio": source_ratio,
+    })
+    _record_progress(_current_epub_section_index, source_ratio)
+    show_epub_in_dock(int(_current_epub_card_id), _current_epub_filename, section_index=target,
+                      scroll_ratio=ratio, link_fragment=fragment, offer_due_review_prompt=False,
+                      preserve_link_history=True)
+    return True
+
+
+def open_current_document_contents() -> bool:
+    dock = _epub_dock
+    if dock is None or _current_epub_card_id is None or not dock.isVisible():
+        return False
+    try:
+        from ..backend.reader_contents import epub_contents
+        from .reader_contents_popup import ReaderContentsPopup
+    except ImportError:
+        from backend.reader_contents import epub_contents
+        from reader_contents_popup import ReaderContentsPopup
+    profile, card_id, filename = _active_profile(), _current_epub_card_id, _current_epub_filename
+    viewer_page = dock._view.page()
+    nonce = viewer_page.bridge_nonce()
+    request = object()
+    dock._contents_request = request
+    cached = getattr(dock, "_contents_cache", None)
+
+    def is_current():
+        return (_epub_dock is dock and _active_profile() == profile and _current_epub_card_id == card_id
+                and _current_epub_filename == filename and viewer_page.bridge_nonce() == nonce
+                and dock._contents_request is request and dock.isVisible())
+
+    def load():
+        if cached and cached[0] == (profile, filename):
+            return cached[1]
+        metadata = load_epub_metadata(_ADDON_DIR, filename, profile=profile)
+        return epub_contents(Path(get_epub_extract_dir(filename, profile=profile)), metadata)
+
+    def loaded(future):
+        if not is_current():
+            return
+        try:
+            entries = future.result()
+        except Exception:
+            entries = []
+        dock._contents_cache = ((profile, filename), entries)
+
+        def with_position(callback):
+            def positioned(value):
+                ratio = normalize_reader_anchor_scroll_ratio(value)
+                if ratio is not None and is_current():
+                    callback(ratio)
+            _run_epub_javascript(viewer_page,
+                "(() => { const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);"
+                " return max > 0 ? Math.max(0, Math.min(1, window.scrollY / max)) : 0; })();", positioned)
+
+        def save_at_position(label, ratio):
+            if not is_current():
+                return
+            try:
+                add_reader_bookmark(_ADDON_DIR, profile, card_id, "epub", {
+                    "section_index": _current_epub_section_index, "scroll_ratio": ratio,
+                    "section_title": _current_epub_section_title(),
+                }, label=label, replace_label=True)
+                _refresh_epub_bookmarks_panel()
+                tooltip(t("reader_epub_bookmark_saved"))
+            except Exception as exc:
+                showInfo(t("reader_epub_bookmark_save_failed", error=exc))
+
+        def open_entry(entry):
+            if is_current():
+                with_position(lambda ratio: _open_epub_contents_entry(entry, source_scroll_ratio=ratio))
+
+        def save_place(label):
+            if is_current():
+                with_position(lambda ratio: save_at_position(label, ratio))
+
+        previous = getattr(dock, "_contents_popup", None)
+        if previous is not None:
+            previous.close()
+            previous.deleteLater()
+        popup = ReaderContentsPopup(dock, entries=entries, bookmarks=_epub_bookmarks(),
+                                    current_position=_current_epub_section_index, kind="epub",
+                                    is_current=is_current, open_entry=open_entry, save_place=save_place)
+        dock._contents_popup = popup
+        popup.show_at(dock._view)
+
+    mw.taskman.run_in_background(load, loaded)
+    return True
+
+
 def _jump_back_from_epub_link() -> bool:
     global _epub_link_back_history
     location, remaining = _take_epub_link_back_history(_epub_link_back_history)
@@ -5574,6 +5692,11 @@ def show_epub_in_dock(
         int(_current_epub_card_id or 0) == int(card_id)
         and str(_current_epub_filename or "") == str(filename or "").strip()
     )
+    popup = getattr(_epub_dock, "_contents_popup", None)
+    if popup is not None:
+        popup.close()
+    if not preserve_link_history or not same_document:
+        _epub_dock._contents_cache = None
     if not preserve_link_history or not same_document:
         _epub_link_back_history = []
 

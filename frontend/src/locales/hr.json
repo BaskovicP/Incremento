@@ -173,5 +173,7 @@
   "reader_page_location_labeled": "Tiskana {label} · PDF {current} / {total}",
   "reader_pdf_page": "PDF stranica",
   "reader_page_numbering_hint": "Oznake tiskanih stranica dolaze iz PDF metapodataka. PDF brojevi računaju sve stranice, uključujući korice i uvodne stranice.",
-  "reader_printed_page_unavailable": "Broj tiskane stranice nije dostupan za ovu stranicu. PDF broj računa sve stranice, uključujući korice i uvodne stranice."
+  "reader_printed_page_unavailable": "Broj tiskane stranice nije dostupan za ovu stranicu. PDF broj računa sve stranice, uključujući korice i uvodne stranice.",
+  "reader_contents": "Sadržaj",
+  "reader_contents_hint": "Otvori poglavlja i spremljena mjesta bez promjene oznake pročitanog"
 }

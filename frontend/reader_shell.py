@@ -38,7 +38,7 @@ _PDF_CLONE_TOOLBAR_SPEC = (
         "navigation",
         "Navigation",
         (
-            ("navigate", "Navigate", ("previous_page", "page_location", "next_page")),
+            ("navigate", "Navigate", ("contents", "previous_page", "page_location", "next_page")),
             ("zoom", "Zoom", ("zoom_out", "zoom_percent", "zoom_in")),
         ),
     ),
@@ -103,6 +103,7 @@ _PDF_CLONE_TOOLBAR_SPEC = (
 )
 
 _PDF_CLONE_COMPACT_ACTION_IDS = (
+    "contents",
     "previous_page",
     "page_location",
     "next_page",
@@ -122,6 +123,7 @@ _PDF_CLONE_EXPANDED_GROUP_ROWS = (
 # act as its icons.  Qt standard icons vary by platform and do not match the
 # shipped React reader, so EPUB consumes these exact strings instead.
 _PDF_CLONE_ACTION_TEXT = {
+    "contents": "Contents",
     "previous_page": "← Prev",
     "page_location": "Page {current} / {total}",
     "next_page": "Next →",

@@ -1341,6 +1341,21 @@ def _pdf_citation_display_page(page: int, page_label: object = None) -> str:
     return label
 
 
+def _current_pdf_display_label() -> str:
+    """Prefer the saved document title over a generated storage filename."""
+    card_id = current_pdf_card_id()
+    if card_id is not None:
+        try:
+            card = mw.col.get_card(card_id)
+            note = mw.col.get_note(card.nid)
+            title = note["Title"]
+            if isinstance(title, str) and title.strip():
+                return title.strip()
+        except Exception:
+            pass
+    return pdf_display_label_from_filename(str(_current_pdf_filename or ""))
+
+
 def pdf_citation(
     excerpt_text: str | None = None,
     *,
@@ -1355,7 +1370,7 @@ def pdf_citation(
         return ""
     resolved_page = int(page or get_page(_ADDON_DIR, _active_profile(), card_id) or 1)
     display_page = _pdf_citation_display_page(resolved_page, page_label)
-    name = pdf_display_label_from_filename(_current_pdf_filename)
+    name = _current_pdf_display_label()
     payload = {
         "card_id": int(card_id),
         "filename": str(_current_pdf_filename or "").strip(),
@@ -1528,7 +1543,7 @@ def _copy_pdf_context_anchor(data: object) -> bool:
         page_label=page_label,
         scroll_ratio=float(anchor["scroll_ratio"]),
     )
-    label = pdf_display_label_from_filename(str(_current_pdf_filename), fallback="PDF")
+    label = _current_pdf_display_label()
     display_page = _pdf_citation_display_page(page, page_label)
     if not html or not set_reader_anchor_clipboard(html, t("reader_pdf_copied_label", title=label, page=display_page)):
         return False
@@ -2386,6 +2401,65 @@ def _add_pdf_bookmark(card_id: int, page: int) -> None:
     tooltip(t("reader_pdf_bookmark_saved"))
 
 
+def _open_pdf_contents(payload: object) -> bool:
+    """Only the authenticated current viewer may open a contents picker."""
+    if not isinstance(payload, dict) or _pdf_dock is None:
+        return False
+    try:
+        card_id = int(payload.get("cardId", 0))
+        total = int(payload.get("totalPages", 0))
+        token = int(payload.get("token", -1))
+        location = payload.get("location") or {}
+        page_number = int(location.get("page", 0))
+        ratio = normalize_reader_anchor_scroll_ratio(location.get("scrollRatio"))
+    except (TypeError, ValueError, OverflowError, AttributeError):
+        return False
+    if card_id != current_pdf_card_id() or not 1 <= page_number <= total or token < 0 or ratio is None:
+        return False
+    try:
+        from ..backend.reader_contents import normalize_contents_entries
+        from .reader_contents_popup import ReaderContentsPopup
+    except ImportError:
+        from backend.reader_contents import normalize_contents_entries
+        from reader_contents_popup import ReaderContentsPopup
+    dock = _pdf_dock
+    viewer_page = dock._view.page()
+    nonce = viewer_page._bridge_nonce
+    profile = _active_profile()
+
+    def is_current():
+        return (_pdf_dock is dock and _active_profile() == profile
+                and current_pdf_card_id() == card_id and viewer_page._bridge_nonce == nonce
+                and dock.isVisible())
+
+    def open_entry(entry):
+        if is_current():
+            viewer_page.runJavaScript("window.incrementoPdfContentsJump && window.incrementoPdfContentsJump("
+                                      + json.dumps(entry) + "," + str(token) + ");")
+
+    def save_place(label):
+        if not is_current():
+            return
+        try:
+            add_reader_bookmark(_ADDON_DIR, profile, card_id, "pdf",
+                                {"page": page_number, "scroll_ratio": ratio}, label=label, replace_label=True)
+            _push_pdf_bookmarks(card_id)
+            tooltip(t("reader_pdf_bookmark_saved"))
+        except Exception as exc:
+            showInfo(t("reader_pdf_bookmark_save_failed", error=exc))
+
+    previous = getattr(dock, "_contents_popup", None)
+    if previous is not None:
+        previous.close()
+        previous.deleteLater()
+    popup = ReaderContentsPopup(dock, entries=normalize_contents_entries(payload.get("entries"), "pdf", total),
+                                bookmarks=_pdf_bookmarks_payload(card_id), current_position=page_number,
+                                kind="pdf", is_current=is_current, open_entry=open_entry, save_place=save_place)
+    dock._contents_popup = popup
+    popup.show_at(dock._view)
+    return True
+
+
 def _delete_pdf_bookmark(card_id: int, bookmark_id: str) -> None:
     try:
         delete_reader_bookmark(
@@ -2630,7 +2704,13 @@ def _pdf_extract_html(payload: dict) -> str:
 
 
 def _handle_pdf_js_message(msg: str) -> None:
-    if msg.startswith(_MSG_PAGE_LABELS):
+    if msg.startswith("incremento_pdf_contents:"):
+        if len(msg) <= 1_000_000:
+            try:
+                _open_pdf_contents(json.loads(msg.removeprefix("incremento_pdf_contents:")))
+            except (TypeError, ValueError):
+                pass
+    elif msg.startswith(_MSG_PAGE_LABELS):
         if len(msg) <= 1_000_000:
             try:
                 _receive_pdf_page_labels(json.loads(msg[len(_MSG_PAGE_LABELS):]))
@@ -3479,6 +3559,7 @@ def trigger_viewer_action(action: str) -> None:
         "zoom_in": "window.incrementoPdfZoom && window.incrementoPdfZoom(1);",
         "mark_read": "window.incrementoPdfMarkRead && window.incrementoPdfMarkRead();",
         "open_find": "window.incrementoPdfOpenFind && window.incrementoPdfOpenFind();",
+        "contents": "window.incrementoPdfOpenContents && window.incrementoPdfOpenContents();",
     }
     js = js_by_action.get(action)
     if not js:
@@ -3550,6 +3631,13 @@ def open_current_pdf_search_hit(hit: dict, index: int, query: str) -> bool:
     return True
 
 
+def open_current_document_contents() -> bool:
+    if _pdf_dock is None or current_pdf_card_id() is None or not _pdf_dock.isVisible():
+        return False
+    trigger_viewer_action("contents")
+    return True
+
+
 # ── Show PDF in dock ──────────────────────────────────────────────────────────
 
 
@@ -3578,6 +3666,9 @@ def show_pdf_in_dock(
         _pdf_annotation_generation += 1
         if _pdf_dock is not None:
             try:
+                popup = getattr(_pdf_dock, "_contents_popup", None)
+                if popup is not None:
+                    popup.close()
                 dialog = getattr(_pdf_dock, '_annotation_dialog', None)
                 if dialog:
                     dialog.reject()

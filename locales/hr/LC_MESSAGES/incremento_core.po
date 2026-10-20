@@ -27,7 +27,7 @@ msgid "settings_all_time"
 msgstr "Ukupno"
 
 msgid "settings_anki_still_records_each_topic_answer_as_good_and"
-msgstr "Anki i dalje bilježi svaki odgovor na temu kao Dobro i ažurira FSRS stanje memorije. Koristite zaseban predložak opcija špila za teme želite li ih odvojiti od optimizacije FSRS-a za stavke."
+msgstr "Teme u svakom špilu koriste Incrementov raspored s A-faktorom i najveći interval. Anki svaki odgovor na temu bilježi kao Dobro. Zasebni predlošci špilova opcionalni su za odvajanje povijesti tema od optimizacije FSRS-a za stavke."
 
 msgid "settings_any_card_with_one_of_these_tags_is_also"
 msgstr "Svaka kartica s jednom od ovih oznaka također se smatra temom, čak i kada bi se inače tretirala kao stavka."
@@ -189,7 +189,7 @@ msgid "settings_for_example_10_schedules_90_of_the_normal_next"
 msgstr "Primjerice, 10% postavlja 90% uobičajenog sljedećeg intervala i množi trajni A-faktor s 0,9."
 
 msgid "settings_hard_cap_for_topic_intervals_the_deck_preset_s"
-msgstr "Gornja granica intervala tema. Vrijedi i najveći interval predloška špila; Incremento koristi nižu granicu."
+msgstr "Gornja granica intervala tema u svakom špilu, uključujući filtrirane špilove. Raspoređivanje tema koristi ovu granicu neovisno o koracima učenja i najvećem intervalu predloška špila."
 
 msgid "settings_higher_priority_number_is_more_important"
 msgstr "Viši broj prioriteta znači veću važnost"
@@ -778,3 +778,6 @@ msgstr "Tema"
 
 msgid "settings_extract_type_none"
 msgstr "Bez oznake"
+
+msgid "shortcut_document_contents"
+msgstr "Sadržaj dokumenta"

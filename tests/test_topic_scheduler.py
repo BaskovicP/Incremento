@@ -233,16 +233,18 @@ class TestTopicConfigHelpers:
             {"topic_maximum_interval_days": 99999}
         ) == 36500
 
-    def test_effective_maximum_uses_stricter_deck_preset_cap(self):
-        card = SimpleNamespace(did=7, odid=0)
+    @pytest.mark.parametrize("home_deck", [0, 8], ids=["normal", "filtered"])
+    @pytest.mark.parametrize("deck_maximum", [1, 45, 180])
+    def test_topic_maximum_is_independent_of_current_and_home_deck(self, home_deck, deck_maximum):
+        card = SimpleNamespace(did=7, odid=home_deck)
         fake_decks = MagicMock()
-        fake_decks.config_dict_for_deck_id.return_value = {"rev": {"maxIvl": 45}}
+        fake_decks.config_dict_for_deck_id.return_value = {"rev": {"maxIvl": deck_maximum}}
         fake_mw = SimpleNamespace(col=SimpleNamespace(decks=fake_decks))
         with patch.object(topic_scheduler, "mw", fake_mw):
             assert effective_topic_maximum_interval_days(
                 card,
                 {"topic_maximum_interval_days": 90},
-            ) == 45
+            ) == 90
 
 
 class TestTopicAnswerSeparation:

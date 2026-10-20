@@ -6,6 +6,7 @@ import vm from 'node:vm';
 import { normalizePdfPageLabels } from '../src/pdfPageLabels.mjs';
 import * as pageLabelModule from '../src/pdfPageLabels.mjs';
 import { annotatePdfTextStyles } from '../src/pdfTextSelection.mjs';
+import { loadPdfContents } from '../src/pdfContents.mjs';
 
 test('rendering keeps PDF spaces, narrow letters, and compressed OCR spans selectable', async () => {
   const source = readFileSync(new URL('../src/usePdfRender.js', import.meta.url), 'utf8');
@@ -71,6 +72,7 @@ function loader() {
   const labels = [];
   const pages = [];
   const messages = [];
+  const contents = [];
   const scope = {
     useCallback: callback => callback,
     resolveWorkerSrc: () => 'local-worker.js',
@@ -81,6 +83,7 @@ function loader() {
     renderSequenceRef: { current: 0 }, busyRef: { current: false },
     setTotalPages: () => {}, renderPage: page => rendered.push(page), setError: error => errors.push(error),
     setPageLabels: value => labels.push(value),
+    setContents: value => contents.push(value), setContentsReady: () => {}, loadPdfContents,
     setPage: value => pages.push(value),
     normalizePdfPageLabels,
     pdfPageLabelsMessage: (...args) => pageLabelModule.pdfPageLabelsMessage(...args),
@@ -96,8 +99,23 @@ function loader() {
     } },
   };
   vm.runInNewContext(`${source.slice(start, end)}\nglobalThis.start = doStart;`, scope);
-  return { scope, tasks, rendered, errors, labels, pages, messages };
+  return { scope, tasks, rendered, errors, labels, pages, messages, contents };
 }
+
+test('late contents from a previous PDF never overwrite the current outline', async () => {
+  const {scope, tasks, contents} = loader();
+  let finishOld;
+  scope.start();
+  tasks[0].resolve({numPages: 3, getOutline: () => new Promise(resolve => {finishOld = resolve;})});
+  await tasks[0].promise;
+  scope.start();
+  tasks[1].resolve({numPages: 2, getOutline: async () => [{title: 'Current chapter', dest: [1]}]});
+  await tasks[1].promise;
+  await setImmediate();
+  finishOld([{title: 'Old chapter', dest: [0]}]);
+  await setImmediate();
+  assert.equal(contents.at(-1)[0].title, 'Current chapter');
+});
 
 test('loaded printed labels become available to Python extraction citations', async () => {
   const { scope, tasks, messages } = loader();

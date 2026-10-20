@@ -3,6 +3,7 @@
     "day_end_time": null,
     "dialog": {"document_mix_version": 2},
     "ui_language": "auto",
+    "shortcuts": {"document_contents": "Ctrl+Alt+T"},
     "onboarding_completed_version": 0,
     "scheduler_presets": {},
     "automatic_backups": {},

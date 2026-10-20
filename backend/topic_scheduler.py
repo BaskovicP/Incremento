@@ -259,19 +259,12 @@ def configured_topic_maximum_interval_days(config: dict | None = None) -> int:
 
 
 def effective_topic_maximum_interval_days(card, config: dict | None = None) -> int:
-    """Return the stricter of Incremento's and the deck preset's interval cap."""
-    maximum = configured_topic_maximum_interval_days(config)
-    try:
-        deck_id = int(getattr(card, "odid", 0) or getattr(card, "did", 0) or 0)
-        deck_config = mw.col.decks.config_dict_for_deck_id(deck_id)
-        if not isinstance(deck_config, dict):
-            return maximum
-        deck_maximum = int((deck_config.get("rev") or {}).get("maxIvl") or maximum)
-        if deck_maximum > 0:
-            maximum = min(maximum, deck_maximum)
-    except Exception:
-        pass
-    return max(1, maximum)
+    """Keep topic frequency independent of the current/home deck's memory preset.
+
+    Deck learning steps and maximum intervals belong to Anki's item scheduler.
+    The topic algorithm uses Incremento's own cap, including in filtered decks.
+    """
+    return configured_topic_maximum_interval_days(config)
 
 
 def configured_effective_topic_tags(config: dict | None = None) -> list[str]:

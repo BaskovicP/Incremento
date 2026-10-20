@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { resolvePdfAnnotationLink } from './pdfLinks.mjs';
 import { normalizePdfPageLabels, pdfPageLabelsMessage } from './pdfPageLabels.mjs';
 import { annotatePdfTextStyles } from './pdfTextSelection.mjs';
+import { loadPdfContents } from './pdfContents.mjs';
 
 const DEFAULT_WORKER_SRC = '/_addons/incremento/web/pdfjs/pdf.worker.min.js';
 const ZOOM_STEP = 0.1;
@@ -42,6 +43,8 @@ export function usePdfRender() {
   const [renderInfo, setRenderInfo] = useState({ scale: 1, tlLeft: 0 });
   const [readPage,   setReadPage]   = useState(0);
   const [linkAnnotations, setLinkAnnotations] = useState([]);
+  const [contents, setContents] = useState([]);
+  const [contentsReady, setContentsReady] = useState(false);
 
   const pdfDocRef          = useRef(null);
   const busyRef            = useRef(false);
@@ -188,6 +191,8 @@ export function usePdfRender() {
     const cardId = Number(cardIdRef.current);
     const filename = filenameRef.current;
     setPageLabels(null);
+    setContents([]);
+    setContentsReady(false);
     setTotalPages(0);
     ++renderSequenceRef.current;
     busyRef.current = false;
@@ -218,6 +223,12 @@ export function usePdfRender() {
         setPage(startPage);
         pageRef.current = startPage;
         renderPage(startPage);
+        loadPdfContents(doc, () => sequence === loadSequenceRef.current).then(entries => {
+          if (sequence === loadSequenceRef.current) {
+            setContents(entries);
+            setContentsReady(true);
+          }
+        });
         // Metadata is optional and must not hold up the first page render.
         Promise.resolve().then(() => doc.getPageLabels()).then(labels => {
           if (sequence === loadSequenceRef.current) {
@@ -332,7 +343,7 @@ export function usePdfRender() {
 
   return {
     // State (read-only)
-    page, totalPages, pageLabels, zoom, error, renderInfo, readPage, linkAnnotations,
+    page, totalPages, pageLabels, zoom, error, renderInfo, readPage, linkAnnotations, contents, contentsReady,
     // Refs attached to DOM elements in JSX
     canvasARef, canvasBRef, containerRef, textLayerRef,
     // Refs read by PdfViewer for keyboard/snapshot/highlight logic

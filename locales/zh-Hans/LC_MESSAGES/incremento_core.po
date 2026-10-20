@@ -27,7 +27,7 @@ msgid "settings_all_time"
 msgstr "全部时间"
 
 msgid "settings_anki_still_records_each_topic_answer_as_good_and"
-msgstr "Anki 仍将每次主题回答记录为“良好”并更新该卡片的 FSRS 记忆状态。如需将主题复习与知识项卡片的 FSRS 优化分开，请为主题使用独立的牌组选项预设。"
+msgstr "主题在任何牌组中都使用 Incremento 的 A 因子调度和最大间隔。Anki 将每次主题回答记录为“良好”。如需将主题历史与知识项卡片的 FSRS 优化分开，可选择使用独立的牌组预设。"
 
 msgid "settings_any_card_with_one_of_these_tags_is_also"
 msgstr "具有这些标签之一的卡片也会被视为主题，即使该卡片类型通常按知识项处理。"
@@ -189,7 +189,7 @@ msgid "settings_for_example_10_schedules_90_of_the_normal_next"
 msgstr "例如，10% 会将下次间隔设为正常值的 90%，并将持久 A 因子乘以 0.9。"
 
 msgid "settings_hard_cap_for_topic_intervals_the_deck_preset_s"
-msgstr "主题间隔的硬上限。同时受牌组预设最大间隔限制；Incremento 使用两者中较低的上限。"
+msgstr "主题间隔的硬上限，适用于所有牌组，包括筛选牌组。主题调度独立使用此上限，不受牌组预设的学习步骤和最大间隔影响。"
 
 msgid "settings_higher_priority_number_is_more_important"
 msgstr "优先级数值越大越重要"
@@ -778,3 +778,6 @@ msgstr "主题"
 
 msgid "settings_extract_type_none"
 msgstr "无"
+
+msgid "shortcut_document_contents"
+msgstr "文档目录"

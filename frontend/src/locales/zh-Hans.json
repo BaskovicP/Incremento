@@ -169,5 +169,7 @@
   "reader_page_location_labeled": "印刷页码 {label} · PDF {current} / {total}",
   "reader_pdf_page": "PDF 页码",
   "reader_page_numbering_hint": "印刷页码来自 PDF 元数据。PDF 页码计算所有页面，包括封面和前言。",
-  "reader_printed_page_unavailable": "此页面没有印刷页码元数据。PDF 页码计算所有页面，包括封面和前言。"
+  "reader_printed_page_unavailable": "此页面没有印刷页码元数据。PDF 页码计算所有页面，包括封面和前言。",
+  "reader_contents": "目录",
+  "reader_contents_hint": "打开章节和已保存位置，不改变阅读标记"
 }

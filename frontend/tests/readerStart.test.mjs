@@ -42,7 +42,7 @@ function registerBridge(pending = null) {
     'pendingExcerptJumpRef', 'pendingHighlightScrollRef', 'pendingReadAnchorScrollRef',
     'pendingPageTopScrollRef', 'pendingResumeScrollRef', 'pendingResumePageRef',
     'pageRef', 'cardIdRef', 'suppressSearchSyncRef', 'pendingHighlightSelectionRef',
-    'resizeHighlightRef',
+    'resizeHighlightRef', 'contentsGenerationRef', 'pendingContentsFractionRef',
   ]) scope[name] = { current: null };
   scope.highlightRangeCacheRef = { current: new Map() };
   vm.runInNewContext(source.slice(start, finish), scope);

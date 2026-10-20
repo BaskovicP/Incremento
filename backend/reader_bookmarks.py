@@ -55,7 +55,10 @@ def normalize_reader_location(reader_type: str, location: dict[str, Any] | None)
     data = dict(location or {})
 
     if kind == "pdf":
-        return {"page": max(1, _nonnegative_int(data.get("page"), default=1))}
+        result = {"page": max(1, _nonnegative_int(data.get("page"), default=1))}
+        if "scroll_ratio" in data:
+            result["scroll_ratio"] = _clamp_ratio(data["scroll_ratio"])
+        return result
     if kind == "epub":
         result = {
             "section_index": _nonnegative_int(data.get("section_index")),
@@ -131,6 +134,7 @@ def add_reader_bookmark(
     location: dict[str, Any] | None,
     *,
     label: str | None = None,
+    replace_label: bool = False,
 ) -> dict[str, Any]:
     kind = _reader_type(reader_type)
     normalized = normalize_reader_location(kind, location)
@@ -145,7 +149,14 @@ def add_reader_bookmark(
         (int(card_id), kind, location_json),
     ).fetchone()
     if existing:
-        return _bookmark_from_row(kind, existing)
+        bookmark = _bookmark_from_row(kind, existing)
+        if replace_label and label and bookmark["label"] != clean_label[:160]:
+            now = int(time.time())
+            conn.execute("UPDATE reader_bookmarks SET label = ?, updated_at = ? WHERE id = ? AND card_id = ? AND reader_type = ?",
+                         (clean_label[:160], now, bookmark["id"], int(card_id), kind))
+            conn.commit()
+            bookmark.update(label=clean_label[:160], updated_at=now)
+        return bookmark
 
     now = int(time.time())
     bookmark_id = uuid.uuid4().hex

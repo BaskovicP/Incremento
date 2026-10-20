@@ -3446,3 +3446,39 @@ msgstr "Pregled izvorne stranice"
 
 msgid "reader_pdf_citation_page_both"
 msgstr "{label} (PDF {page})"
+
+msgid "reader_contents"
+msgstr "Sadržaj"
+
+msgid "reader_contents_hint"
+msgstr "Otvori poglavlja i spremljena mjesta bez promjene oznake pročitanog"
+
+msgid "reader_contents_search"
+msgstr "Pronađi poglavlje ili spremljeno mjesto…"
+
+msgid "reader_contents_empty"
+msgstr "Dokument nema ugrađeni sadržaj. Ovdje spremite imenovana mjesta, uključujući stranicu sa sadržajem."
+
+msgid "reader_contents_save_place"
+msgstr "Spremi ovo mjesto…"
+
+msgid "reader_contents_place_name"
+msgstr "Naziv mjesta (na primjer, Stranica sa sadržajem ili naslov poglavlja):"
+
+msgid "reader_contents_page"
+msgstr "Stranica sa sadržajem"
+
+msgid "reader_contents_saved_places"
+msgstr "Spremljena mjesta"
+
+msgid "reader_contents_no_matches"
+msgstr "Nema odgovarajućih poglavlja ni spremljenih mjesta."
+
+msgid "reader_contents_expand_all"
+msgstr "Proširi sve"
+
+msgid "reader_contents_collapse_all"
+msgstr "Sažmi sve"
+
+msgid "reader_contents_folds_search_hint"
+msgstr "Očistite pretraživanje za proširivanje ili sažimanje poglavlja."

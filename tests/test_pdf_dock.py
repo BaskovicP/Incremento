@@ -7,6 +7,55 @@ from unittest.mock import MagicMock
 
 import pytest
 
+
+def test_contents_popup_targets_and_saved_places_are_bound_to_the_current_pdf_and_profile(monkeypatch):
+    scripts, saved, popups = [], [], []
+    active_profile = ["A"]
+    page = types.SimpleNamespace(_bridge_nonce="one", runJavaScript=scripts.append)
+    dock = types.SimpleNamespace(_view=types.SimpleNamespace(page=lambda: page), isVisible=lambda: True)
+
+    class Popup:
+        def __init__(self, parent, **options):
+            self.options = options
+            popups.append(self)
+        def show_at(self, anchor):
+            pass
+
+    monkeypatch.setitem(sys.modules, "reader_contents_popup", types.SimpleNamespace(ReaderContentsPopup=Popup))
+    monkeypatch.setattr(pdf_dock, "_pdf_dock", dock)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: active_profile[0])
+    monkeypatch.setattr(pdf_dock, "_pdf_bookmarks_payload", lambda cid: [])
+    monkeypatch.setattr(pdf_dock, "_push_pdf_bookmarks", lambda cid: None)
+    monkeypatch.setattr(pdf_dock, "tooltip", lambda text: None)
+    monkeypatch.setattr(pdf_dock, "add_reader_bookmark", lambda *args, **kwargs: saved.append((args, kwargs)))
+    payload = {"cardId": 42, "totalPages": 20, "token": 3, "location": {"page": 2, "scrollRatio": .625},
+               "entries": [{"title": "Chapter", "page": 10, "id": 0}, {"title": "Invalid", "page": 21}]}
+    assert pdf_dock._open_pdf_contents(payload)
+    options = popups[0].options
+    assert options["entries"] == [{"title": "Chapter", "depth": 0, "page": 10, "id": 0}]
+    options["open_entry"](options["entries"][0])
+    assert 'incrementoPdfContentsJump' in scripts[0]
+    options["save_place"]("Contents page")
+    assert saved[0][0][1:5] == ("A", 42, "pdf", {"page": 2, "scroll_ratio": .625})
+    assert saved[0][1] == {"label": "Contents page", "replace_label": True}
+    active_profile[0] = "B"
+    options["open_entry"](options["entries"][0])
+    options["save_place"]("Wrong profile")
+    assert len(scripts) == len(saved) == 1
+
+
+@pytest.mark.parametrize("changes", [
+    {"cardId": 99}, {"totalPages": 0}, {"token": -1},
+    {"location": {"page": 21, "scrollRatio": .5}},
+    {"location": {"page": 1, "scrollRatio": float("nan")}},
+])
+def test_invalid_contents_bridge_request_cannot_open_a_popup(monkeypatch, changes):
+    monkeypatch.setattr(pdf_dock, "_pdf_dock", object())
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)
+    payload = {"cardId": 42, "totalPages": 20, "token": 3, "location": {"page": 2, "scrollRatio": .5}}
+    assert not pdf_dock._open_pdf_contents({**payload, **changes})
+
 _dependency_names = (
     "session", "PyQt6", "PyQt6.QtPdf", "PyQt6.QtWebEngineWidgets",
     "PyQt6.QtWebEngineCore", "PyQt6.QtCore",
@@ -721,6 +770,62 @@ def test_add_card_source_for_new_note_prefers_pending_extract_source(monkeypatch
     monkeypatch.setitem(sys.modules, "add_card_dock", fake_add_card_dock)
 
     assert pdf_dock._add_card_source_for_new_note() == "reviewer"
+
+
+@pytest.mark.parametrize("title, escaped_title", [
+    (
+        "A Practical Guide to Incremental Reading",
+        "A Practical Guide to Incremental Reading",
+    ),
+    (
+        'A webpage title longer than the filename display limit — Čitanje & "Guide" <2026> [2]',
+        'A webpage title longer than the filename display limit — Čitanje &amp; &quot;Guide&quot; &lt;2026&gt; [2]',
+    ),
+], ids=["webpage-title", "full-title-with-special-characters"])
+def test_webpage_pdf_extract_and_copied_link_use_full_saved_title(monkeypatch, title, escaped_title):
+    from reader_links import reader_anchor_command_from_html
+
+    filename = "incremento-webpage-fdbswq4-0123456789abcdef0123456789abcdef.pdf"
+    note = {"Title": title, "PDF_Filename": filename}
+    collection = types.SimpleNamespace(
+        get_card={55: types.SimpleNamespace(nid=9)}.__getitem__,
+        get_note={9: note}.__getitem__,
+    )
+    copied = []
+    monkeypatch.setattr(pdf_dock, "mw", types.SimpleNamespace(col=collection))
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", filename)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_page_labels", ())
+    monkeypatch.setattr(pdf_dock, "_config", lambda config=None: {})
+    monkeypatch.setattr(pdf_dock, "set_reader_anchor_clipboard", lambda html, plain: copied.append((html, plain)) or True)
+    monkeypatch.setattr(pdf_dock, "tooltip", lambda _text: None)
+
+    citation = pdf_dock.pdf_citation("An extracted paragraph", page=1)
+    assert pdf_dock._copy_pdf_context_anchor({"cardId": 55, "page": 1, "scrollRatio": 0.25})
+
+    assert f">Page 1. of {escaped_title}</a>" in citation
+    assert f">Page 1. of {escaped_title}</a>" in copied[0][0]
+    assert copied[0][1] == f"{title} — page 1"
+    command = reader_anchor_command_from_html(citation)
+    assert json.loads(command.removeprefix("incremento_open_pdf_ref:")) == {
+        "card_id": 55, "filename": filename, "page": 1, "excerpt": "An extracted paragraph",
+    }
+
+
+@pytest.mark.parametrize("note", [{}, {"Title": ""}, {"Title": "  "}, None],
+                         ids=["missing-title", "empty-title", "blank-title", "missing-note"])
+def test_pdf_citation_uses_readable_filename_when_saved_title_is_unavailable(monkeypatch, note):
+    collection = types.SimpleNamespace(
+        get_card={55: types.SimpleNamespace(nid=9)}.__getitem__,
+        get_note={9: note}.__getitem__,
+    )
+    monkeypatch.setattr(pdf_dock, "mw", types.SimpleNamespace(col=collection))
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "Writer_Guide-0123456789abcdef0123456789abcdef.pdf")
+    monkeypatch.setattr(pdf_dock, "_current_pdf_page_labels", ())
+    monkeypatch.setattr(pdf_dock, "_config", lambda config=None: {})
+
+    assert ">Page 1. of Writer Guide</a>" in pdf_dock.pdf_citation(page=1)
 
 
 def test_pdf_citation_escapes_onclick_payload_and_label(monkeypatch):

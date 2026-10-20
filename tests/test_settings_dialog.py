@@ -1136,6 +1136,10 @@ class TestIncrementoSettingsDialogTopicsDeckCreation:
 
 
 class TestIncrementoSettingsDialogShortcuts:
+    def test_document_contents_has_a_configurable_default_shortcut(self):
+        assert default_shortcuts()["document_contents"] == "Ctrl+Alt+T"
+        assert resolved_runtime_shortcuts({"document_contents": "Alt+C"})["document_contents"] == "Alt+C"
+
     def test_markdown_document_is_separate_from_writing_and_assignable(self):
         spec = next(spec for spec in SHORTCUT_ACTION_SPECS if spec["id"] == "add_markdown_document")
         assert spec["label"] == "Add Markdown Document"

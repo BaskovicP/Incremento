@@ -11,7 +11,7 @@ PDF_TOOLBAR_REFERENCE = (
         "navigation",
         "Navigation",
         (
-            ("navigate", "Navigate", ("previous_page", "page_location", "next_page")),
+            ("navigate", "Navigate", ("contents", "previous_page", "page_location", "next_page")),
             ("zoom", "Zoom", ("zoom_out", "zoom_percent", "zoom_in")),
         ),
     ),
@@ -76,6 +76,7 @@ PDF_TOOLBAR_REFERENCE = (
 )
 
 PDF_COMPACT_REFERENCE = (
+    "contents",
     "previous_page",
     "page_location",
     "next_page",
@@ -92,6 +93,7 @@ PDF_EXPANDED_ROW_REFERENCE = (
 )
 
 PDF_ACTION_TEXT_REFERENCE = {
+    "contents": "Contents",
     "previous_page": "← Prev",
     "page_location": "Page {current} / {total}",
     "next_page": "Next →",

@@ -550,6 +550,7 @@ def _open_command_palette() -> None:
         invoke=_invoke_shortcut_action,
         unavailable_reasons={
             "search_current_document": _t("root_palette_open_document"),
+            "document_contents": _t("root_palette_open_document"),
             "pdf_prev_page": _t("root_palette_open_pdf_pages"),
             "pdf_next_page": _t("root_palette_open_pdf_pages"),
             "pdf_zoom_out": _t("root_palette_open_pdf_zoom"),
@@ -3633,6 +3634,12 @@ def _open_current_document_search() -> bool:
     if _epub_dock_mod.open_current_document_find():
         return True
     return False
+
+
+def _open_current_document_contents() -> bool:
+    if _pdf_dock_mod.open_current_document_contents():
+        return True
+    return _epub_dock_mod.open_current_document_contents()
 
 
 def _open_current_document_search_results() -> bool:
@@ -7517,6 +7524,12 @@ def _build_incremento_menu() -> None:
     qconnect(_searchCurrentAction.triggered, _open_current_document_search)
     _menu.addAction(_searchCurrentAction)
     _register_shortcut_action("search_current_document", _searchCurrentAction)
+
+    _contentsAction = QAction(_t("reader_contents"), mw)
+    _contentsAction.setProperty("incremento_translation_key", "reader_contents")
+    qconnect(_contentsAction.triggered, _open_current_document_contents)
+    _menu.addAction(_contentsAction)
+    _register_shortcut_action("document_contents", _contentsAction)
 
     _searchAllAction = QAction(_t("root_menu_search_all"), mw)
     _searchAllAction.setProperty("incremento_translation_key", "root_menu_search_all")

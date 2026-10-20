@@ -3408,3 +3408,39 @@ msgstr "Source page preview"
 
 msgid "reader_pdf_citation_page_both"
 msgstr "{label} (PDF {page})"
+
+msgid "reader_contents"
+msgstr "Contents"
+
+msgid "reader_contents_hint"
+msgstr "Open chapters and saved places without changing your read marker"
+
+msgid "reader_contents_search"
+msgstr "Find a chapter or saved place…"
+
+msgid "reader_contents_empty"
+msgstr "No embedded contents. Save named places here, including the document’s contents page."
+
+msgid "reader_contents_save_place"
+msgstr "Save this place…"
+
+msgid "reader_contents_place_name"
+msgstr "Name this place (for example, Contents page or a chapter title):"
+
+msgid "reader_contents_page"
+msgstr "Contents page"
+
+msgid "reader_contents_saved_places"
+msgstr "Saved places"
+
+msgid "reader_contents_no_matches"
+msgstr "No matching chapters or saved places."
+
+msgid "reader_contents_expand_all"
+msgstr "Expand all"
+
+msgid "reader_contents_collapse_all"
+msgstr "Collapse all"
+
+msgid "reader_contents_folds_search_hint"
+msgstr "Clear search to expand or collapse chapters."

@@ -11524,6 +11524,102 @@
     },
     {
       "component": "addon",
+      "key": "reader_contents",
+      "form": "",
+      "source": "Contents",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_contents_collapse_all",
+      "form": "",
+      "source": "Collapse all",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_contents_empty",
+      "form": "",
+      "source": "No embedded contents. Save named places here, including the document’s contents page.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_contents_expand_all",
+      "form": "",
+      "source": "Expand all",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_contents_folds_search_hint",
+      "form": "",
+      "source": "Clear search to expand or collapse chapters.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_contents_hint",
+      "form": "",
+      "source": "Open chapters and saved places without changing your read marker",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_contents_no_matches",
+      "form": "",
+      "source": "No matching chapters or saved places.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_contents_page",
+      "form": "",
+      "source": "Contents page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_contents_place_name",
+      "form": "",
+      "source": "Name this place (for example, Contents page or a chapter title):",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_contents_save_place",
+      "form": "",
+      "source": "Save this place…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_contents_saved_places",
+      "form": "",
+      "source": "Saved places",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_contents_search",
+      "form": "",
+      "source": "Find a chapter or saved place…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_copy",
       "form": "",
       "source": "Copy",
@@ -27380,7 +27476,7 @@
       "component": "addon",
       "key": "settings_anki_still_records_each_topic_answer_as_good_and",
       "form": "",
-      "source": "Anki still records each topic answer as Good and updates that card's FSRS memory state. Keep topic cards in a dedicated deck-options preset if you want topic reviews isolated from item-card FSRS optimization.",
+      "source": "Topics use Incremento's A-factor schedule and maximum interval in any deck. Anki records each topic answer as Good. Separate deck presets are optional for isolating topic history from item-card FSRS optimization.",
       "tokens": [],
       "markup": []
     },
@@ -27836,7 +27932,7 @@
       "component": "addon",
       "key": "settings_hard_cap_for_topic_intervals_the_deck_preset_s",
       "form": "",
-      "source": "Hard cap for topic intervals. The deck preset's Maximum interval also applies; Incremento uses whichever cap is lower.",
+      "source": "Hard cap for topic intervals in every deck, including filtered decks. Topic scheduling uses this limit independently of the deck preset's learning steps and maximum interval.",
       "tokens": [],
       "markup": []
     },
@@ -29198,6 +29294,14 @@
       "key": "shortcut_document_bookshelf",
       "form": "",
       "source": "Document Bookshelf",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_document_contents",
+      "form": "",
+      "source": "Document Contents",
       "tokens": [],
       "markup": []
     },
@@ -35612,6 +35716,22 @@
       "key": "reader_color_yellow",
       "form": "",
       "source": "yellow",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_contents",
+      "form": "",
+      "source": "Contents",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_contents_hint",
+      "form": "",
+      "source": "Open chapters and saved places without changing your read marker",
       "tokens": [],
       "markup": []
     },

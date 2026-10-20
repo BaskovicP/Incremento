@@ -362,6 +362,59 @@ def test_internal_epub_link_records_exact_source_location_for_jump_back(monkeypa
     assert "incrementoOpenEpubAnchor" in scripts[0]
 
 
+def test_contents_jump_records_return_position_without_marking_skipped_sections_read(monkeypatch):
+    calls = []
+    monkeypatch.setattr(epub_dock, "_epub_dock", types.SimpleNamespace())
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 7)
+    monkeypatch.setattr(epub_dock, "_current_epub_filename", "book.epub")
+    monkeypatch.setattr(epub_dock, "_current_epub_section_index", 0)
+    monkeypatch.setattr(epub_dock, "_current_epub_scroll_ratio", 0.625)
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"title": "One"}, {"title": "Two"}])
+    monkeypatch.setattr(epub_dock, "_epub_link_back_history", [])
+    monkeypatch.setattr(epub_dock, "_check_epub_limit_before_navigation", lambda _page: True)
+    monkeypatch.setattr(epub_dock, "_sync_epub_link_back_buttons", lambda: None)
+    monkeypatch.setattr(epub_dock, "_record_progress", lambda *args: None)
+    monkeypatch.setattr(epub_dock, "show_epub_in_dock", lambda *args, **kwargs: calls.append((args, kwargs)))
+    monkeypatch.setattr(epub_dock, "set_read_section_index", lambda *args: pytest.fail("Contents must not mark skipped sections read"))
+
+    assert epub_dock._open_epub_contents_entry({"section_index": 1, "fragment": "detail"})
+    assert calls[0][1]["section_index"] == 1
+    assert calls[0][1]["link_fragment"] == "detail"
+    assert calls[0][1]["preserve_link_history"] is True
+    assert epub_dock._epub_link_back_history[0]["scroll_ratio"] == 0.625
+
+
+def test_contents_blocked_by_reading_limit_preserves_return_history(monkeypatch):
+    monkeypatch.setattr(epub_dock, "_epub_dock", types.SimpleNamespace())
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 7)
+    monkeypatch.setattr(epub_dock, "_current_epub_section_index", 0)
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{}, {}])
+    monkeypatch.setattr(epub_dock, "_epub_link_back_history", [])
+    monkeypatch.setattr(epub_dock, "_check_epub_limit_before_navigation", lambda _page: False)
+    assert not epub_dock._open_epub_contents_entry({"section_index": 1})
+    assert epub_dock._epub_link_back_history == []
+
+
+def test_late_contents_loading_after_profile_switch_does_not_open_popup(monkeypatch):
+    from concurrent.futures import Future
+    tasks = []
+    profile = ["A"]
+    page = types.SimpleNamespace(bridge_nonce=lambda: "nonce")
+    dock = types.SimpleNamespace(_view=types.SimpleNamespace(page=lambda: page), isVisible=lambda: True)
+    monkeypatch.setattr(epub_dock, "_epub_dock", dock)
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 7)
+    monkeypatch.setattr(epub_dock, "_current_epub_filename", "book.epub")
+    monkeypatch.setattr(epub_dock, "_active_profile", lambda: profile[0])
+    monkeypatch.setattr(epub_dock, "mw", types.SimpleNamespace(taskman=types.SimpleNamespace(
+        run_in_background=lambda work, done: tasks.append((work, done)))))
+    assert epub_dock.open_current_document_contents()
+    profile[0] = "B"
+    result = Future()
+    result.set_result([{"title": "Old profile", "section_index": 0, "fragment": "", "depth": 0}])
+    tasks[0][1](result)
+    assert not hasattr(dock, "_contents_popup")
+
+
 def test_epub_jump_back_restores_latest_internal_link_source(monkeypatch):
     calls = []
     monkeypatch.setattr(epub_dock, "_current_epub_card_id", 7)

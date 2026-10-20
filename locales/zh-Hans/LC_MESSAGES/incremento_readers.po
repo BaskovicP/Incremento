@@ -3370,3 +3370,39 @@ msgstr "源页面预览"
 
 msgid "reader_pdf_citation_page_both"
 msgstr "{label}（PDF {page}）"
+
+msgid "reader_contents"
+msgstr "目录"
+
+msgid "reader_contents_hint"
+msgstr "打开章节和已保存位置，不改变阅读标记"
+
+msgid "reader_contents_search"
+msgstr "查找章节或已保存位置…"
+
+msgid "reader_contents_empty"
+msgstr "文档没有内嵌目录。可在此保存命名位置，包括文档的目录页。"
+
+msgid "reader_contents_save_place"
+msgstr "保存此位置…"
+
+msgid "reader_contents_place_name"
+msgstr "位置名称（例如“目录页”或章节标题）："
+
+msgid "reader_contents_page"
+msgstr "目录页"
+
+msgid "reader_contents_saved_places"
+msgstr "已保存位置"
+
+msgid "reader_contents_no_matches"
+msgstr "没有匹配的章节或已保存位置。"
+
+msgid "reader_contents_expand_all"
+msgstr "全部展开"
+
+msgid "reader_contents_collapse_all"
+msgstr "全部折叠"
+
+msgid "reader_contents_folds_search_hint"
+msgstr "清除搜索以展开或折叠章节。"

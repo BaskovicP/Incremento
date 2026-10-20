@@ -7303,6 +7303,63 @@
   function selectionCleaned(selection, textLayer) {
     return selectionFormatted(selection, textLayer).text;
   }
+  const MAX_ENTRIES = 2e3;
+  const MAX_DEPTH = 12;
+  async function loadPdfContents(doc, isCurrent = () => true) {
+    const result = [];
+    const seen = /* @__PURE__ */ new Set();
+    const destinations = /* @__PURE__ */ new Map();
+    try {
+      const outline = await doc.getOutline();
+      const pending = (Array.isArray(outline) ? outline : []).slice(0, MAX_ENTRIES).reverse().map((node) => ({ node, depth: 0 }));
+      let visited = 0;
+      while (pending.length && visited++ < MAX_ENTRIES && isCurrent()) {
+        const { node, depth } = pending.pop();
+        if (!node || seen.has(node)) continue;
+        seen.add(node);
+        try {
+          let dest = node.dest;
+          if (typeof dest === "string") {
+            if (!destinations.has(dest)) destinations.set(dest, await doc.getDestination(dest));
+            dest = destinations.get(dest);
+          }
+          if (Array.isArray(dest) && dest.length) {
+            const index = Number.isInteger(dest[0]) ? dest[0] : await doc.getPageIndex(dest[0]);
+            if (Number.isInteger(index) && index >= 0 && index < doc.numPages) {
+              const title = String(node.title || "").trim().slice(0, 240);
+              if (title) result.push({ id: result.length, title, depth, page: index + 1, destination: dest });
+            }
+          }
+        } catch (_) {
+        }
+        if (depth < MAX_DEPTH && Array.isArray(node.items)) {
+          for (let i = Math.min(node.items.length, MAX_ENTRIES - visited - pending.length) - 1; i >= 0; --i) {
+            pending.push({ node: node.items[i], depth: depth + 1 });
+          }
+        }
+      }
+    } catch (_) {
+    }
+    return isCurrent() ? result : [];
+  }
+  async function resolvePdfContentsLocation(doc, entry) {
+    var _a;
+    if (!entry || !Number.isInteger(entry.page) || entry.page < 1 || entry.page > doc.numPages) return null;
+    let pageFraction = 0;
+    const dest = entry.destination;
+    const type = (_a = dest == null ? void 0 : dest[1]) == null ? void 0 : _a.name;
+    const top = type === "XYZ" ? dest[3] : type === "FitH" || type === "FitBH" ? dest[2] : type === "FitR" ? dest[5] : null;
+    if (Number.isFinite(top)) {
+      try {
+        const pg = await doc.getPage(entry.page);
+        const viewport = pg.getViewport({ scale: 1 });
+        const [, y] = viewport.convertToViewportPoint(0, top);
+        pageFraction = Math.max(0, Math.min(y / viewport.height, 1));
+      } catch (_) {
+      }
+    }
+    return { page: entry.page, pageFraction };
+  }
   const DEFAULT_WORKER_SRC = "/_addons/incremento/web/pdfjs/pdf.worker.min.js";
   const ZOOM_STEP = 0.1;
   const ZOOM_MIN = 0.25;
@@ -7330,6 +7387,8 @@
     const [renderInfo, setRenderInfo] = reactExports.useState({ scale: 1, tlLeft: 0 });
     const [readPage, setReadPage] = reactExports.useState(0);
     const [linkAnnotations, setLinkAnnotations] = reactExports.useState([]);
+    const [contents, setContents] = reactExports.useState([]);
+    const [contentsReady, setContentsReady] = reactExports.useState(false);
     const pdfDocRef = reactExports.useRef(null);
     const busyRef = reactExports.useRef(false);
     const activeCvsRef = reactExports.useRef("a");
@@ -7466,6 +7525,8 @@
       const cardId = Number(cardIdRef.current);
       const filename = filenameRef.current;
       setPageLabels(null);
+      setContents([]);
+      setContentsReady(false);
       setTotalPages(0);
       ++renderSequenceRef.current;
       busyRef.current = false;
@@ -7501,6 +7562,12 @@
         setPage(startPage);
         pageRef.current = startPage;
         renderPage(startPage);
+        loadPdfContents(doc, () => sequence === loadSequenceRef.current).then((entries) => {
+          if (sequence === loadSequenceRef.current) {
+            setContents(entries);
+            setContentsReady(true);
+          }
+        });
         Promise.resolve().then(() => doc.getPageLabels()).then((labels) => {
           if (sequence === loadSequenceRef.current) {
             const normalized = normalizePdfPageLabels(labels, total);
@@ -7617,6 +7684,8 @@
       renderInfo,
       readPage,
       linkAnnotations,
+      contents,
+      contentsReady,
       // Refs attached to DOM elements in JSX
       canvasARef,
       canvasBRef,
@@ -7810,6 +7879,8 @@
   const reader_pdf_page$2 = "PDF page";
   const reader_page_numbering_hint$2 = "Printed page labels come from PDF metadata. PDF page numbers count every page, including covers and front matter.";
   const reader_printed_page_unavailable$2 = "Printed-page numbering is unavailable for this page. The PDF number counts every page, including covers and front matter.";
+  const reader_contents$2 = "Contents";
+  const reader_contents_hint$2 = "Open chapters and saved places without changing your read marker";
   const en = {
     reader_previous_page: reader_previous_page$2,
     reader_next_page: reader_next_page$2,
@@ -7983,7 +8054,9 @@
     reader_page_location_labeled: reader_page_location_labeled$2,
     reader_pdf_page: reader_pdf_page$2,
     reader_page_numbering_hint: reader_page_numbering_hint$2,
-    reader_printed_page_unavailable: reader_printed_page_unavailable$2
+    reader_printed_page_unavailable: reader_printed_page_unavailable$2,
+    reader_contents: reader_contents$2,
+    reader_contents_hint: reader_contents_hint$2
   };
   const reader_previous_page$1 = "Prethodna stranica";
   const reader_next_page$1 = "Sljedeća stranica";
@@ -8160,6 +8233,8 @@
   const reader_pdf_page$1 = "PDF stranica";
   const reader_page_numbering_hint$1 = "Oznake tiskanih stranica dolaze iz PDF metapodataka. PDF brojevi računaju sve stranice, uključujući korice i uvodne stranice.";
   const reader_printed_page_unavailable$1 = "Broj tiskane stranice nije dostupan za ovu stranicu. PDF broj računa sve stranice, uključujući korice i uvodne stranice.";
+  const reader_contents$1 = "Sadržaj";
+  const reader_contents_hint$1 = "Otvori poglavlja i spremljena mjesta bez promjene oznake pročitanog";
   const hr = {
     reader_previous_page: reader_previous_page$1,
     reader_next_page: reader_next_page$1,
@@ -8335,7 +8410,9 @@
     reader_page_location_labeled: reader_page_location_labeled$1,
     reader_pdf_page: reader_pdf_page$1,
     reader_page_numbering_hint: reader_page_numbering_hint$1,
-    reader_printed_page_unavailable: reader_printed_page_unavailable$1
+    reader_printed_page_unavailable: reader_printed_page_unavailable$1,
+    reader_contents: reader_contents$1,
+    reader_contents_hint: reader_contents_hint$1
   };
   const reader_previous_page = "上一页";
   const reader_next_page = "下一页";
@@ -8508,6 +8585,8 @@
   const reader_pdf_page = "PDF 页码";
   const reader_page_numbering_hint = "印刷页码来自 PDF 元数据。PDF 页码计算所有页面，包括封面和前言。";
   const reader_printed_page_unavailable = "此页面没有印刷页码元数据。PDF 页码计算所有页面，包括封面和前言。";
+  const reader_contents = "目录";
+  const reader_contents_hint = "打开章节和已保存位置，不改变阅读标记";
   const zhHans = {
     reader_previous_page,
     reader_next_page,
@@ -8679,7 +8758,9 @@
     reader_page_location_labeled,
     reader_pdf_page,
     reader_page_numbering_hint,
-    reader_printed_page_unavailable
+    reader_printed_page_unavailable,
+    reader_contents,
+    reader_contents_hint
   };
   const CATALOGS = { en, hr, "zh-Hans": zhHans };
   function normalizeReaderLocale(value) {
@@ -10220,6 +10301,8 @@
       renderInfo,
       readPage,
       linkAnnotations,
+      contents,
+      contentsReady,
       canvasARef,
       canvasBRef,
       containerRef,
@@ -10287,6 +10370,8 @@
     const pendingReadAnchorScrollRef = reactExports.useRef(false);
     const pendingPageTopScrollRef = reactExports.useRef(false);
     const pendingResumeScrollRef = reactExports.useRef(null);
+    const pendingContentsFractionRef = reactExports.useRef(null);
+    const contentsGenerationRef = reactExports.useRef(0);
     const pendingResumePageRef = reactExports.useRef(null);
     const suppressScrollPersistUntilRef = reactExports.useRef(0);
     const lastReadAnchorSpanRef = reactExports.useRef(null);
@@ -10325,6 +10410,7 @@
     const clearPendingResumeScroll = reactExports.useCallback(() => {
       pendingResumeScrollRef.current = null;
       pendingResumePageRef.current = null;
+      pendingContentsFractionRef.current = null;
     }, []);
     const openFind = reactExports.useCallback(() => {
       setFindOpen(true);
@@ -10616,10 +10702,12 @@
       if (pendingResumePage != null && pendingResumeScroll != null && Number(pendingResumePage) === page) {
         const metrics = getPdfViewportMetrics(wrapper);
         if (!metrics) return;
+        const pageFraction = pendingContentsFractionRef.current;
+        const ratio = pageFraction == null ? clampScrollRatio(pendingResumeScroll) : metrics.maxOffset > 0 ? clampScrollRatio(pageFraction * metrics.pageHeight / metrics.maxOffset) : 0;
         clearPendingResumeScroll();
         suppressScrollPersistence(700);
         window.scrollTo({
-          top: Math.max(0, metrics.pageTop + clampScrollRatio(pendingResumeScroll) * metrics.maxOffset),
+          top: Math.max(0, metrics.pageTop + ratio * metrics.maxOffset),
           left: window.scrollX,
           behavior: "auto"
         });
@@ -11142,10 +11230,49 @@
       pendingPageTopScrollRef.current = false;
       pendingResumePageRef.current = target.page;
       pendingResumeScrollRef.current = target.scrollRatio;
+      pendingContentsFractionRef.current = null;
       suppressScrollPersistence(700);
       setLinkBackHistory(taken.history);
       if (delta === 0) setLinkBackScrollNonce((value) => value + 1);
     }, [limitAwareNav, linkBackHistory, pageRef, suppressScrollPersistence]);
+    const openContents = reactExports.useCallback(() => {
+      if (!contentsReady || !cardIdRef.current) return;
+      window.pycmd("incremento_pdf_contents:" + JSON.stringify({
+        cardId: cardIdRef.current,
+        totalPages,
+        token: contentsGenerationRef.current,
+        location: capturePdfLinkLocation(),
+        entries: contents.map(({ id, title, depth, page: targetPage }) => ({ id, title, depth, page: targetPage }))
+      }));
+    }, [cardIdRef, capturePdfLinkLocation, contents, contentsReady, totalPages]);
+    reactExports.useEffect(() => {
+      window.incrementoPdfOpenContents = openContents;
+      window.incrementoPdfContentsJump = async (entry, token) => {
+        if (token !== contentsGenerationRef.current) return;
+        const doc = pdfDocRef.current;
+        const source = capturePdfLinkLocation();
+        if (!doc || !source) return;
+        const target = entry.saved_place ? { page: Number(entry.page), scrollRatio: clampScrollRatio(entry.scroll_ratio) } : await resolvePdfContentsLocation(doc, contents.find((item) => item.id === entry.id));
+        if (!target || doc !== pdfDocRef.current || token !== contentsGenerationRef.current || pageRef.current !== source.page) return;
+        if (!Number.isInteger(target.page) || target.page < 1 || target.page > doc.numPages) return;
+        const delta = target.page - source.page;
+        if (delta !== 0 && !limitAwareNav(delta, { scrollToTop: false })) return;
+        pendingHighlightScrollRef.current = null;
+        pendingExcerptJumpRef.current = "";
+        pendingReadAnchorScrollRef.current = false;
+        pendingPageTopScrollRef.current = false;
+        pendingResumePageRef.current = target.page;
+        pendingResumeScrollRef.current = target.scrollRatio ?? 0;
+        pendingContentsFractionRef.current = target.pageFraction ?? null;
+        suppressScrollPersistence(700);
+        setLinkBackHistory((history) => pushPdfLinkHistory(history, source));
+        if (delta === 0) setLinkBackScrollNonce((value) => value + 1);
+      };
+      return () => {
+        delete window.incrementoPdfOpenContents;
+        delete window.incrementoPdfContentsJump;
+      };
+    }, [capturePdfLinkLocation, contents, limitAwareNav, openContents, pageRef, pdfDocRef, suppressScrollPersistence]);
     const activatePdfLink = reactExports.useCallback((event, link) => {
       var _a;
       if (!clickableLinks || !((_a = event == null ? void 0 : event.nativeEvent) == null ? void 0 : _a.isTrusted) || !link) return;
@@ -11262,6 +11389,8 @@
     }, [buildReadAnchor, canMarkReadAtPage, clearReadAnchor, pageRef, rawSetReadProgress]);
     reactExports.useEffect(() => {
       const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null, startLocale = "en", startCustomLanguage = null, startAppearanceMode = "original", startShowHighlightDeleteButtons = true) => {
+        contentsGenerationRef.current += 1;
+        pendingContentsFractionRef.current = null;
         if (Number(cardIdRef.current || 0) !== Number(cardId || 0)) {
           setFindStartPage(null);
         }
@@ -11553,6 +11682,17 @@
                     flexWrap: "wrap"
                   },
                   children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        disabled: !contentsReady,
+                        onClick: openContents,
+                        title: tr("reader_contents_hint"),
+                        "aria-haspopup": "dialog",
+                        children: tr("reader_contents")
+                      }
+                    ),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs(
                       "button",
                       {
@@ -11695,6 +11835,17 @@
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: tr("reader_navigate") }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8 }, children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            type: "button",
+                            disabled: !contentsReady,
+                            onClick: openContents,
+                            title: tr("reader_contents_hint"),
+                            "aria-haspopup": "dialog",
+                            children: tr("reader_contents")
+                          }
+                        ),
                         /* @__PURE__ */ jsxRuntimeExports.jsxs(
                           "button",
                           {
