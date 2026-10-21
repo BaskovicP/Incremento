@@ -4,6 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { createReaderLanguage, normalizeReaderLocale } from '../src/i18n.mjs';
 import { normalizePdfAppearanceMode } from '../src/pdfAppearance.mjs';
+import {DEFAULT_PDF_LINK_PREVIEW_ZOOM, normalizePdfLinkPreviewZoom} from '../src/pdfLinkPreview.mjs';
 
 // Exercise the actual global bridge registration without mounting the canvas or
 // PDF.js. React state setters and the render pipeline are the boundary fakes.
@@ -12,17 +13,19 @@ function registerBridge(pending = null) {
   const start = source.indexOf('    const startWithHighlights = (');
   const finish = source.indexOf('    return () => {', start);
   assert.ok(start > 0 && finish > start);
-  const state = { language: createReaderLanguage('en'), starts: [], appearance: 'original', showDeleteX: true };
+  const state = { language: createReaderLanguage('en'), starts: [], appearance: 'original', showDeleteX: true, previewZoom: 1.5 };
   const scope = {
     window: { _incPdfPending: pending },
     document: { documentElement: { lang: 'en' } },
     createReaderLanguage,
     normalizeReaderLocale,
     normalizePdfAppearanceMode,
+    DEFAULT_PDF_LINK_PREVIEW_ZOOM, normalizePdfLinkPreviewZoom,
     setLanguage: (value) => { state.language = value; },
     setLocale: () => {},
     setAppearanceMode: (value) => { state.appearance = value; },
     setShowHighlightDeleteButtons: (value) => { state.showDeleteX = value; },
+    setLinkPreviewZoom: (value) => {state.previewZoom = value;},
     startViewer: (...args) => state.starts.push(args),
     clampScrollRatio: (value) => value,
     compareHighlights: () => 0,
@@ -62,6 +65,15 @@ test('PDF startup and live settings hide the delete X without changing the highl
     false, null, false, true, [], 'en', null, 'original', false,
   );
   assert.equal(state.showDeleteX, false);
+});
+
+test('PDF startup restores profile preview zoom, accepts live Settings changes, and clears the previous profile value', () => {
+  const {scope, state} = registerBridge({cardId: 42, filename: 'source.pdf', page: 1, zoom: 1, linkPreviewZoom: 2.5});
+  assert.equal(state.previewZoom, 2.5);
+  scope.window.incrementoSetPdfLinkPreviewZoom(3);
+  assert.equal(state.previewZoom, 3);
+  scope.window.incrementoPdfStart(43, 'next.pdf', 1, 1);
+  assert.equal(state.previewZoom, 1.5);
 });
 
 const customLanguage = { locale: 'de', messages: {

@@ -3,6 +3,26 @@ import pytest
 
 
 @pytest.mark.parametrize("raw, expected", [
+    (None, 1.5), (True, 1.5), (float("nan"), 1.5), (float("inf"), 1.5),
+    ("2.5", 2.5), (0, 1.0), (9, 4.0), (2.13, 2.25),
+])
+def test_pdf_link_preview_zoom_is_finite_bounded_and_uses_quarter_steps(raw, expected):
+    assert config_service.normalize_pdf_link_preview_zoom(raw) == expected
+
+
+def test_pdf_link_preview_zoom_is_remembered_separately_for_each_profile():
+    original = {"pdf_link_preview_zoom_by_profile": {"Profile A": 2.5, "Profile B": 1.75},
+                "future_key": {"keep": True}}
+    config = config_service.normalize_config(original)
+    assert config_service.configured_pdf_link_preview_zoom(config, "Profile A") == 2.5
+    assert config_service.configured_pdf_link_preview_zoom(config, "Profile B") == 1.75
+    assert config_service.configured_pdf_link_preview_zoom(config, "Profile C") == 1.5
+    assert config["future_key"] == {"keep": True}
+    assert config_service.normalize_config(config) == config
+    assert original["pdf_link_preview_zoom_by_profile"] == {"Profile A": 2.5, "Profile B": 1.75}
+
+
+@pytest.mark.parametrize("raw, expected", [
     ({}, "chrome"), ({"companion_browser": "firefox"}, "firefox"),
     ({"companion_browser": " CHROME "}, "chrome"),
     ({"companion_browser": "safari"}, "chrome"),

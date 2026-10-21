@@ -33,6 +33,7 @@ try:
         normalize_learning_leech_tag, configured_reviewer_button_visibility,
         configured_reviewer_button_group_visible,
         configured_pdf_citation_page_numbering,
+        normalize_pdf_link_preview_zoom,
         configured_extract_default_type,
         configured_companion_browser,
         configured_topic_done_tag, configured_day_end_time, normalize_pdf_appearance_mode,
@@ -51,6 +52,7 @@ except ImportError:
         normalize_learning_leech_tag, configured_reviewer_button_visibility,
         configured_reviewer_button_group_visible,
         configured_pdf_citation_page_numbering,
+        normalize_pdf_link_preview_zoom,
         configured_extract_default_type,
         configured_companion_browser,
         configured_topic_done_tag, configured_day_end_time, normalize_pdf_appearance_mode,
@@ -387,6 +389,7 @@ class IncrementoSettingsDialog(QDialog):
         current_remember_browser_card_scroll: bool = True,
         current_pdf_scroll_to_top_on_page_change: bool = True,
         current_pdf_default_appearance: str = "original",
+        current_pdf_link_preview_zoom: float = 1.5,
         current_pdf_force_default_appearance: bool = False,
         current_prefer_web_card_resume_in_original_page: bool = True,
         current_track_web_window_with_extension: bool = True,
@@ -978,6 +981,18 @@ class IncrementoSettingsDialog(QDialog):
         pdf_appearance_hint = QLabel(t("settings_pdf_appearance_hint"))
         pdf_appearance_hint.setWordWrap(True)
         reviewer_controls_layout.addWidget(pdf_appearance_hint)
+
+        self._pdf_link_preview_zoom_spin = QSpinBox()
+        self._pdf_link_preview_zoom_spin.setRange(100, 400)
+        self._pdf_link_preview_zoom_spin.setSingleStep(25)
+        self._pdf_link_preview_zoom_spin.setSuffix(" %")
+        self._pdf_link_preview_zoom_spin.setValue(round(normalize_pdf_link_preview_zoom(current_pdf_link_preview_zoom) * 100))
+        self._pdf_link_preview_zoom_spin.setAccessibleName(t("settings_pdf_link_preview_zoom"))
+        preview_zoom_layout = QHBoxLayout()
+        preview_zoom_layout.addWidget(QLabel(t("settings_pdf_link_preview_zoom")))
+        preview_zoom_layout.addWidget(self._pdf_link_preview_zoom_spin)
+        preview_zoom_layout.addStretch(1)
+        reviewer_controls_layout.addLayout(preview_zoom_layout)
 
         self._prefer_web_card_resume_in_original_page_cb = QCheckBox(
             t('settings_prefer_resuming_embedded_web_card_media_in_the_original')
@@ -2027,6 +2042,10 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def pdf_scroll_to_top_on_page_change(self) -> bool:
         return bool(self._pdf_scroll_to_top_on_page_change_cb.isChecked())
+
+    @property
+    def pdf_link_preview_zoom(self) -> float:
+        return normalize_pdf_link_preview_zoom(self._pdf_link_preview_zoom_spin.value() / 100)
 
     @property
     def pdf_default_appearance(self) -> str:

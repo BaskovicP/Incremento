@@ -2200,3 +2200,6 @@ msgstr "查看某一天"
 
 msgid "stats_learning_period"
 msgstr "学习趋势时间范围"
+
+msgid "settings_pdf_link_preview_zoom"
+msgstr "脚注预览缩放"

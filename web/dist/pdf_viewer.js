@@ -7052,7 +7052,7 @@
     if (width <= 0 || height <= 0) return null;
     return { left, top, width, height };
   }
-  async function destinationPage(pdfDocument, rawDestination) {
+  async function resolveDestination(pdfDocument, rawDestination) {
     if (!pdfDocument || rawDestination == null) return null;
     try {
       const destination = typeof rawDestination === "string" ? await pdfDocument.getDestination(rawDestination) : rawDestination;
@@ -7063,7 +7063,7 @@
       const totalPages = Number(pdfDocument.numPages || 0);
       if (!Number.isInteger(targetPage) || targetPage < 1) return null;
       if (totalPages > 0 && targetPage > totalPages) return null;
-      return targetPage;
+      return { targetPage, destination };
     } catch (_err) {
       return null;
     }
@@ -7083,11 +7083,11 @@
         ...rect
       };
     }
-    const targetPage = await destinationPage(pdfDocument, annotation == null ? void 0 : annotation.dest);
-    if (targetPage == null) return null;
+    const target = await resolveDestination(pdfDocument, annotation == null ? void 0 : annotation.dest);
+    if (!target) return null;
     return {
       kind: "internal",
-      targetPage,
+      ...target,
       label: String((annotation == null ? void 0 : annotation.title) || (annotation == null ? void 0 : annotation.contents) || "").slice(0, 240),
       ...rect
     };
@@ -7739,6 +7739,12 @@
   const reader_zoom_out$2 = "Zoom out";
   const reader_zoom_in$2 = "Zoom in";
   const reader_links_enable$2 = "Enable clickable links in this PDF";
+  const reader_link_preview$2 = "Footnote / link preview";
+  const reader_link_preview_zoom$2 = "Footnote preview zoom";
+  const reader_link_preview_loading$2 = "Loading preview…";
+  const reader_link_preview_unavailable$2 = "Preview unavailable for this link.";
+  const reader_link_preview_limit$2 = "This page is beyond your reading limit.";
+  const reader_link_preview_hint$2 = "Scroll to read more. Escape to close.";
   const reader_links_disable$2 = "Disable PDF links and restore uninterrupted text selection";
   const reader_jump_back_page$2 = "Jump back to page {page}";
   const reader_jump_back_hint$2 = "Follow an internal PDF link to enable Jump Back";
@@ -7915,6 +7921,12 @@
     reader_zoom_out: reader_zoom_out$2,
     reader_zoom_in: reader_zoom_in$2,
     reader_links_enable: reader_links_enable$2,
+    reader_link_preview: reader_link_preview$2,
+    reader_link_preview_zoom: reader_link_preview_zoom$2,
+    reader_link_preview_loading: reader_link_preview_loading$2,
+    reader_link_preview_unavailable: reader_link_preview_unavailable$2,
+    reader_link_preview_limit: reader_link_preview_limit$2,
+    reader_link_preview_hint: reader_link_preview_hint$2,
     reader_links_disable: reader_links_disable$2,
     reader_jump_back_page: reader_jump_back_page$2,
     reader_jump_back_hint: reader_jump_back_hint$2,
@@ -8092,6 +8104,12 @@
   const reader_zoom_out$1 = "Smanji prikaz";
   const reader_zoom_in$1 = "Povećaj prikaz";
   const reader_links_enable$1 = "Uključi poveznice u ovom PDF-u";
+  const reader_link_preview$1 = "Pregled fusnote / poveznice";
+  const reader_link_preview_zoom$1 = "Povećanje pregleda fusnote";
+  const reader_link_preview_loading$1 = "Učitavanje pregleda…";
+  const reader_link_preview_unavailable$1 = "Pregled ove poveznice nije dostupan.";
+  const reader_link_preview_limit$1 = "Ova je stranica izvan vašeg ograničenja čitanja.";
+  const reader_link_preview_hint$1 = "Pomičite za nastavak čitanja. Escape zatvara pregled.";
   const reader_links_disable$1 = "Isključi poveznice u PDF-u i vrati neprekinut odabir teksta";
   const reader_jump_back_page$1 = "Vrati se na stranicu {page}";
   const reader_jump_back_hint$1 = "Slijedi unutarnju poveznicu u PDF-u za povratak";
@@ -8270,6 +8288,12 @@
     reader_zoom_out: reader_zoom_out$1,
     reader_zoom_in: reader_zoom_in$1,
     reader_links_enable: reader_links_enable$1,
+    reader_link_preview: reader_link_preview$1,
+    reader_link_preview_zoom: reader_link_preview_zoom$1,
+    reader_link_preview_loading: reader_link_preview_loading$1,
+    reader_link_preview_unavailable: reader_link_preview_unavailable$1,
+    reader_link_preview_limit: reader_link_preview_limit$1,
+    reader_link_preview_hint: reader_link_preview_hint$1,
     reader_links_disable: reader_links_disable$1,
     reader_jump_back_page: reader_jump_back_page$1,
     reader_jump_back_hint: reader_jump_back_hint$1,
@@ -8446,6 +8470,12 @@
   const reader_zoom_out = "缩小";
   const reader_zoom_in = "放大";
   const reader_links_enable = "启用此 PDF 中的可点击链接";
+  const reader_link_preview = "脚注／链接预览";
+  const reader_link_preview_zoom = "脚注预览缩放";
+  const reader_link_preview_loading = "正在加载预览…";
+  const reader_link_preview_unavailable = "无法预览此链接。";
+  const reader_link_preview_limit = "此页超出了您的阅读限制。";
+  const reader_link_preview_hint = "滚动以阅读更多内容。按 Escape 关闭。";
   const reader_links_disable = "禁用 PDF 链接并恢复连续文本选择";
   const reader_jump_back_page = "返回第 {page} 页";
   const reader_jump_back_hint = "点击 PDF 内部链接后可使用返回跳转";
@@ -8620,6 +8650,12 @@
     reader_zoom_out,
     reader_zoom_in,
     reader_links_enable,
+    reader_link_preview,
+    reader_link_preview_zoom,
+    reader_link_preview_loading,
+    reader_link_preview_unavailable,
+    reader_link_preview_limit,
+    reader_link_preview_hint,
     reader_links_disable,
     reader_jump_back_page,
     reader_jump_back_hint,
@@ -9879,6 +9915,434 @@
       )
     ] });
   }
+  const DEFAULT_PDF_LINK_PREVIEW_ZOOM = 1.5;
+  const MAX_WIDTH = 4096;
+  const MAX_HEIGHT = 640;
+  const MAX_PIXELS = 4 * 1024 * 1024;
+  const CONTEXT = 24;
+  const CACHE_SIZE = 4;
+  function normalizePdfLinkPreviewZoom(raw) {
+    const value = typeof raw === "number" || typeof raw === "string" && raw.trim() ? Number(raw) : NaN;
+    return Number.isFinite(value) ? Math.round(Math.max(1, Math.min(4, value)) * 4) / 4 : DEFAULT_PDF_LINK_PREVIEW_ZOOM;
+  }
+  function pdfLinkAtPoint(links, x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return links.find((link) => link.kind === "internal" && x >= link.left && x <= link.left + link.width && y >= link.top && y <= link.top + link.height) || null;
+  }
+  function pdfPreviewRegion(page, destination, pixelRatio = 1, zoom = DEFAULT_PDF_LINK_PREVIEW_ZOOM) {
+    var _a;
+    const scale = normalizePdfLinkPreviewZoom(zoom);
+    const viewport = page.getViewport({ scale });
+    if (![viewport.width, viewport.height].every((value) => Number.isFinite(value) && value > 0)) return null;
+    const type = (_a = destination == null ? void 0 : destination[1]) == null ? void 0 : _a.name;
+    const rawX = type === "XYZ" || type === "FitR" || type === "FitV" || type === "FitBV" ? destination[2] : null;
+    const rawY = type === "XYZ" ? destination[3] : type === "FitH" || type === "FitBH" ? destination[2] : type === "FitR" ? destination[5] : null;
+    let x = 0, y = 0;
+    if (Number.isFinite(rawX) || Number.isFinite(rawY)) {
+      const view = page.view || [0, 0, viewport.width / scale, viewport.height / scale];
+      [x, y] = viewport.convertToViewportPoint(
+        Number.isFinite(rawX) ? rawX : view[0],
+        Number.isFinite(rawY) ? rawY : view[3]
+      );
+    }
+    const width = Math.min(MAX_WIDTH, Math.ceil(viewport.width));
+    const left = Math.max(0, Math.min(Number.isFinite(x) ? x - CONTEXT : 0, viewport.width - width));
+    const top = Math.max(0, Math.min(Number.isFinite(y) ? y - CONTEXT : 0, viewport.height - CONTEXT));
+    const height = Math.min(MAX_HEIGHT, Math.ceil(viewport.height - top));
+    return {
+      viewport,
+      left,
+      top,
+      width,
+      height,
+      scrollLeft: Math.max(0, x - left - CONTEXT),
+      pixelRatio: Math.max(1, Math.min(2, Number(pixelRatio) || 1, Math.sqrt((MAX_PIXELS - 16384) / (width * height))))
+    };
+  }
+  function previewText(content, region) {
+    var _a;
+    const text = [];
+    let length = 0;
+    for (const item of ((content == null ? void 0 : content.items) || []).slice(0, 2e4)) {
+      if (!item.str || !((_a = item.transform) == null ? void 0 : _a.slice(4, 6).every(Number.isFinite))) continue;
+      const [x, y] = region.viewport.convertToViewportPoint(item.transform[4], item.transform[5]);
+      if (x < region.left || x > region.left + region.width || y < region.top || y > region.top + region.height) continue;
+      text.push(String(item.str).slice(0, 6e3 - length));
+      length += String(item.str).length + 1;
+      if (length >= 6e3) break;
+    }
+    return text.join(" ");
+  }
+  function createPdfPreviewRenderer({ createCanvas, onChange, pixelRatio = 1, zoom: initialZoom }) {
+    let sequence = 0, task = null, document2 = null;
+    let zoom = normalizePdfLinkPreviewZoom(initialZoom), activeRequest = null;
+    const cache = /* @__PURE__ */ new Map();
+    const clear = () => {
+      ++sequence;
+      try {
+        task == null ? void 0 : task.cancel();
+      } catch (_) {
+      }
+      task = null;
+      activeRequest = null;
+      onChange(null);
+    };
+    const dispose = () => {
+      clear();
+      cache.clear();
+      document2 = null;
+    };
+    const renderer = {
+      clear,
+      dispose,
+      setZoom(value) {
+        const next = normalizePdfLinkPreviewZoom(value);
+        if (next === zoom) return;
+        zoom = next;
+        if (activeRequest) return renderer.show(...activeRequest);
+      },
+      async show(doc, link, anchor, maxPage = null) {
+        clear();
+        if (doc !== document2) {
+          cache.clear();
+          document2 = doc;
+        }
+        if (!doc || (link == null ? void 0 : link.kind) !== "internal" || !Number.isInteger(link.targetPage) || link.targetPage < 1 || link.targetPage > doc.numPages) return;
+        const current = sequence;
+        const state = { link, anchor };
+        activeRequest = [doc, link, anchor, maxPage];
+        if (maxPage != null && link.targetPage > maxPage) {
+          onChange({ ...state, status: "limited" });
+          return;
+        }
+        const key = JSON.stringify([link.targetPage, link.destination, zoom]);
+        if (cache.has(key)) {
+          onChange({ ...state, ...cache.get(key), status: "ready" });
+          return;
+        }
+        onChange({ ...state, status: "loading" });
+        try {
+          const page = await doc.getPage(link.targetPage);
+          if (current !== sequence) return;
+          const region = pdfPreviewRegion(page, link.destination, pixelRatio, zoom);
+          if (!region) throw new Error("Invalid preview region");
+          const canvas = createCanvas();
+          const dpr = region.pixelRatio;
+          canvas.width = Math.ceil(region.width * dpr);
+          canvas.height = Math.ceil(region.height * dpr);
+          const rendering = page.render({
+            canvasContext: canvas.getContext("2d"),
+            viewport: region.viewport,
+            transform: [dpr, 0, 0, dpr, (0 - region.left) * dpr, (0 - region.top) * dpr]
+          });
+          task = rendering;
+          const content = Promise.resolve().then(() => {
+            var _a;
+            return (_a = page.getTextContent) == null ? void 0 : _a.call(page);
+          }).catch(() => null);
+          await rendering.promise;
+          if (current !== sequence) return;
+          task = null;
+          const result = { canvas, region, text: "" };
+          cache.set(key, result);
+          if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value);
+          onChange({ ...state, ...result, status: "ready" });
+          const textContent = await content;
+          if (current !== sequence) return;
+          result.text = previewText(textContent, region);
+          onChange({ ...state, ...result, status: "ready" });
+        } catch (_) {
+          if (current === sequence) {
+            task = null;
+            onChange({ ...state, status: "unavailable" });
+          }
+        }
+      }
+    };
+    return renderer;
+  }
+  function attachPdfLinkPreview({ container: container2, popup, host, links, tlLeft, doc, preview, maxPage = null }) {
+    let active = null, dismissed = null, timer = null;
+    const cancelClose = () => {
+      if (timer != null) host.clearTimeout(timer);
+      timer = null;
+    };
+    const close = () => {
+      cancelClose();
+      active = null;
+      preview.clear();
+    };
+    const scheduleClose = () => {
+      if (timer == null) timer = host.setTimeout(close, 180);
+    };
+    const leave = () => {
+      dismissed = null;
+      scheduleClose();
+    };
+    const open = (link, x, y) => {
+      cancelClose();
+      if (dismissed && dismissed !== link) dismissed = null;
+      if (link === active || link === dismissed) return;
+      active = link;
+      void preview.show(doc, link, { x, y }, maxPage);
+    };
+    const move = (event) => {
+      if (event.buttons || event.pointerType === "touch") {
+        if (active) close();
+        return;
+      }
+      const rect = container2.getBoundingClientRect();
+      const link = pdfLinkAtPoint(links, event.clientX - rect.left - tlLeft, event.clientY - rect.top);
+      if (link) open(link, event.clientX, event.clientY);
+      else {
+        dismissed = null;
+        scheduleClose();
+      }
+    };
+    const focus = (event) => {
+      var _a, _b;
+      const target = (_b = (_a = event.target).closest) == null ? void 0 : _b.call(_a, "[data-pdf-link-index]");
+      const link = links[Number(target == null ? void 0 : target.dataset.pdfLinkIndex)];
+      if (!target || (link == null ? void 0 : link.kind) !== "internal") return;
+      const rect = target.getBoundingClientRect();
+      open(link, rect.left, rect.bottom);
+    };
+    const key = (event) => {
+      if (event.key === "Escape" && active) {
+        dismissed = active;
+        close();
+      }
+    };
+    const scroll = (event) => {
+      if (!popup.contains(event.target)) close();
+    };
+    const pointerDown = (event) => {
+      if (!popup.contains(event.target)) close();
+    };
+    const listeners = [
+      [container2, "pointermove", move],
+      [container2, "pointerleave", leave],
+      [container2, "focusin", focus],
+      [container2, "focusout", scheduleClose],
+      [popup, "pointerenter", cancelClose],
+      [popup, "pointerleave", scheduleClose],
+      [popup, "focusin", cancelClose],
+      [popup, "focusout", scheduleClose],
+      [host, "keydown", key],
+      [host, "scroll", scroll],
+      [host, "resize", close],
+      [host, "blur", close],
+      [host, "pointerdown", pointerDown]
+    ];
+    const capture = (name) => !["pointerenter", "pointerleave", "blur"].includes(name);
+    for (const [target, name, callback] of listeners) target.addEventListener(name, callback, capture(name));
+    return () => {
+      cancelClose();
+      for (const [target, name, callback] of listeners) target.removeEventListener(name, callback, capture(name));
+      close();
+    };
+  }
+  function PdfLinkPreview({
+    containerRef,
+    pdfDocRef,
+    links,
+    tlLeft,
+    sourcePage,
+    documentToken,
+    disabled,
+    maxPage,
+    pageLabels,
+    appearance,
+    tr,
+    zoom,
+    onZoom
+  }) {
+    var _a;
+    const [preview, setPreview] = reactExports.useState(null);
+    const popupRef = reactExports.useRef(null);
+    const contentRef = reactExports.useRef(null);
+    const rendererRef = reactExports.useRef(null);
+    const zoomRef = reactExports.useRef(zoom);
+    zoomRef.current = zoom;
+    reactExports.useEffect(() => {
+      const container2 = containerRef.current, popup = popupRef.current;
+      const doc = pdfDocRef.current;
+      if (!container2 || !popup || !doc || disabled || !links.length) return;
+      const renderer = createPdfPreviewRenderer({
+        createCanvas: () => document.createElement("canvas"),
+        onChange: setPreview,
+        pixelRatio: window.devicePixelRatio,
+        zoom: zoomRef.current
+      });
+      rendererRef.current = renderer;
+      const detach = attachPdfLinkPreview({
+        container: container2,
+        popup,
+        host: window,
+        links,
+        tlLeft,
+        doc,
+        preview: renderer,
+        maxPage
+      });
+      return () => {
+        detach();
+        renderer.dispose();
+        rendererRef.current = null;
+      };
+    }, [containerRef, pdfDocRef, links, tlLeft, sourcePage, documentToken, disabled, maxPage]);
+    reactExports.useEffect(() => {
+      var _a2;
+      void ((_a2 = rendererRef.current) == null ? void 0 : _a2.setZoom(zoom));
+    }, [zoom]);
+    const canvas = preview == null ? void 0 : preview.canvas;
+    reactExports.useEffect(() => {
+      if (!canvas || !contentRef.current) return;
+      canvas.style.width = preview.region.width + "px";
+      canvas.style.height = preview.region.height + "px";
+      contentRef.current.replaceChildren(canvas);
+      contentRef.current.scrollLeft = preview.region.scrollLeft;
+      contentRef.current.scrollTop = 0;
+    }, [canvas]);
+    reactExports.useEffect(() => {
+      if (!canvas) return;
+      canvas.setAttribute("role", "img");
+      canvas.setAttribute("aria-label", preview.text || tr("reader_link_preview"));
+      canvas.style.filter = appearance.filter;
+    }, [canvas, preview == null ? void 0 : preview.text, appearance.filter, tr]);
+    const width = Math.max(1, Math.min(560, window.innerWidth - 24));
+    const bodyHeight = Math.max(40, Math.min(260, window.innerHeight - 120));
+    const height = bodyHeight + 100;
+    const anchor = (preview == null ? void 0 : preview.anchor) || { x: 0, y: 0 };
+    const left = Math.max(12, Math.min(anchor.x - 24, window.innerWidth - width - 12));
+    const top = anchor.y + height + 20 < window.innerHeight ? anchor.y + 20 : Math.max(12, anchor.y - height - 20);
+    const targetPage = (_a = preview == null ? void 0 : preview.link) == null ? void 0 : _a.targetPage;
+    const pageLabel = (pageLabels == null ? void 0 : pageLabels[targetPage - 1]) || targetPage;
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "aside",
+      {
+        ref: popupRef,
+        id: "pdf-link-preview",
+        role: "dialog",
+        "aria-modal": "false",
+        "aria-label": tr("reader_link_preview"),
+        style: {
+          display: preview ? "flex" : "none",
+          flexDirection: "column",
+          position: "fixed",
+          left,
+          top,
+          width,
+          maxHeight: Math.max(40, window.innerHeight - top - 12),
+          zIndex: 180,
+          textAlign: "left",
+          background: "#252525",
+          color: "#f4f4f5",
+          border: "1px solid #777",
+          borderRadius: 8,
+          boxShadow: "0 8px 28px rgba(0,0,0,0.45)",
+          overflow: "hidden"
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", fontSize: 13 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { style: { flex: 1 }, children: tr("reader_link_preview") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: targetPage ? tr("reader_page_number", { page: pageLabel }) : "" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                "aria-label": tr("reader_close"),
+                onClick: () => {
+                  var _a2;
+                  return (_a2 = rendererRef.current) == null ? void 0 : _a2.clear();
+                },
+                style: { padding: "2px 7px" },
+                children: "×"
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+            position: "relative",
+            minHeight: 48,
+            height: bodyHeight,
+            flexShrink: 1,
+            background: appearance.background,
+            color: "#f4f4f5"
+          }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "div",
+              {
+                ref: contentRef,
+                tabIndex: (preview == null ? void 0 : preview.status) === "ready" ? 0 : -1,
+                "aria-label": tr("reader_link_preview"),
+                style: {
+                  height: "100%",
+                  overflow: "auto",
+                  overscrollBehavior: "contain",
+                  display: (preview == null ? void 0 : preview.status) === "ready" ? "block" : "none"
+                }
+              }
+            ),
+            preview && preview.status !== "ready" && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "div",
+              {
+                role: "status",
+                style: { padding: 16, background: "#252525", height: "100%", boxSizing: "border-box" },
+                children: tr(preview.status === "loading" ? "reader_link_preview_loading" : preview.status === "limited" ? "reader_link_preview_limit" : "reader_link_preview_unavailable")
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 10,
+            padding: "7px 12px",
+            fontSize: 11,
+            color: "#d4d4d8"
+          }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                role: "group",
+                "aria-label": tr("reader_link_preview_zoom"),
+                style: { display: "flex", alignItems: "center", gap: 7 },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      "aria-label": tr("reader_zoom_out"),
+                      disabled: zoom <= 1,
+                      onClick: () => onZoom(zoom - 0.25),
+                      style: { padding: "2px 8px" },
+                      children: "−"
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("output", { "aria-live": "polite", style: { minWidth: 36, textAlign: "center" }, children: [
+                    Math.round(zoom * 100),
+                    "%"
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      "aria-label": tr("reader_zoom_in"),
+                      disabled: zoom >= 4,
+                      onClick: () => onZoom(zoom + 0.25),
+                      style: { padding: "2px 8px" },
+                      children: "+"
+                    }
+                  )
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr("reader_link_preview_hint") })
+          ] })
+        ]
+      }
+    );
+  }
   const DEFAULT_MAX_LINK_HISTORY = 50;
   function normalizePdfLinkLocation(location) {
     const page = Number(location == null ? void 0 : location.page);
@@ -10383,6 +10847,13 @@
     const [showControlChooser, setShowControlChooser] = reactExports.useState(false);
     const [controlVisibility, setControlVisibility] = reactExports.useState(DEFAULT_CONTROL_VISIBILITY);
     const [clickableLinks, setClickableLinks] = reactExports.useState(false);
+    const [linkPreviewZoom, setLinkPreviewZoom] = reactExports.useState(DEFAULT_PDF_LINK_PREVIEW_ZOOM);
+    const applyLinkPreviewZoom = reactExports.useCallback((value) => {
+      const zoom2 = normalizePdfLinkPreviewZoom(value);
+      setLinkPreviewZoom(zoom2);
+      const cardId = Number(cardIdRef.current || 0);
+      if (cardId > 0) window.pycmd("incremento_pdf_link_preview_zoom:" + JSON.stringify({ cardId, zoom: zoom2 }));
+    }, [cardIdRef]);
     const [linkBackHistory, setLinkBackHistory] = reactExports.useState([]);
     const [linkBackScrollNonce, setLinkBackScrollNonce] = reactExports.useState(0);
     const [appearanceMode, setAppearanceMode] = reactExports.useState("original");
@@ -11388,7 +11859,7 @@
       rawSetReadProgress(currentPage, anchor);
     }, [buildReadAnchor, canMarkReadAtPage, clearReadAnchor, pageRef, rawSetReadProgress]);
     reactExports.useEffect(() => {
-      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null, startLocale = "en", startCustomLanguage = null, startAppearanceMode = "original", startShowHighlightDeleteButtons = true) => {
+      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null, startLocale = "en", startCustomLanguage = null, startAppearanceMode = "original", startShowHighlightDeleteButtons = true, startLinkPreviewZoom = DEFAULT_PDF_LINK_PREVIEW_ZOOM) => {
         contentsGenerationRef.current += 1;
         pendingContentsFractionRef.current = null;
         if (Number(cardIdRef.current || 0) !== Number(cardId || 0)) {
@@ -11399,6 +11870,7 @@
         document.documentElement.lang = nextLanguage.locale;
         setAppearanceMode(normalizePdfAppearanceMode(startAppearanceMode));
         setShowHighlightDeleteButtons(startShowHighlightDeleteButtons !== false);
+        setLinkPreviewZoom(normalizePdfLinkPreviewZoom(startLinkPreviewZoom));
         setLinkBackHistory([]);
         setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
         resizeHighlightRef.current = null;
@@ -11433,6 +11905,7 @@
       };
       window.incrementoPickPdfHighlightColor = finishHighlightColorPicker;
       window.incrementoPdfStart = startWithHighlights;
+      window.incrementoSetPdfLinkPreviewZoom = (value) => setLinkPreviewZoom(normalizePdfLinkPreviewZoom(value));
       window.incrementoPdfNav = limitAwareNav;
       window.incrementoPdfZoom = adjustZoom;
       window.incrementoPdfMarkRead = limitAwareMarkRead;
@@ -11503,12 +11976,14 @@
           pending.locale || "en",
           pending.customLanguage || null,
           pending.appearanceMode || "original",
-          pending.showHighlightDeleteButtons
+          pending.showHighlightDeleteButtons,
+          pending.linkPreviewZoom
         );
       }
       return () => {
         delete window.incrementoPickPdfHighlightColor;
         delete window.incrementoPdfStart;
+        delete window.incrementoSetPdfLinkPreviewZoom;
         delete window.incrementoPdfNav;
         delete window.incrementoPdfZoom;
         delete window.incrementoPdfMarkRead;
@@ -13004,6 +13479,24 @@
               children: hoveredHighlightNote.note
             }
           ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            PdfLinkPreview,
+            {
+              containerRef,
+              pdfDocRef,
+              links: linkAnnotations,
+              tlLeft: renderInfo.tlLeft,
+              sourcePage: page,
+              documentToken: contentsGenerationRef.current,
+              disabled: snapshotMode || !!resizingHighlightId,
+              maxPage: limitEnabled && limitMode !== "warning" && !overrideEnabled && allowedMaxPage != null ? Math.max(page, allowedMaxPage) : null,
+              pageLabels,
+              appearance: pageAppearance,
+              tr,
+              zoom: linkPreviewZoom,
+              onZoom: applyLinkPreviewZoom
+            }
+          ),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "div",
             {
@@ -13121,6 +13614,7 @@
                       "button",
                       {
                         type: "button",
+                        "data-pdf-link-index": index,
                         tabIndex: clickableLinks ? 0 : -1,
                         "aria-label": link.label || (link.kind === "external" ? tr("reader_open_external_link") : tr("reader_go_to_page", { page: link.targetPage })),
                         title: link.label || (link.kind === "external" ? link.url : tr("reader_go_to_page", { page: link.targetPage })),

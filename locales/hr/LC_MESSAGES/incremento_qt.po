@@ -2238,3 +2238,6 @@ msgstr "Pregledaj dan"
 
 msgid "stats_learning_period"
 msgstr "Razdoblje učenja"
+
+msgid "settings_pdf_link_preview_zoom"
+msgstr "Povećanje pregleda fusnote"

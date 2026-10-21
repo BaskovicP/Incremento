@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import math
 import re
 from dataclasses import dataclass
 from typing import Any, Mapping
@@ -251,6 +252,21 @@ def configured_pdf_default_appearance(
     return normalize_pdf_appearance_mode((config or {}).get("pdf_default_appearance"))
 
 
+def normalize_pdf_link_preview_zoom(raw: Any) -> float:
+    try:
+        zoom = float(raw) if not isinstance(raw, bool) else 1.5
+    except (TypeError, ValueError, OverflowError):
+        zoom = 1.5
+    if not math.isfinite(zoom):
+        zoom = 1.5
+    return math.floor(min(4.0, max(1.0, zoom)) * 4 + 0.5) / 4
+
+
+def configured_pdf_link_preview_zoom(config: Mapping[str, Any] | None, profile: str) -> float:
+    values = (config or {}).get("pdf_link_preview_zoom_by_profile")
+    return normalize_pdf_link_preview_zoom(values.get(profile) if isinstance(values, Mapping) else None)
+
+
 def configured_pdf_force_default_appearance(
     config: Mapping[str, Any] | None = None,
 ) -> bool:
@@ -306,6 +322,12 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
         config["learning_leech_tag"],
     ) = configured_learning_leech(config)
     config["pdf_default_appearance"] = configured_pdf_default_appearance(config)
+    preview_zooms = config.get("pdf_link_preview_zoom_by_profile")
+    config["pdf_link_preview_zoom_by_profile"] = {
+        profile: normalize_pdf_link_preview_zoom(value)
+        for profile, value in (preview_zooms.items() if isinstance(preview_zooms, Mapping) else [])
+        if isinstance(profile, str) and profile and len(profile) <= 255
+    }
     config["pdf_citation_page_numbering"] = configured_pdf_citation_page_numbering(config)
     config["pdf_force_default_appearance"] = configured_pdf_force_default_appearance(config)
     config["pdf_snapshot_auto_field_enabled"] = (

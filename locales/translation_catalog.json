@@ -28627,6 +28627,14 @@
     },
     {
       "component": "addon",
+      "key": "settings_pdf_link_preview_zoom",
+      "form": "",
+      "source": "Footnote preview zoom",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "settings_pdf_pages",
       "form": "",
       "source": "PDF pages",
@@ -36317,6 +36325,54 @@
       "key": "reader_limit_warning",
       "form": "",
       "source": "Warning",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_link_preview",
+      "form": "",
+      "source": "Footnote / link preview",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_link_preview_hint",
+      "form": "",
+      "source": "Scroll to read more. Escape to close.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_link_preview_limit",
+      "form": "",
+      "source": "This page is beyond your reading limit.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_link_preview_loading",
+      "form": "",
+      "source": "Loading preview…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_link_preview_unavailable",
+      "form": "",
+      "source": "Preview unavailable for this link.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_link_preview_zoom",
+      "form": "",
+      "source": "Footnote preview zoom",
       "tokens": [],
       "markup": []
     },

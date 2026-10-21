@@ -443,6 +443,25 @@ def test_pdf_appearance_bridge_saves_only_for_current_card(monkeypatch):
     assert saved == [(pdf_dock._ADDON_DIR, "TestProfile", 42, "dark")]
 
 
+def test_pdf_link_preview_zoom_bridge_persists_only_current_profile_and_card(monkeypatch):
+    from copy import deepcopy
+    config = {"pdf_link_preview_zoom_by_profile": {"Other profile": 1.75}, "future_key": True}
+    saved = []
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
+    monkeypatch.setattr(pdf_dock, "_config", lambda config=None: deepcopy(configured))
+    configured = config
+    monkeypatch.setattr(pdf_dock, "save_addon_config", lambda manager, package, value: saved.append(deepcopy(value)))
+    for payload in [{"cardId": 99, "zoom": 2.5}, {"cardId": 42, "zoom": None},
+                    {"cardId": 42, "zoom": True}, {"cardId": 42, "zoom": 99},
+                    {"cardId": 42, "zoom": "2.5"}, {"cardId": 42, "zoom": float("nan")},
+                    {"cardId": 42, "zoom": 2.5}]:
+        pdf_dock._handle_pdf_js_message("incremento_pdf_link_preview_zoom:" + json.dumps(payload))
+    assert saved == [{"pdf_link_preview_zoom_by_profile": {"Other profile": 1.75, "TestProfile": 2.5},
+                      "future_key": True}]
+    assert config == {"pdf_link_preview_zoom_by_profile": {"Other profile": 1.75}, "future_key": True}
+
+
 def test_pdf_request_boundary_allows_only_viewer_assets_and_active_pdf(tmp_path):
     viewer_root = tmp_path / "web"
     viewer_root.mkdir()
@@ -1818,6 +1837,7 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     monkeypatch.setattr(pdf_dock, "get_pdf_appearance_mode", lambda *args, **kwargs: "night")
     monkeypatch.setattr(pdf_dock, "configured_highlight_when_extracting", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "configured_pdf_show_highlight_delete_buttons", lambda *args, **kwargs: False)
+    monkeypatch.setattr(pdf_dock, "configured_pdf_link_preview_zoom", lambda *args, **kwargs: 2.5)
     monkeypatch.setattr(pdf_dock, "configured_scroll_to_top_on_page_change", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "_consume_due_review_prompt_suppression", lambda card_id: False)
     monkeypatch.setattr(pdf_dock, "_show_missing_pdf_screen", lambda filename: events.append(("missing", filename)))
@@ -1878,10 +1898,11 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     assert "scrollToReadAnchor: false" in js_calls[0]
     assert "scrollToTopOnPageChange: false" in js_calls[0]
     assert "showHighlightDeleteButtons: false" in js_calls[0]
+    assert "linkPreviewZoom: 2.5" in js_calls[0]
     assert f'locale: {json.dumps(reader_locale)}' in js_calls[0]
     assert f'customLanguage: {json.dumps(custom_language)}' in js_calls[0]
     assert (
-        f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}, "night", false));'
+        f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}, "night", false, 2.5));'
         in js_calls[0]
     )
     assert 'appearanceMode: "night"' in js_calls[0]

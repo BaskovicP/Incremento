@@ -344,6 +344,7 @@ _EVENT_SCHEMAS: dict[str, dict[str, str]] = {
 }
 
 _KNOWN_CONFIG_KEYS = {
+    "pdf_link_preview_zoom_by_profile",
     "companion_browser",
     "ui_language",
     "add_card_item_tags",
@@ -573,6 +574,7 @@ _SENSITIVE_COLLECTION_KEYS = {
     "topic_card_tags",
 }
 _ALWAYS_REDACT_CONFIG_KEYS = {
+    "pdf_link_preview_zoom_by_profile",
     # Keep credentials private even if a future config migration changes the
     # stored type from text to a number or another JSON value.
     "pin_hash",

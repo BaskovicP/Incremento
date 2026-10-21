@@ -87,6 +87,8 @@ try:
     from ..backend.content_safety import external_plain_text_to_anki_html
     from ..backend.config_service import (
         configured_pdf_default_appearance as _configured_pdf_default_appearance,
+        configured_pdf_link_preview_zoom as _configured_pdf_link_preview_zoom,
+        normalize_pdf_link_preview_zoom,
         configured_pdf_context_rows as _configured_pdf_context_rows,
         configured_pdf_citation_page_numbering as _configured_pdf_citation_page_numbering,
         configured_pdf_force_default_appearance as _configured_pdf_force_default_appearance,
@@ -109,6 +111,8 @@ except ImportError:
     from content_safety import external_plain_text_to_anki_html  # type: ignore
     from config_service import (  # type: ignore
         configured_pdf_default_appearance as _configured_pdf_default_appearance,
+        configured_pdf_link_preview_zoom as _configured_pdf_link_preview_zoom,
+        normalize_pdf_link_preview_zoom,
         configured_pdf_context_rows as _configured_pdf_context_rows,
         configured_pdf_citation_page_numbering as _configured_pdf_citation_page_numbering,
         configured_pdf_force_default_appearance as _configured_pdf_force_default_appearance,
@@ -479,6 +483,10 @@ def configured_scroll_to_top_on_page_change(config: dict | None = None) -> bool:
 
 def configured_pdf_default_appearance(config: dict | None = None) -> str:
     return _configured_pdf_default_appearance(_config(config))
+
+
+def configured_pdf_link_preview_zoom(config: dict | None = None, profile: str | None = None) -> float:
+    return _configured_pdf_link_preview_zoom(_config(config), profile if profile is not None else _active_profile())
 
 
 def configured_pdf_force_default_appearance(config: dict | None = None) -> bool:
@@ -1601,6 +1609,7 @@ _MSG_NAV = "incremento_pdf_nav:"
 _MSG_ZOOM = "incremento_pdf_zoom:"
 _MSG_SCROLL = "incremento_pdf_scroll:"
 _MSG_APPEARANCE = "incremento_pdf_appearance:"
+_MSG_LINK_PREVIEW_ZOOM = "incremento_pdf_link_preview_zoom:"
 _MSG_PAGE_LABELS = "incremento_pdf_page_labels:"
 _MSG_HL_ADD = "incremento_pdf_hl_add:"
 _MSG_HL_UPDATE = "incremento_pdf_hl_update:"
@@ -2764,6 +2773,22 @@ def _handle_pdf_js_message(msg: str) -> None:
                 )
         except Exception:
             pass
+    elif msg.startswith(_MSG_LINK_PREVIEW_ZOOM):
+        try:
+            payload = json.loads(msg[len(_MSG_LINK_PREVIEW_ZOOM):])
+            cid = payload.get("cardId")
+            zoom = payload.get("zoom")
+            if (type(cid) is not int or cid <= 0 or cid != current_pdf_card_id()
+                    or type(zoom) not in (int, float) or not 1 <= zoom <= 4):
+                return
+            profile = _active_profile()
+            cfg = dict(_config())
+            values = dict(cfg.get("pdf_link_preview_zoom_by_profile") or {})
+            values[profile] = normalize_pdf_link_preview_zoom(zoom)
+            cfg["pdf_link_preview_zoom_by_profile"] = values
+            save_addon_config(mw.addonManager, _ADDON_PKG, cfg)
+        except (AttributeError, TypeError, ValueError, RuntimeError, OSError):
+            pass
     elif msg.startswith(_MSG_APPEARANCE):
         try:
             payload = json.loads(msg[len(_MSG_APPEARANCE) :])
@@ -3831,10 +3856,10 @@ def show_pdf_in_dock(
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._pdfNativeHighlightsVisible = {json.dumps(bool((_annotation_result or {}).get('native_highlights_visible')))};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)}, locale: {json.dumps(reader_locale)}, customLanguage: {json.dumps(custom_reader_language)}, appearanceMode: {json.dumps(appearance_mode)}, showHighlightDeleteButtons: {json.dumps(configured_pdf_show_highlight_delete_buttons())} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)}, locale: {json.dumps(reader_locale)}, customLanguage: {json.dumps(custom_reader_language)}, appearanceMode: {json.dumps(appearance_mode)}, showHighlightDeleteButtons: {json.dumps(configured_pdf_show_highlight_delete_buttons())}, linkPreviewZoom: {json.dumps(configured_pdf_link_preview_zoom())} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}, {json.dumps(reader_locale)}, {json.dumps(custom_reader_language)}, {json.dumps(appearance_mode)}, {json.dumps(configured_pdf_show_highlight_delete_buttons())}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}, {json.dumps(reader_locale)}, {json.dumps(custom_reader_language)}, {json.dumps(appearance_mode)}, {json.dumps(configured_pdf_show_highlight_delete_buttons())}, {json.dumps(configured_pdf_link_preview_zoom())}));"
     )
 
     current = _pdf_dock._view.url().toString()

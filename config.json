@@ -13,6 +13,7 @@
         "web": true
     },
     "pdf_link_hover_preview_enabled": true,
+    "pdf_link_preview_zoom_by_profile": {},
     "pdf_context_rows": 5,
     "pdf_citation_page_numbering": "printed",
     "extract_notetype": "",

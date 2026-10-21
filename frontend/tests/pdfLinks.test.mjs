@@ -85,7 +85,19 @@ test('named and direct PDF destinations resolve to one-based pages', async () =>
 
   assert.equal(named.kind, 'internal');
   assert.equal(named.targetPage, 5);
+  assert.deepEqual(named.destination, [{ num: 9, gen: 0 }, { name: 'XYZ' }]);
   assert.equal(direct.targetPage, 3);
+});
+
+test('footnote links keep exact named destination coordinates for a preview on the same page', async () => {
+  const destination = [0, { name: 'XYZ' }, 42, 120, null];
+  const link = await resolvePdfAnnotationLink(
+    { subtype: 'Link', rect: [10, 20, 15, 30], dest: 'footnote-1' },
+    { numPages: 1, getDestination: async () => destination },
+    { convertToViewportRectangle: rect => rect },
+  );
+  assert.equal(link.targetPage, 1);
+  assert.deepEqual(link.destination, destination);
 });
 
 

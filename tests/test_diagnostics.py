@@ -511,6 +511,17 @@ def test_automatic_backup_destinations_and_profile_names_are_redacted():
     }
 
 
+def test_pdf_link_preview_zoom_preferences_never_export_profile_names():
+    sanitized = diagnostics.sanitize_config(
+        {"pdf_link_preview_zoom_by_profile": {"Private Study Profile": 2.5, "companion_browser": 3.0}},
+        {"pdf_link_preview_zoom_by_profile": {}},
+    )
+    assert "Private Study Profile" not in json.dumps(sanitized)
+    assert sanitized["settings"]["pdf_link_preview_zoom_by_profile"] == {
+        "redacted": True, "kind": "private_value", "count": 2,
+    }
+
+
 def test_reviewer_badge_visibility_is_exported_without_unknown_nested_values() -> None:
     assert "reviewer_priority_badge_card_types" in diagnostics._KNOWN_CONFIG_KEYS
     defaults = {

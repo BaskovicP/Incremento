@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePdfRender } from './usePdfRender.js';
 import HighlightLayer, { isResizableTextHighlight } from './HighlightLayer.jsx';
 import PdfSelectionLayer from './PdfSelectionLayer.jsx';
+import PdfLinkPreview from './PdfLinkPreview.jsx';
+import {DEFAULT_PDF_LINK_PREVIEW_ZOOM, normalizePdfLinkPreviewZoom} from './pdfLinkPreview.mjs';
 import { normalizePdfHighlightRects, pdfHighlightAtClientPoint } from './pdfHighlightRects.mjs';
 import { HL_COLORS, HL_SOLID, highlightSolidColor, normalizeHighlightColor } from './highlightColors.mjs';
 import { pushPdfLinkHistory, takePdfLinkHistory } from './pdfLinkHistory.mjs';
@@ -494,6 +496,13 @@ export default function PdfViewer() {
   const [showControlChooser, setShowControlChooser] = useState(false);
   const [controlVisibility, setControlVisibility] = useState(DEFAULT_CONTROL_VISIBILITY);
   const [clickableLinks, setClickableLinks] = useState(false);
+  const [linkPreviewZoom, setLinkPreviewZoom] = useState(DEFAULT_PDF_LINK_PREVIEW_ZOOM);
+  const applyLinkPreviewZoom = useCallback((value) => {
+    const zoom = normalizePdfLinkPreviewZoom(value);
+    setLinkPreviewZoom(zoom);
+    const cardId = Number(cardIdRef.current || 0);
+    if (cardId > 0) window.pycmd('incremento_pdf_link_preview_zoom:' + JSON.stringify({cardId, zoom}));
+  }, [cardIdRef]);
   const [linkBackHistory, setLinkBackHistory] = useState([]);
   const [linkBackScrollNonce, setLinkBackScrollNonce] = useState(0);
   const [appearanceMode, setAppearanceMode] = useState('original');
@@ -1650,6 +1659,7 @@ export default function PdfViewer() {
       startCustomLanguage = null,
       startAppearanceMode = 'original',
       startShowHighlightDeleteButtons = true,
+      startLinkPreviewZoom = DEFAULT_PDF_LINK_PREVIEW_ZOOM,
     ) => {
       contentsGenerationRef.current += 1;
       pendingContentsFractionRef.current = null;
@@ -1661,6 +1671,7 @@ export default function PdfViewer() {
       document.documentElement.lang = nextLanguage.locale;
       setAppearanceMode(normalizePdfAppearanceMode(startAppearanceMode));
       setShowHighlightDeleteButtons(startShowHighlightDeleteButtons !== false);
+      setLinkPreviewZoom(normalizePdfLinkPreviewZoom(startLinkPreviewZoom));
       setLinkBackHistory([]);
       setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
       resizeHighlightRef.current = null;
@@ -1696,6 +1707,7 @@ export default function PdfViewer() {
 
     window.incrementoPickPdfHighlightColor = finishHighlightColorPicker;
     window.incrementoPdfStart = startWithHighlights;
+    window.incrementoSetPdfLinkPreviewZoom = value => setLinkPreviewZoom(normalizePdfLinkPreviewZoom(value));
     window.incrementoPdfNav   = limitAwareNav;
     window.incrementoPdfZoom  = adjustZoom;
     window.incrementoPdfMarkRead = limitAwareMarkRead;
@@ -1769,11 +1781,13 @@ export default function PdfViewer() {
         pending.customLanguage || null,
         pending.appearanceMode || 'original',
         pending.showHighlightDeleteButtons,
+        pending.linkPreviewZoom,
       );
     }
     return () => {
       delete window.incrementoPickPdfHighlightColor;
       delete window.incrementoPdfStart;
+      delete window.incrementoSetPdfLinkPreviewZoom;
       delete window.incrementoPdfNav;
       delete window.incrementoPdfZoom;
       delete window.incrementoPdfMarkRead;
@@ -3172,6 +3186,14 @@ export default function PdfViewer() {
         </div>
       )}
 
+      <PdfLinkPreview containerRef={containerRef} pdfDocRef={pdfDocRef}
+        links={linkAnnotations} tlLeft={renderInfo.tlLeft} sourcePage={page}
+        documentToken={contentsGenerationRef.current} disabled={snapshotMode || !!resizingHighlightId}
+        maxPage={limitEnabled && limitMode !== 'warning' && !overrideEnabled && allowedMaxPage != null
+          ? Math.max(page, allowedMaxPage) : null}
+        pageLabels={pageLabels} appearance={pageAppearance} tr={tr}
+        zoom={linkPreviewZoom} onZoom={applyLinkPreviewZoom} />
+
       {/* Canvas wrapper */}
       <div
         id="pdf-canvas-wrapper"
@@ -3268,6 +3290,7 @@ export default function PdfViewer() {
             <button
               key={`${link.kind}-${link.url || link.targetPage || ''}-${index}`}
               type="button"
+              data-pdf-link-index={index}
               tabIndex={clickableLinks ? 0 : -1}
               aria-label={link.label || (link.kind === 'external' ? tr('reader_open_external_link') : tr('reader_go_to_page', { page: link.targetPage }))}
               title={link.label || (link.kind === 'external' ? link.url : tr('reader_go_to_page', { page: link.targetPage }))}

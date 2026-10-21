@@ -39,7 +39,7 @@ function viewportRect(annotation, viewport) {
 }
 
 
-async function destinationPage(pdfDocument, rawDestination) {
+async function resolveDestination(pdfDocument, rawDestination) {
   if (!pdfDocument || rawDestination == null) return null;
   try {
     const destination = typeof rawDestination === 'string'
@@ -54,7 +54,7 @@ async function destinationPage(pdfDocument, rawDestination) {
     const totalPages = Number(pdfDocument.numPages || 0);
     if (!Number.isInteger(targetPage) || targetPage < 1) return null;
     if (totalPages > 0 && targetPage > totalPages) return null;
-    return targetPage;
+    return { targetPage, destination };
   } catch (_err) {
     return null;
   }
@@ -80,11 +80,11 @@ export async function resolvePdfAnnotationLink(annotation, pdfDocument, viewport
     };
   }
 
-  const targetPage = await destinationPage(pdfDocument, annotation?.dest);
-  if (targetPage == null) return null;
+  const target = await resolveDestination(pdfDocument, annotation?.dest);
+  if (!target) return null;
   return {
     kind: 'internal',
-    targetPage,
+    ...target,
     label: String(annotation?.title || annotation?.contents || '').slice(0, 240),
     ...rect,
   };

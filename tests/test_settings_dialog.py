@@ -1144,6 +1144,22 @@ class TestIncrementoSettingsDialogPdfAppearance:
         ) in source
 
 
+class TestPdfLinkPreviewZoom:
+    def test_pdf_link_preview_zoom_restores_and_edits_the_profile_preference(self):
+        assert IncrementoSettingsDialog({}).pdf_link_preview_zoom == 1.5
+        dialog = IncrementoSettingsDialog({}, current_pdf_link_preview_zoom=2.5)
+        assert dialog.pdf_link_preview_zoom == 2.5
+        dialog._pdf_link_preview_zoom_spin.setValue(200)
+        assert dialog.pdf_link_preview_zoom == 2.0
+
+    def test_pdf_link_preview_zoom_settings_load_save_and_live_reader_update_are_wired(self):
+        from pathlib import Path
+        source = (Path(__file__).resolve().parents[1] / "__init__.py").read_text()
+        assert "current_pdf_link_preview_zoom=_pdf_dock_mod.configured_pdf_link_preview_zoom(cfg, settings_profile)" in source
+        assert 'cfg["pdf_link_preview_zoom_by_profile"][settings_profile] = dlg.pdf_link_preview_zoom' in source
+        assert "window.incrementoSetPdfLinkPreviewZoom" in source
+
+
 class TestIncrementoSettingsDialogTopicsDeckCreation:
     def test_topics_deck_creation_defaults_enabled_for_all_profiles(self):
         dialog = IncrementoSettingsDialog({})

@@ -6955,6 +6955,7 @@ def openSettingsFunction() -> None:
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
         current_pdf_scroll_to_top_on_page_change=_pdf_dock_mod.configured_scroll_to_top_on_page_change(cfg),
         current_pdf_default_appearance=_pdf_dock_mod.configured_pdf_default_appearance(cfg),
+        current_pdf_link_preview_zoom=_pdf_dock_mod.configured_pdf_link_preview_zoom(cfg, settings_profile),
         current_pdf_force_default_appearance=_pdf_dock_mod.configured_pdf_force_default_appearance(cfg),
         current_prefer_web_card_resume_in_original_page=configured_prefer_web_card_resume_in_original_page(cfg),
         current_track_web_window_with_extension=configured_track_web_window_with_extension(cfg),
@@ -7038,6 +7039,7 @@ def openSettingsFunction() -> None:
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
     cfg["pdf_scroll_to_top_on_page_change"] = dlg.pdf_scroll_to_top_on_page_change
     cfg["pdf_default_appearance"] = dlg.pdf_default_appearance
+    cfg["pdf_link_preview_zoom_by_profile"][settings_profile] = dlg.pdf_link_preview_zoom
     cfg["pdf_force_default_appearance"] = dlg.pdf_force_default_appearance
     cfg["prefer_web_card_resume_in_original_page"] = dlg.prefer_web_card_resume_in_original_page
     cfg["track_web_window_with_extension"] = dlg.track_web_window_with_extension
@@ -7129,6 +7131,13 @@ def openSettingsFunction() -> None:
         _pdf_dock_mod._pdf_dock._view.page().runJavaScript(
             "window.incrementoSetPdfAppearanceMode && "
             f"window.incrementoSetPdfAppearanceMode({json.dumps(resolved_pdf_appearance)});"
+        )
+    except Exception:
+        pass
+    try:
+        _pdf_dock_mod._pdf_dock._view.page().runJavaScript(
+            "window.incrementoSetPdfLinkPreviewZoom && "
+            f"window.incrementoSetPdfLinkPreviewZoom({json.dumps(dlg.pdf_link_preview_zoom)});"
         )
     except Exception:
         pass

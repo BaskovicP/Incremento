@@ -33,6 +33,7 @@ function viewer() {
     'activeCvsRef', 'cardIdRef', 'pageRef', 'lastScaleRef']) renderState[key] = { current: null };
   renderState.cardIdRef.current = 42;
   const HighlightLayer = () => null;
+  const PdfLinkPreview = () => null;
   const module = { exports: {} };
   vm.runInNewContext(code, {
     module, exports: module.exports,
@@ -44,6 +45,7 @@ function viewer() {
       './usePdfRender.js': { usePdfRender: () => renderState },
       './HighlightLayer.jsx': { __esModule: true, default: HighlightLayer },
       './PdfSelectionLayer.jsx': { __esModule: true, default: () => null },
+      './PdfLinkPreview.jsx': { __esModule: true, default: PdfLinkPreview },
     })[specifier],
   });
   function elements(node) {
@@ -59,8 +61,17 @@ function viewer() {
   const button = (nodes, text) => nodes.find(node => node.type === 'button' && (
     node.props.children === text || node.props.title === text
   ));
-  return { render, layer, button, commands, renderState };
+  return { render, layer, button, commands, renderState,
+    preview: nodes => nodes.find(node => node.type === PdfLinkPreview) };
 }
+
+test('changing footnote preview zoom updates the open preview and persists only that preference for the active card', () => {
+  const {render, preview, commands} = viewer();
+  assert.equal(preview(render()).props.zoom, 1.5);
+  preview(render()).props.onZoom(2.5);
+  assert.equal(preview(render()).props.zoom, 2.5);
+  assert.deepEqual(commands, ['incremento_pdf_link_preview_zoom:{"cardId":42,"zoom":2.5}']);
+});
 
 test('the Highlights panel hides controls across pages and restores them without writing annotations', () => {
   const { render, layer, button, commands, renderState } = viewer();
