@@ -35,8 +35,10 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QUrl
 try:
     from .file_shell import open_companion_url
+    from .selection_search import install_selection_search_menu
 except ImportError:
     from file_shell import open_companion_url
+    from frontend.selection_search import install_selection_search_menu
 
 try:
     from ..backend.i18n import get_locale, t as _tr, tn
@@ -281,6 +283,7 @@ def _build_video_dock():
     media_stack.setContentsMargins(0, 0, 0, 0)
 
     view = QWebEngineView(media_host)
+    install_selection_search_menu(view)
 
     # Module-level profile with no parent — avoids use-after-free segfault on exit
     # that occurs when the profile is parented to the view and both get destroyed.

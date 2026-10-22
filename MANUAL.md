@@ -567,6 +567,7 @@ Main controls include:
 - **PDF appearance** with **Original**, neutral **Dark**, and warmer low-glare **Night** page modes; each PDF remembers its own choice, and the display filter does not alter the source PDF or snapshots
 - highlight color selection
 - **Add Card**
+- **Open All in Browser** to show the PDF's linked cards in Anki Browser, sorted by creation date with the oldest first
 - **Review Due** for due extracted cards near the current reading point
 - **Review All** for every available card linked to this PDF
 - **Links Off / On** to make PDF links clickable while you want them
@@ -595,9 +596,13 @@ The same picker includes **Saved places**, using the document's existing bookmar
 
 To create a reusable return point, right-click the PDF page and choose **Copy Link to This Place**. Paste normally into an Anki card field: it appears as a clickable citation that reopens the same PDF page at the clicked vertical position. The citation and its plain-text fallback use the PDF's printed page label when available (for example, **Page v** for physical PDF page 7); without a label, they use the physical PDF page number. The link always navigates by the physical PDF page number. Incremento preserves this rich link even when Anki's **Paste strips formatting** preference is enabled. The ordinary Copy and other standard right-click actions remain available. Visiting this anchor does not replace the PDF's saved reading position. A plain-text title is also placed on the clipboard for apps that do not accept rich HTML.
 
+To copy a clean embedded picture, right-click it and choose **Copy Embedded Image**. The action becomes available after a background check. Paste into an Anki field or another image-capable app to get the bitmap at its embedded pixel dimensions, including transparency, without page text, highlights, or Dark/Night display filters. Zoom does not affect the copied image. The action stays disabled when there is no bitmap under the pointer; hover over it for the reason. Vector drawings, figures assembled from several separate objects, and regions of scanned pages can still be captured with **Snapshot**. On a scanned page, the embedded picture may be the entire page. Copying requires PyMuPDF, available through **Incremento → Utils → Check Dependencies…**. Images above 16 million pixels, pages with more than 32 million embedded pixels or 2,048 image placements, PDFs above 512 MiB, and encoded images above 32 MiB are not copied.
+
 During review, newer extracted PDF text keeps the card template's normal color and retains source bold and italics when the PDF exposes that font information. A visible **Source page preview** control appears beneath the text and citation. Press it to reveal a cropped image of the real PDF page with the source passage highlighted yellow; press it again to hide the image. For a selection spanning multiple rows, the crop covers the entire selection plus five PDF text rows before its first row and five after its last by default; change both sides together under **Settings → Extraction → PDF context rows before and after**. Matching tolerates PDF line wrapping, typographic punctuation, compatibility ligatures, and small OCR differences. Older citations without a saved screenshot retain the indexed-text hover fallback until you run the Utils action. Disable that legacy page-link popup under **Settings → Extraction → Show PDF context when hovering page links**.
 
 New PDF text and highlight extractions store the cropped screenshot in Anki media and add a closed **Source page preview** control below the citation in Add Card and during desktop and mobile review. The image and saved card HTML sync normally. If the screenshot cannot be created or saved, the same control shows surrounding indexed PDF text when the extracted passage can be matched; this saved text also syncs normally. Previously saved hover or always-visible previews also gain the control during desktop review without rewriting notes; rerun the Utils action to save that layout to the cards for mobile sync. If neither the screenshot nor matching indexed text is available, Incremento keeps the ordinary citation instead of attaching unrelated context.
+
+In Add Card and note editors, click the empty line below **Source page preview** to keep writing. The preview button stays clickable and is protected from text editing, so Enter creates normal text paragraphs. Older preview controls receive the same protection when opened in an editor.
 
 Incremento remembers:
 
@@ -894,6 +899,12 @@ Managed-copy local files live under `user_files/<ProfileName>/files/`. Reference
 ---
 
 ## 9. Search and Navigation Tools
+
+### Search selected text with Google
+
+Select text in an Anki card or editor, a PDF/EPUB reader, a web/video reader, or the Writing editor/preview. Right-click and choose **Search Google** to see results in a small, resizable window while keeping your reader open. Standard Copy and reader context-menu actions remain available. The search uses up to the first 1,000 characters of the selection and sends them to Google only when you choose the action.
+
+Use **Back** to return from a result, **Open in Browser** to continue in your selected Companion browser, or **Close** (Escape) to return to studying. If Google cannot load in the popup, use **Open in Browser**. The popup uses temporary browser storage and closes when you leave the Anki profile.
 
 ### Search ALL
 

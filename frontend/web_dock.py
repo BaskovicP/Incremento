@@ -59,8 +59,10 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 
 try:
     from .file_shell import open_companion_url
+    from .selection_search import install_selection_search_menu
 except ImportError:
     from file_shell import open_companion_url
+    from frontend.selection_search import install_selection_search_menu
 
 try:
     from ..backend.i18n import get_locale, t, tn
@@ -1112,6 +1114,7 @@ class _WebDockController:
         vbox.setSpacing(0)
 
         view = QWebEngineView(container)
+        install_selection_search_menu(view)
 
         if self.runtime.profile is None:
             self.runtime.profile = _WEProf("incremento_web")

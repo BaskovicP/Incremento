@@ -7499,6 +7499,8 @@
         backCvs.style.height = viewport.height + "px";
         pg.render({ canvasContext: backCvs.getContext("2d"), viewport, transform: [dpr, 0, 0, dpr, 0, 0] }).promise.then(() => {
           if (renderSequence !== renderSequenceRef.current) return;
+          backCvs.dataset.pdfCard = String(cardIdRef.current);
+          backCvs.dataset.pdfPage = String(num);
           backCvs.style.display = "block";
           if (frontCvs) frontCvs.style.display = "none";
           activeCvsRef.current = backId;
@@ -10406,6 +10408,14 @@
     const targetOffset = Math.max(0, Math.min(pointOffset - preferredOffset, maxOffset));
     return targetOffset / maxOffset;
   }
+  function pdfImagePoint(clientX, clientY, rect) {
+    if (!rect) return null;
+    const { left, top, width, height } = rect;
+    if (![clientX, clientY, left, top, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
+    const x = (clientX - left) / width;
+    const y = (clientY - top) / height;
+    return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null;
+  }
   const PDF_APPEARANCE_MODES = Object.freeze(["original", "dark", "night"]);
   const PAGE_APPEARANCE = Object.freeze({
     original: Object.freeze({
@@ -10772,6 +10782,7 @@
       containerRef,
       textLayerRef,
       pdfDocRef,
+      busyRef,
       activeCvsRef,
       cardIdRef,
       pageRef,
@@ -11662,6 +11673,17 @@
       const scrollRatio = !metrics || metrics.maxOffset <= 0 ? 0 : clampScrollRatio((window.scrollY - metrics.pageTop) / metrics.maxOffset);
       return { page: currentPage, scrollRatio };
     }, [containerRef, pageRef]);
+    reactExports.useEffect(() => {
+      window.incrementoPdfImagePointAtPoint = (x, y) => {
+        if (!pdfDocRef.current || busyRef.current) return null;
+        const canvas = activeCvsRef.current === "a" ? canvasARef.current : canvasBRef.current;
+        if (!canvas || Number(canvas.dataset.pdfCard) !== cardIdRef.current || Number(canvas.dataset.pdfPage) !== pageRef.current) return null;
+        return pdfImagePoint(x, y, canvas.getBoundingClientRect());
+      };
+      return () => {
+        delete window.incrementoPdfImagePointAtPoint;
+      };
+    }, [activeCvsRef, busyRef, canvasARef, canvasBRef, cardIdRef, pageRef, pdfDocRef]);
     reactExports.useEffect(() => {
       window.incrementoPdfAnchorAtPoint = (clientX, clientY) => {
         const wrapper = containerRef.current;

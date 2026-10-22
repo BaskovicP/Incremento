@@ -9,6 +9,7 @@ import { HL_COLORS, HL_SOLID, highlightSolidColor, normalizeHighlightColor } fro
 import { pushPdfLinkHistory, takePdfLinkHistory } from './pdfLinkHistory.mjs';
 import { capturePdfFindStartPage, pdfFindReturnDelta } from './pdfFindHistory.mjs';
 import { pdfAnchorScrollRatio } from './pdfAnchorLocation.mjs';
+import { pdfImagePoint } from './pdfImagePoint.mjs';
 import { pdfPageLocation } from './pdfPageLabels.mjs';
 import { resolvePdfContentsLocation } from './pdfContents.mjs';
 import { createReaderLanguage } from './i18n.mjs';
@@ -421,7 +422,7 @@ export default function PdfViewer() {
   const {
     page, totalPages, pageLabels, zoom, error, renderInfo, readPage, linkAnnotations, contents, contentsReady,
     canvasARef, canvasBRef, containerRef, textLayerRef,
-    pdfDocRef, activeCvsRef, cardIdRef, pageRef, lastScaleRef,
+    pdfDocRef, busyRef, activeCvsRef, cardIdRef, pageRef, lastScaleRef,
     startViewer, nav: rawNav, adjustZoom, setReadProgress: rawSetReadProgress,
   } = usePdfRender();
   const pageLocationText = pdfPageLocation(page, totalPages, pageLabels, tr);
@@ -1420,6 +1421,17 @@ export default function PdfViewer() {
       : clampScrollRatio((window.scrollY - metrics.pageTop) / metrics.maxOffset);
     return { page: currentPage, scrollRatio };
   }, [containerRef, pageRef]);
+
+  useEffect(() => {
+    window.incrementoPdfImagePointAtPoint = (x, y) => {
+      if (!pdfDocRef.current || busyRef.current) return null;
+      const canvas = activeCvsRef.current === 'a' ? canvasARef.current : canvasBRef.current;
+      if (!canvas || Number(canvas.dataset.pdfCard) !== cardIdRef.current
+        || Number(canvas.dataset.pdfPage) !== pageRef.current) return null;
+      return pdfImagePoint(x, y, canvas.getBoundingClientRect());
+    };
+    return () => { delete window.incrementoPdfImagePointAtPoint; };
+  }, [activeCvsRef, busyRef, canvasARef, canvasBRef, cardIdRef, pageRef, pdfDocRef]);
 
   useEffect(() => {
     window.incrementoPdfAnchorAtPoint = (clientX, clientY) => {

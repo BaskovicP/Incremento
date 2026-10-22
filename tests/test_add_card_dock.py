@@ -1767,6 +1767,24 @@ def test_pending_extract_replaces_previous_auto_tags_when_source_changes(monkeyp
     assert tag_refresh == [editor]
 
 
+@pytest.mark.parametrize("add_mode", [True, False], ids=["add", "edit"])
+def test_loading_an_extract_prepares_preview_controls_without_changing_note_fields(monkeypatch, add_mode):
+    note = _FakeNote()
+    note.fields[0] = '<details class="incremento-pdf-snapshot-details"><summary>Preview</summary></details>'
+    editor = _FakeEditor(note=note, add_mode=add_mode)
+    editor.web = _FakeWeb()
+    monkeypatch.setattr(dock, "_track_tag_button_editor", lambda _editor: None)
+    monkeypatch.setattr(dock, "_carry_auto_extract_tag_keys_to_note", lambda *_args: None)
+    monkeypatch.setattr(dock, "scratch_priority_for_editor", lambda _editor: 50)
+    monkeypatch.setattr(dock, "_inject_transfer_buttons", lambda _editor: None)
+    monkeypatch.setattr(dock, "_refresh_add_card_tag_buttons_for_editor", lambda _editor: None)
+
+    dock._on_editor_did_load_note(editor)
+
+    assert len(editor.web.eval_calls) == 1
+    assert note.fields == ['<details class="incremento-pdf-snapshot-details"><summary>Preview</summary></details>', '']
+
+
 def test_cmd1_pdf_switch_replaces_sticky_auto_tags_on_next_add_note(monkeypatch):
     first_note = _FakeNote(["manual"], note_id=0)
     editor = _FakeEditor(note=first_note, add_mode=True)

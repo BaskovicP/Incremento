@@ -41,8 +41,10 @@ from PyQt6.QtGui import QDesktopServices, QFont, QFontDatabase, QColor, QTextCha
 
 try:
     from ..backend.i18n import format_date, t
+    from .selection_search import install_selection_search_menu
 except ImportError:
     from backend.i18n import format_date, t  # type: ignore
+    from frontend.selection_search import install_selection_search_menu
 
 try:
     from ..backend import paths as _paths
@@ -1124,6 +1126,7 @@ def _build_writing_dock():
     editor_layout.addWidget(editor_label)
 
     editor = QTextEdit(editor_host)
+    install_selection_search_menu(editor)
     editor.setAcceptRichText(False)
     editor.setPlaceholderText(t("writing_placeholder"))
     mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
@@ -1142,6 +1145,7 @@ def _build_writing_dock():
     preview_label.setStyleSheet("font-weight: 600;")
     preview_layout.addWidget(preview_label)
     preview = QTextBrowser(preview_host)
+    install_selection_search_menu(preview)
     preview.setOpenExternalLinks(True)
     preview_layout.addWidget(preview, 1)
     split.addWidget(preview_host)

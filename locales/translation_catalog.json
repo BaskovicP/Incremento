@@ -15668,6 +15668,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_pdf_copy_embedded_image",
+      "form": "",
+      "source": "Copy Embedded Image",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_pdf_cover_card_missing",
       "form": "",
       "source": "Could not determine which PDF card needs a cover refresh.",
@@ -15907,6 +15915,54 @@
       "key": "reader_pdf_highlights",
       "form": "",
       "source": "PDF Highlights",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_image_checking",
+      "form": "",
+      "source": "Checking for an embedded image at this position…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_image_failed",
+      "form": "",
+      "source": "Could not read this embedded image. The clipboard was kept unchanged.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_image_native_size",
+      "form": "",
+      "source": "Copy the image at its embedded resolution, with transparency and without page overlays.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_image_not_found",
+      "form": "",
+      "source": "No embedded bitmap here. Use Snapshot for vector drawings or a region of the page.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_image_too_large",
+      "form": "",
+      "source": "This image exceeds the safe copy limit. Use Snapshot for a smaller region.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_image_unavailable",
+      "form": "",
+      "source": "Install PyMuPDF through Incremento → Utils → Check Dependencies, then restart Anki.",
       "tokens": [],
       "markup": []
     },
@@ -25177,6 +25233,46 @@
       "key": "search_all_while_typing",
       "form": "",
       "source": "Search while typing",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "selection_search_failed",
+      "form": "",
+      "source": "Could not load this page. Use Open in Browser to continue.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "selection_search_google",
+      "form": "",
+      "source": "Search Google",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "selection_search_loading",
+      "form": "",
+      "source": "Loading Google…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "selection_search_results",
+      "form": "",
+      "source": "Google search results",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "selection_search_title",
+      "form": "",
+      "source": "Google Search",
       "tokens": [],
       "markup": []
     },

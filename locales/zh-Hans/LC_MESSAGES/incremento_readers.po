@@ -3409,3 +3409,51 @@ msgstr "清除搜索以展开或折叠章节。"
 
 msgid "reader_open_companion_browser_failed"
 msgstr "无法打开所选的 Companion 浏览器。请安装该浏览器，或在 Incremento 设置 → 复习中更改浏览器。"
+
+#. Selected-text search popup
+msgid "selection_search_google"
+msgstr "使用 Google 搜索"
+
+#. Selected-text search popup
+msgid "selection_search_title"
+msgstr "Google 搜索"
+
+#. Selected-text search popup
+msgid "selection_search_results"
+msgstr "Google 搜索结果"
+
+#. Selected-text search popup
+msgid "selection_search_loading"
+msgstr "正在加载 Google…"
+
+#. Selected-text search popup
+msgid "selection_search_failed"
+msgstr "无法加载此页面。请选择“在浏览器中打开”继续。"
+
+#. Embedded PDF image copy
+msgid "reader_pdf_copy_embedded_image"
+msgstr "复制嵌入图像"
+
+#. Embedded PDF image copy
+msgid "reader_pdf_image_checking"
+msgstr "正在检查此位置的嵌入图像…"
+
+#. Embedded PDF image copy
+msgid "reader_pdf_image_not_found"
+msgstr "此处没有嵌入的位图。矢量图或页面区域可使用快照。"
+
+#. Embedded PDF image copy
+msgid "reader_pdf_image_too_large"
+msgstr "此图像超过安全复制限制。请使用快照选取较小区域。"
+
+#. Embedded PDF image copy
+msgid "reader_pdf_image_unavailable"
+msgstr "请通过 Incremento → 实用工具 → 检查依赖项安装 PyMuPDF，然后重启 Anki。"
+
+#. Embedded PDF image copy
+msgid "reader_pdf_image_failed"
+msgstr "无法读取此嵌入图像。剪贴板内容未更改。"
+
+#. Embedded PDF image copy
+msgid "reader_pdf_image_native_size"
+msgstr "按嵌入分辨率复制图像，保留透明度，不包含页面叠加内容。"

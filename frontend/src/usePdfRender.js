@@ -165,6 +165,8 @@ export function usePdfRender() {
         .promise
         .then(() => {
           if (renderSequence !== renderSequenceRef.current) return;
+          backCvs.dataset.pdfCard = String(cardIdRef.current);
+          backCvs.dataset.pdfPage = String(num);
           backCvs.style.display  = 'block';
           if (frontCvs) frontCvs.style.display = 'none';
           activeCvsRef.current = backId;

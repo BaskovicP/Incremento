@@ -615,7 +615,9 @@ def _browse_note_in_browser(note_id: int) -> None:
     _browse_note_ids_in_browser([note_id])
 
 
-def _browse_note_ids_in_browser(note_ids: list[int], *, empty_message: str = "") -> bool:
+def _browse_note_ids_in_browser(
+    note_ids: list[int], *, empty_message: str = "", oldest_first: bool = False
+) -> bool:
     ordered: list[int] = []
     seen: set[int] = set()
     for raw_note_id in list(note_ids or []):
@@ -637,6 +639,11 @@ def _browse_note_ids_in_browser(note_ids: list[int], *, empty_message: str = "")
         from aqt import dialogs
 
         browser = dialogs.open("Browser", mw)
+        if oldest_first:
+            # Anki sorts the results independently of the nid query order.
+            browser.table._state.sort_column = "noteCrt"
+            browser.table._state.sort_backwards = False
+            browser.table._set_sort_indicator()
         browser.search_for(" OR ".join(f"nid:{note_id}" for note_id in ordered))
         return True
     except Exception:
@@ -648,6 +655,7 @@ def _open_all_pdf_cards_in_browser(card_id: int) -> None:
     _browse_note_ids_in_browser(
         note_ids,
         empty_message=t("reader_pdf_no_cards"),
+        oldest_first=True,
     )
 
 
@@ -1565,9 +1573,50 @@ def _show_pdf_reader_context_menu(view, position) -> bool:
         y = int(position.y())
     except (AttributeError, TypeError, ValueError, OverflowError):
         return False
+    profile = _active_profile()
+    card_id = _current_pdf_card_id
+    filename = _current_pdf_filename
+    viewer_page = view.page()
+    nonce = viewer_page._bridge_nonce
+    request = object()
+    view._incremento_image_menu_request = request
+
+    def is_current(menu):
+        try:
+            return (
+                _pdf_dock is not None and _pdf_dock._view is view and _pdf_dock.isVisible()
+                and _active_profile() == profile and _current_pdf_card_id == card_id
+                and _current_pdf_filename == filename and viewer_page._bridge_nonce == nonce
+                and view._incremento_image_menu_request is request
+                and getattr(view, "_incremento_reader_anchor_context_menu", None) is menu
+            )
+        except (AttributeError, RuntimeError):
+            return False
+
+    def populate_menu(menu, payload):
+        if not is_current(menu) or not isinstance(payload, dict):
+            return
+        anchor = _normalize_pdf_context_anchor(payload)
+        point = payload.get("imagePoint")
+        if anchor is None or not isinstance(point, dict) or not filename:
+            return
+        pdf_path = pdf_storage_abspath(filename, profile=profile)
+        if not pdf_path:
+            return
+        try:
+            from .pdf_image_copy import add_pdf_image_copy_action
+        except ImportError:
+            from pdf_image_copy import add_pdf_image_copy_action
+        add_pdf_image_copy_action(
+            menu, pdf_path=pdf_path, point={**point, "page": anchor["page"]},
+            is_current=lambda: is_current(menu), run_in_background=mw.taskman.run_in_background,
+        )
+
     resolver_script = (
-        "window.incrementoPdfAnchorAtPoint "
+        "(() => { const anchor = window.incrementoPdfAnchorAtPoint "
         f"? window.incrementoPdfAnchorAtPoint({x}, {y}) : null;"
+        "if (!anchor) return null; return { ...anchor, imagePoint: "
+        f"window.incrementoPdfImagePointAtPoint?.({x}, {y}) || null }}; }})();"
     )
     return show_reader_anchor_context_menu(
         view,
@@ -1575,6 +1624,7 @@ def _show_pdf_reader_context_menu(view, position) -> bool:
         resolver_script=resolver_script,
         on_copy=_copy_pdf_context_anchor,
         action_label=t("reader_copy_link_to_place"),
+        populate_menu=populate_menu,
     )
 
 

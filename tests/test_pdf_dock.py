@@ -740,6 +740,38 @@ def test_browse_note_ids_in_browser_shows_empty_tooltip(monkeypatch):
     assert tooltips == ["No cards yet."]
 
 
+@pytest.mark.parametrize("sort_column,sort_backwards", [
+    ("noteFld", False),
+    ("noteFld", True),
+    ("noteCrt", True),
+])
+def test_open_all_pdf_cards_in_browser_sorts_by_created_oldest_first(
+    monkeypatch, sort_column, sort_backwards
+):
+    searches, indicators = [], []
+    state = types.SimpleNamespace(sort_column=sort_column, sort_backwards=sort_backwards)
+    table = types.SimpleNamespace(
+        _state=state,
+        _set_sort_indicator=lambda: indicators.append((state.sort_column, state.sort_backwards)),
+    )
+    browser = types.SimpleNamespace(
+        table=table,
+        search_for=lambda query: searches.append((query, state.sort_column, state.sort_backwards)),
+    )
+    fake_dialogs = types.SimpleNamespace(open=lambda name, parent: browser)
+    monkeypatch.setattr(aqt, "dialogs", fake_dialogs, raising=False)
+    monkeypatch.setattr(
+        pdf_dock, "_live_pdf_document_source_note_ids", lambda card_id: [30, 10, 20, 10]
+    )
+
+    pdf_dock._open_all_pdf_cards_in_browser(42)
+
+    # The Browser applies its own sort: ordering the nid terms alone cannot
+    # override an existing alphabetical or newest-first Browser preference.
+    assert searches == [("nid:30 OR nid:10 OR nid:20", "noteCrt", False)]
+    assert indicators == [("noteCrt", False)]
+
+
 def test_reconcile_pdf_page_sources_prunes_missing_notes(monkeypatch):
     deleted = []
     monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
@@ -1267,6 +1299,53 @@ def test_pdf_context_anchor_rejects_stale_cards_and_clamps_scroll_ratio(monkeypa
     assert pdf_dock._normalize_pdf_context_anchor(
         {"cardId": 55, "page": 0, "scrollRatio": 0.5}
     ) is None
+
+
+@pytest.mark.parametrize("changed", ["profile", "card", "filename", "load", "closed", "menu"])
+def test_embedded_image_menu_uses_captured_profile_path_and_retires_stale_callbacks(monkeypatch, changed):
+    requests, paths = [], []
+    profile = ["A"]
+    page = types.SimpleNamespace(_bridge_nonce="load-one")
+    view = types.SimpleNamespace(page=lambda: page)
+    dock = types.SimpleNamespace(_view=view, isVisible=lambda: True)
+    menu = object()
+    monkeypatch.setattr(pdf_dock, "_pdf_dock", dock)
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: profile[0])
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "selected.pdf")
+    monkeypatch.setattr(pdf_dock, "pdf_storage_abspath", lambda filename, *, profile: (
+        paths.append((filename, profile)) or "/tmp/selected.pdf"))
+    monkeypatch.setitem(sys.modules, "pdf_image_copy", types.SimpleNamespace(
+        add_pdf_image_copy_action=lambda menu, **kwargs: requests.append(kwargs)))
+
+    def show_menu(current_view, position, **options):
+        current_view._incremento_reader_anchor_context_menu = menu
+        options["populate_menu"](menu, {
+            "cardId": 55, "page": 7, "scrollRatio": .5,
+            "imagePoint": {"x": .25, "y": .5, "filename": "/untrusted.pdf", "page": 999},
+        })
+        return True
+
+    monkeypatch.setattr(pdf_dock, "show_reader_anchor_context_menu", show_menu)
+    assert pdf_dock._show_pdf_reader_context_menu(view, types.SimpleNamespace(x=lambda: 10, y=lambda: 20))
+    assert paths == [("selected.pdf", "A")]
+    assert requests[0]["pdf_path"] == "/tmp/selected.pdf"
+    assert requests[0]["point"]["page"] == 7
+    assert requests[0]["is_current"]()
+
+    if changed == "profile":
+        profile[0] = "B"
+    elif changed == "card":
+        monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 99)
+    elif changed == "filename":
+        monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "other.pdf")
+    elif changed == "load":
+        page._bridge_nonce = "load-two"
+    elif changed == "closed":
+        dock.isVisible = lambda: False
+    else:
+        del view._incremento_reader_anchor_context_menu
+    assert not requests[0]["is_current"]()
 
 
 def test_missing_pdf_html_uses_plain_repair_message_for_pycmd():

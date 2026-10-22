@@ -3485,3 +3485,51 @@ msgstr "Očistite pretraživanje za proširivanje ili sažimanje poglavlja."
 
 msgid "reader_open_companion_browser_failed"
 msgstr "Nije moguće otvoriti odabrani preglednik za Companion. Instalirajte ga ili promijenite preglednik u postavkama Incrementa → Ponavljanje."
+
+#. Selected-text search popup
+msgid "selection_search_google"
+msgstr "Pretraži Google"
+
+#. Selected-text search popup
+msgid "selection_search_title"
+msgstr "Google pretraživanje"
+
+#. Selected-text search popup
+msgid "selection_search_results"
+msgstr "Rezultati Google pretraživanja"
+
+#. Selected-text search popup
+msgid "selection_search_loading"
+msgstr "Učitavanje Googlea…"
+
+#. Selected-text search popup
+msgid "selection_search_failed"
+msgstr "Stranicu nije moguće učitati. Za nastavak odaberite Otvori u pregledniku."
+
+#. Embedded PDF image copy
+msgid "reader_pdf_copy_embedded_image"
+msgstr "Kopiraj ugrađenu sliku"
+
+#. Embedded PDF image copy
+msgid "reader_pdf_image_checking"
+msgstr "Provjera ugrađene slike na ovom mjestu…"
+
+#. Embedded PDF image copy
+msgid "reader_pdf_image_not_found"
+msgstr "Ovdje nema ugrađene rasterske slike. Za vektorske crteže ili dio stranice upotrijebite Snimku."
+
+#. Embedded PDF image copy
+msgid "reader_pdf_image_too_large"
+msgstr "Ova slika prelazi ograničenje za sigurno kopiranje. Upotrijebite Snimku za manje područje."
+
+#. Embedded PDF image copy
+msgid "reader_pdf_image_unavailable"
+msgstr "Instalirajte PyMuPDF putem Incremento → Alati → Provjeri ovisnosti pa ponovno pokrenite Anki."
+
+#. Embedded PDF image copy
+msgid "reader_pdf_image_failed"
+msgstr "Nije moguće pročitati ovu ugrađenu sliku. Sadržaj međuspremnika ostao je nepromijenjen."
+
+#. Embedded PDF image copy
+msgid "reader_pdf_image_native_size"
+msgstr "Kopirajte sliku u ugrađenoj razlučivosti, s prozirnošću i bez oznaka sa stranice."

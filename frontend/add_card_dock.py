@@ -31,6 +31,11 @@ from aqt.qt import (
 from aqt.utils import tooltip
 
 try:
+    from .reader_links import prepare_pdf_previews_for_editor
+except ImportError:
+    from reader_links import prepare_pdf_previews_for_editor
+
+try:
     from ..backend.i18n import t
 except ImportError:
     from backend.i18n import t  # type: ignore
@@ -3590,6 +3595,7 @@ def _on_editor_did_load_note(editor) -> None:
     note = getattr(editor, "note", None)
     if note is None:
         return
+    prepare_pdf_previews_for_editor(editor)
     _track_tag_button_editor(editor)
     if getattr(editor, "addMode", False):
         _last_add_mode_editor = editor

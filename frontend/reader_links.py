@@ -769,12 +769,59 @@ def pdf_snapshot_source_html(extracted_html: object) -> str:
     return source
 
 
+def prepare_pdf_previews_for_editor(editor) -> None:
+    """Protect saved preview controls and leave a caret target outside them."""
+    fields = getattr(getattr(editor, "note", None), "fields", ())
+    if not any(
+        "incremento-pdf-snapshot-details" in str(field)
+        or "incremento-pdf-context-details" in str(field)
+        for field in fields
+    ):
+        return
+    web = getattr(editor, "web", None)
+    if web is None:
+        return
+    web.eval(r"""
+        (() => {
+            function prepare(root) {
+                const previews = root.querySelectorAll(
+                    'details.incremento-pdf-snapshot-details, details.incremento-pdf-context-details'
+                );
+                for (const preview of previews) {
+                    if (!preview.closest('[contenteditable="true"]')) continue;
+                    preview.contentEditable = 'false';
+                    let tail = preview.closest(
+                        '[data-incremento-pdf-snapshot="1"], [data-incremento-pdf-text-preview="1"]'
+                    ) || preview;
+                    let next = tail.nextSibling;
+                    while (next && (next.nodeType === 8 ||
+                            (next.nodeType === 3 && !next.textContent.trim()))) {
+                        tail = next;
+                        next = next.nextSibling;
+                    }
+                    if (!next) {
+                        const line = document.createElement('div');
+                        line.appendChild(document.createElement('br'));
+                        tail.after(line);
+                    }
+                }
+                for (const element of root.querySelectorAll('*')) {
+                    if (element.shadowRoot) prepare(element.shadowRoot);
+                }
+            }
+            prepare(document);
+        })();
+    """)
+
+
 def _pdf_preview_details_html(content: str, preview_label: object, class_name: str) -> str:
     label = " ".join(str(preview_label or "").split()).strip()[:200]
     if not content or not label:
         return ""
+    # Enter inside an editable summary clones the button instead of making a
+    # normal paragraph. The reference helpers provide a separate typing line.
     return (
-        f'<details class="{class_name}">'
+        f'<details class="{class_name}" contenteditable="false">'
         '<summary style="display:inline-block;cursor:pointer;padding:.35em .65em;'
         'border:1px solid #64748b;border-radius:.4em;color:inherit;'
         'background:rgba(100,116,139,.12);">'
@@ -808,7 +855,7 @@ def pdf_text_context_reference_html(
         source + "<br>" + citation + "<br>"
         '<div data-incremento-pdf-text-preview="1" '
         'style="display:block;margin:.55em 0;text-align:left;">'
-        + preview + '</div><!--incremento-pdf-text-preview-end-->'
+        + preview + '</div><!--incremento-pdf-text-preview-end--><div><br></div>'
     )
 
 
@@ -900,7 +947,8 @@ def pdf_snapshot_reference_html(
     source = pdf_snapshot_source_html(extracted_html)
     if not source or not context:
         return ""
-    return source + "<br>" + citation + "<br>" + context
+    # Keep user additions outside the block replaced by the preview rebuild tool.
+    return source + "<br>" + citation + "<br>" + context + '<div><br></div>'
 
 
 def rebuild_pdf_reference_card_snapshots(
@@ -1362,6 +1410,7 @@ def show_reader_anchor_context_menu(
     on_copy,
     run_javascript=None,
     action_label: str = "Copy Link to This Place",
+    populate_menu=None,
 ) -> bool:
     """Append an anchor-copy action to WebEngine's standard context menu."""
     try:
@@ -1369,6 +1418,12 @@ def show_reader_anchor_context_menu(
         global_position = view.mapToGlobal(position)
     except Exception:
         return False
+
+    try:
+        from .selection_search import add_selection_search_action
+    except ImportError:
+        from frontend.selection_search import add_selection_search_action
+    add_selection_search_action(view, menu)
 
     try:
         view._incremento_reader_anchor_context_menu = menu
@@ -1396,6 +1451,11 @@ def show_reader_anchor_context_menu(
                         return
 
                 action.triggered.connect(_copy)
+            except Exception:
+                pass
+        if populate_menu is not None:
+            try:
+                populate_menu(menu, payload)
             except Exception:
                 pass
         try:

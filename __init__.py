@@ -184,6 +184,7 @@ from .frontend.timer_widget import (
 from .frontend import pdf_dock as _pdf_dock_mod
 from .frontend import epub_dock as _epub_dock_mod
 from .frontend import reader_links as _reader_links_mod
+from .frontend import selection_search as _selection_search_mod
 from .frontend import video_dock as _video_dock_mod
 from .frontend import web_dock as _web_dock_mod
 from .frontend import writing_dock as _writing_dock_mod
@@ -2598,6 +2599,18 @@ def _repair_legacy_pdf_reference_links(text: str, card, context: str) -> str:
     except Exception:
         return repaired
 
+
+def _register_selection_search_hooks() -> None:
+    for hook, callback in (
+        (gui_hooks.webview_will_show_context_menu, _selection_search_mod.add_selection_search_action),
+        (gui_hooks.editor_will_show_context_menu, _selection_search_mod.add_selection_search_action),
+        (gui_hooks.profile_will_close, _selection_search_mod.reset_for_profile_switch),
+    ):
+        hook.remove(callback)
+        hook.append(callback)
+
+
+_register_selection_search_hooks()
 
 gui_hooks.add_cards_did_add_note.append(_pdf_dock_mod.on_add_cards_did_add_note)
 gui_hooks.add_cards_did_add_note.append(_epub_dock_mod.on_add_cards_did_add_note)
