@@ -564,6 +564,7 @@ Main controls include:
 
 - previous / next page
 - zoom out / zoom in
+- PDF text clicks reuse the current text-row geometry; scrolling, zooming, or replacing the text layer refreshes it. Snapshot dragging updates only the selection frame, and PNG encoding runs asynchronously. A pending snapshot is discarded if its document or page changes.
 - **PDF appearance** with **Original**, neutral **Dark**, and warmer low-glare **Night** page modes; each PDF remembers its own choice, and the display filter does not alter the source PDF or snapshots
 - highlight color selection
 - **Add Card**

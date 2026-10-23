@@ -1,3 +1,4 @@
+import { encodePdfSnapshot, paintPdfSnapshotPreview } from './pdfSnapshot.mjs';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePdfRender } from './usePdfRender.js';
 import HighlightLayer, { isResizableTextHighlight } from './HighlightLayer.jsx';
@@ -462,7 +463,7 @@ export default function PdfViewer() {
 
   // ── Snapshot state ─────────────────────────────────────────────────────────
   const [snapshotMode, setSnapshotMode] = useState(false);
-  const [snapRect,     setSnapRect]     = useState(null);
+  const snapPreviewRef = useRef(null);
   const snapStartRef = useRef(null);
 
   // ── Page card panel state ──────────────────────────────────────────────────
@@ -1043,7 +1044,7 @@ export default function PdfViewer() {
   const handleSnapStart = useCallback((e) => {
     const rect = e.currentTarget.getBoundingClientRect();
     snapStartRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    setSnapRect(null);
+    paintPdfSnapshotPreview(snapPreviewRef.current, null);
     e.preventDefault();
   }, []);
 
@@ -1053,7 +1054,7 @@ export default function PdfViewer() {
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
     const { x: sx, y: sy } = snapStartRef.current;
-    setSnapRect({ x: Math.min(sx, cx), y: Math.min(sy, cy),
+    paintPdfSnapshotPreview(snapPreviewRef.current, { x: Math.min(sx, cx), y: Math.min(sy, cy),
                   w: Math.abs(cx - sx), h: Math.abs(cy - sy) });
   }, []);
 
@@ -1091,7 +1092,7 @@ export default function PdfViewer() {
     const { x: sx, y: sy } = snapStartRef.current;
     snapStartRef.current = null;
     setSnapshotMode(false);
-    setSnapRect(null);
+    paintPdfSnapshotPreview(snapPreviewRef.current, null);
 
     const rx = Math.min(sx, ex), ry = Math.min(sy, ey);
     const rw = Math.abs(ex - sx), rh = Math.abs(ey - sy);
@@ -1125,11 +1126,15 @@ export default function PdfViewer() {
       0, 0,
       Math.round(cw * dpr), Math.round(ch * dpr)
     );
-    window.pycmd('incremento_pdf_snapshot:' + JSON.stringify({
-      cardId: cardIdRef.current,
-      page:   pageRef.current,
-      image:  tmp.toDataURL('image/png'),
-    }));
+    const cardId = cardIdRef.current;
+    const page = pageRef.current;
+    const generation = contentsGenerationRef.current;
+    const isCurrent = () => !!containerRef.current?.isConnected
+      && cardId === cardIdRef.current && page === pageRef.current
+      && generation === contentsGenerationRef.current;
+    encodePdfSnapshot(tmp, isCurrent).then(image => {
+      if (image) window.pycmd('incremento_pdf_snapshot:' + JSON.stringify({ cardId, page, image }));
+    }).catch(() => { console.warn('PDF snapshot encoding failed'); });
   }, [activeCvsRef, canvasARef, canvasBRef, cardIdRef, makeSnapshotHighlight, pageRef]);
 
   // ── Highlight helpers ──────────────────────────────────────────────────────
@@ -2617,7 +2622,7 @@ export default function PdfViewer() {
                       cursor: 'pointer', padding: '4px 10px', fontSize: 12,
                       fontWeight: snapshotMode ? 'bold' : 'normal',
                     }}
-                    onClick={() => { setSnapshotMode(o => !o); setSnapRect(null); snapStartRef.current = null; }}
+                    onClick={() => { setSnapshotMode(o => !o); paintPdfSnapshotPreview(snapPreviewRef.current, null); snapStartRef.current = null; }}
                   >
                     &#x1F4F7; {tr('reader_snapshot')}
                   </button>
@@ -3407,7 +3412,7 @@ export default function PdfViewer() {
           moveHighlightNote={moveHighlightNote}
           hideHighlightNote={hideHighlightNote}
           snapshotMode={snapshotMode}
-          snapRect={snapRect}
+          snapPreviewRef={snapPreviewRef}
           handleSnapStart={handleSnapStart}
           handleSnapMove={handleSnapMove}
           handleSnapEnd={handleSnapEnd}

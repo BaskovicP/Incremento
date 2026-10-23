@@ -247,6 +247,22 @@ export function installPrecisePdfSelectionDrag(textLayer, {
 } = {}) {
   if (!textLayer || !document || !window) return () => {};
   let session = null;
+  let cachedRows = null;
+  let cachedGeometry = '';
+  const invalidateRows = () => { cachedRows = null; };
+  const observer = typeof window.MutationObserver === 'function'
+    ? new window.MutationObserver(invalidateRows) : null;
+  observer?.observe(textLayer, { childList: true, subtree: true, characterData: true });
+  const textRowsForClick = () => {
+    if (observer?.takeRecords().length) invalidateRows();
+    const rect = textLayer.getBoundingClientRect?.();
+    const geometry = rect ? [rect.left, rect.top, rect.width, rect.height].join(':') : '';
+    if (!cachedRows || geometry !== cachedGeometry) {
+      cachedRows = collectTextRowRects(document, textLayer);
+      cachedGeometry = geometry;
+    }
+    return cachedRows;
+  };
   const usePointerEvents = typeof window.PointerEvent === 'function';
   const startEvent = usePointerEvents ? 'pointerdown' : 'mousedown';
   const moveEvent = usePointerEvents ? 'pointermove' : 'mousemove';
@@ -312,7 +328,7 @@ export function installPrecisePdfSelectionDrag(textLayer, {
     if (event.button !== 0 || Number(event.detail || 1) > 1
         || (usePointerEvents && event.isPrimary === false)
         || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-    const textRows = collectTextRowRects(document, textLayer);
+    const textRows = textRowsForClick();
     const initialSession = { textRows };
     const caret = caretAtStablePoint(
       document,
@@ -355,6 +371,8 @@ export function installPrecisePdfSelectionDrag(textLayer, {
   document.addEventListener('selectstart', blockNativeSelection, true);
   document.addEventListener('dragstart', blockNativeSelection, true);
   return () => {
+    observer?.disconnect();
+    cachedRows = null;
     releasePointer();
     session = null;
     onSelectionHandlesChange(false);

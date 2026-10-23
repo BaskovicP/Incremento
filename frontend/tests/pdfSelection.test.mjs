@@ -273,6 +273,10 @@ test('initial trackpad drag follows the nearest character instead of accepting n
   const activeStates = [];
   const collapsedClicks = [];
   let caretNode = textNode;
+  let rowScans = 0;
+  let geometry = { left: 0, top: 0, width: 100, height: 100 };
+  let invalidateText;
+  let disconnected = false;
   const visualTop = offset => ({ 1: 10, 2: 20, 3: 20, 4: 40, 5: 60, 9: 260 }[offset] ?? 20);
   const makeRange = (start = 0, end = start) => ({
     startContainer: textNode,
@@ -310,6 +314,7 @@ test('initial trackpad drag follows the nearest character instead of accepting n
     },
     createRange: () => makeRange(),
     createTreeWalker: () => {
+      rowScans++;
       let visited = false;
       return {
         currentNode: null,
@@ -328,6 +333,12 @@ test('initial trackpad drag follows the nearest character instead of accepting n
     },
   };
   const window = {
+    MutationObserver: class {
+      constructor(callback) { invalidateText = callback; }
+      observe() {}
+      takeRecords() { return []; }
+      disconnect() { disconnected = true; }
+    },
     PointerEvent: function PointerEvent() {},
     getSelection: () => ({
       removeAllRanges: () => selected.splice(0),
@@ -336,6 +347,7 @@ test('initial trackpad drag follows the nearest character instead of accepting n
   };
   let capturedPointer = null;
   const textLayer = {
+    getBoundingClientRect: () => geometry,
     contains: node => node === textNode,
     setPointerCapture: pointerId => { capturedPointer = pointerId; },
     releasePointerCapture: pointerId => {
@@ -454,7 +466,21 @@ test('initial trackpad drag follows the nearest character instead of accepting n
     [5, 5],
     'a caret within the magnetic threshold must snap to the nearby word boundary',
   );
+  assert.equal(rowScans, 1, 'repeated clicks on unchanged text must reuse row geometry');
+  for (const change of [
+    () => { geometry = { ...geometry, top: -30 }; },
+    () => { geometry = { ...geometry, width: 200, height: 200 }; },
+    () => invalidateText(),
+  ]) {
+    const previousScans = rowScans;
+    change();
+    layerListeners.get('pointerdown')(event(2));
+    documentListeners.get('pointerup')(event(2, { buttons: 0 }));
+    assert.equal(rowScans, previousScans + 1, 'changed text/viewport must rebuild rows');
+    assert.equal(selected[0].collapsed, true);
+  }
   stop();
+  assert.equal(disconnected, true);
   assert.equal(layerListeners.size, 0);
   assert.equal(documentListeners.size, 0);
 });

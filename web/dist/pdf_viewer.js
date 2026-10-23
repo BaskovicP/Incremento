@@ -7016,6 +7016,34 @@
     return client;
   }
   var clientExports = requireClient();
+  function encodePdfSnapshot(canvas, isCurrent, Reader = globalThis.FileReader) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (!blob || !isCurrent()) {
+          resolve(null);
+          return;
+        }
+        const reader = new Reader();
+        reader.onerror = () => reject(new Error("PDF snapshot encoding failed"));
+        reader.onload = () => resolve(isCurrent() ? reader.result : null);
+        reader.readAsDataURL(blob);
+      }, "image/png");
+    });
+  }
+  function paintPdfSnapshotPreview(element, rect) {
+    if (!element) return;
+    if (!rect || rect.w <= 2 || rect.h <= 2) {
+      element.style.display = "none";
+      return;
+    }
+    Object.assign(element.style, {
+      display: "block",
+      left: `${rect.x}px`,
+      top: `${rect.y}px`,
+      width: `${rect.w}px`,
+      height: `${rect.h}px`
+    });
+  }
   var reactExports = requireReact();
   const MAX_EXTERNAL_URL_CHARS = 4096;
   const PDFJS_LINK_ANNOTATION_TYPE = 2;
@@ -9146,7 +9174,7 @@
     moveHighlightNote,
     hideHighlightNote,
     snapshotMode,
-    snapRect,
+    snapPreviewRef,
     handleSnapStart,
     handleSnapMove,
     handleSnapEnd
@@ -9447,12 +9475,9 @@
           onMouseDown: handleSnapStart,
           onMouseMove: handleSnapMove,
           onMouseUp: handleSnapEnd,
-          children: snapRect && snapRect.w > 2 && snapRect.h > 2 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: snapPreviewRef, style: {
+            display: "none",
             position: "absolute",
-            left: snapRect.x,
-            top: snapRect.y,
-            width: snapRect.w,
-            height: snapRect.h,
             border: "2px dashed rgb(37,99,235)",
             background: "rgba(37,99,235,0.08)",
             pointerEvents: "none",
@@ -9689,6 +9714,24 @@
     if (!textLayer || !document2 || !window2) return () => {
     };
     let session = null;
+    let cachedRows = null;
+    let cachedGeometry = "";
+    const invalidateRows = () => {
+      cachedRows = null;
+    };
+    const observer = typeof window2.MutationObserver === "function" ? new window2.MutationObserver(invalidateRows) : null;
+    observer == null ? void 0 : observer.observe(textLayer, { childList: true, subtree: true, characterData: true });
+    const textRowsForClick = () => {
+      var _a;
+      if (observer == null ? void 0 : observer.takeRecords().length) invalidateRows();
+      const rect = (_a = textLayer.getBoundingClientRect) == null ? void 0 : _a.call(textLayer);
+      const geometry = rect ? [rect.left, rect.top, rect.width, rect.height].join(":") : "";
+      if (!cachedRows || geometry !== cachedGeometry) {
+        cachedRows = collectTextRowRects(document2, textLayer);
+        cachedGeometry = geometry;
+      }
+      return cachedRows;
+    };
     const usePointerEvents = typeof window2.PointerEvent === "function";
     const startEvent = usePointerEvents ? "pointerdown" : "mousedown";
     const moveEvent = usePointerEvents ? "pointermove" : "mousemove";
@@ -9747,7 +9790,7 @@
     const start = (event) => {
       var _a, _b;
       if (event.button !== 0 || Number(event.detail || 1) > 1 || usePointerEvents && event.isPrimary === false || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-      const textRows = collectTextRowRects(document2, textLayer);
+      const textRows = textRowsForClick();
       const initialSession = { textRows };
       const caret = caretAtStablePoint(
         document2,
@@ -9788,6 +9831,8 @@
     document2.addEventListener("selectstart", blockNativeSelection, true);
     document2.addEventListener("dragstart", blockNativeSelection, true);
     return () => {
+      observer == null ? void 0 : observer.disconnect();
+      cachedRows = null;
       releasePointer();
       session = null;
       onSelectionHandlesChange(false);
@@ -11261,7 +11306,7 @@
       scrollToTopOnPageChangeRef.current = !!value;
     }, []);
     const [snapshotMode, setSnapshotMode] = reactExports.useState(false);
-    const [snapRect, setSnapRect] = reactExports.useState(null);
+    const snapPreviewRef = reactExports.useRef(null);
     const snapStartRef = reactExports.useRef(null);
     const [pageCards, setPageCards] = reactExports.useState([]);
     const [showHighlightsPanel, setShowHighlightsPanel] = reactExports.useState(false);
@@ -11764,7 +11809,7 @@
     const handleSnapStart = reactExports.useCallback((e) => {
       const rect = e.currentTarget.getBoundingClientRect();
       snapStartRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-      setSnapRect(null);
+      paintPdfSnapshotPreview(snapPreviewRef.current, null);
       e.preventDefault();
     }, []);
     const handleSnapMove = reactExports.useCallback((e) => {
@@ -11773,7 +11818,7 @@
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
       const { x: sx, y: sy } = snapStartRef.current;
-      setSnapRect({
+      paintPdfSnapshotPreview(snapPreviewRef.current, {
         x: Math.min(sx, cx),
         y: Math.min(sy, cy),
         w: Math.abs(cx - sx),
@@ -11811,7 +11856,7 @@
       const { x: sx, y: sy } = snapStartRef.current;
       snapStartRef.current = null;
       setSnapshotMode(false);
-      setSnapRect(null);
+      paintPdfSnapshotPreview(snapPreviewRef.current, null);
       const rx = Math.min(sx, ex), ry = Math.min(sy, ey);
       const rw = Math.abs(ex - sx), rh = Math.abs(ey - sy);
       if (rw < 5 || rh < 5) return;
@@ -11843,11 +11888,18 @@
         Math.round(cw * dpr),
         Math.round(ch * dpr)
       );
-      window.pycmd("incremento_pdf_snapshot:" + JSON.stringify({
-        cardId: cardIdRef.current,
-        page: pageRef.current,
-        image: tmp.toDataURL("image/png")
-      }));
+      const cardId = cardIdRef.current;
+      const page2 = pageRef.current;
+      const generation = contentsGenerationRef.current;
+      const isCurrent = () => {
+        var _a;
+        return !!((_a = containerRef.current) == null ? void 0 : _a.isConnected) && cardId === cardIdRef.current && page2 === pageRef.current && generation === contentsGenerationRef.current;
+      };
+      encodePdfSnapshot(tmp, isCurrent).then((image) => {
+        if (image) window.pycmd("incremento_pdf_snapshot:" + JSON.stringify({ cardId, page: page2, image }));
+      }).catch(() => {
+        console.warn("PDF snapshot encoding failed");
+      });
     }, [activeCvsRef, canvasARef, canvasBRef, cardIdRef, makeSnapshotHighlight, pageRef]);
     const deleteHighlight = reactExports.useCallback((id) => {
       var _a;
@@ -13316,7 +13368,7 @@
                             },
                             onClick: () => {
                               setSnapshotMode((o) => !o);
-                              setSnapRect(null);
+                              paintPdfSnapshotPreview(snapPreviewRef.current, null);
                               snapStartRef.current = null;
                             },
                             children: [
@@ -14184,7 +14236,7 @@
                     moveHighlightNote,
                     hideHighlightNote,
                     snapshotMode,
-                    snapRect,
+                    snapPreviewRef,
                     handleSnapStart,
                     handleSnapMove,
                     handleSnapEnd

@@ -55,7 +55,7 @@ export default function HighlightLayer({
   moveHighlightNote,
   hideHighlightNote,
   snapshotMode,
-  snapRect,
+  snapPreviewRef,
   handleSnapStart,
   handleSnapMove,
   handleSnapEnd,
@@ -340,17 +340,12 @@ export default function HighlightLayer({
           onMouseMove={handleSnapMove}
           onMouseUp={handleSnapEnd}
         >
-          {snapRect && snapRect.w > 2 && snapRect.h > 2 && (
-            <div style={{
-              position:   'absolute',
-              left:       snapRect.x, top: snapRect.y,
-              width:      snapRect.w, height: snapRect.h,
-              border:     '2px dashed rgb(37,99,235)',
-              background: 'rgba(37,99,235,0.08)',
-              pointerEvents: 'none',
-              boxSizing:  'border-box',
-            }} />
-          )}
+          <div ref={snapPreviewRef} style={{
+            display: 'none', position: 'absolute',
+            border: '2px dashed rgb(37,99,235)',
+            background: 'rgba(37,99,235,0.08)',
+            pointerEvents: 'none', boxSizing: 'border-box',
+          }} />
         </div>
       )}
     </>
