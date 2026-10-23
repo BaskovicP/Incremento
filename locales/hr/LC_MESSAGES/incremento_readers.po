@@ -3533,3 +3533,147 @@ msgstr "Nije moguće pročitati ovu ugrađenu sliku. Sadržaj međuspremnika ost
 #. Embedded PDF image copy
 msgid "reader_pdf_image_native_size"
 msgstr "Kopirajte sliku u ugrađenoj razlučivosti, s prozirnošću i bez oznaka sa stranice."
+
+#. Snapshot formula recognition.
+msgid "reader_math_open"
+msgstr "Pretraži MathJax…"
+
+#. Snapshot formula recognition.
+msgid "reader_math_title"
+msgstr "Snimka → MathJax"
+
+#. Snapshot formula recognition.
+msgid "reader_math_privacy"
+msgstr "Pretraživanje šalje samo ovu snimku usluzi SimpleTex. Primjenjuju se kvote i cijene vašeg računa. Spremljene vjerodajnice koriste se za ovaj Anki profil; izmjene ovdje vrijede samo za ovaj dijalog."
+
+#. Snapshot formula recognition.
+msgid "reader_math_account_help"
+msgstr "Koristite vođeno postavljanje za izradu SimpleTex računa, pronalazak App ID-ja i App Secreta te spremanje u Incremento. Možete ih uređivati i u Postavke → Izdvajanje."
+
+#. Snapshot formula recognition.
+msgid "reader_math_app_id"
+msgstr "SimpleTex App ID"
+
+#. Snapshot formula recognition.
+msgid "reader_math_app_secret"
+msgstr "Tajni ključ aplikacije"
+
+#. Snapshot formula recognition.
+msgid "reader_math_scan"
+msgstr "Pretraži MathJax"
+
+#. Snapshot formula recognition.
+msgid "reader_math_status"
+msgstr "Status prepoznavanja formule"
+
+#. Snapshot formula recognition.
+msgid "reader_math_latex_result"
+msgstr "Prepoznati LaTeX (može se uređivati)"
+
+#. Snapshot formula recognition.
+msgid "reader_math_ready"
+msgstr "Snimite područje uz samu formulu. Pretražite, provjerite LaTeX, zatim kopirajte i zalijepite u polje u Ankiju."
+
+#. Snapshot formula recognition.
+msgid "reader_math_scanning"
+msgstr "Prepoznavanje uslugom SimpleTex…"
+
+#. Snapshot formula recognition.
+msgid "reader_math_found"
+msgstr "MathJax je pronađen. Prije kopiranja provjerite prepoznati LaTeX."
+
+#. Snapshot formula recognition.
+msgid "reader_math_copied"
+msgstr "Kopirano. Zatvorite dijaloge snimke i zalijepite u polje u Ankiju."
+
+#. Snapshot formula recognition.
+msgid "reader_math_copy_inline"
+msgstr "Kopiraj ugrađeni MathJax"
+
+#. Snapshot formula recognition.
+msgid "reader_math_copy_display"
+msgstr "Kopiraj izdvojeni MathJax"
+
+#. Snapshot formula recognition.
+msgid "reader_math_copy_latex"
+msgstr "Kopiraj LaTeX"
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_credentials"
+msgstr "Unesite svoj SimpleTex App ID i tajni ključ aplikacije."
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_image"
+msgstr "Ovu snimku nije moguće pretražiti. Odaberite manje područje (do 8 MiB i 16 milijuna piksela)."
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_empty"
+msgstr "Nije prepoznata nijedna formula. Snimite područje uz samu formulu i pokušajte ponovno."
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_response"
+msgstr "SimpleTex je vratio nečitljiv rezultat. Pokušajte ponovno s manjom i jasnijom snimkom formule."
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_auth"
+msgstr "SimpleTex je odbio ove vjerodajnice. Provjerite App ID i tajni ključ aplikacije."
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_quota"
+msgstr "Vaš SimpleTex račun nema raspoloživu kvotu za prepoznavanje ili dovoljno sredstava."
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_busy"
+msgstr "SimpleTex je zauzet. Pričekajte trenutak pa pokušajte ponovno."
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_network"
+msgstr "Nije moguće sigurno pristupiti usluzi SimpleTex. Provjerite vezu i pokušajte ponovno."
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_title"
+msgstr "Jednokratno postavljanje SimpleTexa"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_open"
+msgstr "Vođeno postavljanje / izmjena vjerodajnica…"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_account"
+msgstr "1. Otvorite SimpleTex gumbom ispod. Ako nemate račun, izradite ga, a zatim se prijavite. Ostavite ovaj prozor otvoren dok koristite web-stranicu."
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_open_account"
+msgstr "Otvori SimpleTex — izrada računa ili prijava"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_application"
+msgstr "2. U korisničkom centru SimpleTex uključite Open Platform. Otvorite Application List i izradite aplikaciju. Službene upute ispod objašnjavaju gdje se dobivaju App ID i App Secret."
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_open_instructions"
+msgstr "Otvori službene upute za Application List"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_paste"
+msgstr "3. Kopirajte App ID i App Secret nove aplikacije u ova polja. Tajni ključ prikazuje se samo jednom pri izradi aplikacije; ako ste ga propustili, izradite novu aplikaciju."
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_storage"
+msgstr "Spremite vjerodajnice u Incremento za ovaj Anki profil. Sljedeće snimke automatski će ih koristiti. Spremanje ne prenosi snimku. SimpleTex nudi ograničene besplatne kvote; provjerite račun prije prepoznavanja."
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_save"
+msgstr "Spremi u Incremento i vrati se na snimku"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_saved"
+msgstr "Vjerodajnice su spremljene za ovaj Anki profil. Kliknite Pretraži MathJax za prepoznavanje snimke."
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_save_failed"
+msgstr "Nije moguće spremiti vjerodajnice. Nisu primijenjene. Pokušajte ponovno."
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_browser_failed"
+msgstr "Nije moguće otvoriti preglednik. Ručno otvorite ovu adresu: {url}"

@@ -817,3 +817,19 @@ msgstr "1. 点击下方的“显示 Chrome 扩展文件夹”。\n2. 在 Chrome 
 
 msgid "companion_setup_firefox_steps"
 msgstr "Firefox 140 或更新版本\n\n1. 点击下方的“导出 Firefox 扩展”，将 .xpi 文件保存到容易找到的位置。无需终端或额外工具。\n2. 在 Firefox 中打开 about:debugging#/runtime/this-firefox。\n3. 点击“临时载入附加组件”，选择导出的 .xpi 文件。请使用此调试页面，而不是普通附加组件管理器中的“从文件安装附加组件”。\n4. 关闭本指南，在设置中选择 Firefox 并保存。保持 Anki 打开，在普通网页上打开 Companion，检查牌组是否加载。\n\nFirefox 关闭时会移除临时扩展。重启 Firefox 后，请再次载入保存的 .xpi 文件。更新 Incremento 后，请导出新文件并载入新版本。此操作不会发布任何内容。\n\n遇到 CAPTCHA 或登录页面时，请自行在所选浏览器中完成验证。之后 Companion 会将可读页面返回到正在等待的 PDF 导入。"
+
+#. SimpleTex saved credentials in Extraction settings.
+msgid "settings_simpletex_title"
+msgstr "MathJax 识别（SimpleTex）"
+
+#. SimpleTex saved credentials in Extraction settings.
+msgid "settings_simpletex_storage_help"
+msgstr "点击确定保存后，PDF、EPUB 和网页截图扫描将复用这些凭据。它们仅保存在本地 Anki 配置中，不包含在 Incremento 备份或支持包中。清空两个字段并点击确定即可删除。"
+
+#. SimpleTex saved credentials in Extraction settings.
+msgid "settings_simpletex_invalid"
+msgstr "请输入应用 ID 和密钥，或清空两个字段。凭据最多 512 个字符，不能包含空格或控制字符。"
+
+#. SimpleTex saved credentials in Extraction settings.
+msgid "settings_simpletex_activation"
+msgstr "扫描步骤：打开阅读器 → 截图 → 选择公式 → 扫描 MathJax…。如果 PDF 图片自动插入，请关闭下方的自动使用记忆的 PDF 截图字段。"

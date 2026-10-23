@@ -176,6 +176,12 @@ class _PublicOnlyRedirectHandler(HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, target)
 
 
+class _NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Authenticated uploads must never resend their headers or body.
+        return None
+
+
 def _connected_peer_address(response) -> str:
     """Best-effort extraction of urllib's connected socket peer."""
     candidates = (
@@ -195,7 +201,7 @@ def _connected_peer_address(response) -> str:
     return ""
 
 
-def open_public_http(request: Request, *, timeout: float = 20.0):
+def open_public_http(request: Request, *, timeout: float = 20.0, allow_redirects: bool = True):
     """Open a public HTTP(S) URL, validating the initial host and every redirect."""
     clean_url = validate_public_http_url(request.full_url)
     if clean_url != request.full_url:
@@ -211,7 +217,7 @@ def open_public_http(request: Request, *, timeout: float = 20.0):
     # the same exact sockaddr while TLS still authenticates the URL hostname.
     response = build_opener(
         ProxyHandler({}),
-        _PublicOnlyRedirectHandler(),
+        _PublicOnlyRedirectHandler() if allow_redirects else _NoRedirectHandler(),
         _PublicHTTPHandler(),
         _PublicHTTPSHandler(),
     ).open(

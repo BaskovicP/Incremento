@@ -3495,3 +3495,147 @@ msgstr "Could not read this embedded image. The clipboard was kept unchanged."
 #. Embedded PDF image copy
 msgid "reader_pdf_image_native_size"
 msgstr "Copy the image at its embedded resolution, with transparency and without page overlays."
+
+#. Snapshot formula recognition.
+msgid "reader_math_open"
+msgstr "Scan for MathJax…"
+
+#. Snapshot formula recognition.
+msgid "reader_math_title"
+msgstr "Snapshot → MathJax"
+
+#. Snapshot formula recognition.
+msgid "reader_math_privacy"
+msgstr "Scan uploads only this snapshot to SimpleTex. Your account quotas and charges apply. Saved credentials are reused for this Anki profile; edits here apply only to this dialog."
+
+#. Snapshot formula recognition.
+msgid "reader_math_account_help"
+msgstr "Use Guided setup to create a SimpleTex account, find your App ID and App Secret, and save them in Incremento. You can also manage them in Settings → Extraction."
+
+#. Snapshot formula recognition.
+msgid "reader_math_app_id"
+msgstr "SimpleTex App ID"
+
+#. Snapshot formula recognition.
+msgid "reader_math_app_secret"
+msgstr "App secret"
+
+#. Snapshot formula recognition.
+msgid "reader_math_scan"
+msgstr "Scan for MathJax"
+
+#. Snapshot formula recognition.
+msgid "reader_math_status"
+msgstr "Formula recognition status"
+
+#. Snapshot formula recognition.
+msgid "reader_math_latex_result"
+msgstr "Recognized LaTeX (editable)"
+
+#. Snapshot formula recognition.
+msgid "reader_math_ready"
+msgstr "Crop closely around the formula. Scan, check the LaTeX, then copy and paste into an Anki field."
+
+#. Snapshot formula recognition.
+msgid "reader_math_scanning"
+msgstr "Scanning with SimpleTex…"
+
+#. Snapshot formula recognition.
+msgid "reader_math_found"
+msgstr "MathJax found. Check the recognized LaTeX before copying."
+
+#. Snapshot formula recognition.
+msgid "reader_math_copied"
+msgstr "Copied. Close the snapshot dialogs and paste into an Anki field."
+
+#. Snapshot formula recognition.
+msgid "reader_math_copy_inline"
+msgstr "Copy inline MathJax"
+
+#. Snapshot formula recognition.
+msgid "reader_math_copy_display"
+msgstr "Copy display MathJax"
+
+#. Snapshot formula recognition.
+msgid "reader_math_copy_latex"
+msgstr "Copy LaTeX"
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_credentials"
+msgstr "Enter your SimpleTex App ID and app secret."
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_image"
+msgstr "This snapshot cannot be scanned. Use a smaller crop (up to 8 MiB and 16 million pixels)."
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_empty"
+msgstr "No formula was recognized. Crop closely around a formula and try again."
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_response"
+msgstr "SimpleTex returned an unreadable result. Try again with a smaller, clearer formula crop."
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_auth"
+msgstr "SimpleTex rejected these credentials. Check your App ID and app secret."
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_quota"
+msgstr "Your SimpleTex account has no recognition quota or balance available."
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_busy"
+msgstr "SimpleTex is busy. Wait a moment, then scan again."
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_network"
+msgstr "Could not reach SimpleTex securely. Check your connection and try again."
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_title"
+msgstr "Set up SimpleTex once"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_open"
+msgstr "Guided setup / change saved credentials…"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_account"
+msgstr "1. Open SimpleTex using the button below. Create an account if you do not have one, then sign in. Keep this setup window open while you use the website."
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_open_account"
+msgstr "Open SimpleTex — create account or sign in"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_application"
+msgstr "2. In the SimpleTex User Center, enable Open Platform. Go to Application List and create an application. The official instructions below explain where the App ID and App Secret come from."
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_open_instructions"
+msgstr "Open the official Application List instructions"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_paste"
+msgstr "3. Copy the new application’s App ID and App Secret into these fields. The secret is displayed only once when the application is created; if you missed it, create another application."
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_storage"
+msgstr "Save below to remember these credentials in Incremento for this Anki profile. Later snapshots will fill them automatically. Saving does not upload your snapshot. SimpleTex provides limited free quotas; check your account before scanning."
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_save"
+msgstr "Save in Incremento and return to snapshot"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_saved"
+msgstr "Credentials saved for this Anki profile. Click Scan for MathJax to recognize your snapshot."
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_save_failed"
+msgstr "Could not save your credentials. They have not been applied. Please try again."
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_browser_failed"
+msgstr "Could not open the browser. Open this address manually: {url}"

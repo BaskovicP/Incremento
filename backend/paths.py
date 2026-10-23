@@ -97,6 +97,10 @@ def get_extraction_draft_path(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "extraction_draft.json"
 
 
+def get_simpletex_credentials_path(addon_dir: str, profile: str) -> Path:
+    return get_user_files_dir(addon_dir, profile) / "simpletex_credentials.json"
+
+
 def get_diagnostics_dir(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "diagnostics"
 

@@ -14,6 +14,10 @@ Topic **Done** uses Anki's native single-card suspension and note tagging withou
 
 Incremento adds four stores around that canonical collection:
 
+SimpleTex recognition credentials are a separate private, per-profile file at `user_files/<Profile>/simpletex_credentials.json`, routed through `backend/paths.py`. `backend/simpletex_credentials.py` bounds and validates reads, rejects links, writes atomically with restrictive permissions, and supports explicit removal. Settings stages edits until acceptance and restores prior credentials if the accompanying settings save fails. The scanner only reads the captured profile's credentials; temporary scanner edits do not persist. Credentials never enter add-on config, notes, SQLite, support bundles, or full-backup snapshots. They are local file data, not OS-keychain encryption, and must be re-entered after a restore or computer migration.
+
+The first-scan guide in `frontend/simpletex_setup_dialog.py` opens only fixed official setup URLs through `frontend/file_shell.py`, keeps the captured snapshot open, and saves credentials only on its explicit Save action. It reuses the private credential boundary above without editing shared configuration or uploading an image. The parent scanner checks profile/collection/source identity, closes the guide on retirement, and fills the saved values only while that identity remains current.
+
 | Store | Scope | Owns |
 |---|---|---|
 | `user_files/<Profile>/incremento.db` | Per Anki profile | Reader position, bounded Web extraction anchors, priorities, topic/custom schedule state, knowledge tree, search indexes, import journal, daily trend snapshots, unique page-reading history, and other add-on metadata |

@@ -157,6 +157,9 @@ class _RadioButton(_CheckBox):
 
 
 class _LineEdit(_BaseWidget):
+    class EchoMode:
+        Password = 2
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._text = ""
@@ -166,6 +169,71 @@ class _LineEdit(_BaseWidget):
 
     def text(self):
         return self._text
+
+
+def test_simpletex_settings_load_saved_credentials_and_validate_complete_edits():
+    dialog = IncrementoSettingsDialog({}, current_simpletex_credentials=("saved-app", "saved-secret"))
+    assert dialog.simpletex_credentials == ("saved-app", "saved-secret")
+    dialog._simpletex_app_id.setText("new-app")
+    dialog._simpletex_secret.setText("new-secret")
+    assert dialog.simpletex_credentials == ("new-app", "new-secret")
+    dialog._simpletex_secret.setText("")
+    dialog.accept = Mock()
+    assert not dialog._accept_if_shortcuts_valid()
+    dialog.accept.assert_not_called()
+    dialog._simpletex_app_id.setText("")
+    assert dialog.simpletex_credentials == ("", "")
+    assert dialog._accept_if_shortcuts_valid()
+
+
+@pytest.mark.parametrize('save_fails', [False, True])
+def test_settings_saves_private_credentials_outside_config_and_rolls_them_back_on_failure(tmp_path, save_fails):
+    import ast
+    from pathlib import Path
+    import simpletex_credentials
+
+    simpletex_credentials.save_credentials(str(tmp_path), 'A', ('old-app', 'old-secret'))
+    writes = []
+    def save_config(*args):
+        if save_fails:
+            raise OSError('synthetic failure')
+        writes.append(args[-1])
+    namespace = {'_ADDON_DIR': str(tmp_path), '_simpletex_credentials': simpletex_credentials,
+        '_language_packs': Mock(), '_save_addon_config': save_config, 'mw': Mock(), '__name__': 'incremento'}
+    path = Path(__file__).resolve().parents[1] / '__init__.py'
+    helper = next(n for n in ast.parse(path.read_text()).body
+        if isinstance(n, ast.FunctionDef) and n.name == '_save_settings_with_language_pack')
+    exec(compile(ast.Module(body=[helper], type_ignores=[]), str(path), 'exec'), namespace)
+    config = {'future-setting': 42}
+    if save_fails:
+        with pytest.raises(OSError):
+            namespace['_save_settings_with_language_pack'](config, None, 'A', simpletex_credentials=('new-app', 'new-secret'))
+        assert simpletex_credentials.load_credentials(str(tmp_path), 'A') == ('old-app', 'old-secret')
+        assert not writes
+    else:
+        namespace['_save_settings_with_language_pack'](config, None, 'A', simpletex_credentials=('new-app', 'new-secret'))
+        assert simpletex_credentials.load_credentials(str(tmp_path), 'A') == ('new-app', 'new-secret')
+        assert writes == [{'future-setting': 42}]
+
+
+def test_failed_credential_write_does_not_retry_a_write_or_save_shared_config():
+    import ast
+    from pathlib import Path
+
+    store = Mock()
+    store.load_credentials.return_value = ('old-app', 'old-secret')
+    store.save_credentials.side_effect = ValueError('synthetic storage failure')
+    save_config = Mock()
+    namespace = {'_ADDON_DIR': '/synthetic', '_simpletex_credentials': store,
+        '_language_packs': Mock(), '_save_addon_config': save_config, 'mw': Mock(), '__name__': 'incremento'}
+    path = Path(__file__).resolve().parents[1] / '__init__.py'
+    helper = next(n for n in ast.parse(path.read_text()).body
+        if isinstance(n, ast.FunctionDef) and n.name == '_save_settings_with_language_pack')
+    exec(compile(ast.Module(body=[helper], type_ignores=[]), str(path), 'exec'), namespace)
+    with pytest.raises(ValueError):
+        namespace['_save_settings_with_language_pack']({}, None, 'A', simpletex_credentials=('new-app', 'new-secret'))
+    store.save_credentials.assert_called_once_with('/synthetic', 'A', ('new-app', 'new-secret'))
+    save_config.assert_not_called()
 
 
 class _PlainTextEdit(_BaseWidget):
@@ -654,7 +722,7 @@ class TestIncrementoSettingsDialogLearningLeech:
         class Saved(BaseException):
             pass
 
-        def save(cfg, *_args):
+        def save(cfg, *_args, **_kwargs):
             config_service.save_addon_config(manager, "incremento", cfg)
             raise Saved
 
@@ -1097,7 +1165,7 @@ class TestIncrementoSettingsDialogReviewerPriorityBadge:
             'cfg["reviewer_priority_badge_card_types"] = '
             "dlg.reviewer_priority_badge_card_types"
         ) in source
-        assert source.index("_save_settings_with_language_pack(cfg, dlg.pending_language_pack, settings_profile)") < source.index("_sync_reviewer_priority_badge()")
+        assert source.index("_save_settings_with_language_pack(cfg, dlg.pending_language_pack, settings_profile,") < source.index("_sync_reviewer_priority_badge()")
 
 
 class TestIncrementoSettingsDialogPdfPaging:

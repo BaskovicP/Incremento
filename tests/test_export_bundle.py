@@ -7,6 +7,17 @@ import pytest
 import export_bundle
 
 
+def test_profile_backup_never_copies_saved_simpletex_credentials_or_staged_writes(tmp_path):
+    source, destination = tmp_path / "profile", tmp_path / "backup"
+    source.mkdir()
+    (source / "simpletex_credentials.json").write_text("private-secret")
+    (source / ".simpletex_credentials-staged.tmp").write_text("private-secret")
+    (source / "document.txt").write_text("content")
+    stats = export_bundle.snapshot_tree(str(source), str(destination))
+    assert sorted(p.name for p in destination.iterdir()) == ["document.txt"]
+    assert stats["files_skipped"] == 2
+
+
 def test_should_skip_transient_runtime_files():
     assert export_bundle.should_skip_user_file("video_profile/SingletonLock") is True
     assert export_bundle.should_skip_user_file("web_profile/lockfile") is True

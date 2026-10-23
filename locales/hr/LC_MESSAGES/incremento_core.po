@@ -817,3 +817,19 @@ msgstr "1. Klikni Prikaži mapu proširenja za Chrome.\n2. U Chromeu otvori chro
 
 msgid "companion_setup_firefox_steps"
 msgstr "Firefox 140 ili noviji\n\n1. Klikni Izvezi proširenje za Firefox i spremi .xpi datoteku na mjesto koje ćeš lako pronaći. Terminal i dodatni alati nisu potrebni.\n2. U Firefoxu otvori about:debugging#/runtime/this-firefox.\n3. Klikni Učitaj privremeni dodatak i odaberi izvezenu .xpi datoteku. Koristi ovu stranicu za otklanjanje pogrešaka, a ne instalaciju iz datoteke u običnom upravitelju dodataka.\n4. Zatvori ove upute i spremi Postavke uz odabran Firefox. Ostavi Anki otvoren, otvori Companion na običnoj web-stranici i provjeri učitavaju li se tvoji špilovi.\n\nFirefox uklanja privremena proširenja kada se zatvori. Nakon ponovnog pokretanja ponovno učitaj spremljeni .xpi. Nakon ažuriranja Incrementa izvezi novu datoteku i učitaj tu verziju. Ništa se ne objavljuje.\n\nNa stranicama s CAPTCHA provjerom ili prijavom sam dovrši provjeru u odabranom pregledniku. Companion potom vraća čitljivu stranicu u uvoz PDF-a koji čeka."
+
+#. SimpleTex saved credentials in Extraction settings.
+msgid "settings_simpletex_title"
+msgstr "Prepoznavanje MathJaxa (SimpleTex)"
+
+#. SimpleTex saved credentials in Extraction settings.
+msgid "settings_simpletex_storage_help"
+msgstr "Spremite s U redu kako biste ove vjerodajnice koristili pri prepoznavanju PDF, EPUB i web-snimki. Ostaju lokalno u ovom Anki profilu i ne uključuju se u sigurnosne kopije ni pakete za podršku. Za uklanjanje ispraznite oba polja i kliknite U redu."
+
+#. SimpleTex saved credentials in Extraction settings.
+msgid "settings_simpletex_invalid"
+msgstr "Unesite App ID i tajni ključ ili ispraznite oba polja. Vjerodajnice smiju imati do 512 znakova, bez razmaka i kontrolnih znakova."
+
+#. SimpleTex saved credentials in Extraction settings.
+msgid "settings_simpletex_activation"
+msgstr "Za prepoznavanje: otvorite čitač → Snimka → odaberite formulu → Pretraži MathJax…. Ako se PDF slike umeću automatski, ispod isključite automatsko korištenje zapamćenih polja za PDF snimke."

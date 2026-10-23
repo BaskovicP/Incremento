@@ -401,6 +401,25 @@ def test_pdf_snapshot_picker_places_remember_checkbox_with_field_buttons(monkeyp
     )
 
 
+def test_pdf_snapshot_scan_uses_the_original_crop_instead_of_the_small_preview(monkeypatch):
+    actions = []
+    dialog = MagicMock()
+    dialog.exec.return_value = False
+    for name in ("QVBoxLayout", "QLabel", "QPushButton", "QCheckBox"):
+        monkeypatch.setattr(pdf_dock, name, MagicMock())
+    monkeypatch.setattr(pdf_dock, "QDialog", MagicMock(return_value=dialog))
+    monkeypatch.setattr(pdf_dock, "add_snapshot_math_action", lambda *args, **kw: actions.append((args, kw)), raising=False)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)
+    image = MagicMock()
+    pdf_dock._show_pdf_snapshot_field_picker(["Front"], image)
+    assert len(actions) == 1
+    assert actions[0][0][0] is dialog
+    assert actions[0][0][2] is image
+    assert actions[0][1]["is_current"]()
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 43)
+    assert not actions[0][1]["is_current"]()
+
+
 def test_current_pdf_appearance_re_resolves_after_settings_change(monkeypatch):
     monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)
     monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")

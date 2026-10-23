@@ -1,9 +1,35 @@
 import socket
+import io
+from email.message import Message
 from types import SimpleNamespace
+from urllib.error import HTTPError
+from urllib.request import HTTPSHandler, Request
+from urllib.response import addinfourl
 
 import pytest
 
 import network_safety
+
+
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+def test_authenticated_upload_can_disable_redirects_before_any_second_request(monkeypatch, status):
+    requests = []
+
+    class Server(HTTPSHandler):
+        def https_open(self, request):
+            requests.append(request)
+            headers = Message()
+            headers["Location"] = "https://other.example.test/stolen"
+            response = addinfourl(io.BytesIO(b""), headers, request.full_url, status)
+            response.msg = "Redirect"
+            return response
+
+    monkeypatch.setattr(network_safety, "validate_public_http_url", lambda url: url)
+    monkeypatch.setattr(network_safety, "_PublicHTTPSHandler", Server)
+    request = Request("https://example.test/api", data=b"crop", headers={"App-id": "personal"})
+    with pytest.raises(HTTPError):
+        network_safety.open_public_http(request, allow_redirects=False)
+    assert requests == [request]
 
 
 def _resolver_for(*addresses):

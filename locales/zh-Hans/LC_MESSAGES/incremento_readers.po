@@ -3457,3 +3457,147 @@ msgstr "无法读取此嵌入图像。剪贴板内容未更改。"
 #. Embedded PDF image copy
 msgid "reader_pdf_image_native_size"
 msgstr "按嵌入分辨率复制图像，保留透明度，不包含页面叠加内容。"
+
+#. Snapshot formula recognition.
+msgid "reader_math_open"
+msgstr "扫描 MathJax…"
+
+#. Snapshot formula recognition.
+msgid "reader_math_title"
+msgstr "截图 → MathJax"
+
+#. Snapshot formula recognition.
+msgid "reader_math_privacy"
+msgstr "扫描仅将此截图上传至 SimpleTex，并适用您的账户配额及费用。此 Anki 配置将复用已保存的凭据；在此处的更改仅对当前对话框有效。"
+
+#. Snapshot formula recognition.
+msgid "reader_math_account_help"
+msgstr "使用设置向导创建 SimpleTex 账户、获取 App ID 和 App Secret 并保存到 Incremento。也可在设置 → 提取中管理凭据。"
+
+#. Snapshot formula recognition.
+msgid "reader_math_app_id"
+msgstr "SimpleTex 应用 ID"
+
+#. Snapshot formula recognition.
+msgid "reader_math_app_secret"
+msgstr "应用密钥"
+
+#. Snapshot formula recognition.
+msgid "reader_math_scan"
+msgstr "扫描 MathJax"
+
+#. Snapshot formula recognition.
+msgid "reader_math_status"
+msgstr "公式识别状态"
+
+#. Snapshot formula recognition.
+msgid "reader_math_latex_result"
+msgstr "识别的 LaTeX（可编辑）"
+
+#. Snapshot formula recognition.
+msgid "reader_math_ready"
+msgstr "请紧贴公式裁剪。扫描并检查 LaTeX 后，复制并粘贴到 Anki 字段中。"
+
+#. Snapshot formula recognition.
+msgid "reader_math_scanning"
+msgstr "正在通过 SimpleTex 识别…"
+
+#. Snapshot formula recognition.
+msgid "reader_math_found"
+msgstr "已找到 MathJax。复制前请检查识别出的 LaTeX。"
+
+#. Snapshot formula recognition.
+msgid "reader_math_copied"
+msgstr "已复制。关闭截图对话框后，粘贴到 Anki 字段中。"
+
+#. Snapshot formula recognition.
+msgid "reader_math_copy_inline"
+msgstr "复制行内 MathJax"
+
+#. Snapshot formula recognition.
+msgid "reader_math_copy_display"
+msgstr "复制独立 MathJax"
+
+#. Snapshot formula recognition.
+msgid "reader_math_copy_latex"
+msgstr "复制 LaTeX"
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_credentials"
+msgstr "请输入您的 SimpleTex 应用 ID 和密钥。"
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_image"
+msgstr "无法扫描此截图。请缩小裁剪区域（最多 8 MiB、1600 万像素）。"
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_empty"
+msgstr "未识别到公式。请紧贴公式裁剪后重试。"
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_response"
+msgstr "SimpleTex 返回了无法读取的结果。请使用更小、更清晰的公式截图重试。"
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_auth"
+msgstr "SimpleTex 拒绝了这些凭据。请检查应用 ID 和密钥。"
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_quota"
+msgstr "您的 SimpleTex 账户没有可用识别配额或余额。"
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_busy"
+msgstr "SimpleTex 正忙。请稍等片刻后重试。"
+
+#. Snapshot formula recognition.
+msgid "reader_math_error_network"
+msgstr "无法安全连接至 SimpleTex。请检查网络连接后重试。"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_title"
+msgstr "一次性设置 SimpleTex"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_open"
+msgstr "设置向导 / 更改已保存的凭据…"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_account"
+msgstr "1. 点击下方按钮打开 SimpleTex。如果没有账户，请先注册并登录。使用网站时请保留此设置窗口。"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_open_account"
+msgstr "打开 SimpleTex — 注册或登录"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_application"
+msgstr "2. 在 SimpleTex 用户中心开通开放平台。进入应用列表（Application List）并创建应用。下方官方说明介绍了 App ID 和 App Secret 的获取位置。"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_open_instructions"
+msgstr "打开应用列表的官方说明"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_paste"
+msgstr "3. 将新应用的 App ID 和 App Secret 复制到以下字段。密钥仅在创建应用时显示一次；如果错过了，请创建新应用。"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_storage"
+msgstr "点击下方保存，将凭据记住在此 Anki 配置的 Incremento 中。之后的截图会自动填入。保存不会上传截图。SimpleTex 的免费配额有限，请在扫描前检查账户。"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_save"
+msgstr "保存到 Incremento 并返回截图"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_saved"
+msgstr "凭据已保存到此 Anki 配置。点击“扫描 MathJax”即可识别截图。"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_save_failed"
+msgstr "无法保存凭据，尚未应用。请重试。"
+
+#. Guided SimpleTex first-scan setup.
+msgid "reader_math_setup_browser_failed"
+msgstr "无法打开浏览器。请手动打开此地址：{url}"

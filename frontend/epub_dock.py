@@ -4953,6 +4953,12 @@ class _EpubShortcutFilter(QObject):
             return False
 
 
+try:
+    from .snapshot_math_dialog import add_snapshot_math_action
+except ImportError:
+    from snapshot_math_dialog import add_snapshot_math_action
+
+
 def _handle_epub_snapshot(msg: str) -> None:
     import tempfile as _tmp
 
@@ -5025,6 +5031,11 @@ def _handle_epub_snapshot(msg: str) -> None:
         preview_lbl.setPixmap(scaled)
         preview_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(preview_lbl)
+
+        card_id, filename, dock = _current_epub_card_id, _current_epub_filename, _epub_dock
+        add_snapshot_math_action(picker, layout, snapshot, is_current=lambda: (
+            _current_epub_card_id == card_id and _current_epub_filename == filename and _epub_dock is dock
+        ))
 
         layout.addSpacing(14)
         layout.addWidget(QLabel(t("reader_insert_image_into")))

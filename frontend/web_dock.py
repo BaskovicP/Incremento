@@ -25,6 +25,10 @@ from html import escape
 from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 
 from aqt import mw
+try:
+    from .snapshot_math_dialog import add_snapshot_math_action
+except ImportError:
+    from snapshot_math_dialog import add_snapshot_math_action
 from aqt.utils import showInfo, tooltip
 from aqt.qt import (
     QApplication,
@@ -1009,6 +1013,12 @@ class _WebDockController:
         preview_lbl.setPixmap(scaled)
         preview_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(preview_lbl)
+
+        card_id, dock = self.runtime.current_card_id, self.runtime.dock
+        add_snapshot_math_action(picker, layout, pixmap, is_current=lambda: (
+            self.runtime.current_card_id == card_id and self.runtime.dock is dock
+            and self.current_display_url() == current_url
+        ))
 
         layout.addSpacing(14)
         layout.addWidget(QLabel(t("reader_web_insert_image_into")))

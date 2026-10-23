@@ -3342,6 +3342,12 @@ class _PdfShortcutFilter(QObject):
 # ── Snapshot handler ──────────────────────────────────────────────────────────
 
 
+try:
+    from .snapshot_math_dialog import add_snapshot_math_action
+except ImportError:
+    from snapshot_math_dialog import add_snapshot_math_action
+
+
 def _pdf_snapshot_add_card_fields() -> tuple[str, list[str]]:
     note_type_name = ""
     field_names: list[str] = []
@@ -3376,9 +3382,16 @@ def _show_pdf_snapshot_field_picker(
     layout.setSpacing(0)
 
     preview_lbl = QLabel()
-    preview_lbl.setPixmap(preview_pixmap)
+    scaled = preview_pixmap.scaled(300, 180, Qt.AspectRatioMode.KeepAspectRatio,
+                                  Qt.TransformationMode.SmoothTransformation)
+    preview_lbl.setPixmap(scaled)
     preview_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
     layout.addWidget(preview_lbl)
+
+    card_id, filename, dock = _current_pdf_card_id, _current_pdf_filename, _pdf_dock
+    add_snapshot_math_action(picker, layout, preview_pixmap, is_current=lambda: (
+        _current_pdf_card_id == card_id and _current_pdf_filename == filename and _pdf_dock is dock
+    ))
 
     layout.addSpacing(14)
     layout.addWidget(QLabel(t("reader_insert_image_into")))
@@ -3461,16 +3474,10 @@ def _handle_pdf_snapshot(msg: str) -> None:
 
         # Build pixmap preview
         pixmap = QPixmap.fromImage(QImage.fromData(img_bytes))
-        scaled = pixmap.scaledToWidth(300, Qt.TransformationMode.SmoothTransformation)
-        if scaled.height() > 180:
-            scaled = pixmap.scaledToHeight(
-                180, Qt.TransformationMode.SmoothTransformation
-            )
-
         chosen_idx = _select_pdf_snapshot_field(
             note_type_name,
             field_names,
-            scaled,
+            pixmap,
         )
         if chosen_idx < 0:
             return

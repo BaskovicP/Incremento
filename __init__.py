@@ -12,6 +12,7 @@ from aqt import mw, gui_hooks
 from .backend.deps import activate_pymupdf as _activate_pymupdf
 from .backend.i18n import initialize_language as _initialize_language, t as _t, tn as _tn
 from .backend import language_packs as _language_packs
+from .backend import simpletex_credentials as _simpletex_credentials
 from .backend.config_service import load_addon_config as _load_initial_config
 
 from anki import lang as _anki_language
@@ -6917,21 +6918,36 @@ def cleanupOrphanVideosFunction() -> None:
         showInfo(_t("root_cleanup_partial_deleted", deleted=deleted, total=len(deletable), errors="\n".join(errors)))
 
 
-def _save_settings_with_language_pack(cfg: dict, pending_pack: dict | None, profile: str) -> None:
-    """Restore the prior pack if Anki rejects the accompanying settings write."""
+def _save_settings_with_language_pack(
+    cfg: dict, pending_pack: dict | None, profile: str, *, simpletex_credentials: tuple[str, str] | None = None,
+) -> None:
+    """Restore staged private credentials/packs if the settings write fails."""
     previous = None
+    previous_credentials = None
+    credentials_changed = False
+    credentials_saved = False
+    if simpletex_credentials is not None:
+        previous_credentials = _simpletex_credentials.load_credentials(_ADDON_DIR, profile)
+        credentials_changed = simpletex_credentials != previous_credentials
     if pending_pack is not None:
         previous = _language_packs.load_pack(_ADDON_DIR, profile, pending_pack["locale"])
     try:
+        if credentials_changed:
+            _simpletex_credentials.save_credentials(_ADDON_DIR, profile, simpletex_credentials)
+            credentials_saved = True
         if pending_pack is not None:
             _language_packs.save_pack(_ADDON_DIR, profile, pending_pack)
         _save_addon_config(mw.addonManager, __name__, cfg)
     except Exception:
-        if pending_pack is not None:
-            if previous is None:
-                _language_packs.delete_pack(_ADDON_DIR, profile, pending_pack["locale"])
-            else:
-                _language_packs.save_pack(_ADDON_DIR, profile, previous)
+        try:
+            if credentials_saved:
+                _simpletex_credentials.save_credentials(_ADDON_DIR, profile, previous_credentials)
+        finally:
+            if pending_pack is not None:
+                if previous is None:
+                    _language_packs.delete_pack(_ADDON_DIR, profile, pending_pack["locale"])
+                else:
+                    _language_packs.save_pack(_ADDON_DIR, profile, previous)
         raise
 
 
@@ -6944,6 +6960,7 @@ def openSettingsFunction() -> None:
         cfg.get("shortcuts") or {},
         current_ui_language=cfg.get("ui_language", "auto"),
         language_pack_context=(_ADDON_DIR, settings_profile),
+        current_simpletex_credentials=_simpletex_credentials.load_credentials(_ADDON_DIR, settings_profile),
         note_type_names=note_type_names,
         current_extract_notetype=_add_card_dock_mod.configured_extract_notetype_name(cfg),
         current_extract_priority=_add_card_dock_mod.configured_extract_priority(cfg),
@@ -7095,7 +7112,8 @@ def openSettingsFunction() -> None:
     cfg["custom_schedule_default_mode"] = dlg.custom_schedule_default_mode
     cfg["custom_schedule_presets"] = dlg.custom_schedule_presets
     try:
-        _save_settings_with_language_pack(cfg, dlg.pending_language_pack, settings_profile)
+        _save_settings_with_language_pack(cfg, dlg.pending_language_pack, settings_profile,
+                                         simpletex_credentials=dlg.simpletex_credentials)
     except Exception:
         showInfo(_t("settings_save_failed"))
         return

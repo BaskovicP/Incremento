@@ -13492,6 +13492,296 @@
     },
     {
       "component": "addon",
+      "key": "reader_math_account_help",
+      "form": "",
+      "source": "Use Guided setup to create a SimpleTex account, find your App ID and App Secret, and save them in Incremento. You can also manage them in Settings → Extraction.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_app_id",
+      "form": "",
+      "source": "SimpleTex App ID",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_app_secret",
+      "form": "",
+      "source": "App secret",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_copied",
+      "form": "",
+      "source": "Copied. Close the snapshot dialogs and paste into an Anki field.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_copy_display",
+      "form": "",
+      "source": "Copy display MathJax",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_copy_inline",
+      "form": "",
+      "source": "Copy inline MathJax",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_copy_latex",
+      "form": "",
+      "source": "Copy LaTeX",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_error_auth",
+      "form": "",
+      "source": "SimpleTex rejected these credentials. Check your App ID and app secret.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_error_busy",
+      "form": "",
+      "source": "SimpleTex is busy. Wait a moment, then scan again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_error_credentials",
+      "form": "",
+      "source": "Enter your SimpleTex App ID and app secret.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_error_empty",
+      "form": "",
+      "source": "No formula was recognized. Crop closely around a formula and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_error_image",
+      "form": "",
+      "source": "This snapshot cannot be scanned. Use a smaller crop (up to 8 MiB and 16 million pixels).",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_error_network",
+      "form": "",
+      "source": "Could not reach SimpleTex securely. Check your connection and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_error_quota",
+      "form": "",
+      "source": "Your SimpleTex account has no recognition quota or balance available.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_error_response",
+      "form": "",
+      "source": "SimpleTex returned an unreadable result. Try again with a smaller, clearer formula crop.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_found",
+      "form": "",
+      "source": "MathJax found. Check the recognized LaTeX before copying.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_latex_result",
+      "form": "",
+      "source": "Recognized LaTeX (editable)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_open",
+      "form": "",
+      "source": "Scan for MathJax…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_privacy",
+      "form": "",
+      "source": "Scan uploads only this snapshot to SimpleTex. Your account quotas and charges apply. Saved credentials are reused for this Anki profile; edits here apply only to this dialog.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_ready",
+      "form": "",
+      "source": "Crop closely around the formula. Scan, check the LaTeX, then copy and paste into an Anki field.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_scan",
+      "form": "",
+      "source": "Scan for MathJax",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_scanning",
+      "form": "",
+      "source": "Scanning with SimpleTex…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_setup_account",
+      "form": "",
+      "source": "1. Open SimpleTex using the button below. Create an account if you do not have one, then sign in. Keep this setup window open while you use the website.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_setup_application",
+      "form": "",
+      "source": "2. In the SimpleTex User Center, enable Open Platform. Go to Application List and create an application. The official instructions below explain where the App ID and App Secret come from.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_setup_browser_failed",
+      "form": "",
+      "source": "Could not open the browser. Open this address manually: {url}",
+      "tokens": [
+        "{url}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_setup_open",
+      "form": "",
+      "source": "Guided setup / change saved credentials…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_setup_open_account",
+      "form": "",
+      "source": "Open SimpleTex — create account or sign in",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_setup_open_instructions",
+      "form": "",
+      "source": "Open the official Application List instructions",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_setup_paste",
+      "form": "",
+      "source": "3. Copy the new application’s App ID and App Secret into these fields. The secret is displayed only once when the application is created; if you missed it, create another application.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_setup_save",
+      "form": "",
+      "source": "Save in Incremento and return to snapshot",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_setup_save_failed",
+      "form": "",
+      "source": "Could not save your credentials. They have not been applied. Please try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_setup_saved",
+      "form": "",
+      "source": "Credentials saved for this Anki profile. Click Scan for MathJax to recognize your snapshot.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_setup_storage",
+      "form": "",
+      "source": "Save below to remember these credentials in Incremento for this Anki profile. Later snapshots will fill them automatically. Saving does not upload your snapshot. SimpleTex provides limited free quotas; check your account before scanning.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_setup_title",
+      "form": "",
+      "source": "Set up SimpleTex once",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_status",
+      "form": "",
+      "source": "Formula recognition status",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_title",
+      "form": "",
+      "source": "Snapshot → MathJax",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_media_action_count",
       "form": "",
       "source": "{action} {cards}",
@@ -29070,6 +29360,38 @@
       "key": "settings_simple_whitespace_counts_chunks_separated_by_spaces_word_like",
       "form": "",
       "source": "Simple whitespace counts chunks separated by spaces. Word-like is closer to word-processor counting for punctuation, contractions, and hyphenated text.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_simpletex_activation",
+      "form": "",
+      "source": "To scan: open a reader → Snapshot → select the formula → Scan for MathJax…. If PDF images insert automatically, turn off Automatically use remembered PDF snapshot fields below.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_simpletex_invalid",
+      "form": "",
+      "source": "Enter both the App ID and app secret, or clear both fields. Use credentials up to 512 characters without spaces or control characters.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_simpletex_storage_help",
+      "form": "",
+      "source": "Save once with OK to reuse these credentials in PDF, EPUB, and web snapshot scans. They stay locally in this Anki profile and are excluded from Incremento backups and support bundles. Clear both fields and click OK to remove them.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_simpletex_title",
+      "form": "",
+      "source": "MathJax recognition (SimpleTex)",
       "tokens": [],
       "markup": []
     },
