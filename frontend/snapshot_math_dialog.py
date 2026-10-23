@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from html import escape
-from pathlib import Path
+import threading
+import queue
+import time
 
 from aqt import mw
 from aqt.qt import (
     QApplication, QBuffer, QDialog, QHBoxLayout, QIODevice,
-    QLabel, QLineEdit, QMimeData, QPlainTextEdit, QPushButton, QTimer,
+    QLabel, QMimeData, QPlainTextEdit, QProgressBar, QPushButton, QTimer,
     QVBoxLayout, Qt,
 )
 
@@ -16,41 +18,24 @@ try:
     from ..backend.i18n import t
     from ..backend.math_ocr import (
         MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, MathRecognitionError,
-        format_math_copy, recognize_snapshot,
+        format_math_copy, recognize_snapshot, is_ready, setup_local_ocr,
     )
     from ..backend.paths import get_active_profile as _active_profile
-    from ..backend.simpletex_credentials import load_credentials, normalize_credentials, save_credentials
 except ImportError:
     from backend.i18n import t
     from backend.math_ocr import (
         MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, MathRecognitionError,
-        format_math_copy, recognize_snapshot,
+        format_math_copy, recognize_snapshot, is_ready, setup_local_ocr,
     )
     from backend.paths import get_active_profile as _active_profile
-    from backend.simpletex_credentials import load_credentials, normalize_credentials, save_credentials
-
-try:
-    from .simpletex_setup_dialog import SimpleTexSetupDialog
-    from .file_shell import open_companion_url
-except ImportError:
-    from simpletex_setup_dialog import SimpleTexSetupDialog
-    from file_shell import open_companion_url
-
-
-_ADDON_DIR = str(Path(__file__).resolve().parents[1])
 
 
 def _error_text(code: str) -> str:
-    return {
-        "credentials": t("reader_math_error_credentials"),
-        "image": t("reader_math_error_image"),
-        "empty": t("reader_math_error_empty"),
-        "response": t("reader_math_error_response"),
-        "auth": t("reader_math_error_auth"),
-        "quota": t("reader_math_error_quota"),
-        "busy": t("reader_math_error_busy"),
-        "network": t("reader_math_error_network"),
-    }.get(code, t("reader_math_error_network"))
+    return t("reader_math_local_error_" + code) if code in {
+        "setup", "python", "process", "timeout", "cancelled", "busy"
+    } else t("reader_math_error_" + code) if code in {
+        "image", "empty", "response"
+    } else t("reader_math_local_error_process")
 
 
 class SnapshotMathDialog(QDialog):
@@ -63,7 +48,11 @@ class SnapshotMathDialog(QDialog):
         self._closed = False
         self._running = False
         self._recognized = False
-        self._setup_dialog = None
+        self._cancel = threading.Event()
+        self._progress_events = queue.Queue(maxsize=1)
+        self._progress_event = {"stage": "loading"}
+        self._progress_started = 0.0
+        self._operation = "scan"
         self.setWindowTitle(t("reader_math_title"))
         self.resize(620, 580)
         layout = QVBoxLayout(self)
@@ -76,23 +65,7 @@ class SnapshotMathDialog(QDialog):
         guidance = QLabel(t("reader_math_privacy"), self)
         guidance.setWordWrap(True)
         layout.addWidget(guidance)
-        account = QLabel(t("reader_math_account_help"), self)
-        account.setWordWrap(True)
-        account.setOpenExternalLinks(True)
-        layout.addWidget(account)
-        self._app_id = QLineEdit(self)
-        self._app_id.setPlaceholderText(t("reader_math_app_id"))
-        self._app_id.setAccessibleName(t("reader_math_app_id"))
-        layout.addWidget(self._app_id)
-        self._secret = QLineEdit(self)
-        self._secret.setEchoMode(QLineEdit.EchoMode.Password)
-        self._secret.setPlaceholderText(t("reader_math_app_secret"))
-        self._secret.setAccessibleName(t("reader_math_app_secret"))
-        layout.addWidget(self._secret)
-        app_id, secret = load_credentials(_ADDON_DIR, self._profile)
-        self._app_id.setText(app_id)
-        self._secret.setText(secret)
-        self._setup_button = QPushButton(t("reader_math_setup_open"), self)
+        self._setup_button = QPushButton(t("reader_math_local_install"), self)
         self._setup_button.setAutoDefault(False)
         self._setup_button.clicked.connect(self._open_setup)
         layout.addWidget(self._setup_button)
@@ -104,6 +77,13 @@ class SnapshotMathDialog(QDialog):
         self._status.setWordWrap(True)
         self._status.setAccessibleName(t("reader_math_status"))
         layout.addWidget(self._status)
+        self._progress = QProgressBar(self)
+        # Neither pip nor model loading reports a reliable overall percentage.
+        self._progress.setRange(0, 0)
+        self._progress.setTextVisible(False)
+        self._progress.setAccessibleName(t("reader_math_status"))
+        self._progress.hide()
+        layout.addWidget(self._progress)
         self._result = QPlainTextEdit(self)
         self._result.setAccessibleName(t("reader_math_latex_result"))
         self._result.textChanged.connect(self._update_copy_buttons)
@@ -141,47 +121,120 @@ class SnapshotMathDialog(QDialog):
     def _check_source(self) -> None:
         if not self._current():
             self.reject()
+        elif self._running:
+            self._refresh_progress()
+
+    def _begin_progress(self, operation):
+        self._operation = operation
+        self._progress_started = time.monotonic()
+        self._progress_events = queue.Queue(maxsize=1)
+        self._progress_event = {"stage": "environment" if operation == "setup" else "loading"}
+        self._refresh_progress()
+        events = self._progress_events
+
+        def receive(event):
+            # Worker threads only update this bounded mailbox, never Qt widgets.
+            try:
+                events.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                events.put_nowait(event)
+            except queue.Full:
+                pass
+        return receive
+
+    def _refresh_progress(self):
+        try:
+            self._progress_event = self._progress_events.get_nowait()
+        except queue.Empty:
+            pass
+        event = self._progress_event
+        stage = event["stage"]
+        keys = {
+            "environment": "reader_math_progress_environment",
+            "dependencies": "reader_math_progress_dependencies",
+            "installing": "reader_math_progress_installing",
+            "starting": "reader_math_progress_starting",
+            "loading": "reader_math_progress_loading",
+            "download_model": "reader_math_progress_model",
+            "download_resizer": "reader_math_progress_resizer",
+            "recognizing": "reader_math_scanning",
+        }
+        if stage not in keys:
+            return
+        status = t(keys[stage])
+        if self._operation == "setup":
+            step = {"environment": 1, "dependencies": 2, "installing": 2,
+                    "starting": 3, "download_model": 3, "download_resizer": 3, "loading": 4}.get(stage, 4)
+            status = t("reader_math_progress_step", step=step, status=status)
+        total, current = event.get("total", 0), event.get("current", 0)
+        if stage.startswith("download_") and total > 0:
+            percent = min(100, current * 100 // total)
+            self._progress.setRange(0, 100)
+            self._progress.setValue(percent)
+            self._progress.setTextVisible(True)
+            status = t("reader_math_progress_download", status=status, percent=percent,
+                       current=f"{current / (1024**2):.1f}", total=f"{total / (1024**2):.1f}")
+        else:
+            self._progress.setRange(0, 0)
+            self._progress.setTextVisible(False)
+            if stage == "dependencies" and current:
+                status = t("reader_math_progress_packages", status=status, count=current)
+        seconds = max(0, int(time.monotonic() - self._progress_started))
+        self._status.setText(t("reader_math_progress_elapsed", status=status,
+                               elapsed=f"{seconds // 60}:{seconds % 60:02}"))
 
     def _retire(self, *_args) -> None:
         if self._closed:
             return
         self._closed = True
         self._guard.stop()
-        if self._setup_dialog is not None:
-            self._setup_dialog.reject()
-        self._secret.clear()
-        self._app_id.clear()
+        self._progress.hide()
+        self._cancel.set()
         self._recognized = False
         self._result.clear()
         self._pixmap = None
 
-    def _has_credentials(self) -> bool:
-        try:
-            return bool(normalize_credentials((self._app_id.text(), self._secret.text()))[0])
-        except ValueError:
-            return False
-
     def _open_setup(self) -> None:
-        if self._setup_dialog is not None or self._running or not self._current():
+        if self._running or not self._current():
             return
+        self._running = True
+        self._scan.setEnabled(False)
+        self._setup_button.setEnabled(False)
+        progress = self._begin_progress("setup")
+        self._update_copy_buttons()
 
-        def saved(credentials):
-            if self._current():
-                self._app_id.setText(credentials[0])
-                self._secret.setText(credentials[1])
-                self._status.setText(t("reader_math_setup_saved"))
+        def finished(future):
+            if self._closed:
+                return
+            if not self._current():
+                self.reject()
+                return
+            self._running = False
+            self._scan.setEnabled(True)
+            self._setup_button.setEnabled(True)
+            try:
+                future.result()
+            except Exception as error:
+                self._status.setText(_error_text(
+                    error.code if isinstance(error, MathRecognitionError) else "process"))
+            else:
+                self._status.setText(t("reader_math_local_installed"))
+            self._update_copy_buttons()
 
-        dialog = SimpleTexSetupDialog(self,
-            initial_credentials=(self._app_id.text(), self._secret.text()),
-            is_current=self._current,
-            save=lambda credentials: save_credentials(_ADDON_DIR, self._profile, credentials),
-            on_saved=saved, open_url=lambda url: open_companion_url(url))
-        self._setup_dialog = dialog
-        dialog.finished.connect(lambda _result: setattr(self, "_setup_dialog", None))
-        dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        dialog.open()
+        try:
+            mw.taskman.run_in_background(
+                lambda: setup_local_ocr(self._cancel, progress=progress), finished, uses_collection=False)
+        except Exception:
+            self._running = False
+            self._scan.setEnabled(True)
+            self._setup_button.setEnabled(True)
+            self._status.setText(_error_text("process"))
+            self._update_copy_buttons()
 
     def _update_copy_buttons(self) -> None:
+        self._progress.setVisible(self._running and not self._closed)
         valid = self._recognized and not self._running and not self._closed
         if valid:
             try:
@@ -192,12 +245,10 @@ class SnapshotMathDialog(QDialog):
             button.setEnabled(valid)
 
     def _start_scan(self) -> None:
-        if self._running or self._setup_dialog is not None or not self._current():
+        if self._running or not self._current():
             return
-        app_id, secret = self._app_id.text().strip(), self._secret.text().strip()
-        if not self._has_credentials():
-            self._status.setText(_error_text("credentials"))
-            self._open_setup()
+        if not is_ready():
+            self._status.setText(_error_text("setup"))
             return
         if self._pixmap.isNull() or self._pixmap.width() * self._pixmap.height() > MAX_IMAGE_PIXELS:
             self._status.setText(_error_text("image"))
@@ -215,7 +266,7 @@ class SnapshotMathDialog(QDialog):
         self._result.clear()
         self._scan.setEnabled(False)
         self._setup_button.setEnabled(False)
-        self._status.setText(t("reader_math_scanning"))
+        progress = self._begin_progress("scan")
         self._update_copy_buttons()
 
         def finished(future):
@@ -231,7 +282,7 @@ class SnapshotMathDialog(QDialog):
                 latex = future.result()
             except Exception as error:
                 self._status.setText(_error_text(
-                    error.code if isinstance(error, MathRecognitionError) else "network"))
+                    error.code if isinstance(error, MathRecognitionError) else "process"))
             else:
                 self._recognized = True
                 self._result.setPlainText(latex)
@@ -240,13 +291,14 @@ class SnapshotMathDialog(QDialog):
 
         try:
             mw.taskman.run_in_background(
-                lambda: recognize_snapshot(image, app_id, secret), finished, uses_collection=False,
+                lambda: recognize_snapshot(image, cancel=self._cancel, progress=progress), finished, uses_collection=False,
             )
         except Exception:
             self._running = False
             self._scan.setEnabled(True)
             self._setup_button.setEnabled(True)
-            self._status.setText(_error_text("network"))
+            self._status.setText(_error_text("process"))
+            self._update_copy_buttons()
 
     def _copy(self, mode: str) -> None:
         if not self._current():
@@ -277,8 +329,8 @@ def add_snapshot_math_action(picker, layout, pixmap, *, is_current):
         dialog = SnapshotMathDialog(picker, pixmap, is_current=is_current)
         dialog.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         dialog.open()
-        if not dialog._has_credentials():
-            dialog._open_setup()
+        if not is_ready():
+            dialog._status.setText(_error_text("setup"))
 
     button.clicked.connect(show_scanner)
     layout.addSpacing(8)

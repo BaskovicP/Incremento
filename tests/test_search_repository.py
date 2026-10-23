@@ -108,13 +108,24 @@ def test_highlight_search_finds_annotation_notes_and_preserves_location(tmp_path
     conn.commit()
 
     rows = search_repository.search_excerpt_rows(
-        addon_dir, "Profile", f"{media}_highlights", "failure mode"
+        addon_dir, "Profile", f"{media}_annotations", "failure mode"
     )
 
-    assert rows == [(7, 3, "A saved passage\n\nMy thoughts about failure mode today")]
+    assert rows == [(7, 3, "My thoughts about failure mode today")]
     assert search_repository.search_excerpt_rows(
-        addon_dir, "OtherProfile", f"{media}_highlights", "failure mode"
+        addon_dir, "OtherProfile", f"{media}_annotations", "failure mode"
     ) == []
     assert search_repository.search_excerpt_rows(
-        addon_dir, "Profile", f"{media}_highlights", "absent phrase"
+        addon_dir, "Profile", f"{media}_annotations", "absent phrase"
     ) == []
+
+    # Highlight and annotation filters search independent fields.
+    assert search_repository.search_excerpt_rows(
+        addon_dir, "Profile", f"{media}_highlights", "failure mode"
+    ) == []
+    assert search_repository.search_excerpt_rows(
+        addon_dir, "Profile", f"{media}_annotations", "saved passage"
+    ) == []
+    assert search_repository.search_excerpt_rows(
+        addon_dir, "Profile", f"{media}_highlights", "saved passage"
+    ) == [(7, 3, "A saved passage")]

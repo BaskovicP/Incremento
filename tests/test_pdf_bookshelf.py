@@ -59,6 +59,66 @@ with pytest.MonkeyPatch.context() as _imports:
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_bookshelf_reference_choice_accepts_dialog_with_a_distinct_open_mode(monkeypatch):
+    accepted = []
+    entry = pdf_bookshelf._BookshelfEntry("Reference", 8, "PDF")
+    dialog = SimpleNamespace(_profile="A", _selected_entry=lambda: entry,
+                             accept=lambda: accepted.append(True))
+    monkeypatch.setattr(pdf_bookshelf, "_active_profile", lambda: "A")
+    pdf_bookshelf._DocumentBookshelfDialog._accept_reference(dialog, beside=True)
+    assert dialog._reference_mode == "beside"
+    assert accepted == [True]
+
+
+@pytest.mark.parametrize("mode", ["preview", "beside", "main"])
+@pytest.mark.parametrize('stale_callback', [None, 'success', 'failure'])
+def test_bookshelf_root_opens_reference_only_after_modal_picker_exits(monkeypatch, mode, stale_callback):
+    import ast
+    calls, pending = [], []
+    profile = ['A']
+    class Query:
+        def __init__(self, **options):
+            self.options = options
+            pending.append(options)
+        def failure(self, callback):
+            self.options['failure'] = callback
+            return self
+        def with_progress(self, label): return self
+        def run_in_background(self): pass
+    class Dialog:
+        selected_card_id = 8
+        selected_card_type = "PDF"
+        reference_mode = mode
+        open_card_to_study = True
+        preserve_history = False
+        def __init__(self, *args, **kwargs): pass
+        def exec(self):
+            calls.append("modal exited")
+            return True
+    monkeypatch.setitem(sys.modules, "aqt.operations", SimpleNamespace(QueryOp=Query))
+    tree = ast.parse((ROOT / '__init__.py').read_text())
+    node = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == '_open_document_bookshelf')
+    namespace = dict(_active_profile=lambda: profile[0], _ADDON_DIR="/unused", mw=object(),
+        _last_opened_document_cid=7, _DocumentBookshelfDialog=Dialog, _t=lambda key, **kw: key,
+        _open_pdf_card=lambda *a, **kw: calls.append("primary replaced"),
+        _open_epub_card=lambda *a, **kw: calls.append("epub"),
+        start_quick_open_review=lambda *a: calls.append("study started"),
+        _pdf_dock_mod=SimpleNamespace(_pdf_dock="primary"),
+        _pdf_reference_workspace_mod=SimpleNamespace(open_reference=lambda *a, **kw: calls.append((a, kw))),
+        showInfo=lambda message: pytest.fail(message))
+    exec(compile(ast.Module(body=[node], type_ignores=[]), '<bookshelf-route>', 'exec'), namespace)
+    namespace['_open_document_bookshelf']()
+    if stale_callback:
+        profile[0] = 'B'
+        pending[0][stale_callback](([], {}) if stale_callback == 'success' else RuntimeError('stale'))
+        assert calls == []
+        return
+    pending[0]['success'](([], {}))
+    expected = ["modal exited", "primary replaced", "study started"] if mode == 'main' else [
+        "modal exited", ((8,), {"beside": mode == 'beside', "owner": "primary"})]
+    assert calls == expected
+
+
 class _FakeNote:
     def __init__(self, fields=None, named_fields=None, tags=None):
         self.fields = list(fields or [])

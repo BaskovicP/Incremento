@@ -2,6 +2,22 @@
 
 Changes after **16 September 2026, 09:44 (Europe/Zagreb)**.
 
+## 23 October 2026 — PDF references and side-by-side reading
+
+Changes since the 23 October overnight rebuild requested as **00:05 (Europe/Zagreb)**. The retained package is stamped **00:02:37** (`2026.10.23.000237`); all 239 packaged source files match commit `c81c996`.
+
+- Read two PDFs side by side with a resizable divider, or browse a reference in a separate preview window. Each reader keeps its own page, zoom, search, and return history. Browsing a reference preserves the main document's saved reading progress.
+- Link a PDF page to a specific page or passage in another imported PDF. The destination preview supports page browsing, search, zoom, scrolling, and selecting a spot before saving. Open the destination's Page links panel to jump back to the source.
+- Open linked PDFs from PDF pages, stored web cards, and Anki card menus. References support preview, opening beside the current reader, changing the destination, and removing the association.
+- Page links now lives in the existing bottom Reading toolbar and compact controls. Its connection count opens a dismissible panel, and **Open beside reading** is a visible text button. Controls and link rows adapt to narrow windows, and the reader reserves the toolbar's actual height so the last part of the page remains accessible.
+- Recognize formula snapshots from PDF, EPUB, and web readers with local LaTeX-OCR (pix2tex). Review and edit the result, then copy inline MathJax, display MathJax, or plain LaTeX. Setup and recognition show progress and support cancellation; recognition works offline after setup and does not require an account or upload the crop.
+- Recolor saved PDF highlights without losing their text, notes, or linked cards, including when delete buttons are hidden. Highlight shortcuts also accept Cmd+H on macOS and Ctrl+H on Windows/Linux alongside Option/Alt+H.
+- Search personal PDF and EPUB highlight notes through the independent **Annotations** filter in Search ALL. Annotation previews show the saved note, while highlight previews show the highlighted passage.
+- Preserve a linked passage when annotations refresh, retain the reference document's source details during extraction, and reject stale reader operations after closing a document or switching profiles. Updated English, Croatian, and Simplified Chinese interface text and rebuilt reader and Companion assets are included.
+- Updated compatible build-tool dependencies and stabilized the real WebEngine editor tests for macOS offscreen execution. The dependency audit reports no known vulnerabilities.
+
+Restart Anki after updating. Optional local formula recognition requires an installed Python 3.10–3.12 and a one-time software/model download through **Snapshot → Scan for MathJax… → Set up / repair local LaTeX-OCR**. Saved PDF associations are included in Incremento profile backups; Anki Sync alone does not transfer them. Page-to-page associations currently support PDFs.
+
 ## 18 October 2026 — 2026.10.18
 
 Changes since the 12 October 2026 release.

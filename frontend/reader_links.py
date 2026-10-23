@@ -363,6 +363,15 @@ def _canonical_reader_anchor_html(raw_html: object) -> str | None:
     )
 
 
+def make_reader_anchor_html(command: str, label: str) -> str:
+    """Build the same narrowly trusted shape for every independent reader."""
+    if not _valid_reader_anchor_command(command) or not isinstance(label, str) or not label.strip():
+        return ""
+    onclick = _escape_html(f"pycmd({json.dumps(command)}); return false;", quote=True)
+    html = f'<a onclick="{onclick}" style="{_READER_ANCHOR_STYLE}">{_escape_html(label)}</a>'
+    return _canonical_reader_anchor_html(html) or ""
+
+
 def reader_anchor_command_from_html(raw_html: object) -> str | None:
     """Return the validated pycmd command from one Incremento reader anchor."""
     canonical = _canonical_reader_anchor_html(raw_html)

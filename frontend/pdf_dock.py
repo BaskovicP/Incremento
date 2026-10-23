@@ -300,6 +300,13 @@ _annotation_queue = PdfAnnotationSyncQueue(lambda work, done: mw.taskman.run_in_
 def reset_for_profile_switch() -> None:
     """Retire file workers and reader callbacks before profile storage changes."""
     global _pdf_dock
+    try:
+        from . import pdf_reference_workspace, document_link_ui
+    except ImportError:
+        import pdf_reference_workspace
+        import document_link_ui
+    pdf_reference_workspace.reset_for_profile_switch()
+    document_link_ui.reset_for_profile_switch()
     _annotation_queue.reset()
     _hide_pdf_dock_for_inactive_context()
     if _pdf_dock is not None:
@@ -322,11 +329,34 @@ def _reload_current_pdf_annotations(result):
     if cid is None:
         return
     profile = _active_profile()
-    show_pdf_in_dock(cid, _current_pdf_filename, get_page(_ADDON_DIR, profile, cid),
-                     get_zoom(_ADDON_DIR, profile, cid), preserve_history=True,
+    location = _live_pdf_location(cid)
+    page = location['page'] if location else get_page(_ADDON_DIR, profile, cid)
+    zoom = location['zoom'] if location else get_zoom(_ADDON_DIR, profile, cid)
+    show_pdf_in_dock(cid, _current_pdf_filename, page, zoom, preserve_history=True, via_link=_pdf_via_link,
+                     scroll_ratio_override=location['scroll_ratio'] if location else None,
+                     page_y_override=location.get('page_y') if location else None,
                      search_query=_current_pdf_search_query, search_hits=list(_current_pdf_search_hits),
                      active_search_hit_index=_current_pdf_search_hit_index,
                      offer_due_review_prompt=False, _annotation_result=result)
+
+
+def _live_pdf_location(card_id):
+    location = getattr(_pdf_dock, '_reader_location', None)
+    if (isinstance(location, dict) and location.get('profile') == _active_profile()
+            and location.get('card_id') == card_id == _current_pdf_card_id
+            and location.get('filename') == _current_pdf_filename):
+        return location
+    return None
+
+
+def _track_pdf_location(card_id, **values):
+    location = _live_pdf_location(card_id)
+    if location is None:
+        return
+    page = values.get('page')
+    if page is not None and (type(page) is not int or not 1 <= page <= 1_000_000):
+        return
+    location.update(values)
 
 
 def _initial_pdf_annotation_result(profile, card_id, managed_path):
@@ -541,6 +571,7 @@ def _clear_current_pdf_context() -> int | None:
     global _current_pdf_search_query, _current_pdf_search_hits, _current_pdf_search_hit_index
     global _pdf_via_link, _pdf_preserve_history, _pdf_showing_missing_screen
     global _pdf_annotation_generation
+    _close_pdf_page_links()
     _pdf_annotation_generation += 1
     previous_card_id = current_pdf_card_id()
     _current_pdf_card_id = None
@@ -1567,6 +1598,64 @@ def _copy_pdf_context_anchor(data: object) -> bool:
     return True
 
 
+def _close_pdf_page_links():
+    bridge = getattr(_pdf_dock, '_page_links', None) if _pdf_dock is not None else None
+    if bridge is not None:
+        bridge.close()
+        _pdf_dock._page_links = None
+
+
+def _handle_pdf_page_links(payload):
+    if _pdf_dock is None:
+        return False
+    try:
+        from .pdf_page_links import PdfPageLinksBridge
+    except ImportError:
+        from pdf_page_links import PdfPageLinksBridge
+    bridge = getattr(_pdf_dock, '_page_links', None)
+    if bridge is None or not bridge.current():
+        _close_pdf_page_links()
+        profile, card_id, filename, dock = _active_profile(), _current_pdf_card_id, _current_pdf_filename, _pdf_dock
+        generation = _pdf_annotation_generation
+        viewer = dock._view.page()
+        def current():
+            return (profile == _active_profile() and card_id == _current_pdf_card_id
+                    and filename == _current_pdf_filename and dock is _pdf_dock
+                    and generation == _pdf_annotation_generation)
+        def jump(snapshot, link):
+            show_pdf_in_dock(snapshot['card_id'], snapshot['filename'], link['target_page'],
+                             via_link=True, preserve_history=True, offer_due_review_prompt=False,
+                             scroll_ratio_override=link['target_scroll'], page_y_override=link.get('target_y'))
+        bridge = PdfPageLinksBridge(profile=profile, card_id=card_id, filename=filename,
+            owner=dock, is_current=current, open_pdf=jump,
+            reply=lambda data: viewer.runJavaScript('window.incrementoReceivePdfPageLinks?.(' + json.dumps(data) + ');'),
+            refresh=lambda: viewer.runJavaScript('window.incrementoRefreshPdfPageLinks?.();'))
+        dock._page_links = bridge
+    return bridge.handle(payload)
+
+
+def _open_pdf_document_links(payload, *, create):
+    if (not isinstance(payload, dict) or type(payload.get("cardId")) is not int
+            or payload["cardId"] != _current_pdf_card_id or payload["cardId"] <= 0
+            or type(payload.get("page")) is not int or not 1 <= payload["page"] <= 1_000_000):
+        return False
+    try:
+        from . import document_link_ui
+    except ImportError:
+        import document_link_ui
+    profile, card_id, filename, dock = _active_profile(), _current_pdf_card_id, _current_pdf_filename, _pdf_dock
+    generation = _pdf_annotation_generation
+    def current():
+        return (profile == _active_profile() and card_id == _current_pdf_card_id
+                and filename == _current_pdf_filename and dock is _pdf_dock
+                and generation == _pdf_annotation_generation)
+    source = {"card_id": card_id, "kind": "pdf", "page": payload["page"],
+              "quote": str(payload.get("quote") or "")[:2000]}
+    action = document_link_ui.link_pdf if create else document_link_ui.show_links
+    action(source, owner=dock, is_current=current)
+    return True
+
+
 def _show_pdf_reader_context_menu(view, position) -> bool:
     try:
         x = int(position.x())
@@ -1578,6 +1667,7 @@ def _show_pdf_reader_context_menu(view, position) -> bool:
     filename = _current_pdf_filename
     viewer_page = view.page()
     nonce = viewer_page._bridge_nonce
+    selected_text = str(view.selectedText() or "")[:2000] if callable(getattr(view, "selectedText", None)) else ""
     request = object()
     view._incremento_image_menu_request = request
 
@@ -1597,6 +1687,11 @@ def _show_pdf_reader_context_menu(view, position) -> bool:
         if not is_current(menu) or not isinstance(payload, dict):
             return
         anchor = _normalize_pdf_context_anchor(payload)
+        if anchor is not None:
+            for key, create in (("reader_reference_add", True), ("reader_reference_links", False)):
+                action = menu.addAction(t(key))
+                action.triggered.connect(lambda checked=False, new=create: _open_pdf_document_links(
+                    {"cardId": card_id, "page": anchor["page"], "quote": selected_text}, create=new) if is_current(menu) else None)
         point = payload.get("imagePoint")
         if anchor is None or not isinstance(point, dict) or not filename:
             return
@@ -2763,7 +2858,20 @@ def _pdf_extract_html(payload: dict) -> str:
 
 
 def _handle_pdf_js_message(msg: str) -> None:
-    if msg.startswith("incremento_pdf_contents:"):
+    if msg.startswith('incremento_pdf_page_links:'):
+        if len(msg) <= 10_000:
+            try:
+                _handle_pdf_page_links(json.loads(msg.split(':', 1)[1]))
+            except (TypeError, ValueError):
+                pass
+    elif msg.startswith(("incremento_pdf_link_document:", "incremento_pdf_document_links:")):
+        if len(msg) <= 10_000:
+            try:
+                _open_pdf_document_links(json.loads(msg.split(":", 1)[1]),
+                                         create=msg.startswith("incremento_pdf_link_document:"))
+            except (TypeError, ValueError):
+                pass
+    elif msg.startswith("incremento_pdf_contents:"):
         if len(msg) <= 1_000_000:
             try:
                 _open_pdf_contents(json.loads(msg.removeprefix("incremento_pdf_contents:")))
@@ -2796,6 +2904,8 @@ def _handle_pdf_js_message(msg: str) -> None:
                     if is_blocking:
                         _push_pdf_limit_status(status_before)
                         return
+                    _close_pdf_page_links()
+                    _track_pdf_location(cid, page=pg, scroll_ratio=0, page_y=None)
                     if not _pdf_via_link and not _pdf_preserve_history:
                         set_page(_ADDON_DIR, _active_profile(), cid, pg)
                     _timer_mod.record_pdf_page_read(cid, pg)
@@ -2806,6 +2916,9 @@ def _handle_pdf_js_message(msg: str) -> None:
         parts = msg.split(":")
         if len(parts) == 3:
             try:
+                live_zoom = float(parts[2])
+                if 0 < live_zoom <= 20:
+                    _track_pdf_location(int(parts[1]), zoom=live_zoom)
                 if int(parts[1]) > 0 and not _pdf_preserve_history:
                     set_zoom(_ADDON_DIR, _active_profile(), int(parts[1]), float(parts[2]))
             except ValueError:
@@ -2814,6 +2927,9 @@ def _handle_pdf_js_message(msg: str) -> None:
         try:
             payload = json.loads(msg[len(_MSG_SCROLL) :])
             cid = int(payload.get("cardId", 0) or 0)
+            ratio = normalize_reader_anchor_scroll_ratio(payload.get('scrollRatio'))
+            if ratio is not None:
+                _track_pdf_location(cid, scroll_ratio=ratio, page_y=None)
             if cid > 0 and not _pdf_preserve_history and not _pdf_via_link:
                 set_scroll_ratio(
                     _ADDON_DIR,
@@ -3273,6 +3389,24 @@ class _PdfDockPage(QWebEnginePage):
         _dispatch_pdf_bridge_message(self, message)
 
 
+def _focused_pdf_extraction_view():
+    """Extraction belongs to a focused reader, never to an editor or modal."""
+    if QApplication.activeModalWidget() is not None or QApplication.activePopupWidget() is not None:
+        return None
+    try:
+        from .pdf_reference_workspace import focused_reference
+    except ImportError:
+        from pdf_reference_workspace import focused_reference
+    reference = focused_reference()
+    if reference is not None:
+        return reference.view
+    focus = QApplication.focusWidget()
+    if focus is None or _pdf_dock is None or not _pdf_dock.isVisible():
+        return None
+    view = _pdf_dock._view
+    return view if focus is view or view.isAncestorOf(focus) else None
+
+
 class _PdfShortcutFilter(QObject):
     """Capture Cmd/Ctrl+1..4 before WebEngine or menu handling consumes them."""
 
@@ -3282,9 +3416,6 @@ class _PdfShortcutFilter(QObject):
                 QEvent.Type.ShortcutOverride,
                 QEvent.Type.KeyPress,
             ):
-                return False
-
-            if _pdf_dock is None or not _pdf_dock.isVisible():
                 return False
 
             mods = event.modifiers()
@@ -3323,13 +3454,17 @@ class _PdfShortcutFilter(QObject):
             if idx is None:
                 return False
 
+            view = _focused_pdf_extraction_view()
+            if view is None:
+                return False
+
             event.accept()
 
             if event.type() == QEvent.Type.ShortcutOverride:
                 return True
 
             try:
-                _pdf_dock._view.page().runJavaScript(
+                view.page().runJavaScript(
                     f"window.incrementoHandleExtractShortcut && window.incrementoHandleExtractShortcut({idx});"
                 )
             except Exception:
@@ -3589,10 +3724,11 @@ def _build_pdf_dock():
     if not _shortcuts_registered:
 
         def _act_extract_field1():
-            if _pdf_dock is None:
+            view = _focused_pdf_extraction_view()
+            if view is None:
                 return
             try:
-                _pdf_dock._view.page().runJavaScript(
+                view.page().runJavaScript(
                     "window.incrementoHandleExtractShortcut && window.incrementoHandleExtractShortcut(0);",
                 )
             except Exception:
@@ -3739,6 +3875,7 @@ def show_pdf_in_dock(
     offer_due_review_prompt=True,
     scroll_ratio_override: float | None = None,
     _annotation_result: dict | None = None,
+    page_y_override: float | None = None,
 ) -> None:
     global _pdf_dock, _current_pdf_card_id, _current_pdf_filename, _pdf_via_link, _pdf_preserve_history
     global _pdf_showing_missing_screen
@@ -3810,7 +3947,7 @@ def show_pdf_in_dock(
             card_id, resolved_filename, page, zoom, via_link, read_page,
             search_query, jump_excerpt, jump_highlight_id, search_hits,
             active_search_hit_index, preserve_history, offer_due_review_prompt,
-            scroll_ratio_override, _annotation_result=initial_result,
+            scroll_ratio_override, _annotation_result=initial_result, page_y_override=page_y_override,
         )
         def prepared(result, error):
             if not _pdf_annotation_context_matches(profile, normalized_card_id, resolved_filename, dock, generation):
@@ -3879,11 +4016,15 @@ def show_pdf_in_dock(
     read_anchor = get_read_anchor(_ADDON_DIR, _active_profile(), card_id)
     saved_scroll_ratio = get_scroll_ratio(_ADDON_DIR, _active_profile(), card_id)
     requested_scroll_ratio = normalize_reader_anchor_scroll_ratio(scroll_ratio_override)
+    requested_page_y = normalize_reader_anchor_scroll_ratio(page_y_override)
     scroll_ratio = (
         requested_scroll_ratio
         if requested_scroll_ratio is not None
         else saved_scroll_ratio
     )
+    _pdf_dock._reader_location = {'profile': _active_profile(), 'card_id': normalized_card_id,
+        'filename': resolved_filename, 'page': page, 'zoom': zoom,
+        'scroll_ratio': scroll_ratio, 'page_y': requested_page_y}
     normalized_jump_excerpt = _normalize_pdf_reference_excerpt(jump_excerpt)
     reader_locale = get_locale()
     custom_reader_language = get_custom_reader_payload()
@@ -3913,10 +4054,10 @@ def show_pdf_in_dock(
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._pdfNativeHighlightsVisible = {json.dumps(bool((_annotation_result or {}).get('native_highlights_visible')))};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)}, locale: {json.dumps(reader_locale)}, customLanguage: {json.dumps(custom_reader_language)}, appearanceMode: {json.dumps(appearance_mode)}, showHighlightDeleteButtons: {json.dumps(configured_pdf_show_highlight_delete_buttons())}, linkPreviewZoom: {json.dumps(configured_pdf_link_preview_zoom())} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)}, locale: {json.dumps(reader_locale)}, customLanguage: {json.dumps(custom_reader_language)}, appearanceMode: {json.dumps(appearance_mode)}, showHighlightDeleteButtons: {json.dumps(configured_pdf_show_highlight_delete_buttons())}, linkPreviewZoom: {json.dumps(configured_pdf_link_preview_zoom())}, pageY: {json.dumps(requested_page_y)} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}, {json.dumps(reader_locale)}, {json.dumps(custom_reader_language)}, {json.dumps(appearance_mode)}, {json.dumps(configured_pdf_show_highlight_delete_buttons())}, {json.dumps(configured_pdf_link_preview_zoom())}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}, {json.dumps(reader_locale)}, {json.dumps(custom_reader_language)}, {json.dumps(appearance_mode)}, {json.dumps(configured_pdf_show_highlight_delete_buttons())}, {json.dumps(configured_pdf_link_preview_zoom())}, {json.dumps(requested_page_y)}));"
     )
 
     current = _pdf_dock._view.url().toString()

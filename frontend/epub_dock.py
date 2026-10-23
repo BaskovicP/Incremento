@@ -3380,6 +3380,17 @@ def _make_epub_button(
     return btn
 
 
+def _make_epub_page_links_button(parent) -> QToolButton:
+    """Keep the shared toolbar slot explicit until EPUB has page connections."""
+    label = _EPUB_TOOLBAR_TEXT["page_links"]
+    reason = t("reader_unavailable", action=label, reader="EPUB")
+    button = _make_epub_button(parent, label, reason)
+    button.setEnabled(False)
+    button.setAccessibleName(label)
+    button.setAccessibleDescription(reason)
+    return button
+
+
 def _make_epub_chip(parent, text: str) -> QLabel:
     label = QLabel(text, parent)
     label.setStyleSheet(
@@ -3877,6 +3888,7 @@ def _build_epub_dock() -> None:
         _EPUB_TOOLBAR_TEXT["jump_back"],
         t("reader_epub_jump_back_hint"),
     )
+    dock._page_links_btn = _make_epub_page_links_button(dock)
     dock._customize_controls_btn = _make_epub_button(
         dock,
         t("reader_customize_controls"),
@@ -3974,6 +3986,7 @@ def _build_epub_dock() -> None:
         dock._read_marker_btn,
         dock._links_btn,
         dock._jump_back_btn,
+        dock._page_links_btn,
         dock._read_range_chip,
     )
     progress_meter = _make_epub_progress_meter(
@@ -4091,6 +4104,7 @@ def _build_epub_dock() -> None:
         _EPUB_TOOLBAR_TEXT["jump_back"],
         t("reader_epub_jump_back_hint"),
     )
+    dock._compact_page_links_btn = _make_epub_page_links_button(controls_compact)
     dock._show_controls_btn = _make_epub_button(
         controls_compact,
         t("reader_show_controls"),
@@ -4118,6 +4132,7 @@ def _build_epub_dock() -> None:
         dock._compact_scale_lbl,
         dock._compact_links_btn,
         dock._compact_jump_back_btn,
+        dock._compact_page_links_btn,
         dock._show_controls_btn,
         dock._compact_customize_controls_btn,
     ):

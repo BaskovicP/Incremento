@@ -99,6 +99,7 @@ _MAX_CATEGORY_RESULTS = 120
 _LIVE_RESULT_OVERSAMPLE_FACTOR = 10
 _SEARCH_WHILE_TYPING_CONFIG_KEY = "search_all_search_while_typing"
 _SEARCH_ALL_FILTER_CONFIG_KEYS = {
+    "annotations": "search_all_filter_annotations",
     "pdf_highlights": "search_all_filter_pdf_highlights",
     "epub_highlights": "search_all_filter_epub_highlights",
     "pdf_sources": "search_all_filter_pdf_sources",
@@ -110,6 +111,7 @@ _SEARCH_ALL_FILTER_CONFIG_KEYS = {
     "current_profile": "search_all_filter_current_profile",
 }
 _SEARCH_ALL_FILTER_DEFAULTS = {
+    "annotations": True,
     "pdf_highlights": True,
     "epub_highlights": True,
     "pdf_sources": True,
@@ -326,6 +328,8 @@ class _SearchAllDialog(QDialog):
         filter_row.setSpacing(16)
         self._cb_highlights = QCheckBox(t("search_all_pdf_highlights"))
         self._cb_epub_highlights = QCheckBox(t("search_all_epub_highlights"))
+        self._cb_annotations = QCheckBox(t("search_all_annotations"))
+        self._cb_annotations.setToolTip(t("search_all_annotations_tooltip"))
         self._cb_sources = QCheckBox(t("search_all_pdf_sources"))
         self._cb_epub_sources = QCheckBox(t("search_all_epub_sources"))
         self._cb_content = QCheckBox(t("search_all_pdf_content"))
@@ -343,6 +347,7 @@ class _SearchAllDialog(QDialog):
             t("search_all_existing_anki_items_accessible")
         )
         self._filter_checkboxes = {
+            "annotations": self._cb_annotations,
             "pdf_highlights": self._cb_highlights,
             "epub_highlights": self._cb_epub_highlights,
             "pdf_sources": self._cb_sources,
@@ -894,17 +899,22 @@ class _SearchAllDialog(QDialog):
             return search_text_match_score(text or "", q)
 
         # PDF highlights (go directly to page)
-        if self._cb_highlights.isChecked():
+        for kind, enabled, heading in (
+            ("pdf_highlights", self._cb_highlights.isChecked(), t("search_all_pdf_highlights")),
+            ("pdf_annotations", self._cb_annotations.isChecked(), t("search_all_annotations") + " (PDF)"),
+        ):
+            if not enabled:
+                continue
             try:
                 rows = self._search_excerpt_hits(
-                    "pdf_highlights",
+                    kind,
                     q,
                 )
             except Exception:
                 rows = []
 
             if rows:
-                html.append(f"<h3>{escape(t('search_all_pdf_highlights'))}</h3>")
+                html.append(f"<h3>{escape(heading)}</h3>")
                 by_file: dict = {}
                 for cid, page, text in rows:
                     by_file.setdefault(cid, []).append((page, text))
@@ -959,17 +969,22 @@ class _SearchAllDialog(QDialog):
                         total += 1
                     html.append("</ul>")
 
-        if self._cb_epub_highlights.isChecked():
+        for kind, enabled, heading in (
+            ("epub_highlights", self._cb_epub_highlights.isChecked(), t("search_all_epub_highlights")),
+            ("epub_annotations", self._cb_annotations.isChecked(), t("search_all_annotations") + " (EPUB)"),
+        ):
+            if not enabled:
+                continue
             try:
                 rows = self._search_excerpt_hits(
-                    "epub_highlights",
+                    kind,
                     q,
                 )
             except Exception:
                 rows = []
 
             if rows:
-                html.append(f"<h3>{escape(t('search_all_epub_highlights'))}</h3>")
+                html.append(f"<h3>{escape(heading)}</h3>")
                 by_file: dict = {}
                 for cid, section_index, text in rows:
                     by_file.setdefault(cid, []).append((section_index, text))

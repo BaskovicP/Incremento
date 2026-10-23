@@ -86,7 +86,8 @@ export function usePdfRender() {
     tl.style.transform = 'none';
 
     lastScaleRef.current = viewport.scale;
-    setRenderInfo({ scale: viewport.scale, tlLeft, pageWidth: viewport.width });
+    setRenderInfo({ scale: viewport.scale, tlLeft, pageWidth: viewport.width,
+      cardId: cardIdRef.current, page: pg.pageNumber });
 
     try {
       const stream = pg.streamTextContent();

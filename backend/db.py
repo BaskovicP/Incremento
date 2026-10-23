@@ -663,6 +663,43 @@ def _migration_13_website_tags(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_14_document_links(conn: sqlite3.Connection) -> None:
+    _begin_migration_script(conn, """
+        CREATE TABLE document_links (
+            id INTEGER PRIMARY KEY,
+            source_card_id INTEGER NOT NULL CHECK(source_card_id > 0),
+            source_content_id TEXT,
+            source_kind TEXT NOT NULL CHECK(source_kind IN ('pdf', 'web', 'card')),
+            source_page INTEGER NOT NULL DEFAULT 0 CHECK(source_page >= 0),
+            quote TEXT NOT NULL DEFAULT '' CHECK(length(quote) <= 2000),
+            target_card_id INTEGER NOT NULL CHECK(target_card_id > 0),
+            target_content_id TEXT,
+            target_page INTEGER NOT NULL CHECK(target_page > 0),
+            target_scroll REAL NOT NULL DEFAULT 0 CHECK(target_scroll >= 0 AND target_scroll <= 1)
+        );
+        CREATE INDEX document_links_source ON document_links(source_card_id, source_page);
+        CREATE INDEX document_links_content ON document_links(source_content_id, source_page);
+    """)
+
+
+def _migration_15_document_link_targets(conn: sqlite3.Connection) -> None:
+    _begin_migration_script(conn, """
+        CREATE INDEX document_links_target ON document_links(target_card_id, target_page)
+            WHERE source_kind='pdf' AND source_page>0;
+        CREATE INDEX document_links_target_content ON document_links(target_content_id, target_page)
+            WHERE source_kind='pdf' AND source_page>0;
+    """)
+
+
+def _migration_16_document_link_positions(conn: sqlite3.Connection) -> None:
+    _begin_migration_script(conn, """
+        ALTER TABLE document_links ADD COLUMN source_y REAL
+            CHECK(source_y IS NULL OR (source_y >= 0 AND source_y <= 1));
+        ALTER TABLE document_links ADD COLUMN target_y REAL
+            CHECK(target_y IS NULL OR (target_y >= 0 AND target_y <= 1));
+    """)
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
@@ -676,6 +713,9 @@ _SCHEMA_MIGRATIONS = (
     (11, "pdf_appearance", _migration_11_pdf_appearance),
     (12, "video_watch_history", _migration_12_video_watch_history),
     (13, "website_tags", _migration_13_website_tags),
+    (14, "document_links", _migration_14_document_links),
+    (15, "document_link_targets", _migration_15_document_link_targets),
+    (16, "document_link_positions", _migration_16_document_link_positions),
 )
 
 

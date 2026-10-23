@@ -3,6 +3,9 @@ import { usePdfRender } from './usePdfRender.js';
 import HighlightLayer, { isResizableTextHighlight } from './HighlightLayer.jsx';
 import PdfSelectionLayer from './PdfSelectionLayer.jsx';
 import PdfLinkPreview from './PdfLinkPreview.jsx';
+import PdfPageLinks, {usePdfPageLinks} from './PdfPageLinks.jsx';
+import {observePdfToolbarHeight, pdfPageLinksViewport} from './pdfPageLinks.mjs';
+import {pdfDestinationScrollRatio} from './pdfDestination.mjs';
 import {DEFAULT_PDF_LINK_PREVIEW_ZOOM, normalizePdfLinkPreviewZoom} from './pdfLinkPreview.mjs';
 import { normalizePdfHighlightRects, pdfHighlightAtClientPoint } from './pdfHighlightRects.mjs';
 import { HL_COLORS, HL_SOLID, highlightSolidColor, normalizeHighlightColor } from './highlightColors.mjs';
@@ -406,17 +409,13 @@ function getPdfViewportMetrics(wrapper) {
   const controlsHeight = Number.isFinite(configuredControlsHeight)
     ? configuredControlsHeight
     : CONTROLS_HEIGHT;
-  const visibleHeight = Math.max(1, window.innerHeight - controlsHeight);
-  return {
-    pageTop: window.scrollY + rect.top,
-    pageHeight,
-    visibleHeight,
-    maxOffset: Math.max(0, pageHeight - visibleHeight),
-  };
+  return pdfPageLinksViewport({scrollY: window.scrollY, wrapperTop: rect.top, pageHeight,
+    windowHeight: window.innerHeight, controlsHeight});
 }
 
 export default function PdfViewer() {
   const [language, setLanguage] = useState(() => createReaderLanguage('en'));
+  const [pageLinksDocument, setPageLinksDocument] = useState({cardId: 0, generation: 0});
   const { tr, plural } = language;
   // ── Rendering pipeline (text layer, canvases, zoom, navigation) ────────────
   const {
@@ -425,6 +424,14 @@ export default function PdfViewer() {
     pdfDocRef, busyRef, activeCvsRef, cardIdRef, pageRef, lastScaleRef,
     startViewer, nav: rawNav, adjustZoom, setReadProgress: rawSetReadProgress,
   } = usePdfRender();
+  const pageLinksState = usePdfPageLinks({cardId: pageLinksDocument.cardId, page,
+    generation: pageLinksDocument.generation,
+    enabled: !!pdfDocRef.current && !error && renderInfo.cardId === pageLinksDocument.cardId && renderInfo.page === page,
+    onCommand: message => {
+      const metrics = getPdfViewportMetrics(containerRef.current);
+      const point = metrics?.pageHeight > 0 ? clampScrollRatio((window.scrollY - metrics.pageTop) / metrics.pageHeight) : null;
+      window.pycmd?.('incremento_pdf_page_links:' + JSON.stringify({...message, page_y: point}));
+    }});
   const pageLocationText = pdfPageLocation(page, totalPages, pageLabels, tr);
   const pageLocationTitle = tr('reader_page_jump') + '\n' + tr(
     pageLabels?.[page - 1] ? 'reader_page_numbering_hint' : 'reader_printed_page_unavailable',
@@ -485,6 +492,7 @@ export default function PdfViewer() {
   const pendingPageTopScrollRef = useRef(false);
   const pendingResumeScrollRef = useRef(null);
   const pendingContentsFractionRef = useRef(null);
+  const pendingDestinationPointRef = useRef(null);
   const contentsGenerationRef = useRef(0);
   const pendingResumePageRef = useRef(null);
   const suppressScrollPersistUntilRef = useRef(0);
@@ -494,6 +502,8 @@ export default function PdfViewer() {
   const suppressSearchSyncRef = useRef(false);
   const [searchJumpNonce, setSearchJumpNonce] = useState(0);
   const [controlsCollapsed, setControlsCollapsed] = useState(false);
+  const controlsRef = useRef(null);
+  const [measuredControlsHeight, setMeasuredControlsHeight] = useState(0);
   const [showControlChooser, setShowControlChooser] = useState(false);
   const [controlVisibility, setControlVisibility] = useState(DEFAULT_CONTROL_VISIBILITY);
   const [clickableLinks, setClickableLinks] = useState(false);
@@ -528,7 +538,8 @@ export default function PdfViewer() {
     }
   }, []);
 
-  const visibleControlsHeight = controlsCollapsed ? COLLAPSED_CONTROLS_HEIGHT : CONTROLS_HEIGHT;
+  const visibleControlsHeight = measuredControlsHeight || (controlsCollapsed ? COLLAPSED_CONTROLS_HEIGHT : CONTROLS_HEIGHT);
+  useEffect(() => observePdfToolbarHeight(controlsRef.current, setMeasuredControlsHeight, window.ResizeObserver), []);
   useEffect(() => {
     document.documentElement.style.setProperty('--pdf-controls-height', `${visibleControlsHeight}px`);
     return () => document.documentElement.style.removeProperty('--pdf-controls-height');
@@ -538,6 +549,7 @@ export default function PdfViewer() {
     pendingResumeScrollRef.current = null;
     pendingResumePageRef.current = null;
     pendingContentsFractionRef.current = null;
+    pendingDestinationPointRef.current = null;
   }, []);
 
   const openFind = useCallback(() => {
@@ -780,7 +792,8 @@ export default function PdfViewer() {
       const wrapperRect = wrapper.getBoundingClientRect();
       const scale = renderInfo?.scale || 1;
       const tlLeft = renderInfo?.tlLeft || 0;
-      const targetTop = window.scrollY + wrapperRect.top + (rect.y * scale) - topPad;
+      const pageTop = getPdfViewportMetrics(wrapper)?.pageTop ?? window.scrollY + wrapperRect.top;
+      const targetTop = pageTop + (rect.y * scale) - topPad;
       const targetLeft = Math.max(
         0,
         window.scrollX + tlLeft + (rect.x * scale) - (window.innerWidth * leftBias),
@@ -870,7 +883,7 @@ export default function PdfViewer() {
       clearPendingResumeScroll();
       suppressScrollPersistence(700);
       window.scrollTo({
-        top: Math.max(0, window.scrollY + wrapper.getBoundingClientRect().top),
+        top: Math.max(0, getPdfViewportMetrics(wrapper)?.pageTop || 0),
         left: window.scrollX,
         behavior: 'auto',
       });
@@ -887,7 +900,9 @@ export default function PdfViewer() {
       const metrics = getPdfViewportMetrics(wrapper);
       if (!metrics) return;
       const pageFraction = pendingContentsFractionRef.current;
-      const ratio = pageFraction == null ? clampScrollRatio(pendingResumeScroll)
+      const destinationPoint = pendingDestinationPointRef.current;
+      const ratio = destinationPoint != null ? pdfDestinationScrollRatio(destinationPoint, metrics.pageHeight, metrics.visibleHeight)
+        : pageFraction == null ? clampScrollRatio(pendingResumeScroll)
         : metrics.maxOffset > 0 ? clampScrollRatio(pageFraction * metrics.pageHeight / metrics.maxOffset) : 0;
       clearPendingResumeScroll();
       suppressScrollPersistence(700);
@@ -1690,9 +1705,13 @@ export default function PdfViewer() {
       startAppearanceMode = 'original',
       startShowHighlightDeleteButtons = true,
       startLinkPreviewZoom = DEFAULT_PDF_LINK_PREVIEW_ZOOM,
+      startPageY = null,
     ) => {
+      setPageLinksDocument(current => ({cardId: Number(cardId), generation: current.generation + 1}));
       contentsGenerationRef.current += 1;
       pendingContentsFractionRef.current = null;
+      pendingDestinationPointRef.current = typeof startPageY === 'number' && Number.isFinite(startPageY)
+        && startPageY >= 0 && startPageY <= 1 ? startPageY : null;
       if (Number(cardIdRef.current || 0) !== Number(cardId || 0)) {
         setFindStartPage(null);
       }
@@ -1812,6 +1831,7 @@ export default function PdfViewer() {
         pending.appearanceMode || 'original',
         pending.showHighlightDeleteButtons,
         pending.linkPreviewZoom,
+        pending.pageY,
       );
     }
     return () => {
@@ -1977,6 +1997,7 @@ export default function PdfViewer() {
       {/* Controls */}
       <div
         id="pdf-controls"
+        ref={controlsRef}
         role="toolbar"
         aria-label={tr("reader_pdf_controls")}
         style={{
@@ -2080,6 +2101,7 @@ export default function PdfViewer() {
             >
               ↩ {tr('reader_jump_back')}
             </button>
+            <PdfPageLinks linksState={pageLinksState} tr={tr} />
             <button
               type="button"
               onClick={() => setControlsCollapsed(false)}
@@ -2325,6 +2347,7 @@ export default function PdfViewer() {
                 >
                   ↩ {tr('reader_jump_back')}
                 </button>
+                <PdfPageLinks linksState={pageLinksState} tr={tr} />
                 {readPage > 0 && (
                   <span style={{
                     fontSize: 11,

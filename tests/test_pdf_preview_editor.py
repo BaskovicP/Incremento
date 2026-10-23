@@ -10,7 +10,9 @@ from textwrap import dedent
 _BROWSER_SETUP = dedent('''
         import json
         from html import escape
-        from aqt.qt import QApplication, QCoreApplication, QEvent, QEventLoop, QTimer
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from aqt.qt import QApplication, QCoreApplication, QEvent, QEventLoop, QImage, QTimer, QUrl
         from PyQt6.QtQuick import QQuickWindow, QSGRendererInterface
         from PyQt6.QtWebEngineWidgets import QWebEngineView
         from frontend import reader_links
@@ -18,10 +20,17 @@ _BROWSER_SETUP = dedent('''
         # Match Anki's software graphics setup before offscreen WebEngine starts.
         QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.Software)
         app = QApplication(['pdf-preview-editor-test'])
-        # Keep a real editor view alive across page loads and compositor callbacks.
+        # Resolve the screenshot against real temporary media, as Anki does.
+        # A missing image under about:blank can crash this offscreen Qt build.
+        media = TemporaryDirectory(prefix='incremento-editor-media-')
+        image = QImage(16, 16, QImage.Format.Format_RGB32)
+        image.fill(0xffffffff)
+        assert image.save(str(Path(media.name) / 'synthetic-preview.png'))
+        # Keep a real editor view alive across page loads. These DOM editing
+        # checks need a viewport, not an unsupported macOS offscreen surface.
         view = QWebEngineView()
+        view.resize(800, 600)
         page = view.page()
-        view.show()
 
         def wait_for(start):
             loop = QEventLoop()
@@ -46,7 +55,8 @@ _BROWSER_SETUP = dedent('''
                     page.loadFinished.disconnect(loaded)
                     done(ok)
                 page.loadFinished.connect(loaded)
-                page.setHtml('<div id="field" contenteditable="true">' + html + '</div>')
+                page.setHtml('<div id="field" contenteditable="true">' + html + '</div>',
+                             QUrl.fromLocalFile(str(Path(media.name) / 'editor.html')))
             assert wait_for(start)
 
         def js(source):
@@ -61,12 +71,15 @@ def _run_editor_browser_script(script):
         view.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         app.processEvents()
+        media.cleanup()
     ''')
     result = subprocess.run(
         [sys.executable, '-X', 'faulthandler', '-c', script],
         cwd=Path(__file__).resolve().parents[1],
+        # Offscreen macOS has no native compositor surface, even with GPU
+        # rendering disabled. Keep real WebEngine editing on the software path.
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen', 'QTWEBENGINE_DISABLE_SANDBOX': '1',
-             'QTWEBENGINE_CHROMIUM_FLAGS': '--disable-gpu'},
+             'QTWEBENGINE_CHROMIUM_FLAGS': '--disable-gpu --disable-gpu-compositing'},
         capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr

@@ -20,6 +20,7 @@ test('rendering keeps PDF spaces, narrow letters, and compressed OCR spans selec
   const scope = {
     useCallback: callback => callback,
     textLayerRef: { current: { style: { setProperty() {} }, querySelectorAll: () => spans } },
+    cardIdRef: {current: 7},
     containerRef: { current: { offsetWidth: 600 } }, lastScaleRef: { current: 1 }, setRenderInfo() {},
     window: { pdfjsLib: { TextLayer: class { render() { return Promise.resolve(); } } } },
   };
@@ -38,7 +39,7 @@ test('rendered PDF font emphasis is attached to selectable text for extraction',
   const scope = {
     useCallback: callback => callback,
     annotatePdfTextStyles,
-    textLayerRef: { current: textLayer },
+    textLayerRef: { current: textLayer }, cardIdRef: {current: 7},
     containerRef: { current: { offsetWidth: 600 } }, lastScaleRef: { current: 1 }, setRenderInfo() {},
     window: { pdfjsLib: { TextLayer: class {
       textDivs = spans;

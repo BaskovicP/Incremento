@@ -4,6 +4,15 @@ from pathlib import Path
 
 import pytest
 
+
+def test_independent_reader_anchor_is_accepted_by_the_existing_trusted_paste_contract():
+    from reader_links import make_reader_anchor_html, reader_anchor_command_from_html
+    command = 'incremento_open_pdf_ref:{"card_id":7,"filename":"book.pdf","page":3,"scroll_ratio":0.25}'
+    html = make_reader_anchor_html(command, '<Source "title">')
+    assert reader_anchor_command_from_html(html) == command
+    assert "&lt;Source" in html
+    assert make_reader_anchor_html('javascript:alert(1)', 'Source') == ''
+
 import reader_links
 
 

@@ -1175,6 +1175,17 @@ class _WebDockController:
         url_lbl.setWordWrap(False)
         url_lbl.setAccessibleName(t("reader_web_status_accessible"))
         ctrl_layout.addWidget(url_lbl, 0, 0, 1, 2)
+        references = QPushButton(t("reader_reference_links"), ctrl)
+        def show_references():
+            from .document_link_ui import show_links
+            card_id, profile = self.runtime.current_card_id, _active_profile()
+            if not card_id:
+                return
+            source = {"card_id": int(card_id), "kind": "web", "quote": str(view.selectedText() or "")[:2000]}
+            show_links(source, owner=self.runtime.dock, is_current=lambda: (
+                profile == _active_profile() and card_id == self.runtime.current_card_id))
+        qconnect(references.clicked, show_references)
+        ctrl_layout.addWidget(references, 0, 2)
 
         back_btn = _make_web_button(
             ctrl,

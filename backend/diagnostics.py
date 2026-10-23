@@ -616,6 +616,7 @@ _SAFE_DATABASE_TABLES = (
     "custom_schedule_rules",
     "content_items",
     "document_index_state",
+    "document_links",
     "epub_card_sources",
     "epub_daily_limit_usage",
     "epub_daily_limits",

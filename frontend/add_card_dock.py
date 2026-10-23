@@ -1964,13 +1964,17 @@ def _source_card_id_from_extract_options(options: dict | None) -> int | None:
     return _source_card_id_for_transfer(source)
 
 
-def prepare_pending_extract_from_source_fill(source: str, *, mark_topic: bool = False) -> dict | None:
+def prepare_pending_extract_from_source_fill(source: str, *, mark_topic: bool = False,
+                                            source_card_id: int | None = None) -> dict | None:
     normalized_source = str(source or "").strip()
     if normalized_source not in {"pdf", "epub", "web", "writing", "video"}:
         return None
 
-    source_card_id = _source_card_id_for_transfer(normalized_source)
-    priority = source_relative_extract_priority_for_source(normalized_source)
+    explicit_source = source_card_id is not None
+    if not explicit_source:
+        source_card_id = _source_card_id_for_transfer(normalized_source)
+    priority = (source_relative_extract_priority_for_card(source_card_id) if explicit_source
+                else source_relative_extract_priority_for_source(normalized_source))
     # A fresh extract from a source card should start from that source-relative
     # priority, not from a prior manual override left in the Add Card dialog.
     set_current_extract_options(priority=priority)
@@ -3724,6 +3728,7 @@ def fill_dock_field(
     source_link_kind: str | None = None,
     mark_topic: bool = False,
     on_complete=None,
+    source_card_id: int | None = None,
 ):
     global _add_card_dock, _last_fill_source, _last_fill_seen
     citation = citation_html
@@ -3738,7 +3743,7 @@ def fill_dock_field(
         except Exception:
             citation = None
     if citation and (not link_kind or should_add_extract_source_link(link_kind)):
-        if link_kind == "pdf":
+        if link_kind == "pdf" and source_card_id is None:
             try:
                 if pdf_dock_module is None:
                     from . import pdf_dock as pdf_dock_module
@@ -3752,10 +3757,8 @@ def fill_dock_field(
         else:
             text = text + '<br>' + citation
     if link_kind:
-        prepare_pending_extract_from_source_fill(
-            link_kind,
-            mark_topic=bool(mark_topic),
-        )
+        source_options = {"source_card_id": source_card_id} if source_card_id is not None else {}
+        prepare_pending_extract_from_source_fill(link_kind, mark_topic=bool(mark_topic), **source_options)
     _last_fill_source = link_kind
     _last_fill_seen = time.monotonic()
     if _add_card_dock is None:

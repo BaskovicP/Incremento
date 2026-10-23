@@ -3468,7 +3468,7 @@ msgstr "截图 → MathJax"
 
 #. Snapshot formula recognition.
 msgid "reader_math_privacy"
-msgstr "扫描仅将此截图上传至 SimpleTex，并适用您的账户配额及费用。此 Anki 配置将复用已保存的凭据；在此处的更改仅对当前对话框有效。"
+msgstr "识别在独立的本地进程中运行。截图保留在此电脑上。首次设置将下载软件和模型，可能需要几分钟和数 GB 磁盘空间。"
 
 #. Snapshot formula recognition.
 msgid "reader_math_account_help"
@@ -3500,7 +3500,7 @@ msgstr "请紧贴公式裁剪。扫描并检查 LaTeX 后，复制并粘贴到 A
 
 #. Snapshot formula recognition.
 msgid "reader_math_scanning"
-msgstr "正在通过 SimpleTex 识别…"
+msgstr "正在本地识别公式…"
 
 #. Snapshot formula recognition.
 msgid "reader_math_found"
@@ -3536,7 +3536,7 @@ msgstr "未识别到公式。请紧贴公式裁剪后重试。"
 
 #. Snapshot formula recognition.
 msgid "reader_math_error_response"
-msgstr "SimpleTex 返回了无法读取的结果。请使用更小、更清晰的公式截图重试。"
+msgstr "LaTeX-OCR 返回了无法读取的结果。请尝试更小、更清晰的公式截图。"
 
 #. Snapshot formula recognition.
 msgid "reader_math_error_auth"
@@ -3601,3 +3601,153 @@ msgstr "无法保存凭据，尚未应用。请重试。"
 #. Guided SimpleTex first-scan setup.
 msgid "reader_math_setup_browser_failed"
 msgstr "无法打开浏览器。请手动打开此地址：{url}"
+
+msgid "reader_reference_title"
+msgstr "PDF 参考文档"
+
+msgid "reader_reference_page"
+msgstr "PDF 页码"
+
+msgid "reader_reference_pin"
+msgstr "在阅读旁打开"
+
+msgid "reader_reference_open"
+msgstr "在主阅读器中打开"
+
+msgid "reader_reference_search"
+msgstr "在 PDF 中查找下一个"
+
+msgid "reader_reference_searching"
+msgstr "正在搜索…"
+
+msgid "reader_reference_no_match"
+msgstr "未找到匹配文本。"
+
+msgid "reader_reference_unavailable"
+msgstr "链接的 PDF 不可用。请选择其他文档或移除链接。"
+
+msgid "reader_reference_choose"
+msgstr "选择 PDF 参考文档"
+
+msgid "reader_reference_links"
+msgstr "链接的 PDF"
+
+msgid "reader_reference_links_hint"
+msgstr "选择参考文档以预览或在阅读旁打开。添加 PDF 可将此来源链接到文档及其页面。"
+
+msgid "reader_reference_add"
+msgstr "链接 PDF…"
+
+msgid "reader_reference_preview"
+msgstr "预览 PDF"
+
+msgid "reader_reference_remove"
+msgstr "移除链接"
+
+
+
+msgid "reader_math_local_install"
+msgstr "设置 / 修复本地 LaTeX-OCR"
+
+
+msgid "reader_math_local_installing"
+msgstr "正在安装 LaTeX-OCR 并下载模型… 可能需要几分钟。请保持此窗口打开；关闭将取消设置。"
+
+
+msgid "reader_math_local_installed"
+msgstr "LaTeX-OCR 已就绪。点击扫描 MathJax 以识别此截图。"
+
+
+msgid "reader_math_local_error_setup"
+msgstr "请先点击设置 / 修复本地 LaTeX-OCR。软件和模型只需下载一次。无需账户。"
+
+
+msgid "reader_math_local_error_python"
+msgstr "请从 python.org 安装 Python 3.11，重启 Anki 后重试。也支持 Python 3.10 和 3.12。"
+
+
+msgid "reader_math_local_error_process"
+msgstr "无法运行 LaTeX-OCR。请尝试设置 / 修复本地 LaTeX-OCR。设置时请检查网络连接和可用磁盘空间。"
+
+
+msgid "reader_math_local_error_timeout"
+msgstr "LaTeX-OCR 运行超时，已停止。请尝试更小的截图或重新设置。"
+
+
+msgid "reader_math_local_error_cancelled"
+msgstr "LaTeX-OCR 已取消。"
+
+
+msgid "reader_math_local_error_busy"
+msgstr "另一个 LaTeX-OCR 设置正在运行。请等待完成后重试。"
+
+
+msgid "settings_math_local_title"
+msgstr "MathJax 识别（本地 LaTeX-OCR）"
+
+
+msgid "settings_math_local_help"
+msgstr "打开阅读器 → 截图 → 选择公式 → 扫描 MathJax…。首次点击设置 / 修复本地 LaTeX-OCR 下载软件和模型。识别在此电脑上运行，无需账户。如果 PDF 图片自动插入，请关闭下方自动使用记住的截图字段。"
+
+msgid "reader_reference_change"
+msgstr "更改链接的 PDF…"
+
+msgid "reader_math_progress_environment"
+msgstr "正在准备本地环境…"
+
+msgid "reader_math_progress_dependencies"
+msgstr "正在下载识别软件…"
+
+msgid "reader_math_progress_installing"
+msgstr "正在安装识别软件…"
+
+msgid "reader_math_progress_starting"
+msgstr "正在启动识别软件…"
+
+msgid "reader_math_progress_loading"
+msgstr "正在加载并检查识别模型…"
+
+msgid "reader_math_progress_model"
+msgstr "正在下载公式模型…"
+
+msgid "reader_math_progress_resizer"
+msgstr "正在下载图像预处理模型…"
+
+msgid "reader_math_progress_step"
+msgstr "第 {step} 步，共 4 步 — {status}"
+
+msgid "reader_math_progress_download"
+msgstr "{status} {percent}% — {current} / {total} MB"
+
+msgid "reader_math_progress_packages"
+msgstr "{status} 已开始的软件包下载：{count}"
+
+msgid "reader_math_progress_elapsed"
+msgstr "{status} · 已用时 {elapsed}"
+
+msgid "reader_page_links"
+msgstr "页面链接"
+
+msgid "reader_link_this_page"
+msgstr "链接此页…"
+
+msgid "reader_jump_to_linked_page"
+msgstr "跳转到链接页面"
+
+msgid "reader_page_links_empty"
+msgstr "将此页链接到另一个 PDF 中的页面。"
+
+msgid "reader_destination_title"
+msgstr "选择链接位置"
+
+msgid "reader_destination_hint"
+msgstr "浏览页面或搜索。点击一个位置或选中一段文字，然后选择“链接到此处”。"
+
+msgid "reader_destination_confirm"
+msgstr "链接到此处"
+
+msgid "reader_destination_marker"
+msgstr "目标位置"
+
+msgid "reader_destination_saving"
+msgstr "正在检查目标位置…"

@@ -8,6 +8,99 @@ from unittest.mock import MagicMock
 import pytest
 
 
+def test_visible_page_link_bridge_jumps_in_main_reader_and_retires_on_document_change(monkeypatch):
+    controllers, opened = [], []
+    class Bridge:
+        def __init__(self, **options):
+            self.options = options
+            controllers.append(self)
+        def current(self): return self.options['is_current']()
+        def close(self): pass
+        def handle(self, payload): return payload['operation'] == 'list'
+    monkeypatch.setitem(sys.modules, 'pdf_page_links', types.SimpleNamespace(PdfPageLinksBridge=Bridge))
+    page = types.SimpleNamespace(runJavaScript=lambda *a: None)
+    dock = types.SimpleNamespace(_view=types.SimpleNamespace(page=lambda: page))
+    monkeypatch.setattr(pdf_dock, '_pdf_dock', dock)
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 42)
+    monkeypatch.setattr(pdf_dock, '_current_pdf_filename', 'first.pdf')
+    monkeypatch.setattr(pdf_dock, '_active_profile', lambda: 'A')
+    monkeypatch.setattr(pdf_dock, 'show_pdf_in_dock', lambda *a, **kw: opened.append((a, kw)))
+    assert pdf_dock._handle_pdf_page_links({'cardId': 42, 'operation': 'list'})
+    options = controllers[0].options
+    options['open_pdf']({'card_id': 43, 'filename': 'second.pdf'},
+                        {'target_page': 8, 'target_scroll': .3, 'target_y': .65})
+    assert opened[0][0][:3] == (43, 'second.pdf', 8)
+    assert opened[0][1]['preserve_history'] is True
+    assert opened[0][1]['scroll_ratio_override'] == .3
+    assert opened[0][1]['page_y_override'] == .65
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 44)
+    assert not options['is_current']()
+
+
+def test_linked_pdf_actions_capture_source_and_reject_stale_reader(monkeypatch):
+    opened = []
+    ui = types.SimpleNamespace(show_links=lambda *a, **kw: opened.append((a, kw)), link_pdf=lambda *a, **kw: None)
+    monkeypatch.setitem(sys.modules, "document_link_ui", ui)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)
+    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "book.pdf")
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "A")
+    monkeypatch.setattr(pdf_dock, "_pdf_dock", object())
+    assert not pdf_dock._open_pdf_document_links({"cardId": 99, "page": 3}, create=False)
+    assert pdf_dock._open_pdf_document_links({"cardId": 42, "page": 3}, create=False)
+    source = opened[0][0][0]
+    assert source == {"card_id": 42, "kind": "pdf", "page": 3, "quote": ""}
+    guard = opened[0][1]["is_current"]
+    assert guard()
+    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 43)
+    assert not guard()
+
+
+def test_annotation_refresh_preserves_live_reference_navigation_without_changing_saved_progress(monkeypatch):
+    opened, saved = [], []
+    location = {'profile': 'A', 'card_id': 42, 'filename': 'book.pdf', 'page': 3,
+                'zoom': 1, 'scroll_ratio': .3, 'page_y': .65}
+    monkeypatch.setattr(pdf_dock, '_pdf_dock', types.SimpleNamespace(_reader_location=location))
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 42)
+    monkeypatch.setattr(pdf_dock, '_current_pdf_filename', 'book.pdf')
+    monkeypatch.setattr(pdf_dock, '_active_profile', lambda: 'A')
+    monkeypatch.setattr(pdf_dock, '_pdf_preserve_history', True)
+    monkeypatch.setattr(pdf_dock, '_pdf_via_link', True)
+    monkeypatch.setattr(pdf_dock, 'get_page', lambda *a: 1)
+    monkeypatch.setattr(pdf_dock, '_current_pdf_limit_status', lambda *a, **kw: {})
+    monkeypatch.setattr(pdf_dock, '_push_pdf_limit_status', lambda *a: None)
+    monkeypatch.setattr(pdf_dock, '_timer_mod', types.SimpleNamespace(record_pdf_page_read=lambda *a: None))
+    for name in ('set_page', 'set_zoom', 'set_scroll_ratio'):
+        monkeypatch.setattr(pdf_dock, name, lambda *a: saved.append(a))
+    monkeypatch.setattr(pdf_dock, 'show_pdf_in_dock', lambda *a, **kw: opened.append((a, kw)))
+    pdf_dock._handle_pdf_js_message('incremento_pdf_nav:42:8')
+    pdf_dock._handle_pdf_js_message('incremento_pdf_zoom:42:1.5')
+    pdf_dock._handle_pdf_js_message('incremento_pdf_scroll:' + json.dumps({'cardId': 42, 'scrollRatio': .6}))
+    pdf_dock._reload_current_pdf_annotations({'reader_path': '/unused/prepared.pdf'})
+    assert opened[0][0][:4] == (42, 'book.pdf', 8, 1.5)
+    assert opened[0][1]['scroll_ratio_override'] == .6
+    assert opened[0][1]['page_y_override'] is None
+    assert saved == []
+
+
+@pytest.mark.parametrize('focus_on,modal,popup,expected', [
+    ('primary', False, False, 'primary'), ('reference', False, False, 'reference'),
+    ('editor', False, False, None), ('primary', True, False, None),
+    ('reference', False, True, None),
+])
+def test_pdf_extraction_shortcuts_only_target_the_focused_reader(monkeypatch, focus_on, modal, popup, expected):
+    focus = object()
+    primary = types.SimpleNamespace(isAncestorOf=lambda widget: focus_on == 'primary')
+    reference = types.SimpleNamespace(view=object())
+    monkeypatch.setattr(pdf_dock, 'QApplication', types.SimpleNamespace(
+        activeModalWidget=lambda: object() if modal else None,
+        activePopupWidget=lambda: object() if popup else None, focusWidget=lambda: focus))
+    monkeypatch.setitem(sys.modules, 'pdf_reference_workspace', types.SimpleNamespace(
+        focused_reference=lambda: reference if focus_on == 'reference' else None))
+    monkeypatch.setattr(pdf_dock, '_pdf_dock', types.SimpleNamespace(_view=primary, isVisible=lambda: True))
+    actual = pdf_dock._focused_pdf_extraction_view()
+    assert actual is {'primary': primary, 'reference': reference.view, None: None}[expected]
+
+
 def test_contents_popup_targets_and_saved_places_are_bound_to_the_current_pdf_and_profile(monkeypatch):
     scripts, saved, popups = [], [], []
     active_profile = ["A"]
@@ -1327,7 +1420,7 @@ def test_embedded_image_menu_uses_captured_profile_path_and_retires_stale_callba
     page = types.SimpleNamespace(_bridge_nonce="load-one")
     view = types.SimpleNamespace(page=lambda: page)
     dock = types.SimpleNamespace(_view=view, isVisible=lambda: True)
-    menu = object()
+    menu = types.SimpleNamespace(addAction=lambda text: types.SimpleNamespace(triggered=MagicMock()))
     monkeypatch.setattr(pdf_dock, "_pdf_dock", dock)
     monkeypatch.setattr(pdf_dock, "_active_profile", lambda: profile[0])
     monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
@@ -1849,7 +1942,8 @@ def test_highlight_resize_bridge_updates_only_the_existing_active_highlight(monk
     ("zh-Hans", None),
     ("de", {"locale": "de", "messages": {"reader_previous_page": 'Vorherige Seite "<title>"'}}),
 ])
-def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reader_locale, custom_language):
+@pytest.mark.parametrize('page_y_override', [None, .65])
+def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reader_locale, custom_language, page_y_override):
     events = []
     js_calls = []
     load_calls = []
@@ -1982,6 +2076,7 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
         via_link=True,
         offer_due_review_prompt=False,
         scroll_ratio_override=0.73,
+        page_y_override=page_y_override,
     )
 
     assert pdf_dock._current_pdf_filename == "new-file.pdf"
@@ -1997,10 +2092,11 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     assert "scrollToTopOnPageChange: false" in js_calls[0]
     assert "showHighlightDeleteButtons: false" in js_calls[0]
     assert "linkPreviewZoom: 2.5" in js_calls[0]
+    assert f'pageY: {json.dumps(page_y_override)}' in js_calls[0]
     assert f'locale: {json.dumps(reader_locale)}' in js_calls[0]
     assert f'customLanguage: {json.dumps(custom_language)}' in js_calls[0]
     assert (
-        f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}, "night", false, 2.5));'
+        f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}, "night", false, 2.5, {json.dumps(page_y_override)}));'
         in js_calls[0]
     )
     assert 'appearanceMode: "night"' in js_calls[0]
@@ -2010,6 +2106,8 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     assert len(load_calls) == 1
     assert len(js_calls) == 2
     assert '/tmp/cached-reader.pdf' in js_calls[1]
+    assert f'pageY: {json.dumps(page_y_override)}' in js_calls[1]
+    assert 'scrollRatio: 0.73' in js_calls[1]
 
 
 def test_current_card_pdf_search_hits_orders_pages_and_builds_snippets(monkeypatch):

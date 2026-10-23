@@ -13,7 +13,8 @@ function registerBridge(pending = null) {
   const start = source.indexOf('    const startWithHighlights = (');
   const finish = source.indexOf('    return () => {', start);
   assert.ok(start > 0 && finish > start);
-  const state = { language: createReaderLanguage('en'), starts: [], appearance: 'original', showDeleteX: true, previewZoom: 1.5 };
+  const state = { language: createReaderLanguage('en'), starts: [], appearance: 'original', showDeleteX: true, previewZoom: 1.5,
+    pageLinksDocument: {cardId: 0, generation: 0} };
   const scope = {
     window: { _incPdfPending: pending },
     document: { documentElement: { lang: 'en' } },
@@ -26,6 +27,7 @@ function registerBridge(pending = null) {
     setAppearanceMode: (value) => { state.appearance = value; },
     setShowHighlightDeleteButtons: (value) => { state.showDeleteX = value; },
     setLinkPreviewZoom: (value) => {state.previewZoom = value;},
+    setPageLinksDocument: update => {state.pageLinksDocument = update(state.pageLinksDocument);},
     startViewer: (...args) => state.starts.push(args),
     clampScrollRatio: (value) => value,
     compareHighlights: () => 0,
@@ -46,11 +48,19 @@ function registerBridge(pending = null) {
     'pendingPageTopScrollRef', 'pendingResumeScrollRef', 'pendingResumePageRef',
     'pageRef', 'cardIdRef', 'suppressSearchSyncRef', 'pendingHighlightSelectionRef',
     'resizeHighlightRef', 'contentsGenerationRef', 'pendingContentsFractionRef',
+    'pendingDestinationPointRef',
   ]) scope[name] = { current: null };
   scope.highlightRangeCacheRef = { current: new Map() };
   vm.runInNewContext(source.slice(start, finish), scope);
   return { scope, state };
 }
+
+test('PDF startup keeps the selected physical page spot and clears it for a normal open', () => {
+  const {scope} = registerBridge({cardId: 8, filename: 'other.pdf', page: 42, zoom: 1, pageY: .65});
+  assert.equal(scope.pendingDestinationPointRef.current, .65);
+  scope.window.incrementoPdfStart(9, 'next.pdf', 1, 1);
+  assert.equal(scope.pendingDestinationPointRef.current, null);
+});
 
 test('PDF startup and live settings hide the delete X without changing the highlight data', () => {
   const { scope, state } = registerBridge({
@@ -74,6 +84,15 @@ test('PDF startup restores profile preview zoom, accepts live Settings changes, 
   assert.equal(state.previewZoom, 3);
   scope.window.incrementoPdfStart(43, 'next.pdf', 1, 1);
   assert.equal(state.previewZoom, 1.5);
+});
+
+test('starting another PDF retires the visible page-link document generation', () => {
+  const {scope, state} = registerBridge({cardId: 7, filename: 'first.pdf', page: 3, zoom: 1});
+  assert.equal(state.pageLinksDocument.cardId, 7);
+  const previous = state.pageLinksDocument.generation;
+  scope.window.incrementoPdfStart(8, 'second.pdf', 42, 1);
+  assert.equal(state.pageLinksDocument.cardId, 8);
+  assert.equal(state.pageLinksDocument.generation, previous + 1);
 });
 
 const customLanguage = { locale: 'de', messages: {

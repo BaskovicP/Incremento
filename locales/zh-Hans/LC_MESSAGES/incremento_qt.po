@@ -2203,3 +2203,9 @@ msgstr "学习趋势时间范围"
 
 msgid "settings_pdf_link_preview_zoom"
 msgstr "脚注预览缩放"
+
+msgid "search_all_annotations"
+msgstr "批注"
+
+msgid "search_all_annotations_tooltip"
+msgstr "搜索 PDF 和 EPUB 高亮附带的批注。"

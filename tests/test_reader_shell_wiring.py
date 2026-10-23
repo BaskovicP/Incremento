@@ -143,6 +143,8 @@ def test_epub_reader_uses_pdf_style_bottom_customizable_controls():
         "_limit_status_widget",
         "_compact_location_btn",
         "_compact_scale_lbl",
+        "_page_links_btn",
+        "_compact_page_links_btn",
     ):
         assert control_name in build_source
     assert "_set_epub_controls_collapsed" in build_source

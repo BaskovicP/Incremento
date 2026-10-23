@@ -11870,6 +11870,46 @@
     },
     {
       "component": "addon",
+      "key": "reader_destination_confirm",
+      "form": "",
+      "source": "Link to this spot",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_destination_hint",
+      "form": "",
+      "source": "Browse pages or search. Click a spot or select a passage, then choose Link to this spot.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_destination_marker",
+      "form": "",
+      "source": "Destination",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_destination_saving",
+      "form": "",
+      "source": "Checking destination…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_destination_title",
+      "form": "",
+      "source": "Choose where to link",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_details",
       "form": "",
       "source": "Details",
@@ -13379,6 +13419,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_jump_to_linked_page",
+      "form": "",
+      "source": "Jump to linked page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_limit",
       "form": "",
       "source": "Limit:",
@@ -13445,6 +13493,14 @@
       "key": "reader_limit_warning",
       "form": "",
       "source": "Warning",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_link_this_page",
+      "form": "",
+      "source": "Link this page…",
       "tokens": [],
       "markup": []
     },
@@ -13606,7 +13662,7 @@
       "component": "addon",
       "key": "reader_math_error_response",
       "form": "",
-      "source": "SimpleTex returned an unreadable result. Try again with a smaller, clearer formula crop.",
+      "source": "LaTeX-OCR returned an unreadable result. Try a smaller, clearer formula crop.",
       "tokens": [],
       "markup": []
     },
@@ -13628,6 +13684,78 @@
     },
     {
       "component": "addon",
+      "key": "reader_math_local_error_busy",
+      "form": "",
+      "source": "Another LaTeX-OCR setup is running. Wait for it to finish, then try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_local_error_cancelled",
+      "form": "",
+      "source": "LaTeX-OCR was cancelled.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_local_error_process",
+      "form": "",
+      "source": "LaTeX-OCR could not run. Try Set up / repair local LaTeX-OCR. For setup, check your internet connection and available disk space.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_local_error_python",
+      "form": "",
+      "source": "Install Python 3.11 from python.org, then restart Anki and try setup again. Python 3.10 and 3.12 are also supported.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_local_error_setup",
+      "form": "",
+      "source": "First click Set up / repair local LaTeX-OCR. Setup downloads the software and model once. No account is needed.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_local_error_timeout",
+      "form": "",
+      "source": "LaTeX-OCR took too long and was stopped. Try again with a smaller crop, or run setup again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_local_install",
+      "form": "",
+      "source": "Set up / repair local LaTeX-OCR",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_local_installed",
+      "form": "",
+      "source": "LaTeX-OCR is ready. Click Scan for MathJax to recognize this snapshot.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_local_installing",
+      "form": "",
+      "source": "Installing LaTeX-OCR and downloading its model… This can take several minutes. Keep this window open; Close cancels setup.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_math_open",
       "form": "",
       "source": "Scan for MathJax…",
@@ -13638,8 +13766,110 @@
       "component": "addon",
       "key": "reader_math_privacy",
       "form": "",
-      "source": "Scan uploads only this snapshot to SimpleTex. Your account quotas and charges apply. Saved credentials are reused for this Anki profile; edits here apply only to this dialog.",
+      "source": "Recognition runs locally in a separate process. Your snapshot stays on this computer. First-time setup downloads the recognition software and model; it may take several minutes and use several GB of disk space.",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_progress_dependencies",
+      "form": "",
+      "source": "Downloading recognition software…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_progress_download",
+      "form": "",
+      "source": "{status} {percent}% — {current} / {total} MB",
+      "tokens": [
+        "{current}",
+        "{percent}",
+        "{status}",
+        "{total}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_progress_elapsed",
+      "form": "",
+      "source": "{status} · Elapsed {elapsed}",
+      "tokens": [
+        "{elapsed}",
+        "{status}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_progress_environment",
+      "form": "",
+      "source": "Preparing the local environment…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_progress_installing",
+      "form": "",
+      "source": "Installing recognition software…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_progress_loading",
+      "form": "",
+      "source": "Loading and checking the recognition model…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_progress_model",
+      "form": "",
+      "source": "Downloading the formula model…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_progress_packages",
+      "form": "",
+      "source": "{status} Software downloads started: {count}",
+      "tokens": [
+        "{count}",
+        "{status}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_progress_resizer",
+      "form": "",
+      "source": "Downloading the image preparation model…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_progress_starting",
+      "form": "",
+      "source": "Starting recognition software…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_math_progress_step",
+      "form": "",
+      "source": "Step {step} of 4 — {status}",
+      "tokens": [
+        "{status}",
+        "{step}"
+      ],
       "markup": []
     },
     {
@@ -13662,7 +13892,7 @@
       "component": "addon",
       "key": "reader_math_scanning",
       "form": "",
-      "source": "Scanning with SimpleTex…",
+      "source": "Recognizing formula locally…",
       "tokens": [],
       "markup": []
     },
@@ -15768,6 +15998,22 @@
     },
     {
       "component": "addon",
+      "key": "reader_page_links",
+      "form": "",
+      "source": "Page links",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_page_links_empty",
+      "form": "",
+      "source": "Connect this page to a page in another PDF.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_page_location",
       "form": "",
       "source": "Page {current} / {total}",
@@ -17814,6 +18060,126 @@
       "key": "reader_ready",
       "form": "",
       "source": "Ready",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_add",
+      "form": "",
+      "source": "Link PDF…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_change",
+      "form": "",
+      "source": "Change linked PDF…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_choose",
+      "form": "",
+      "source": "Choose a PDF reference",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_links",
+      "form": "",
+      "source": "Linked PDFs",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_links_hint",
+      "form": "",
+      "source": "Select a reference to preview or open beside your reading. Add a PDF to link this source to a document and page.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_no_match",
+      "form": "",
+      "source": "No matching text found.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_open",
+      "form": "",
+      "source": "Open in main reader",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_page",
+      "form": "",
+      "source": "PDF page number",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_pin",
+      "form": "",
+      "source": "Open beside reading",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_preview",
+      "form": "",
+      "source": "Preview PDF",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_remove",
+      "form": "",
+      "source": "Remove link",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_search",
+      "form": "",
+      "source": "Find next in PDF",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_searching",
+      "form": "",
+      "source": "Searching…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_title",
+      "form": "",
+      "source": "PDF reference",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_reference_unavailable",
+      "form": "",
+      "source": "Linked PDF unavailable. Choose another document or remove the link.",
       "tokens": [],
       "markup": []
     },
@@ -25063,6 +25429,22 @@
     },
     {
       "component": "addon",
+      "key": "search_all_annotations",
+      "form": "",
+      "source": "Annotations",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "search_all_annotations_tooltip",
+      "form": "",
+      "source": "Search notes attached to PDF and EPUB highlights.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "search_all_cancel_pdf_indexing",
       "form": "",
       "source": "Cancel PDF indexing",
@@ -28772,6 +29154,22 @@
       "key": "settings_mark_extracted_cards_as_topics",
       "form": "",
       "source": "Mark extracted cards as topics",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_math_local_help",
+      "form": "",
+      "source": "Open a reader → Snapshot → select the formula → Scan for MathJax…. Click Set up / repair local LaTeX-OCR once to download the software and model. Recognition stays on this computer and needs no account. If PDF images insert automatically, turn off Automatically use remembered PDF snapshot fields below.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_math_local_title",
+      "form": "",
+      "source": "MathJax recognition (local LaTeX-OCR)",
       "tokens": [],
       "markup": []
     },
@@ -36237,6 +36635,14 @@
     },
     {
       "component": "reader",
+      "key": "reader_cancel",
+      "form": "",
+      "source": "Cancel",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_cancel_snapshot",
       "form": "",
       "source": "Cancel snapshot",
@@ -36360,6 +36766,14 @@
       "key": "reader_contents_hint",
       "form": "",
       "source": "Open chapters and saved places without changing your read marker",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_copy_link_to_place",
+      "form": "",
+      "source": "Copy Link to This Place",
       "tokens": [],
       "markup": []
     },
@@ -36494,6 +36908,46 @@
       "key": "reader_delete_highlight",
       "form": "",
       "source": "Delete this highlight",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_destination_confirm",
+      "form": "",
+      "source": "Link to this spot",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_destination_hint",
+      "form": "",
+      "source": "Browse pages or search. Click a spot or select a passage, then choose Link to this spot.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_destination_marker",
+      "form": "",
+      "source": "Destination",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_destination_saving",
+      "form": "",
+      "source": "Checking destination…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_destination_title",
+      "form": "",
+      "source": "Choose where to link",
       "tokens": [],
       "markup": []
     },
@@ -36685,6 +37139,14 @@
     },
     {
       "component": "reader",
+      "key": "reader_jump_to_linked_page",
+      "form": "",
+      "source": "Jump to linked page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_limit_hard_stop",
       "form": "",
       "source": "Hard stop",
@@ -36791,6 +37253,14 @@
       "key": "reader_link_preview_zoom",
       "form": "",
       "source": "Footnote preview zoom",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_link_this_page",
+      "form": "",
+      "source": "Link this page…",
       "tokens": [],
       "markup": []
     },
@@ -37142,6 +37612,22 @@
     },
     {
       "component": "reader",
+      "key": "reader_page_links",
+      "form": "",
+      "source": "Page links",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_page_links_empty",
+      "form": "",
+      "source": "Connect this page to a page in another PDF.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_page_location",
       "form": "",
       "source": "PDF {current} / {total}",
@@ -37235,6 +37721,17 @@
       "form": "",
       "source": "PDF reader controls",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_pdf_copied_label",
+      "form": "",
+      "source": "{title} — page {page}",
+      "tokens": [
+        "{page}",
+        "{title}"
+      ],
       "markup": []
     },
     {
@@ -37419,6 +37916,118 @@
       "key": "reader_reading_limit",
       "form": "",
       "source": "Reading Limit",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_reference_add",
+      "form": "",
+      "source": "Link PDF…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_reference_choose",
+      "form": "",
+      "source": "Choose a PDF reference",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_reference_links",
+      "form": "",
+      "source": "Linked PDFs",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_reference_links_hint",
+      "form": "",
+      "source": "Select a reference to preview or open beside your reading. Add a PDF to link this source to a document and page.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_reference_no_match",
+      "form": "",
+      "source": "No matching text found.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_reference_open",
+      "form": "",
+      "source": "Open in main reader",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_reference_page",
+      "form": "",
+      "source": "PDF page number",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_reference_pin",
+      "form": "",
+      "source": "Open beside reading",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_reference_preview",
+      "form": "",
+      "source": "Preview PDF",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_reference_remove",
+      "form": "",
+      "source": "Remove link",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_reference_search",
+      "form": "",
+      "source": "Find next in PDF",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_reference_searching",
+      "form": "",
+      "source": "Searching…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_reference_title",
+      "form": "",
+      "source": "PDF reference",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_reference_unavailable",
+      "form": "",
+      "source": "Linked PDF unavailable. Choose another document or remove the link.",
       "tokens": [],
       "markup": []
     },

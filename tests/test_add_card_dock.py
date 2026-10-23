@@ -656,6 +656,19 @@ def test_prepare_source_fill_clears_stale_context_without_current_source_card(mo
     assert dock.pending_extract_context() is None
 
 
+def test_reference_extract_uses_explicit_source_instead_of_the_primary_pdf(monkeypatch):
+    monkeypatch.setattr(dock, "_source_card_id_for_transfer", lambda source: 99)
+    monkeypatch.setattr(dock, "source_relative_extract_priority_for_card", lambda cid: float(cid))
+    monkeypatch.setattr(dock, "source_note_tags_for_card", lambda cid: [f"source-{cid}"])
+    monkeypatch.setattr(dock, "_source_extract_metadata_for_card", lambda source, cid: {"source": cid})
+    options = dock.prepare_pending_extract_from_source_fill("pdf", source_card_id=7)
+    assert options["source_card_id"] == 7
+    assert options["priority"] == 7
+    assert dock.pending_extract_context()["parent_card_id"] == 7
+    dock.clear_pending_extract_context()
+    dock.clear_pending_extract_options()
+
+
 def test_explicit_missing_source_snapshot_does_not_later_bind_to_another_pdf(monkeypatch):
     monkeypatch.setattr(dock, "_source_card_id_for_transfer", lambda source: 202)
 

@@ -27,6 +27,7 @@ PDF_TOOLBAR_REFERENCE = (
                     "exact_read_marker",
                     "clickable_links",
                     "jump_back",
+                    "page_links",
                     "read_range",
                 ),
             ),
@@ -83,6 +84,7 @@ PDF_COMPACT_REFERENCE = (
     "zoom_percent",
     "clickable_links",
     "jump_back",
+    "page_links",
     "show_controls",
     "customize",
 )
@@ -104,6 +106,7 @@ PDF_ACTION_TEXT_REFERENCE = {
     "exact_read_marker": "↦",
     "clickable_links": "Links {state}",
     "jump_back": "↩ Jump Back",
+    "page_links": "Page links",
     "more_colors": "More colors…",
     "highlight_when_extracting": "Highlight when extracting",
     "snapshot": "📷 Snapshot",

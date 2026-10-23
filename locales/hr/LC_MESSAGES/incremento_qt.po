@@ -2241,3 +2241,9 @@ msgstr "Razdoblje učenja"
 
 msgid "settings_pdf_link_preview_zoom"
 msgstr "Povećanje pregleda fusnote"
+
+msgid "search_all_annotations"
+msgstr "Bilješke"
+
+msgid "search_all_annotations_tooltip"
+msgstr "Pretraži bilješke uz PDF i EPUB istaknute dijelove."

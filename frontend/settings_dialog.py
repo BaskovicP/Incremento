@@ -65,10 +65,7 @@ except ImportError:
         normalize_custom_schedule_preset,
     )
 
-try:
-    from ..backend.simpletex_credentials import normalize_credentials
-except ImportError:
-    from backend.simpletex_credentials import normalize_credentials
+
 
 try:
     from .shortcut_conflicts import find_shortcut_conflicts
@@ -443,7 +440,6 @@ class IncrementoSettingsDialog(QDialog):
         current_learning_leech_tag: str = DEFAULT_LEARNING_LEECH_TAG,
         current_day_end_time: str = "04:00",
         current_pdf_citation_page_numbering: str = "printed",
-        current_simpletex_credentials: tuple[str, str] = ("", ""),
     ):
         super().__init__(parent)
         self.setWindowTitle(t('settings_incremento_settings'))
@@ -568,30 +564,8 @@ class IncrementoSettingsDialog(QDialog):
         extraction_hint.setWordWrap(True)
         extraction_layout.addWidget(extraction_hint)
 
-        self._simpletex_section = QWidget()
-        simpletex_layout = QVBoxLayout(self._simpletex_section)
-        simpletex_layout.setContentsMargins(0, 0, 0, 0)
-        simpletex_layout.addWidget(_section_title(t("settings_simpletex_title")))
-        simpletex_layout.addWidget(_note_label(t("settings_simpletex_storage_help")))
-        simpletex_form = _section_form()
-        self._simpletex_app_id = QLineEdit()
-        self._simpletex_app_id.setAccessibleName(t("reader_math_app_id"))
-        self._simpletex_app_id.setMaxLength(512)
-        self._simpletex_secret = QLineEdit()
-        self._simpletex_secret.setAccessibleName(t("reader_math_app_secret"))
-        self._simpletex_secret.setEchoMode(QLineEdit.EchoMode.Password)
-        self._simpletex_secret.setMaxLength(512)
-        app_id, secret = normalize_credentials(current_simpletex_credentials)
-        self._simpletex_app_id.setText(app_id)
-        self._simpletex_secret.setText(secret)
-        simpletex_form.addRow(t("reader_math_app_id"), self._simpletex_app_id)
-        simpletex_form.addRow(t("reader_math_app_secret"), self._simpletex_secret)
-        simpletex_layout.addLayout(simpletex_form)
-        self._simpletex_error = _note_label(t("settings_simpletex_invalid"))
-        self._simpletex_error.setVisible(False)
-        simpletex_layout.addWidget(self._simpletex_error)
-        simpletex_layout.addWidget(_note_label(t("settings_simpletex_activation")))
-        extraction_layout.addWidget(self._simpletex_section)
+        extraction_layout.addWidget(_section_title(t("settings_math_local_title")))
+        extraction_layout.addWidget(_note_label(t("settings_math_local_help")))
 
         extraction_layout.addWidget(_section_title(t('settings_card_creation')))
 
@@ -1926,14 +1900,6 @@ class IncrementoSettingsDialog(QDialog):
 
     def _accept_if_shortcuts_valid(self) -> bool:
         try:
-            self.simpletex_credentials
-        except ValueError:
-            self._simpletex_error.setVisible(True)
-            self._tabs.setCurrentIndex(1)
-            self._simpletex_secret.setFocus()
-            return False
-        self._simpletex_error.setVisible(False)
-        try:
             self.learning_leech_tag
         except ValueError:
             self._learning_leech_tag_error.setText(t("settings_learning_leech_tag_invalid"))
@@ -2013,10 +1979,6 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def pdf_snapshot_auto_field_enabled(self) -> bool:
         return bool(self._pdf_snapshot_auto_field_enabled_cb.isChecked())
-
-    @property
-    def simpletex_credentials(self) -> tuple[str, str]:
-        return normalize_credentials((self._simpletex_app_id.text(), self._simpletex_secret.text()))
 
     @property
     def pdf_link_hover_preview_enabled(self) -> bool:

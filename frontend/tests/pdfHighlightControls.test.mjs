@@ -34,6 +34,7 @@ function viewer() {
   renderState.cardIdRef.current = 42;
   const HighlightLayer = () => null;
   const PdfLinkPreview = () => null;
+  const PdfPageLinks = () => null;
   const module = { exports: {} };
   vm.runInNewContext(code, {
     module, exports: module.exports,
@@ -46,6 +47,7 @@ function viewer() {
       './HighlightLayer.jsx': { __esModule: true, default: HighlightLayer },
       './PdfSelectionLayer.jsx': { __esModule: true, default: () => null },
       './PdfLinkPreview.jsx': { __esModule: true, default: PdfLinkPreview },
+      './PdfPageLinks.jsx': { __esModule: true, default: PdfPageLinks, usePdfPageLinks: () => ({}) },
     })[specifier],
   });
   function elements(node) {
@@ -62,8 +64,21 @@ function viewer() {
     node.props.children === text || node.props.title === text
   ));
   return { render, layer, button, commands, renderState,
+    pageLinks: nodes => nodes.filter(node => node.type === PdfPageLinks), elements,
     preview: nodes => nodes.find(node => node.type === PdfLinkPreview) };
 }
+
+test('page links live inside the existing toolbar in both expanded and compact modes', () => {
+  const {render, elements, pageLinks, button} = viewer();
+  for (let compact = false; ; compact = true) {
+    const nodes = render();
+    const toolbar = nodes.find(node => node.props?.id === 'pdf-controls');
+    assert.equal(pageLinks(nodes).length, 1);
+    assert.equal(pageLinks(elements(toolbar)).length, 1, 'page links must not reserve a strip above the PDF');
+    if (compact) break;
+    button(nodes, 'Minimize controls').props.onClick();
+  }
+});
 
 test('changing footnote preview zoom updates the open preview and persists only that preference for the active card', () => {
   const {render, preview, commands} = viewer();

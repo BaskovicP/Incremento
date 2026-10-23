@@ -252,3 +252,5 @@ The script writes the `.ankiaddon` into `dist/` and stages the exact packaged fo
 - `meta.json` is ignored because it is local Anki installation metadata
 - `user_files/` is ignored because it contains local runtime data, imported media, and user databases
 - Generated viewer assets in `web/` are intentionally tracked because they are shipped with the add-on
+
+Formula snapshot recognition uses local [LaTeX-OCR (pix2tex)](https://github.com/lukas-blecher/LaTeX-OCR) in a separate Python environment. Open Snapshot → Scan for MathJax… → Set up / repair local LaTeX-OCR once; an installed Python 3.10–3.12 is required. See MANUAL.md for setup and offline recognition details.

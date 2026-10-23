@@ -3544,7 +3544,7 @@ msgstr "Snimka → MathJax"
 
 #. Snapshot formula recognition.
 msgid "reader_math_privacy"
-msgstr "Pretraživanje šalje samo ovu snimku usluzi SimpleTex. Primjenjuju se kvote i cijene vašeg računa. Spremljene vjerodajnice koriste se za ovaj Anki profil; izmjene ovdje vrijede samo za ovaj dijalog."
+msgstr "Prepoznavanje se izvodi lokalno u zasebnom procesu. Snimka ostaje na ovom računalu. Prvo postavljanje preuzima softver i model; može potrajati nekoliko minuta i zauzeti nekoliko GB prostora."
 
 #. Snapshot formula recognition.
 msgid "reader_math_account_help"
@@ -3576,7 +3576,7 @@ msgstr "Snimite područje uz samu formulu. Pretražite, provjerite LaTeX, zatim 
 
 #. Snapshot formula recognition.
 msgid "reader_math_scanning"
-msgstr "Prepoznavanje uslugom SimpleTex…"
+msgstr "Lokalno prepoznavanje formule…"
 
 #. Snapshot formula recognition.
 msgid "reader_math_found"
@@ -3612,7 +3612,7 @@ msgstr "Nije prepoznata nijedna formula. Snimite područje uz samu formulu i pok
 
 #. Snapshot formula recognition.
 msgid "reader_math_error_response"
-msgstr "SimpleTex je vratio nečitljiv rezultat. Pokušajte ponovno s manjom i jasnijom snimkom formule."
+msgstr "LaTeX-OCR vratio je nečitljiv rezultat. Pokušajte s manjom, jasnijom snimkom formule."
 
 #. Snapshot formula recognition.
 msgid "reader_math_error_auth"
@@ -3677,3 +3677,153 @@ msgstr "Nije moguće spremiti vjerodajnice. Nisu primijenjene. Pokušajte ponovn
 #. Guided SimpleTex first-scan setup.
 msgid "reader_math_setup_browser_failed"
 msgstr "Nije moguće otvoriti preglednik. Ručno otvorite ovu adresu: {url}"
+
+msgid "reader_reference_title"
+msgstr "PDF referenca"
+
+msgid "reader_reference_page"
+msgstr "Broj PDF stranice"
+
+msgid "reader_reference_pin"
+msgstr "Otvori uz čitanje"
+
+msgid "reader_reference_open"
+msgstr "Otvori u glavnom čitaču"
+
+msgid "reader_reference_search"
+msgstr "Pronađi sljedeće u PDF-u"
+
+msgid "reader_reference_searching"
+msgstr "Pretraživanje…"
+
+msgid "reader_reference_no_match"
+msgstr "Nije pronađen odgovarajući tekst."
+
+msgid "reader_reference_unavailable"
+msgstr "Povezani PDF nije dostupan. Odaberite drugi dokument ili uklonite poveznicu."
+
+msgid "reader_reference_choose"
+msgstr "Odaberi PDF referencu"
+
+msgid "reader_reference_links"
+msgstr "Povezani PDF-ovi"
+
+msgid "reader_reference_links_hint"
+msgstr "Odaberite referencu za pregled ili otvaranje uz čitanje. Dodajte PDF za povezivanje ovog izvora s dokumentom i stranicom."
+
+msgid "reader_reference_add"
+msgstr "Poveži PDF…"
+
+msgid "reader_reference_preview"
+msgstr "Pregledaj PDF"
+
+msgid "reader_reference_remove"
+msgstr "Ukloni poveznicu"
+
+
+
+msgid "reader_math_local_install"
+msgstr "Postavi / popravi lokalni LaTeX-OCR"
+
+
+msgid "reader_math_local_installing"
+msgstr "Instalacija LaTeX-OCR-a i preuzimanje modela… Može potrajati nekoliko minuta. Ostavite ovaj prozor otvoren; Zatvori prekida postavljanje."
+
+
+msgid "reader_math_local_installed"
+msgstr "LaTeX-OCR je spreman. Kliknite Pretraži MathJax za prepoznavanje ove snimke."
+
+
+msgid "reader_math_local_error_setup"
+msgstr "Najprije kliknite Postavi / popravi lokalni LaTeX-OCR. Softver i model preuzimaju se jednom. Račun nije potreban."
+
+
+msgid "reader_math_local_error_python"
+msgstr "Instalirajte Python 3.11 s python.org, ponovno pokrenite Anki i pokušajte ponovno. Podržani su i Python 3.10 i 3.12."
+
+
+msgid "reader_math_local_error_process"
+msgstr "LaTeX-OCR se nije mogao pokrenuti. Pokušajte Postavi / popravi lokalni LaTeX-OCR. Za postavljanje provjerite internetsku vezu i slobodan prostor."
+
+
+msgid "reader_math_local_error_timeout"
+msgstr "LaTeX-OCR je zaustavljen zbog predugog trajanja. Pokušajte s manjom snimkom ili ponovite postavljanje."
+
+
+msgid "reader_math_local_error_cancelled"
+msgstr "LaTeX-OCR je prekinut."
+
+
+msgid "reader_math_local_error_busy"
+msgstr "Drugo postavljanje LaTeX-OCR-a je u tijeku. Pričekajte završetak pa pokušajte ponovno."
+
+
+msgid "settings_math_local_title"
+msgstr "MathJax prepoznavanje (lokalni LaTeX-OCR)"
+
+
+msgid "settings_math_local_help"
+msgstr "Otvorite čitač → Snimka → odaberite formulu → Pretraži MathJax…. Jednom kliknite Postavi / popravi lokalni LaTeX-OCR za preuzimanje softvera i modela. Prepoznavanje ostaje na ovom računalu i ne zahtijeva račun. Ako se PDF slike automatski umeću, ispod isključite automatsku uporabu zapamćenih polja snimke."
+
+msgid "reader_reference_change"
+msgstr "Promijeni povezani PDF…"
+
+msgid "reader_math_progress_environment"
+msgstr "Priprema lokalnog okruženja…"
+
+msgid "reader_math_progress_dependencies"
+msgstr "Preuzimanje softvera za prepoznavanje…"
+
+msgid "reader_math_progress_installing"
+msgstr "Instalacija softvera za prepoznavanje…"
+
+msgid "reader_math_progress_starting"
+msgstr "Pokretanje softvera za prepoznavanje…"
+
+msgid "reader_math_progress_loading"
+msgstr "Učitavanje i provjera modela za prepoznavanje…"
+
+msgid "reader_math_progress_model"
+msgstr "Preuzimanje modela za formule…"
+
+msgid "reader_math_progress_resizer"
+msgstr "Preuzimanje modela za pripremu slike…"
+
+msgid "reader_math_progress_step"
+msgstr "Korak {step} od 4 — {status}"
+
+msgid "reader_math_progress_download"
+msgstr "{status} {percent}% — {current} / {total} MB"
+
+msgid "reader_math_progress_packages"
+msgstr "{status} Započeta preuzimanja softvera: {count}"
+
+msgid "reader_math_progress_elapsed"
+msgstr "{status} · Proteklo {elapsed}"
+
+msgid "reader_page_links"
+msgstr "Povezane stranice"
+
+msgid "reader_link_this_page"
+msgstr "Poveži ovu stranicu…"
+
+msgid "reader_jump_to_linked_page"
+msgstr "Idi na povezanu stranicu"
+
+msgid "reader_page_links_empty"
+msgstr "Povežite ovu stranicu sa stranicom u drugom PDF-u."
+
+msgid "reader_destination_title"
+msgstr "Odaberite odredište poveznice"
+
+msgid "reader_destination_hint"
+msgstr "Pregledajte stranice ili pretražite tekst. Kliknite mjesto ili odaberite odlomak, a zatim odaberite Poveži s ovim mjestom."
+
+msgid "reader_destination_confirm"
+msgstr "Poveži s ovim mjestom"
+
+msgid "reader_destination_marker"
+msgstr "Odredište"
+
+msgid "reader_destination_saving"
+msgstr "Provjera odredišta…"

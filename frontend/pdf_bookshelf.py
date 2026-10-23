@@ -1255,9 +1255,12 @@ class _DocumentBookshelfDialog(QDialog):
         last_opened_card_id: int | None = None,
         entries: list[_BookshelfEntry] | None = None,
         attachment_counts: dict[int, int] | None = None,
+        selection_only: bool = False,
     ):
         super().__init__(parent)
         self._addon_dir = str(addon_dir)
+        self._selection_only = bool(selection_only)
+        self._reference_mode = "main"
         try:
             self._profile = str(_active_profile() or "")
         except Exception:
@@ -1419,6 +1422,9 @@ class _DocumentBookshelfDialog(QDialog):
         self._study_card_cb = QCheckBox(t("reader_open_card_to_study"))
         self._study_card_cb.setChecked(False)
         layout.addWidget(self._study_card_cb)
+        if self._selection_only:
+            self._study_card_cb.hide()
+            self._preserve_history_cb.hide()
 
         footer = QHBoxLayout()
         footer.addStretch(1)
@@ -1769,6 +1775,13 @@ class _DocumentBookshelfDialog(QDialog):
             lambda _checked=False, target=entry: self._reveal_entry(target),
         )
         menu.addSeparator()
+        if getattr(self, "_selection_only", False):
+            menu.exec(self._list.viewport().mapToGlobal(position))
+            return
+        if entry.kind == _KIND_PDF:
+            for key, beside in (("reader_reference_preview", False), ("reader_reference_pin", True)):
+                action = menu.addAction(t(key))
+                qconnect(action.triggered, lambda checked=False, pin=beside: self._accept_reference(beside=pin))
         delete_action = menu.addAction(t("reader_bookshelf_delete_document"))
         qconnect(
             delete_action.triggered,
@@ -1990,6 +2003,18 @@ class _DocumentBookshelfDialog(QDialog):
             return
         self._thumbnail_cache[(entry.kind, entry.card_id)] = icon
         item.setIcon(icon)
+
+    def _accept_reference(self, *, beside: bool) -> None:
+        entry = self._selected_entry()
+        if (entry is None or entry.kind != _KIND_PDF
+                or str(_active_profile() or "") != self._profile):
+            return
+        self._reference_mode = "beside" if beside else "preview"
+        self.accept()
+
+    @property
+    def reference_mode(self) -> str:
+        return self._reference_mode
 
     def _accept_item(self, item: QListWidgetItem) -> None:
         entry = item.data(Qt.ItemDataRole.UserRole) if item is not None else None

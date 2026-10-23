@@ -12,7 +12,6 @@ from aqt import mw, gui_hooks
 from .backend.deps import activate_pymupdf as _activate_pymupdf
 from .backend.i18n import initialize_language as _initialize_language, t as _t, tn as _tn
 from .backend import language_packs as _language_packs
-from .backend import simpletex_credentials as _simpletex_credentials
 from .backend.config_service import load_addon_config as _load_initial_config
 
 from anki import lang as _anki_language
@@ -186,6 +185,8 @@ from .frontend import pdf_dock as _pdf_dock_mod
 from .frontend import epub_dock as _epub_dock_mod
 from .frontend import reader_links as _reader_links_mod
 from .frontend import selection_search as _selection_search_mod
+from .frontend import document_link_ui as _document_link_ui_mod
+from .frontend import pdf_reference_workspace as _pdf_reference_workspace_mod
 from .frontend import video_dock as _video_dock_mod
 from .frontend import web_dock as _web_dock_mod
 from .frontend import writing_dock as _writing_dock_mod
@@ -2493,13 +2494,12 @@ def _on_js_message(handled, message, context) -> tuple:
     if message.startswith("incremento_open_pdf_ref:"):
         try:
             data = json.loads(message[len("incremento_open_pdf_ref:") :])
-            _open_pdf_reference(
+            _pdf_reference_workspace_mod.open_reference(
                 int(data.get("card_id") or 0),
                 int(data.get("page") or 1),
-                str(data.get("filename") or ""),
-                str(data.get("excerpt") or ""),
-                str(data.get("highlight_id") or ""),
-                data.get("scroll_ratio"),
+                scroll_ratio=data.get("scroll_ratio", 0),
+                owner=_pdf_dock_mod._pdf_dock,
+                excerpt=str(data.get("excerpt") or "") if data.get("scroll_ratio") is None else "",
             )
         except Exception:
             pass
@@ -2611,7 +2611,30 @@ def _register_selection_search_hooks() -> None:
         hook.append(callback)
 
 
+def _add_document_link_context_actions(view, menu):
+    card = getattr(getattr(mw, "reviewer", None), "card", None)
+    if card is None or view is not getattr(getattr(mw, "reviewer", None), "web", None):
+        return
+    profile, card_id = _active_profile(), int(card.id)
+    def current():
+        active = getattr(getattr(mw, "reviewer", None), "card", None)
+        return _active_profile() == profile and active is not None and int(active.id) == card_id
+    source = {"card_id": card_id, "kind": "card", "quote": str(view.selectedText() or "")[:2000]}
+    for key, callback in (("reader_reference_add", _document_link_ui_mod.link_pdf),
+                           ("reader_reference_links", _document_link_ui_mod.show_links)):
+        action = menu.addAction(_t(key))
+        action.triggered.connect(lambda checked=False, fn=callback: fn(source, is_current=current) if current() else None)
+
+
 _register_selection_search_hooks()
+
+
+def _register_document_link_hooks():
+    gui_hooks.webview_will_show_context_menu.remove(_add_document_link_context_actions)
+    gui_hooks.webview_will_show_context_menu.append(_add_document_link_context_actions)
+
+
+_register_document_link_hooks()
 
 gui_hooks.add_cards_did_add_note.append(_pdf_dock_mod.on_add_cards_did_add_note)
 gui_hooks.add_cards_did_add_note.append(_epub_dock_mod.on_add_cards_did_add_note)
@@ -3539,6 +3562,8 @@ def _open_document_bookshelf() -> None:
         )
 
     def show_bookshelf(snapshot) -> None:
+        if captured_profile != _active_profile():
+            return
         entries, attachment_counts = snapshot
         dlg = _DocumentBookshelfDialog(
             mw,
@@ -3547,12 +3572,16 @@ def _open_document_bookshelf() -> None:
             entries=list(entries or []),
             attachment_counts=dict(attachment_counts or {}),
         )
-        if not dlg.exec():
+        if not dlg.exec() or captured_profile != _active_profile():
             return
         card_id = dlg.selected_card_id
         if card_id is None:
             return
         try:
+            if dlg.reference_mode in ("preview", "beside"):
+                _pdf_reference_workspace_mod.open_reference(
+                    card_id, beside=dlg.reference_mode == "beside", owner=_pdf_dock_mod._pdf_dock)
+                return
             if dlg.selected_card_type == "EPUB":
                 _open_epub_card(card_id)
             else:
@@ -3563,7 +3592,8 @@ def _open_document_bookshelf() -> None:
             showInfo(_t("root_document_open_failed", error=exc))
 
     def failed(exc: Exception) -> None:
-        showInfo(_t("root_bookshelf_load_failed", error=exc))
+        if captured_profile == _active_profile():
+            showInfo(_t("root_bookshelf_load_failed", error=exc))
 
     try:
         (
@@ -6918,36 +6948,21 @@ def cleanupOrphanVideosFunction() -> None:
         showInfo(_t("root_cleanup_partial_deleted", deleted=deleted, total=len(deletable), errors="\n".join(errors)))
 
 
-def _save_settings_with_language_pack(
-    cfg: dict, pending_pack: dict | None, profile: str, *, simpletex_credentials: tuple[str, str] | None = None,
-) -> None:
-    """Restore staged private credentials/packs if the settings write fails."""
+def _save_settings_with_language_pack(cfg: dict, pending_pack: dict | None, profile: str) -> None:
+    """Restore a staged language pack if the settings write fails."""
     previous = None
-    previous_credentials = None
-    credentials_changed = False
-    credentials_saved = False
-    if simpletex_credentials is not None:
-        previous_credentials = _simpletex_credentials.load_credentials(_ADDON_DIR, profile)
-        credentials_changed = simpletex_credentials != previous_credentials
     if pending_pack is not None:
         previous = _language_packs.load_pack(_ADDON_DIR, profile, pending_pack["locale"])
     try:
-        if credentials_changed:
-            _simpletex_credentials.save_credentials(_ADDON_DIR, profile, simpletex_credentials)
-            credentials_saved = True
         if pending_pack is not None:
             _language_packs.save_pack(_ADDON_DIR, profile, pending_pack)
         _save_addon_config(mw.addonManager, __name__, cfg)
     except Exception:
-        try:
-            if credentials_saved:
-                _simpletex_credentials.save_credentials(_ADDON_DIR, profile, previous_credentials)
-        finally:
-            if pending_pack is not None:
-                if previous is None:
-                    _language_packs.delete_pack(_ADDON_DIR, profile, pending_pack["locale"])
-                else:
-                    _language_packs.save_pack(_ADDON_DIR, profile, previous)
+        if pending_pack is not None:
+            if previous is None:
+                _language_packs.delete_pack(_ADDON_DIR, profile, pending_pack["locale"])
+            else:
+                _language_packs.save_pack(_ADDON_DIR, profile, previous)
         raise
 
 
@@ -6960,7 +6975,6 @@ def openSettingsFunction() -> None:
         cfg.get("shortcuts") or {},
         current_ui_language=cfg.get("ui_language", "auto"),
         language_pack_context=(_ADDON_DIR, settings_profile),
-        current_simpletex_credentials=_simpletex_credentials.load_credentials(_ADDON_DIR, settings_profile),
         note_type_names=note_type_names,
         current_extract_notetype=_add_card_dock_mod.configured_extract_notetype_name(cfg),
         current_extract_priority=_add_card_dock_mod.configured_extract_priority(cfg),
@@ -7112,8 +7126,7 @@ def openSettingsFunction() -> None:
     cfg["custom_schedule_default_mode"] = dlg.custom_schedule_default_mode
     cfg["custom_schedule_presets"] = dlg.custom_schedule_presets
     try:
-        _save_settings_with_language_pack(cfg, dlg.pending_language_pack, settings_profile,
-                                         simpletex_credentials=dlg.simpletex_credentials)
+        _save_settings_with_language_pack(cfg, dlg.pending_language_pack, settings_profile)
     except Exception:
         showInfo(_t("settings_save_failed"))
         return
@@ -7573,6 +7586,9 @@ def _build_incremento_menu() -> None:
     qconnect(_documentBookshelfAction.triggered, _open_document_bookshelf)
     _menu.addAction(_documentBookshelfAction)
     _register_shortcut_action("document_bookshelf", _documentBookshelfAction)
+    reference_action = QAction(_t("reader_reference_pin"), mw)
+    qconnect(reference_action.triggered, lambda: _document_link_ui_mod.choose_reference(owner=_pdf_dock_mod._pdf_dock))
+    _menu.addAction(reference_action)
 
     _searchCurrentAction = QAction(_t("root_menu_find_current_document"), mw)
     _searchCurrentAction.setProperty("incremento_translation_key", "root_menu_find_current_document")

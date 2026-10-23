@@ -2539,3 +2539,9 @@ msgstr "Learning trend period"
 
 msgid "settings_pdf_link_preview_zoom"
 msgstr "Footnote preview zoom"
+
+msgid "search_all_annotations"
+msgstr "Annotations"
+
+msgid "search_all_annotations_tooltip"
+msgstr "Search notes attached to PDF and EPUB highlights."

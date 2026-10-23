@@ -41,6 +41,21 @@ def test_epub_custom_hex_color_is_selected_without_falling_back_to_yellow(monkey
     assert epub_dock._current_epub_highlight_color == '#123abc'
 
 
+def test_epub_page_links_slot_explains_that_pdf_page_connections_are_unavailable(monkeypatch):
+    button = MagicMock()
+    factory = MagicMock(return_value=button)
+    monkeypatch.setattr(epub_dock, "_make_epub_button", factory)
+    monkeypatch.setattr(epub_dock, "_EPUB_TOOLBAR_TEXT", epub_dock.reader_toolbar_action_text("epub"))
+
+    assert epub_dock._make_epub_page_links_button(None) is button
+
+    assert factory.call_args.args[1] == "Page links"
+    assert "not available" in factory.call_args.args[2]
+    assert "EPUB" in factory.call_args.args[2]
+    button.setEnabled.assert_called_once_with(False)
+    button.setAccessibleDescription.assert_called_once_with(factory.call_args.args[2])
+
+
 def test_epub_toolbar_is_refreshed_after_locale_initialization(monkeypatch):
     monkeypatch.setattr(epub_dock, "_EPUB_CONTROL_GROUPS", epub_dock._EPUB_CONTROL_GROUPS)
     monkeypatch.setattr(epub_dock, "_EPUB_TOOLBAR_TEXT", epub_dock._EPUB_TOOLBAR_TEXT)

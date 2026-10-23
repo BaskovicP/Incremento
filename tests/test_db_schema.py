@@ -161,7 +161,7 @@ def test_statistics_history_schema_rejects_invalid_rows(tmp_path):
     db.close_connection()
     conn = db.get_connection(str(tmp_path), "TestProfile")
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 13
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 16
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 "INSERT INTO reading_page_history "

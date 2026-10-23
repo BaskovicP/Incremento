@@ -259,7 +259,8 @@ def test_live_anki_filter_label_does_not_claim_cross_profile_search():
     assert "Current Anki Profile Only" not in constructor_source
 
 
-def test_highlight_search_filters_live_rows_before_the_display_limit(monkeypatch):
+@pytest.mark.parametrize("annotations_only", [False, True])
+def test_highlight_search_filters_live_rows_before_the_display_limit(monkeypatch, annotations_only):
     requested_limits: list[int | None] = []
     all_rows = [
         (99, page, "faith") for page in range(1, 121)
@@ -268,6 +269,8 @@ def test_highlight_search_filters_live_rows_before_the_display_limit(monkeypatch
     ]
 
     def fake_search_excerpt_rows(*_args, **kwargs):
+        if _args[2] == "epub_annotations":
+            return []
         requested_limits.append(kwargs.get("limit"))
         return all_rows[: kwargs.get("limit", 120)]
 
@@ -280,7 +283,8 @@ def test_highlight_search_filters_live_rows_before_the_display_limit(monkeypatch
     dialog = SimpleNamespace(
         _addon_dir="/tmp/search-all-test",
         _highlight_previews={},
-        _cb_highlights=_Checked(True),
+        _cb_highlights=_Checked(not annotations_only),
+        _cb_annotations=_Checked(annotations_only),
         _cb_sources=_Checked(False),
         _cb_epub_highlights=_Checked(False),
         _cb_epub_sources=_Checked(False),
@@ -312,6 +316,9 @@ def test_highlight_search_filters_live_rows_before_the_display_limit(monkeypatch
     assert results.html.count("<li>") == 120
     assert "Page 121" in results.html
     assert "Page 241" not in results.html
+    if annotations_only:
+        assert "Annotations (PDF)" in results.html
+        assert "PDF Highlights" not in results.html
 
 
 def test_source_live_filter_requires_document_card_and_source_note():
@@ -333,3 +340,10 @@ def test_source_live_filter_requires_document_card_and_source_note():
     )
 
     assert filtered == [(17, 1, "live", 101)]
+
+
+def test_annotations_filter_has_its_own_saved_preference():
+    assert search_all.configured_search_all_filter_enabled("annotations", {}) is True
+    assert search_all.configured_search_all_filter_enabled(
+        "annotations", {"search_all_filter_annotations": False}
+    ) is False

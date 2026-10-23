@@ -54,6 +54,7 @@ _PDF_CLONE_TOOLBAR_SPEC = (
                     "exact_read_marker",
                     "clickable_links",
                     "jump_back",
+                    "page_links",
                     "read_range",
                 ),
             ),
@@ -110,6 +111,7 @@ _PDF_CLONE_COMPACT_ACTION_IDS = (
     "zoom_percent",
     "clickable_links",
     "jump_back",
+    "page_links",
     "show_controls",
     "customize",
 )
@@ -134,6 +136,7 @@ _PDF_CLONE_ACTION_TEXT = {
     "exact_read_marker": "↦",
     "clickable_links": "Links {state}",
     "jump_back": "↩ Jump Back",
+    "page_links": "Page links",
     "more_colors": "More colors…",
     "highlight_when_extracting": "Highlight when extracting",
     "snapshot": "📷 Snapshot",
