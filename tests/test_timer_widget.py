@@ -404,3 +404,22 @@ def test_timer_completion_tone_respects_disabled_setting(monkeypatch):
     timer_widget.play_timer_completion_tone()
 
     assert beeps == []
+
+
+def test_auto_timer_matching_reads_one_fresh_config_snapshot_per_card(monkeypatch):
+    configs = [
+        {'auto_timer_enabled': True, 'auto_timer_tags': ['focus'],
+         'auto_timer_card_types': {'pdf': False, 'epub': False}},
+        {'auto_timer_enabled': False},
+    ]
+    reads = []
+    def load(*_args):
+        reads.append(True)
+        return configs[0]
+    monkeypatch.setattr(timer_widget, 'load_addon_config', load)
+    card = _FakeCard('Basic', tags=['focus'])
+    assert timer_widget.card_matches_auto_timer_config(card) is True
+    assert len(reads) == 1
+    configs.pop(0)
+    assert timer_widget.card_matches_auto_timer_config(card) is False
+    assert len(reads) == 2

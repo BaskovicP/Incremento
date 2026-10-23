@@ -427,7 +427,12 @@ def _card_tags(card) -> set[str]:
 
 
 def card_matches_auto_timer_config(card, config: dict | None = None) -> bool:
-    if card is None or not configured_auto_timer_enabled(config):
+    if card is None:
+        return False
+    # One fresh snapshot per card, shared by all matching rules. Do not cache
+    # across cards: accepted Settings changes must take effect immediately.
+    config = _resolved_config(config)
+    if not configured_auto_timer_enabled(config):
         return False
 
     enabled_types = configured_auto_timer_card_types(config)
