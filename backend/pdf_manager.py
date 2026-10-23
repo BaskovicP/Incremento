@@ -89,36 +89,36 @@ def find_live_pdf_card_by_filename(col, filename: str) -> int | None:
     if not clean_filename:
         return None
 
-    exact_card_id = _find_exact_live_pdf_card_by_filename(col, clean_filename)
-    if exact_card_id is not None:
-        return exact_card_id
-
     lookup_key = _pdf_filename_lookup_key(clean_filename)
-    if not lookup_key:
-        return None
-
     try:
         note_ids = col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
     except Exception:
         return None
 
-    fuzzy_card_ids: list[int] = []
+    # Keep exact-match precedence without reading every PDF twice. Defer
+    # fuzzy card lookups until the single note pass has ruled out an exact hit.
+    fuzzy_note_ids = []
     for nid in note_ids:
         try:
-            note = col.get_note(nid)
-            stored = str(note["PDF_Filename"] or "").strip()
+            stored = str(col.get_note(nid)["PDF_Filename"] or "").strip()
         except Exception:
             continue
-        if _pdf_filename_lookup_key(stored) != lookup_key:
-            continue
+        if os.path.basename(stored) == clean_filename:
+            try:
+                cids = col.find_cards(f"nid:{nid}")
+                if cids:
+                    return int(cids[0])
+            except Exception:
+                continue
+        elif lookup_key and _pdf_filename_lookup_key(stored) == lookup_key:
+            fuzzy_note_ids.append(nid)
+
+    fuzzy_card_ids: list[int] = []
+    for nid in fuzzy_note_ids:
         try:
             cids = col.find_cards(f"nid:{nid}")
-        except Exception:
-            cids = []
-        if not cids:
-            continue
-        try:
-            fuzzy_card_ids.append(int(cids[0]))
+            if cids:
+                fuzzy_card_ids.append(int(cids[0]))
         except Exception:
             continue
 

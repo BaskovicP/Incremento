@@ -134,3 +134,22 @@ def test_backup_timestamp_uses_the_locale_date_formatter(monkeypatch):
     monkeypatch.setattr(writing_dock, "format_date", lambda _value: "LOCAL-DATE")
 
     assert writing_dock._format_backup_timestamp(0).startswith("LOCAL-DATE ")
+
+
+def test_nonwriting_reviews_do_not_resave_an_already_hidden_writing_editor(monkeypatch):
+    from types import SimpleNamespace
+    visible = [True]
+    saves = []
+    dock = SimpleNamespace(isVisible=lambda: visible[0], hide=lambda: visible.__setitem__(0, False))
+    monkeypatch.setattr(writing_dock, '_writing_dock', dock)
+    monkeypatch.setattr(writing_dock, '_flush_editor_state', lambda: saves.append('saved'))
+    note = SimpleNamespace(mid=1)
+    collection = SimpleNamespace(get_note=lambda nid: note,
+                                 models=SimpleNamespace(get=lambda mid: {'name': 'Basic'}))
+    monkeypatch.setattr(writing_dock, 'mw', SimpleNamespace(col=collection))
+    card = SimpleNamespace(nid=1)
+    writing_dock.on_writing_question_shown(card)
+    writing_dock.on_writing_question_shown(card)
+    writing_dock.on_writing_question_shown(card)
+    assert saves == ['saved']
+    assert visible == [False]

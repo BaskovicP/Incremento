@@ -18,6 +18,7 @@ _qt_pdf_mock = MagicMock()
 _qpdf_document_cls = MagicMock()
 _qt_pdf_mock.QPdfDocument = _qpdf_document_cls
 
+_previous_qt_modules = {name: sys.modules.get(name) for name in ("PyQt6", "PyQt6.QtPdf")}
 sys.modules.setdefault("PyQt6", MagicMock())
 sys.modules["PyQt6.QtPdf"] = _qt_pdf_mock
 
@@ -36,6 +37,12 @@ sys.modules.setdefault("db", db)
 pdf_manager = importlib.import_module("pdf_manager")  # noqa: E402
 pdf_manager = importlib.reload(pdf_manager)
 from pdf_manager import PDF_COVER_FIELD, pdf_display_label_from_filename  # noqa: E402
+# Keep the import-only Qt stand-ins from affecting later UI test collection.
+for _module_name, _previous_module in _previous_qt_modules.items():
+    if _previous_module is None:
+        sys.modules.pop(_module_name, None)
+    else:
+        sys.modules[_module_name] = _previous_module
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +230,33 @@ class TestFindLivePdfCardByFilename:
             )
             == 123
         )
+
+    def test_exact_legacy_filename_without_a_fuzzy_key_still_resolves(self):
+        col = MagicMock()
+        col.find_notes.return_value = [11]
+        col.get_note.return_value = {"PDF_Filename": "---.pdf"}
+        col.find_cards.return_value = [123]
+        assert pdf_manager.find_live_pdf_card_by_filename(col, "---.pdf") == 123
+
+    def test_missing_filename_reads_each_pdf_only_once(self):
+        col = MagicMock()
+        col.find_notes.return_value = [11, 12]
+        notes = {nid: {"PDF_Filename": f"other-{nid}.pdf"} for nid in (11, 12)}
+        col.get_note.side_effect = notes.__getitem__
+        assert pdf_manager.find_live_pdf_card_by_filename(col, "missing.pdf") is None
+        assert col.find_notes.call_count == 1
+        assert col.get_note.call_args_list == [call(11), call(12)]
+        col.find_cards.assert_not_called()
+
+    def test_exact_match_wins_over_earlier_fuzzy_match_without_fetching_its_cards(self):
+        col = MagicMock()
+        col.find_notes.return_value = [11, 12]
+        notes = {11: {"PDF_Filename": "paper-" + "a" * 32 + ".pdf"},
+                 12: {"PDF_Filename": "paper.pdf"}}
+        col.get_note.side_effect = notes.__getitem__
+        col.find_cards.return_value = [123]
+        assert pdf_manager.find_live_pdf_card_by_filename(col, "paper.pdf") == 123
+        col.find_cards.assert_called_once_with("nid:12")
 
     def test_returns_none_when_stem_match_is_ambiguous(self):
         note_a = MagicMock()

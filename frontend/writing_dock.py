@@ -1339,9 +1339,12 @@ def on_writing_question_shown(card) -> None:
             return
         if model is None or model.get("name") != WRITING_NOTE_TYPE:
             if _writing_dock is not None:
-                _flush_editor_state()
                 try:
-                    _writing_dock.hide()
+                    # After leaving Writing, later review cards must not keep
+                    # serializing the hidden editor and rewriting its stats.
+                    if _writing_dock.isVisible():
+                        _flush_editor_state()
+                        _writing_dock.hide()
                 except RuntimeError:
                     _writing_dock = None
             return
