@@ -94,3 +94,27 @@ def test_source_search_rows_include_source_note_identity(
     )
 
     assert rows == [expected]
+
+
+@pytest.mark.parametrize("media,position", [("pdf", "page"), ("epub", "section_index")])
+def test_highlight_search_finds_annotation_notes_and_preserves_location(tmp_path, media, position):
+    addon_dir = str(tmp_path)
+    conn = db.get_connection(addon_dir, "Profile")
+    conn.execute(
+        f"INSERT INTO {media}_highlights(id, card_id, {position}, text, note) "
+        "VALUES (?, ?, ?, ?, ?)",
+        ("diary", 7, 3, "A saved passage", "My thoughts about failure mode today"),
+    )
+    conn.commit()
+
+    rows = search_repository.search_excerpt_rows(
+        addon_dir, "Profile", f"{media}_highlights", "failure mode"
+    )
+
+    assert rows == [(7, 3, "A saved passage\n\nMy thoughts about failure mode today")]
+    assert search_repository.search_excerpt_rows(
+        addon_dir, "OtherProfile", f"{media}_highlights", "failure mode"
+    ) == []
+    assert search_repository.search_excerpt_rows(
+        addon_dir, "Profile", f"{media}_highlights", "absent phrase"
+    ) == []

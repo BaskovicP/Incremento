@@ -1313,6 +1313,20 @@ export default function PdfViewer() {
     highlightRangeCacheRef.current.clear();
   }, [page]);
 
+  const recolorHighlight = useCallback((id, value) => {
+    const color = normalizeHighlightColor(value);
+    const original = highlights.find(h => h.id === id);
+    if (!color || !original || original.color === 'snapshot') return;
+    const highlight = { ...original, color };
+    if (original.pdf_annotation) {
+      const hex = highlightSolidColor(color);
+      highlight.pdf_annotation = { ...original.pdf_annotation,
+        color: [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255) };
+    }
+    setHighlights(previous => previous.map(h => h.id === id ? highlight : h));
+    window.pycmd('incremento_pdf_hl_update:' + JSON.stringify({ cardId: cardIdRef.current, highlight }));
+  }, [highlights, cardIdRef]);
+
   const makeHighlight = useCallback((sel, forcedColor = null) => {
     if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
     const tl = textLayerRef.current;
@@ -1364,13 +1378,13 @@ export default function PdfViewer() {
     }
   }, [makeHighlight]);
 
-  const openHighlightColorPicker = useCallback(() => {
+  const openHighlightColorPicker = useCallback((highlight = null) => {
     const sel = window.getSelection();
     const range = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null;
-    pendingHighlightSelectionRef.current = range && textLayerRef.current?.contains(range.commonAncestorContainer)
+    pendingHighlightSelectionRef.current = highlight ? { id: highlight.id, page: pageRef.current, cardId: cardIdRef.current } : range && textLayerRef.current?.contains(range.commonAncestorContainer)
       ? { range: range.cloneRange(), page: pageRef.current, cardId: cardIdRef.current } : null;
     window.pycmd('incremento_pdf_hl_color:' + JSON.stringify({
-      cardId: cardIdRef.current, currentColor: hlColorRef.current,
+      cardId: cardIdRef.current, currentColor: highlight?.color || hlColorRef.current,
     }));
   }, [cardIdRef, textLayerRef, pageRef]);
 
@@ -1381,12 +1395,16 @@ export default function PdfViewer() {
     if (!color) return;
     pickHighlightColor(color);
     if (!pending || pending.page !== pageRef.current || pending.cardId !== cardIdRef.current) return;
+    if (pending.id) {
+      recolorHighlight(pending.id, color);
+      return;
+    }
     const range = pending.range;
     if (range && makeHighlight({
       rangeCount: 1, isCollapsed: range.collapsed,
       getRangeAt: () => range, toString: () => range.toString(),
     }, color)) window.getSelection()?.removeAllRanges();
-  }, [pickHighlightColor, makeHighlight, pageRef, cardIdRef]);
+  }, [pickHighlightColor, makeHighlight, recolorHighlight, pageRef, cardIdRef]);
 
   const limitAwareNav = useCallback((delta, options = {}) => {
     const scrollToTop = options.scrollToTop !== undefined
@@ -1836,7 +1854,7 @@ export default function PdfViewer() {
     window.pycmd('incremento_get_page_cards:' + cardIdRef.current + ':' + page);
   }, [page, pdfDocRef, cardIdRef]);
 
-  // ── Keyboard: Ctrl/Cmd+1–4 fill field / Option+H highlight ───────────────
+  // ── Keyboard: Ctrl/Cmd+1–4 fill field / Ctrl/Cmd/Alt+H highlight ───────────────
   useEffect(() => {
     const idxFromShortcut = (e) => {
       const byCode = {
@@ -1854,13 +1872,14 @@ export default function PdfViewer() {
     };
 
     const handler = (e) => {
-      // Option/Alt+H — highlight current selection
-      if (e.altKey && e.code === 'KeyH') {
+      // Ctrl/Cmd+H or Option/Alt+H — highlight current selection
+      if (!e.shiftKey && (e.altKey || e.ctrlKey || e.metaKey) && e.code === 'KeyH') {
         const sel = window.getSelection();
         if (!sel || sel.isCollapsed || !sel.rangeCount) return;
         const tl = textLayerRef.current;
         if (!tl || !tl.contains(sel.getRangeAt(0).commonAncestorContainer)) return;
         e.preventDefault();
+        e.stopPropagation();
         makeHighlight(sel);
         sel.removeAllRanges();
         return;
@@ -2534,7 +2553,7 @@ export default function PdfViewer() {
                   <button
                     title={`${tr('reader_choose_annotation_color')} (${highlightSolidColor(hlColor)})`}
                     onMouseDown={e => e.preventDefault()}
-                    onClick={openHighlightColorPicker}
+                    onClick={() => openHighlightColorPicker()}
                     style={{ background: 'transparent', border: '1px solid rgba(138,138,138,0.4)',
                       color: '#ddd', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}
                   >
@@ -3069,6 +3088,16 @@ export default function PdfViewer() {
                         </span>
                       </span>
                     </div>
+                    {hl.color !== 'snapshot' && (
+                      <button
+                        type="button"
+                        title={tr('reader_choose_annotation_color')}
+                        aria-label={tr('reader_choose_annotation_color')}
+                        onClick={e => { e.stopPropagation(); openHighlightColorPicker(hl); }}
+                      >
+                        {tr('reader_choose_annotation_color')}
+                      </button>
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
                       <button
                         title={hasLinkedCard ? tr('reader_preview_linked_card') : tr('reader_prefill_card')}

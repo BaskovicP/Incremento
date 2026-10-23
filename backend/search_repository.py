@@ -42,6 +42,14 @@ def search_excerpt_rows(
     if spec is None or not terms:
         return []
     table, columns, text_column = spec
+    if kind in ("pdf_highlights", "epub_highlights"):
+        # Use the same text for candidate selection, ranking, snippets and hover
+        # previews so a match found only in a personal note remains visible.
+        text_column = (
+            "coalesce(text, '') || CASE WHEN coalesce(note, '') != '' "
+            "THEN char(10) || char(10) || note ELSE '' END"
+        )
+        columns = (*columns[:2], text_column)
     candidate_limit = max(500, max(1, int(limit)) * 25)
     conn = get_connection(addon_dir, profile)
     rows = conn.execute(

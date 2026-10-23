@@ -659,10 +659,11 @@ The reminder option starts off and is remembered separately for each profile and
 
 You can highlight text in the current color with:
 
-- `Option+H` on macOS
-- `Alt+H` on Windows/Linux
+- `Cmd+H` or `Option+H` on macOS
+- `Ctrl+H` or `Alt+H` on Windows/Linux
 
 Highlights are saved per PDF and reappear whenever you reopen the card.
+To change a saved highlight’s color, open **Highlights** and use its **Choose annotation color** action. Choose a color and confirm with **OK**; the text, note, and linked card remain attached. This action also works when delete buttons are hidden.
 As soon as you select text, the blue selection shows a line-and-dot handle at
 each endpoint. Drag either handle before creating the highlight to adjust its
 start or end; copy, extraction, and highlight actions use the adjusted text. The
@@ -912,13 +913,13 @@ Choose **Incremento → Search ALL** or use its shortcut.
 
 It searches across:
 
-- PDF highlights and sources
-- EPUB highlights and sources
+- PDF highlights (including attached annotation notes) and sources
+- EPUB highlights (including attached annotation notes) and sources
 - PDF file content
 - EPUB file content
 - cards
 
-Search results include a preview panel. Hovering a PDF or EPUB highlight previews only the saved highlighted passage; source and file-content hits preview the indexed page or section for context. PDF hits can open directly to the matching page, and card hits can open in the Anki Browser.
+Search results include a preview panel. Hovering a PDF or EPUB highlight previews the saved highlighted passage and its attached annotation note; source and file-content hits preview the indexed page or section for context. The PDF/EPUB highlight checkboxes also include annotation notes: searching for words such as `failure mode` finds them even when they appear only in your note. PDF hits can open directly to the matching page, and card hits can open in the Anki Browser.
 
 Changing a result-type checkbox applies immediately, including when **Search while typing** is off. **Existing Anki Items Only** hides indexed results whose linked document card or source note has been deleted; searches always remain scoped to the active Anki profile.
 

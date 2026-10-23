@@ -498,6 +498,7 @@ for (const outcome of ['selected', 'cancelled', 'page-changed']) {
         getBoundingClientRect: () => ({ left: 0, top: 0 }) } },
       lastScaleRef: { current: 1 }, pageRef: { current: 6 }, cardIdRef: { current: 42 },
       hlColorRef: { current: 'yellow' }, pendingHighlightSelectionRef: { current: null },
+      recolorHighlight: () => {},
       resizeHighlightRef: { current: null },
       highlightRangeCacheRef: { current: new Map() },
       setHlColor: () => {}, setHighlights: () => {},

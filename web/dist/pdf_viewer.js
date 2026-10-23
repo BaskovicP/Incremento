@@ -11575,6 +11575,21 @@
       setResizingHighlightId(null);
       highlightRangeCacheRef.current.clear();
     }, [page]);
+    const recolorHighlight = reactExports.useCallback((id, value) => {
+      const color = normalizeHighlightColor(value);
+      const original = highlights.find((h) => h.id === id);
+      if (!color || !original || original.color === "snapshot") return;
+      const highlight = { ...original, color };
+      if (original.pdf_annotation) {
+        const hex = highlightSolidColor(color);
+        highlight.pdf_annotation = {
+          ...original.pdf_annotation,
+          color: [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+        };
+      }
+      setHighlights((previous) => previous.map((h) => h.id === id ? highlight : h));
+      window.pycmd("incremento_pdf_hl_update:" + JSON.stringify({ cardId: cardIdRef.current, highlight }));
+    }, [highlights, cardIdRef]);
     const makeHighlight = reactExports.useCallback((sel, forcedColor = null) => {
       var _a;
       if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
@@ -11620,14 +11635,14 @@
         sel.removeAllRanges();
       }
     }, [makeHighlight]);
-    const openHighlightColorPicker = reactExports.useCallback(() => {
+    const openHighlightColorPicker = reactExports.useCallback((highlight = null) => {
       var _a;
       const sel = window.getSelection();
       const range = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null;
-      pendingHighlightSelectionRef.current = range && ((_a = textLayerRef.current) == null ? void 0 : _a.contains(range.commonAncestorContainer)) ? { range: range.cloneRange(), page: pageRef.current, cardId: cardIdRef.current } : null;
+      pendingHighlightSelectionRef.current = highlight ? { id: highlight.id, page: pageRef.current, cardId: cardIdRef.current } : range && ((_a = textLayerRef.current) == null ? void 0 : _a.contains(range.commonAncestorContainer)) ? { range: range.cloneRange(), page: pageRef.current, cardId: cardIdRef.current } : null;
       window.pycmd("incremento_pdf_hl_color:" + JSON.stringify({
         cardId: cardIdRef.current,
-        currentColor: hlColorRef.current
+        currentColor: (highlight == null ? void 0 : highlight.color) || hlColorRef.current
       }));
     }, [cardIdRef, textLayerRef, pageRef]);
     const finishHighlightColorPicker = reactExports.useCallback((value) => {
@@ -11638,6 +11653,10 @@
       if (!color) return;
       pickHighlightColor(color);
       if (!pending || pending.page !== pageRef.current || pending.cardId !== cardIdRef.current) return;
+      if (pending.id) {
+        recolorHighlight(pending.id, color);
+        return;
+      }
       const range = pending.range;
       if (range && makeHighlight({
         rangeCount: 1,
@@ -11645,7 +11664,7 @@
         getRangeAt: () => range,
         toString: () => range.toString()
       }, color)) (_a = window.getSelection()) == null ? void 0 : _a.removeAllRanges();
-    }, [pickHighlightColor, makeHighlight, pageRef, cardIdRef]);
+    }, [pickHighlightColor, makeHighlight, recolorHighlight, pageRef, cardIdRef]);
     const limitAwareNav = reactExports.useCallback((delta, options = {}) => {
       const scrollToTop = options.scrollToTop !== void 0 ? !!options.scrollToTop : delta > 0;
       if (delta > 0) {
@@ -12055,12 +12074,13 @@
         return n - 1;
       };
       const handler = (e) => {
-        if (e.altKey && e.code === "KeyH") {
+        if (!e.shiftKey && (e.altKey || e.ctrlKey || e.metaKey) && e.code === "KeyH") {
           const sel = window.getSelection();
           if (!sel || sel.isCollapsed || !sel.rangeCount) return;
           const tl = textLayerRef.current;
           if (!tl || !tl.contains(sel.getRangeAt(0).commonAncestorContainer)) return;
           e.preventDefault();
+          e.stopPropagation();
           makeHighlight(sel);
           sel.removeAllRanges();
           return;
@@ -12774,7 +12794,7 @@
                           {
                             title: `${tr("reader_choose_annotation_color")} (${highlightSolidColor(hlColor)})`,
                             onMouseDown: (e) => e.preventDefault(),
-                            onClick: openHighlightColorPicker,
+                            onClick: () => openHighlightColorPicker(),
                             style: {
                               background: "transparent",
                               border: "1px solid rgba(138,138,138,0.4)",
@@ -13379,6 +13399,19 @@
                             }
                           ) })
                         ] }),
+                        hl.color !== "snapshot" && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            type: "button",
+                            title: tr("reader_choose_annotation_color"),
+                            "aria-label": tr("reader_choose_annotation_color"),
+                            onClick: (e) => {
+                              e.stopPropagation();
+                              openHighlightColorPicker(hl);
+                            },
+                            children: tr("reader_choose_annotation_color")
+                          }
+                        ),
                         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 6 }, children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "button",
