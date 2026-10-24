@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -135,19 +136,129 @@ class _FakeCollection:
         self._notes = dict(notes)
         self._card_ids_by_nid = dict(card_ids_by_nid)
         self.queries = []
+        self.note_reads = []
+        self.card_searches = []
+        self.batch_reads = []
+        self.model_reads = []
+        self._connection = sqlite3.connect(":memory:")
+        self._connection.executescript("""
+            CREATE TABLE notes(id INTEGER PRIMARY KEY, mid INTEGER, flds TEXT, tags TEXT);
+            CREATE TABLE cards(id INTEGER PRIMARY KEY, nid INTEGER, queue INTEGER);
+            CREATE INDEX ix_cards_nid ON cards(nid);
+        """)
+        models = {}
+        for note_id, note in self._notes.items():
+            named = {"Fallback": note.fields[0] if note.fields else "", **note._named_fields}
+            names = tuple(named)
+            if names not in models:
+                models[names] = len(models) + 1
+            self._connection.execute("INSERT INTO notes VALUES (?, ?, ?, ?)", (
+                note_id, models[names], "\x1f".join(named.values()), " ".join(note.tags),
+            ))
+        for note_id, card_ids in self._card_ids_by_nid.items():
+            self._connection.executemany("INSERT INTO cards VALUES (?, ?, -1)",
+                                         [(card_id, note_id) for card_id in card_ids])
+        self._models = {
+            model_id: {"flds": [{"name": name, "ord": index} for index, name in enumerate(names)]}
+            for names, model_id in models.items()
+        }
+        self.db = SimpleNamespace(all=self._read_rows)
+        self.models = SimpleNamespace(get=self._read_model)
+
+    def _read_rows(self, sql, *params):
+        self.batch_reads.append((sql, params))
+        return self._connection.execute(sql, params).fetchall()
+
+    def _read_model(self, model_id):
+        self.model_reads.append(model_id)
+        return self._models.get(model_id)
 
     def find_notes(self, query):
         self.queries.append(query)
         return list(self._note_ids_by_query.get(query, []))
 
     def get_note(self, note_id):
+        self.note_reads.append(note_id)
         return self._notes[note_id]
 
     def find_cards(self, query):
+        self.card_searches.append(query)
         if not str(query).startswith("nid:"):
             return []
         note_id = int(str(query).split(":", 1)[1])
         return list(self._card_ids_by_nid.get(note_id, []))
+
+
+def test_large_bookshelf_batches_notes_and_keeps_suspended_cards_and_metadata(monkeypatch):
+    """Loading 1,203 documents must not do two collection round-trips per note."""
+    profile_reads = []
+    monkeypatch.setattr(pdf_bookshelf, "get_all_priorities",
+                        lambda addon, profile: profile_reads.append((addon, profile)) or {10001: 25})
+    notes = {
+        nid: _FakeNote(fields=["fallback"], tags=["Reading", "reading", "Work"], named_fields={
+            "Title": f"Book {nid:04}", "PDF_Filename": f"{nid}.pdf",
+            pdf_bookshelf.PDF_COVER_FIELD: f"{nid}.png",
+        }) for nid in range(1, 1203)
+    }
+    notes[1203] = _FakeNote(fields=["EPUB fallback"], named_fields={
+        "Title": "EPUB title", pdf_bookshelf.EPUB_FILE_FIELD: "book.epub",
+        pdf_bookshelf.EPUB_COVER_FIELD: "book.jpg",
+    })
+    collection = _FakeCollection(
+        {f'note:"{pdf_bookshelf.PDF_NOTE_TYPE}"': list(range(1, 1203)),
+         f'note:"{pdf_bookshelf.EPUB_NOTE_TYPE}"': [1203]},
+        notes,
+        {**{nid: [nid + 10000] for nid in range(1, 1202)}, 1: [10001, 20001], 1203: [11203]},
+    )
+    try:
+        entries = pdf_bookshelf._load_bookshelf_entries(
+            "/unused", profile="Captured", collection=collection,
+        )
+        assert len(entries) == 1202  # The orphaned note has no card to open.
+        assert entries[0] == pdf_bookshelf._BookshelfEntry(
+            "Book 0001", 10001, "PDF", "1.png", "1.pdf", 25, ("Reading", "Work"), 1,
+        )
+        assert entries[-1] == pdf_bookshelf._BookshelfEntry(
+            "EPUB title", 11203, "EPUB", "book.jpg", "book.epub", None, (), 1203,
+        )
+        assert profile_reads == [("/unused", "Captured")]
+        assert collection.note_reads == []
+        assert collection.card_searches == []
+        assert len(collection.batch_reads) <= 3
+        assert all(len(params) <= 900 for _, params in collection.batch_reads)
+        assert len(collection.model_reads) <= 2
+    finally:
+        collection._connection.close()
+
+
+def test_bookshelf_attachment_pass_reads_tree_once_and_refreshes_next_time(monkeypatch):
+    import media_review
+
+    reads = []
+    tree_rows = [
+        {"card_id": 10, "parent_card_id": 1},
+        {"card_id": 11, "parent_card_id": 10},
+        {"card_id": 20, "parent_card_id": 2},
+        {"card_id": 21, "parent_card_id": 20},
+        {"card_id": 22, "parent_card_id": 21},  # deleted Anki card
+    ]
+    monkeypatch.setattr(media_review, "get_knowledge_tree_nodes",
+                        lambda addon, profile: reads.append((addon, profile)) or list(tree_rows))
+    monkeypatch.setattr(media_review, "get_pdf_document_source_rows", lambda *_args: [])
+    monkeypatch.setattr(media_review, "get_epub_document_source_rows", lambda *_args: [])
+    cards = {cid: SimpleNamespace(id=cid) for cid in [10, 11, 20, 21]}
+    collection = SimpleNamespace(find_notes=lambda _query: [], get_card=cards.__getitem__)
+    entries = [pdf_bookshelf._BookshelfEntry("PDF", 1, "PDF"),
+               pdf_bookshelf._BookshelfEntry("EPUB", 2, "EPUB")]
+    assert pdf_bookshelf._bookshelf_attachment_counts(
+        "/unused", "Captured", entries, col=collection,
+    ) == {1: 2, 2: 2}
+    assert reads == [("/unused", "Captured")]
+    tree_rows.pop(1)
+    assert pdf_bookshelf._bookshelf_attachment_counts(
+        "/unused", "Captured", entries, col=collection,
+    ) == {1: 1, 2: 2}
+    assert reads == [("/unused", "Captured")] * 2
 
 
 def test_bookshelf_loads_pdf_and_epub_notes_with_cover_metadata(monkeypatch):
@@ -639,6 +750,8 @@ def test_bookshelf_delete_targets_distinct_live_note_ids_only():
 
 def test_bookshelf_delete_attachment_check_uses_lightweight_media_resolver(monkeypatch):
     calls = []
+    snapshot = object()
+    monkeypatch.setattr(pdf_bookshelf, "load_media_review_tree_snapshot", lambda *_args: snapshot)
 
     def linked_ids(addon_dir, profile, card_id, **kwargs):
         calls.append((addon_dir, profile, card_id, kwargs))
@@ -666,11 +779,13 @@ def test_bookshelf_delete_attachment_check_uses_lightweight_media_resolver(monke
     assert [call[2] for call in calls] == [1, 2]
     assert [call[3]["media_kind"] for call in calls] == ["pdf", "epub"]
     assert all(call[3]["col"] is collection for call in calls)
+    assert all(call[3]["tree_snapshot"] is snapshot for call in calls)
 
 
 def test_bookshelf_attachment_counts_are_per_document_and_drive_duplicate_badge(
     monkeypatch,
 ):
+    monkeypatch.setattr(pdf_bookshelf, "load_media_review_tree_snapshot", lambda *_args: object())
     def linked_ids(_addon_dir, _profile, card_id, **_kwargs):
         if card_id == 1:
             return (10, 10)

@@ -26,6 +26,7 @@ from aqt.qt import (
     QEvent,
     QHBoxLayout,
     QIcon,
+    QImageReader,
     QLabel,
     QLineEdit,
     QListView,
@@ -72,14 +73,18 @@ try:
     )
     from ..backend.media_review import (
         linked_media_attachment_card_ids,
+        load_media_review_tree_snapshot,
     )
+    from ..backend.document_library import load_document_notes
     from ..backend.priority_manager import get_all_priorities
 except ImportError:
     from pdf_manager import PDF_COVER_FIELD, PDF_NOTE_TYPE, pdf_storage_abspath  # type: ignore
     from epub_manager import EPUB_COVER_FIELD, EPUB_FILE_FIELD, EPUB_NOTE_TYPE, epub_storage_abspath  # type: ignore
     from media_review import (  # type: ignore
         linked_media_attachment_card_ids,
+        load_media_review_tree_snapshot,
     )
+    from document_library import load_document_notes  # type: ignore
     from priority_manager import get_all_priorities  # type: ignore
 
 try:
@@ -174,19 +179,8 @@ def _bookshelf_theme_colors(background_lightness: int) -> tuple[str, str]:
     return "#202124", "#5f6368"
 
 
-def _note_text(note, field_name: str) -> str:
-    try:
-        return str(note[field_name] or "").strip()
-    except Exception:
-        return ""
-
-
-def _note_tags(note) -> tuple[str, ...]:
+def _note_tags(raw_tags) -> tuple[str, ...]:
     """Return bounded, display-ready note tags without case-folding their labels."""
-    try:
-        raw_tags = getattr(note, "tags", ()) or ()
-    except Exception:
-        return ()
     if isinstance(raw_tags, str):
         raw_tags = raw_tags.split()
     cleaned: list[str] = []
@@ -813,9 +807,12 @@ def _bookshelf_attachment_card_ids_by_document(
     col,
 ) -> dict[int, tuple[int, ...]]:
     attached_by_document: dict[int, tuple[int, ...]] = {}
+    tree_snapshot = None
     for entry in entries:
         if entry.kind not in {_KIND_PDF, _KIND_EPUB} or entry.card_id <= 0:
             continue
+        if tree_snapshot is None:
+            tree_snapshot = load_media_review_tree_snapshot(addon_dir, profile)
         linked_card_ids = linked_media_attachment_card_ids(
             addon_dir,
             profile,
@@ -823,6 +820,7 @@ def _bookshelf_attachment_card_ids_by_document(
             col=col,
             media_kind=entry.kind.casefold(),
             include_tree_descendants=True,
+            tree_snapshot=tree_snapshot,
         )
         attached: set[int] = set()
         for raw_card_id in linked_card_ids:
@@ -1045,35 +1043,22 @@ def _load_bookshelf_entries(
             note_ids = col.find_notes(f'note:"{note_type}"')
         except Exception:
             continue
-        for note_id in note_ids:
-            try:
-                note = col.get_note(note_id)
-                card_ids = col.find_cards(f"nid:{note_id}")
-            except Exception:
-                continue
-            if not card_ids:
-                continue
-
-            try:
-                card_id = int(card_ids[0])
-            except Exception:
-                continue
-
-            title = _note_text(note, "Title")
+        for note in load_document_notes(col, note_ids):
+            card_id = note.card_id
+            title = note.fields.get("Title", "").strip()
             if not title:
-                fields = getattr(note, "fields", None)
-                title = str(fields[0] if fields else note_id).strip()
+                title = note.first_field.strip()
 
             entries.append(
                 _BookshelfEntry(
-                    title=title or str(note_id),
+                    title=title or str(note.note_id),
                     card_id=card_id,
                     kind=kind,
-                    cover_filename=_note_text(note, cover_field),
-                    source_filename=_note_text(note, source_field),
+                    cover_filename=note.fields.get(cover_field, "").strip(),
+                    source_filename=note.fields.get(source_field, "").strip(),
                     priority=all_priorities.get(card_id),
-                    tags=_note_tags(note),
-                    note_id=int(note_id),
+                    tags=_note_tags(note.tags),
+                    note_id=note.note_id,
                 )
             )
 
@@ -1285,10 +1270,8 @@ class _DocumentBookshelfDialog(QDialog):
         self._attachment_scan_generation = 0
         self._delete_check_in_progress = False
         self._pdf_metadata_cancelled = threading.Event()
-        self._metadata_scan_pending = any(
-            entry.kind == _KIND_PDF and bool(entry.source_filename)
-            for entry in self._entries
-        )
+        self._metadata_scan_pending = True
+        self._analysis_generation = 0
         try:
             self._media_dir = str(mw.col.media.dir() or "")
         except Exception:
@@ -1484,7 +1467,6 @@ class _DocumentBookshelfDialog(QDialog):
         return super().eventFilter(watched, event)
 
     def _update_duplicate_filter_state(self) -> None:
-        self._duplicate_matches = _bookshelf_duplicate_matches(self._entries)
         has_duplicates = bool(self._duplicate_matches)
         self._duplicates_only_cb.setEnabled(has_duplicates)
         self._duplicates_only_cb.setToolTip(
@@ -1592,27 +1574,30 @@ class _DocumentBookshelfDialog(QDialog):
 
         snapshot = list(self._entries)
         captured_profile = self._profile
+        self._analysis_generation += 1
+        generation = self._analysis_generation
+        cancelled = self._pdf_metadata_cancelled
 
-        def scan() -> dict[int, str]:
-            return _load_pdf_metadata_titles(
-                snapshot,
-                profile=captured_profile,
-                cancelled=self._pdf_metadata_cancelled,
+        def scan():
+            titles = _load_pdf_metadata_titles(
+                snapshot, profile=captured_profile, cancelled=cancelled,
             )
+            entries = _with_pdf_metadata_titles(snapshot, titles) if titles else snapshot
+            matches = {} if cancelled.is_set() else _bookshelf_duplicate_matches(entries)
+            return entries, matches
 
         def finished(future) -> None:
+            if generation != self._analysis_generation:
+                return
             self._metadata_scan_pending = False
             if self._pdf_metadata_cancelled.is_set():
                 return
             try:
                 if str(_active_profile() or "") != captured_profile:
                     return
-                titles = future.result()
-                if titles:
-                    self._entries = _with_pdf_metadata_titles(
-                        self._entries,
-                        titles,
-                    )
+                entries, matches = future.result()
+                self._entries = entries
+                self._duplicate_matches = matches
                 self._update_duplicate_filter_state()
                 self._refresh()
                 if self._duplicates_only_cb.isChecked():
@@ -1654,6 +1639,12 @@ class _DocumentBookshelfDialog(QDialog):
         self._tag_completer.complete()
 
     def _refresh(self, *_args) -> None:
+        current = self._list.currentItem()
+        current_entry = current.data(Qt.ItemDataRole.UserRole) if current else None
+        preferred_card_id = (
+            current_entry.card_id if isinstance(current_entry, _BookshelfEntry)
+            else self._last_opened_card_id
+        )
         kind = self._current_kind()
         visible_entries = _filter_bookshelf_entries(
             self._entries,
@@ -1671,80 +1662,92 @@ class _DocumentBookshelfDialog(QDialog):
 
         placeholder = self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
         selected_item = None
-        for entry in visible_entries:
-            item = QListWidgetItem(entry.title)
-            item.setData(Qt.ItemDataRole.UserRole, entry)
-            item.setTextAlignment(
-                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop
-            )
-            item.setForeground(QColor(self._caption_color))
-            title_font = item.font()
-            title_font.setBold(True)
-            item.setFont(title_font)
-            # QListView's icon mode can ignore gridSize() for the item's own
-            # paint rectangle, which clips the text directly beneath tall
-            # covers. An explicit size hint reserves a real caption area.
-            item.setSizeHint(QSize(_TILE_WIDTH, _TILE_HEIGHT))
-            priority_text = (
-                t("reader_bookshelf_priority_value", value=int(round(entry.priority)))
-                if entry.priority is not None
-                else t("reader_bookshelf_priority_unset")
-            )
-            visible_tags = entry.tags[:20]
-            tags_text = ", ".join(visible_tags) if visible_tags else t("reader_none")
-            if len(entry.tags) > len(visible_tags):
-                tags_text += " " + t("reader_bookshelf_more_tags", count=len(entry.tags) - len(visible_tags))
-            item_tooltip = t(
-                "reader_bookshelf_item_tooltip",
-                title=entry.title,
-                kind=entry.kind,
-                tags=tags_text,
-                priority=priority_text,
-            )
-            if entry.metadata_title:
-                item_tooltip += "\n" + t(
-                    "reader_bookshelf_pdf_metadata_title",
-                    title=entry.metadata_title,
+        def populate(offset=0):
+            nonlocal selected_item
+            if (generation != self._thumbnail_generation or self._pdf_metadata_cancelled.is_set()
+                    or str(_active_profile() or "") != self._profile):
+                return
+            for entry in visible_entries[offset:offset + 40]:
+                item = QListWidgetItem(entry.title)
+                item.setData(Qt.ItemDataRole.UserRole, entry)
+                item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop
                 )
-            show_attachment_badge = _bookshelf_entry_has_attachment_badge(
-                entry,
-                duplicates_only=self._duplicates_only_cb.isChecked(),
-                attachment_counts=self._attachment_counts,
-            )
-            if show_attachment_badge:
-                item_tooltip += "\n" + tn(
-                    "reader_bookshelf_attached_badge_tooltip",
-                    self._attachment_counts.get(entry.card_id, 0),
+                item.setForeground(QColor(self._caption_color))
+                title_font = item.font()
+                title_font.setBold(True)
+                item.setFont(title_font)
+                # QListView's icon mode can ignore gridSize() for the item's own
+                # paint rectangle, which clips the text directly beneath tall
+                # covers. An explicit size hint reserves a real caption area.
+                item.setSizeHint(QSize(_TILE_WIDTH, _TILE_HEIGHT))
+                priority_text = (
+                    t("reader_bookshelf_priority_value", value=int(round(entry.priority)))
+                    if entry.priority is not None
+                    else t("reader_bookshelf_priority_unset")
                 )
-            item.setData(
-                _ATTACHMENT_BADGE_ROLE,
-                self._attachment_counts.get(entry.card_id, 0)
-                if show_attachment_badge
-                else 0,
-            )
-            item.setToolTip(item_tooltip)
-            cache_key = (entry.kind, entry.card_id)
-            cached = self._thumbnail_cache.get(cache_key)
-            base_icon = cached or placeholder
-            item.setIcon(base_icon)
-            self._list.addItem(item)
-            if cached is None:
-                self._thumbnail_queue.append((item, entry))
-            if entry.card_id == self._last_opened_card_id:
-                selected_item = item
+                visible_tags = entry.tags[:20]
+                tags_text = ", ".join(visible_tags) if visible_tags else t("reader_none")
+                if len(entry.tags) > len(visible_tags):
+                    tags_text += " " + t("reader_bookshelf_more_tags", count=len(entry.tags) - len(visible_tags))
+                item_tooltip = t(
+                    "reader_bookshelf_item_tooltip",
+                    title=entry.title,
+                    kind=entry.kind,
+                    tags=tags_text,
+                    priority=priority_text,
+                )
+                if entry.metadata_title:
+                    item_tooltip += "\n" + t(
+                        "reader_bookshelf_pdf_metadata_title",
+                        title=entry.metadata_title,
+                    )
+                show_attachment_badge = _bookshelf_entry_has_attachment_badge(
+                    entry,
+                    duplicates_only=self._duplicates_only_cb.isChecked(),
+                    attachment_counts=self._attachment_counts,
+                )
+                if show_attachment_badge:
+                    item_tooltip += "\n" + tn(
+                        "reader_bookshelf_attached_badge_tooltip",
+                        self._attachment_counts.get(entry.card_id, 0),
+                    )
+                item.setData(
+                    _ATTACHMENT_BADGE_ROLE,
+                    self._attachment_counts.get(entry.card_id, 0)
+                    if show_attachment_badge
+                    else 0,
+                )
+                item.setToolTip(item_tooltip)
+                cache_key = (entry.kind, entry.card_id)
+                cached = self._thumbnail_cache.get(cache_key)
+                base_icon = cached or placeholder
+                item.setIcon(base_icon)
+                self._list.addItem(item)
+                if cached is None:
+                    self._thumbnail_queue.append((item, entry))
+                if entry.card_id == preferred_card_id:
+                    selected_item = item
+            if offset + 40 < len(visible_entries):
+                QTimer.singleShot(0, lambda: populate(offset + 40))
+                return
+            # Do not replace a selection made while later batches were loading.
+            if self._list.currentItem() is not None:
+                selected_item = self._list.currentItem()
+            if selected_item is None and self._list.count():
+                selected_item = self._list.item(0)
+            if selected_item is not None:
+                self._list.setCurrentItem(selected_item)
+                self._list.scrollToItem(selected_item)
+            self._update_option_availability()
+
+            QTimer.singleShot(0, lambda current=generation: self._load_next_thumbnail(current))
 
         self._count_label.setText(
             _bookshelf_count_text(self._entries, visible_entries, kind)
         )
 
-        if selected_item is None and self._list.count():
-            selected_item = self._list.item(0)
-        if selected_item is not None:
-            self._list.setCurrentItem(selected_item)
-            self._list.scrollToItem(selected_item)
-        self._update_option_availability()
-
-        QTimer.singleShot(0, lambda current=generation: self._load_next_thumbnail(current))
+        populate()
 
     def _duplicates_for_entry(
         self,
@@ -1908,6 +1911,9 @@ class _DocumentBookshelfDialog(QDialog):
         for card_id in deleted_card_ids:
             self._attachment_counts.pop(card_id, None)
         try:
+            self._duplicate_matches = {}
+            self._metadata_scan_pending = True
+            self._start_pdf_metadata_scan()
             self._update_duplicate_filter_state()
             self._refresh()
             tooltip(
@@ -1927,31 +1933,27 @@ class _DocumentBookshelfDialog(QDialog):
                 self._media_dir,
                 entry.cover_filename,
             )
-            if cover_path:
-                pixmap = QPixmap(cover_path)
-                if not pixmap.isNull():
-                    self._set_thumbnail(item, entry, QIcon(pixmap), generation)
-                    QTimer.singleShot(
-                        0,
-                        lambda current=generation: self._load_next_thumbnail(current),
-                    )
-                    return
-
-            # EPUB imports already persist their extracted cover in Anki media.
-            # Only PDFs have a safe, lightweight first-page fallback renderer.
-            if entry.kind != _KIND_PDF:
+            if not cover_path and entry.kind != _KIND_PDF:
                 continue
             try:
-                source_path = pdf_storage_abspath(
-                    entry.source_filename,
-                    profile=self._profile,
+                source_path = cover_path or pdf_storage_abspath(
+                    entry.source_filename, profile=self._profile,
                 )
             except Exception:
                 source_path = ""
-            if not source_path or not os.path.isfile(source_path):
+            if not source_path:
                 continue
 
-            def render(path=source_path):
+            def render(path=source_path, stored_cover=bool(cover_path)):
+                if stored_cover:
+                    reader = QImageReader(path)
+                    size = reader.size()
+                    if size.isValid():
+                        reader.setScaledSize(size.scaled(
+                            QSize(_PREVIEW_WIDTH, _PREVIEW_WIDTH * 2),
+                            Qt.AspectRatioMode.KeepAspectRatio))
+                    image = reader.read()
+                    return None if image.isNull() else image
                 return _render_pdf_first_page(path)
 
             def finished(future, current_item=item, current_entry=entry, current=generation):
@@ -1978,9 +1980,8 @@ class _DocumentBookshelfDialog(QDialog):
                 taskman.run_in_background(render, finished)
                 return
 
-            image = render()
-            if image is not None:
-                self._set_thumbnail(item, entry, QIcon(QPixmap.fromImage(image)), generation)
+            # Never fall back to synchronous image decoding on the UI thread.
+            continue
 
         # No preview is available for remaining placeholder entries.
 

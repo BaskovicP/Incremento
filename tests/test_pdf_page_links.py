@@ -152,3 +152,36 @@ def test_link_picker_stays_usable_after_refresh_but_retires_when_the_source_page
     assert current()
     bridge.controller.handle({**bridge.request, 'request': 3, 'page': 4})
     assert not current()
+
+
+@pytest.mark.parametrize('reverse', [False, True])
+def test_remove_visible_connection_from_either_endpoint_refreshes_both_readers(bridge, reverse):
+    from document_links import list_pdf_page_links
+    link = add_document_link(bridge.root, 'A', source_card_id=7, source_kind='pdf', source_page=3,
+                             target_card_id=8, target_page=42)
+    if reverse:
+        bridge.controller.card_id, bridge.controller.filename = 8, '8.pdf'
+        bridge.request.update(cardId=8, page=42)
+    refreshed = []
+    bridge.controller.refresh = lambda: refreshed.append(True)
+    bridge.controller.handle(bridge.request)
+    bridge.finish()
+    assert bridge.controller.handle({**bridge.request, 'operation': 'remove', 'id': link,
+                                     'direction': 'incoming' if reverse else 'outgoing'})
+    bridge.finish()
+    assert list_pdf_page_links(bridge.root, 'A', 7, 3) == []
+    assert list_pdf_page_links(bridge.root, 'A', 8, 42) == []
+    assert refreshed == [True]
+
+
+def test_remove_rejects_a_connection_that_does_not_belong_to_the_current_page(bridge):
+    from document_links import list_pdf_page_links
+    link = add_document_link(bridge.root, 'A', source_card_id=7, source_kind='pdf', source_page=4,
+                             target_card_id=8, target_page=42)
+    bridge.controller.handle(bridge.request)
+    bridge.finish()
+    bridge.controller.handle({**bridge.request, 'operation': 'remove', 'id': link,
+                              'direction': 'outgoing'})
+    with pytest.raises(ValueError, match='unavailable'):
+        bridge.finish()
+    assert len(list_pdf_page_links(bridge.root, 'A', 7, 4)) == 1

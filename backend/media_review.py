@@ -7,6 +7,7 @@ import random
 import re
 from collections import defaultdict, deque
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from html import unescape
 
 try:
@@ -348,18 +349,25 @@ def _metadata_child_note_ids(col, source_card_id: int) -> list[int]:
     return matching
 
 
-def _knowledge_tree_descendant_links(
+@dataclass(frozen=True)
+class MediaReviewTreeSnapshot:
+    """An operation-local adjacency map; never cache across collection reads."""
+
+    addon_dir: str
+    profile: str
+    row_by_card_id: dict[int, dict]
+    children_by_parent: dict[int, list[dict]]
+
+
+def load_media_review_tree_snapshot(
     addon_dir: str,
     profile: str,
-    source_card_id: int,
-    *,
-    directly_linked_card_ids: Iterable[int] | None = None,
-) -> list[dict]:
-    """Return tree links reachable from the media card or its direct attachments."""
+) -> MediaReviewTreeSnapshot:
+    """Read and group a profile's tree once for a multi-document inspection."""
     try:
         rows = list(get_knowledge_tree_nodes(addon_dir, profile) or [])
     except Exception:
-        return []
+        rows = []
 
     row_by_card_id: dict[int, dict] = {}
     grouped: dict[int, list[dict]] = defaultdict(list)
@@ -383,6 +391,23 @@ def _knowledge_tree_descendant_links(
                 int(row.get("card_id", 0) or 0),
             )
         )
+    return MediaReviewTreeSnapshot(str(addon_dir), str(profile), row_by_card_id, dict(grouped))
+
+
+def _knowledge_tree_descendant_links(
+    addon_dir: str,
+    profile: str,
+    source_card_id: int,
+    *,
+    directly_linked_card_ids: Iterable[int] | None = None,
+    tree_snapshot: MediaReviewTreeSnapshot | None = None,
+) -> list[dict]:
+    """Return tree links reachable from the media card or its direct attachments."""
+    snapshot = tree_snapshot or load_media_review_tree_snapshot(addon_dir, profile)
+    if snapshot.addon_dir != str(addon_dir) or snapshot.profile != str(profile):
+        raise ValueError("Knowledge-tree snapshot belongs to a different profile")
+    row_by_card_id = snapshot.row_by_card_id
+    grouped = snapshot.children_by_parent
 
     source_card_id = int(source_card_id)
     direct_card_ids = [
@@ -532,6 +557,7 @@ def linked_media_attachment_card_ids(
     linked_note_ids: Iterable[int] | None = None,
     linked_card_ids: Iterable[int] | None = None,
     include_tree_descendants: bool = True,
+    tree_snapshot: MediaReviewTreeSnapshot | None = None,
 ) -> tuple[int, ...]:
     """Return distinct live cards attached to one media card.
 
@@ -579,6 +605,7 @@ def linked_media_attachment_card_ids(
                 profile,
                 source_card_id,
                 directly_linked_card_ids=direct_card_ids,
+                tree_snapshot=tree_snapshot,
             )
         )
 

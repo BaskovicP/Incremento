@@ -25453,6 +25453,14 @@
     },
     {
       "component": "addon",
+      "key": "search_all_cancelled",
+      "form": "",
+      "source": "Search cancelled.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "search_all_card_preview",
       "form": "",
       "source": "Card: {model_name} — note {note_id}",
@@ -25545,6 +25553,16 @@
       "form": "",
       "source": "Hide indexed results whose linked Anki card or source note no longer exists.",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "search_all_failed",
+      "form": "",
+      "source": "Search failed: {error}",
+      "tokens": [
+        "{error}"
+      ],
       "markup": []
     },
     {
@@ -25879,6 +25897,14 @@
       "key": "search_all_preview_hover",
       "form": "",
       "source": "Hover over a result to preview.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "search_all_searching",
+      "form": "",
+      "source": "Searching…",
       "tokens": [],
       "markup": []
     },

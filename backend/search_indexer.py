@@ -9,11 +9,13 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 try:
-    from .db import get_connection, replace_pdf_text_index
+    from .db import get_connection
     from .pdf_manager import extract_pdf_pages_text
+    from .pdf_search import PdfIndexDocument, publishing_pdf_index
 except ImportError:
-    from db import get_connection, replace_pdf_text_index  # type: ignore
+    from db import get_connection  # type: ignore
     from pdf_manager import extract_pdf_pages_text  # type: ignore
+    from pdf_search import PdfIndexDocument, publishing_pdf_index
 
 
 _ERROR_RETRY_SECONDS = 24 * 60 * 60
@@ -50,7 +52,7 @@ def _state_is_current(row, *, mtime_ns: int, size_bytes: int, now: int) -> bool:
 def index_pdf_documents(
     addon_dir: str,
     profile: str,
-    documents: Iterable[tuple[int, str]],
+    documents: Iterable[tuple[int, str] | PdfIndexDocument],
     *,
     cancelled: Callable[[], bool] | None = None,
     progress: Callable[[int, int], None] | None = None,
@@ -58,16 +60,26 @@ def index_pdf_documents(
     force: bool = False,
 ) -> IndexResult:
     """Index PDF documents off the UI thread, checking cancellation per file."""
-    work = [(int(card_id), os.fspath(path)) for card_id, path in documents]
+    work = list(documents)
     total = len(work)
     indexed = skipped = failed = 0
     is_cancelled = cancelled or (lambda: False)
     extract = extractor or extract_pdf_pages_text
     conn = get_connection(addon_dir, profile)
 
-    for position, (card_id, path) in enumerate(work, start=1):
+    for position, document in enumerate(work, start=1):
         if is_cancelled():
             return IndexResult(total, indexed, skipped, failed, True)
+        card_id, path = (
+            (document.card_id, document.path) if isinstance(document, PdfIndexDocument)
+            else (int(document[0]), os.fspath(document[1]))
+        )
+        with publishing_pdf_index(addon_dir, profile, document) as current:
+            if not current:
+                skipped += 1
+                if progress is not None:
+                    progress(position, total)
+                continue
         now = int(time.time())
         mtime_ns = 0
         size_bytes = 0
@@ -93,38 +105,49 @@ def index_pdf_documents(
                     pages = extract(path, allow_qt=False)
                 except TypeError:
                     pages = extract(path)
-                replace_pdf_text_index(addon_dir, profile, card_id, pages)
                 status = (
                     "ready"
                     if any(str(page or "").strip() for page in pages)
                     else "empty"
                 )
-                indexed += 1
-                conn.execute(
-                    "INSERT INTO document_index_state "
-                    "(kind, card_id, source_mtime_ns, source_size, status, indexed_at) "
-                    "VALUES ('pdf', ?, ?, ?, ?, ?) "
-                    "ON CONFLICT(kind, card_id) DO UPDATE SET "
-                    "source_mtime_ns=excluded.source_mtime_ns, "
-                    "source_size=excluded.source_size, status=excluded.status, "
-                    "indexed_at=excluded.indexed_at",
-                    (card_id, mtime_ns, size_bytes, status, now),
-                )
-                conn.commit()
+                with publishing_pdf_index(addon_dir, profile, document) as current:
+                    if not current:
+                        skipped += 1
+                    else:
+                        with conn:
+                            conn.execute("DELETE FROM pdf_text_index WHERE card_id=?", (card_id,))
+                            conn.executemany(
+                                "INSERT INTO pdf_text_index(card_id,page,text) VALUES (?,?,?)",
+                                [(card_id, i + 1, str(text).strip()) for i, text in enumerate(pages)
+                                 if str(text or "").strip()],
+                            )
+                            conn.execute(
+                                "INSERT INTO document_index_state "
+                                "(kind, card_id, source_mtime_ns, source_size, status, indexed_at) "
+                                "VALUES ('pdf', ?, ?, ?, ?, ?) "
+                                "ON CONFLICT(kind, card_id) DO UPDATE SET "
+                                "source_mtime_ns=excluded.source_mtime_ns, "
+                                "source_size=excluded.source_size, status=excluded.status, "
+                                "indexed_at=excluded.indexed_at",
+                                (card_id, mtime_ns, size_bytes, status, now),
+                            )
+                        indexed += 1
         except Exception:
             failed += 1
             try:
-                conn.execute(
-                    "INSERT INTO document_index_state "
-                    "(kind, card_id, source_mtime_ns, source_size, status, indexed_at) "
-                    "VALUES ('pdf', ?, ?, ?, 'error', ?) "
-                    "ON CONFLICT(kind, card_id) DO UPDATE SET "
-                    "source_mtime_ns=excluded.source_mtime_ns, "
-                    "source_size=excluded.source_size, status='error', "
-                    "indexed_at=excluded.indexed_at",
-                    (card_id, mtime_ns, size_bytes, now),
-                )
-                conn.commit()
+                with publishing_pdf_index(addon_dir, profile, document) as current:
+                    if current and not is_cancelled():
+                        with conn:
+                            conn.execute(
+                                "INSERT INTO document_index_state "
+                                "(kind, card_id, source_mtime_ns, source_size, status, indexed_at) "
+                                "VALUES ('pdf', ?, ?, ?, 'error', ?) "
+                                "ON CONFLICT(kind, card_id) DO UPDATE SET "
+                                "source_mtime_ns=excluded.source_mtime_ns, "
+                                "source_size=excluded.source_size, status='error', "
+                                "indexed_at=excluded.indexed_at",
+                                (card_id, mtime_ns, size_bytes, now),
+                            )
             except Exception:
                 pass
         if progress is not None:

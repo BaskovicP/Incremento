@@ -1,6 +1,6 @@
 /**
  * HighlightLayer — renders highlight rects, delete buttons, and the
- * snapshot selection overlay, all absolutely positioned inside the
+ * annotation actions, all absolutely positioned inside the
  * #pdf-canvas-wrapper.
  */
 
@@ -54,11 +54,6 @@ export default function HighlightLayer({
   showHighlightNote,
   moveHighlightNote,
   hideHighlightNote,
-  snapshotMode,
-  snapPreviewRef,
-  handleSnapStart,
-  handleSnapMove,
-  handleSnapEnd,
 }) {
   const displayHighlights = pageHighlights.map(h => ({
     ...h,
@@ -331,23 +326,7 @@ export default function HighlightLayer({
         ));
       })}
 
-      {/* ── Snapshot selection overlay (z:20) ── */}
-      {snapshotMode && (
-        <div
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-                   cursor: 'crosshair', zIndex: 20, userSelect: 'none' }}
-          onMouseDown={handleSnapStart}
-          onMouseMove={handleSnapMove}
-          onMouseUp={handleSnapEnd}
-        >
-          <div ref={snapPreviewRef} style={{
-            display: 'none', position: 'absolute',
-            border: '2px dashed rgb(37,99,235)',
-            background: 'rgba(37,99,235,0.08)',
-            pointerEvents: 'none', boxSizing: 'border-box',
-          }} />
-        </div>
-      )}
+
     </>
   );
 }

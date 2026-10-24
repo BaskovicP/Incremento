@@ -7044,6 +7044,28 @@
       height: `${rect.h}px`
     });
   }
+  function createPdfSnapshotMode() {
+    let active = false;
+    const listeners = /* @__PURE__ */ new Set();
+    return {
+      getSnapshot: () => active,
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      setActive(value) {
+        const next = value === true;
+        if (next === active) return;
+        active = next;
+        for (const listener of listeners) listener();
+      }
+    };
+  }
+  const INACTIVE_PDF_SNAPSHOT_MODE = {
+    getSnapshot: () => false,
+    subscribe: () => () => {
+    }
+  };
   var reactExports = requireReact();
   const MAX_EXTERNAL_URL_CHARS = 4096;
   const PDFJS_LINK_ANNOTATION_TYPE = 2;
@@ -7434,12 +7456,34 @@
     const renderSequenceRef = reactExports.useRef(0);
     const loadSequenceRef = reactExports.useRef(0);
     const loadingTaskRef = reactExports.useRef(null);
-    reactExports.useEffect(() => {
-      pageRef.current = page;
-    }, [page]);
-    reactExports.useEffect(() => {
-      zoomRef.current = zoom;
-    }, [zoom]);
+    const pendingRenderRef = reactExports.useRef(null);
+    const renderTaskRef = reactExports.useRef(null);
+    const workerPollRef = reactExports.useRef(null);
+    const retireRender = reactExports.useCallback(() => {
+      var _a, _b;
+      ++renderSequenceRef.current;
+      pendingRenderRef.current = null;
+      try {
+        (_a = renderTaskRef.current) == null ? void 0 : _a.cancel();
+      } catch (_) {
+      }
+      if ((_b = textLayerRef.current) == null ? void 0 : _b._cancelTextLayer) {
+        textLayerRef.current._cancelTextLayer();
+        textLayerRef.current._cancelTextLayer = null;
+      }
+    }, []);
+    reactExports.useEffect(() => () => {
+      var _a, _b;
+      ++loadSequenceRef.current;
+      retireRender();
+      clearInterval(workerPollRef.current);
+      pdfDocRef.current = null;
+      try {
+        (_b = (_a = loadingTaskRef.current) == null ? void 0 : _a.destroy()) == null ? void 0 : _b.catch(() => {
+        });
+      } catch (_) {
+      }
+    }, [retireRender]);
     const renderTextLayer = reactExports.useCallback((pg, viewport) => {
       var _a;
       const tl = textLayerRef.current;
@@ -7500,60 +7544,78 @@
     const renderPage = reactExports.useCallback((num) => {
       var _a;
       const doc = pdfDocRef.current;
-      if (busyRef.current || !doc) return;
-      busyRef.current = true;
-      const renderSequence = ++renderSequenceRef.current;
+      if (!doc) return;
+      const sequence = ++renderSequenceRef.current;
+      pendingRenderRef.current = {
+        doc,
+        num,
+        zoom: zoomRef.current,
+        sequence,
+        cardId: cardIdRef.current
+      };
       setLinkAnnotations([]);
       if ((_a = textLayerRef.current) == null ? void 0 : _a._cancelTextLayer) {
         textLayerRef.current._cancelTextLayer();
         textLayerRef.current._cancelTextLayer = null;
       }
-      doc.getPage(num).then((pg) => {
+      if (busyRef.current) return;
+      busyRef.current = true;
+      const drain = async () => {
         var _a2;
-        if (renderSequence !== renderSequenceRef.current) return;
-        const backId = activeCvsRef.current === "a" ? "b" : "a";
-        const frontId = activeCvsRef.current;
-        const backCvs = backId === "a" ? canvasARef.current : canvasBRef.current;
-        const frontCvs = frontId === "a" ? canvasARef.current : canvasBRef.current;
-        if (!backCvs) {
+        try {
+          while (pendingRenderRef.current) {
+            const request = pendingRenderRef.current;
+            pendingRenderRef.current = null;
+            const current = () => request.sequence === renderSequenceRef.current && request.doc === pdfDocRef.current;
+            let failure = "reader_page_error";
+            try {
+              const pg = await request.doc.getPage(request.num);
+              if (!current()) continue;
+              const backId = activeCvsRef.current === "a" ? "b" : "a";
+              const backCvs = backId === "a" ? canvasARef.current : canvasBRef.current;
+              const frontCvs = backId === "a" ? canvasBRef.current : canvasARef.current;
+              if (!backCvs) continue;
+              const colW = ((_a2 = containerRef.current) == null ? void 0 : _a2.offsetWidth) || 800;
+              lastRenderWidthRef.current = colW;
+              const maxH = Math.max(window.innerHeight - 120, 300);
+              const base = pg.getViewport({ scale: 1 });
+              let scale = Math.min(colW / base.width, maxH / base.height) * request.zoom;
+              if (!scale || scale <= 0) scale = 1;
+              const viewport = pg.getViewport({ scale });
+              const dpr = window.devicePixelRatio || 1;
+              backCvs.width = viewport.width * dpr;
+              backCvs.height = viewport.height * dpr;
+              backCvs.style.width = viewport.width + "px";
+              backCvs.style.height = viewport.height + "px";
+              failure = "reader_render_error";
+              renderTaskRef.current = pg.render({
+                canvasContext: backCvs.getContext("2d"),
+                viewport,
+                transform: [dpr, 0, 0, dpr, 0, 0]
+              });
+              await renderTaskRef.current.promise;
+              if (!current()) continue;
+              backCvs.dataset.pdfCard = String(request.cardId);
+              backCvs.dataset.pdfPage = String(request.num);
+              backCvs.style.display = "block";
+              if (frontCvs) frontCvs.style.display = "none";
+              activeCvsRef.current = backId;
+              setError("");
+              setPage(request.num);
+              if (containerRef.current) containerRef.current.style.height = viewport.height + "px";
+              renderTextLayer(pg, viewport);
+              renderLinkAnnotations(pg, viewport, request.sequence, request.num);
+            } catch (_error) {
+              if (current()) setError(failure);
+            } finally {
+              renderTaskRef.current = null;
+            }
+          }
+        } finally {
           busyRef.current = false;
-          return;
         }
-        const colW = ((_a2 = containerRef.current) == null ? void 0 : _a2.offsetWidth) || 800;
-        lastRenderWidthRef.current = colW;
-        const maxH = Math.max(window.innerHeight - 120, 300);
-        const base = pg.getViewport({ scale: 1 });
-        let scale = Math.min(colW / base.width, maxH / base.height) * zoomRef.current;
-        if (!scale || scale <= 0) scale = 1;
-        const viewport = pg.getViewport({ scale });
-        const dpr = window.devicePixelRatio || 1;
-        backCvs.width = viewport.width * dpr;
-        backCvs.height = viewport.height * dpr;
-        backCvs.style.width = viewport.width + "px";
-        backCvs.style.height = viewport.height + "px";
-        pg.render({ canvasContext: backCvs.getContext("2d"), viewport, transform: [dpr, 0, 0, dpr, 0, 0] }).promise.then(() => {
-          if (renderSequence !== renderSequenceRef.current) return;
-          backCvs.dataset.pdfCard = String(cardIdRef.current);
-          backCvs.dataset.pdfPage = String(num);
-          backCvs.style.display = "block";
-          if (frontCvs) frontCvs.style.display = "none";
-          activeCvsRef.current = backId;
-          setPage(num);
-          pageRef.current = num;
-          busyRef.current = false;
-          if (containerRef.current) containerRef.current.style.height = viewport.height + "px";
-          renderTextLayer(pg, viewport);
-          renderLinkAnnotations(pg, viewport, renderSequence, num);
-        }).catch(() => {
-          if (renderSequence !== renderSequenceRef.current) return;
-          setError("reader_render_error");
-          busyRef.current = false;
-        });
-      }).catch(() => {
-        if (renderSequence !== renderSequenceRef.current) return;
-        setError("reader_page_error");
-        busyRef.current = false;
-      });
+      };
+      void drain();
     }, [renderLinkAnnotations, renderTextLayer]);
     const doStart = reactExports.useCallback(() => {
       var _a, _b;
@@ -7564,8 +7626,8 @@
       setContents([]);
       setContentsReady(false);
       setTotalPages(0);
-      ++renderSequenceRef.current;
-      busyRef.current = false;
+      retireRender();
+      setError("");
       pdfDocRef.current = null;
       try {
         (_b = (_a = loadingTaskRef.current) == null ? void 0 : _a.destroy()) == null ? void 0 : _b.catch(() => {
@@ -7616,8 +7678,12 @@
       }).catch(() => {
         if (sequence === loadSequenceRef.current) setError("reader_load_error");
       });
-    }, [renderPage]);
+    }, [renderPage, retireRender]);
     const startViewer = reactExports.useCallback((cardId, filename, startPage, startZoom, startReadPage = 0) => {
+      retireRender();
+      ++loadSequenceRef.current;
+      pdfDocRef.current = null;
+      clearInterval(workerPollRef.current);
       const normalizedCardId = Number(cardId);
       cardIdRef.current = Number.isFinite(normalizedCardId) && normalizedCardId > 0 ? normalizedCardId : 0;
       filenameRef.current = filename;
@@ -7640,10 +7706,11 @@
             setError("PDF.js failed to load.");
           }
         }, POLL_MS);
+        workerPollRef.current = poll;
         return;
       }
       doStart();
-    }, [doStart]);
+    }, [doStart, retireRender]);
     const nav = reactExports.useCallback((delta) => {
       const doc = pdfDocRef.current;
       if (!doc) return;
@@ -7701,7 +7768,7 @@
         if (Math.abs(newW - lastRenderWidthRef.current) < 5) return;
         clearTimeout(timer);
         timer = setTimeout(() => {
-          if (!busyRef.current && pdfDocRef.current) renderPage(pageRef.current);
+          if (pdfDocRef.current) renderPage(pageRef.current);
         }, 150);
       });
       observer.observe(container2);
@@ -9172,12 +9239,7 @@
     focusedHighlightId,
     showHighlightNote,
     moveHighlightNote,
-    hideHighlightNote,
-    snapshotMode,
-    snapPreviewRef,
-    handleSnapStart,
-    handleSnapMove,
-    handleSnapEnd
+    hideHighlightNote
   }) {
     const displayHighlights = pageHighlights.map((h) => ({
       ...h,
@@ -9458,33 +9520,7 @@
           },
           `resize-${h.id}-${handle.endpoint}`
         ));
-      }),
-      snapshotMode && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "div",
-        {
-          style: {
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            cursor: "crosshair",
-            zIndex: 20,
-            userSelect: "none"
-          },
-          onMouseDown: handleSnapStart,
-          onMouseMove: handleSnapMove,
-          onMouseUp: handleSnapEnd,
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: snapPreviewRef, style: {
-            display: "none",
-            position: "absolute",
-            border: "2px dashed rgb(37,99,235)",
-            background: "rgba(37,99,235,0.08)",
-            pointerEvents: "none",
-            boxSizing: "border-box"
-          } })
-        }
-      )
+      })
     ] });
   }
   function caretRangeAtPoint(document2, x, y) {
@@ -10124,6 +10160,57 @@
       )
     ] });
   }
+  function PdfSnapshotButton({ mode, tr, onToggle }) {
+    const active = reactExports.useSyncExternalStore(mode.subscribe, mode.getSnapshot);
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        type: "button",
+        title: active ? tr("reader_cancel_snapshot") : tr("reader_draw_snapshot"),
+        "aria-pressed": active,
+        style: {
+          background: active ? "rgba(37,99,235,0.2)" : "transparent",
+          border: "1px solid rgba(37,99,235,0.5)",
+          borderRadius: 8,
+          color: active ? "rgb(37,99,235)" : "inherit",
+          cursor: "pointer",
+          padding: "4px 10px",
+          fontSize: 12,
+          fontWeight: active ? "bold" : "normal"
+        },
+        onClick: () => {
+          onToggle();
+          mode.setActive(!mode.getSnapshot());
+        },
+        children: [
+          "📷 ",
+          tr("reader_snapshot")
+        ]
+      }
+    );
+  }
+  function PdfSnapshotLayer({ mode, previewRef, onStart, onMove, onEnd }) {
+    const active = reactExports.useSyncExternalStore(mode.subscribe, mode.getSnapshot);
+    if (!active) return null;
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        "data-pdf-snapshot-overlay": "true",
+        style: { position: "absolute", inset: 0, cursor: "crosshair", zIndex: 20, userSelect: "none" },
+        onMouseDown: onStart,
+        onMouseMove: onMove,
+        onMouseUp: onEnd,
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: previewRef, style: {
+          display: "none",
+          position: "absolute",
+          border: "2px dashed rgb(37,99,235)",
+          background: "rgba(37,99,235,0.08)",
+          pointerEvents: "none",
+          boxSizing: "border-box"
+        } })
+      }
+    );
+  }
   const DEFAULT_PDF_LINK_PREVIEW_ZOOM = 1.5;
   const MAX_WIDTH = 4096;
   const MAX_HEIGHT = 640;
@@ -10359,6 +10446,7 @@
     sourcePage,
     documentToken,
     disabled,
+    snapshotMode = INACTIVE_PDF_SNAPSHOT_MODE,
     maxPage,
     pageLabels,
     appearance,
@@ -10367,6 +10455,8 @@
     onZoom
   }) {
     var _a;
+    const capturing = reactExports.useSyncExternalStore(snapshotMode.subscribe, snapshotMode.getSnapshot);
+    const unavailable = disabled || capturing;
     const [preview, setPreview] = reactExports.useState(null);
     const popupRef = reactExports.useRef(null);
     const contentRef = reactExports.useRef(null);
@@ -10376,7 +10466,7 @@
     reactExports.useEffect(() => {
       const container2 = containerRef.current, popup = popupRef.current;
       const doc = pdfDocRef.current;
-      if (!container2 || !popup || !doc || disabled || !links.length) return;
+      if (!container2 || !popup || !doc || unavailable || !links.length) return;
       const renderer = createPdfPreviewRenderer({
         createCanvas: () => document.createElement("canvas"),
         onChange: setPreview,
@@ -10399,7 +10489,7 @@
         renderer.dispose();
         rendererRef.current = null;
       };
-    }, [containerRef, pdfDocRef, links, tlLeft, sourcePage, documentToken, disabled, maxPage]);
+    }, [containerRef, pdfDocRef, links, tlLeft, sourcePage, documentToken, unavailable, maxPage]);
     reactExports.useEffect(() => {
       var _a2;
       void ((_a2 = rendererRef.current) == null ? void 0 : _a2.setZoom(zoom));
@@ -10436,7 +10526,7 @@
         "aria-modal": "false",
         "aria-label": tr("reader_link_preview"),
         style: {
-          display: preview ? "flex" : "none",
+          display: preview && !unavailable ? "flex" : "none",
           flexDirection: "column",
           position: "fixed",
           left,
@@ -10612,6 +10702,9 @@
           command("jump", { id: row.id, direction: row.direction, mode });
         }
       },
+      remove(row) {
+        if (links.includes(row)) command("remove", { id: row.id, direction: row.direction });
+      },
       create() {
         command("create");
       },
@@ -10653,11 +10746,12 @@
       error: current && view.error,
       create: () => model.current.create(),
       manage: () => model.current.manage(),
+      remove: (row) => model.current.remove(row),
       jump: (row, mode) => model.current.jump(row, mode)
     };
   }
   function PdfPageLinks({ linksState, tr }) {
-    const { cardId, page, generation, enabled, links, loading, error, create, manage, jump } = linksState;
+    const { cardId, page, generation, enabled, links, loading, error, create, manage, jump, remove } = linksState;
     const [openedFor, setOpenedFor] = reactExports.useState(null);
     const root = reactExports.useRef(null), trigger = reactExports.useRef(null);
     const key = `${cardId}:${page}:${generation}`;
@@ -10784,6 +10878,15 @@
                       style: { flexShrink: 0, whiteSpace: "nowrap" },
                       onClick: () => act(() => jump(row, "beside")),
                       children: tr("reader_reference_pin")
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      "aria-label": tr("reader_reference_remove") + ": " + label,
+                      onClick: () => act(() => remove(row)),
+                      children: tr("reader_reference_remove")
                     }
                   )
                 ] }, row.id + ":" + row.direction);
@@ -11305,7 +11408,7 @@
     const applyScrollToTopOnPageChangeSetting = reactExports.useCallback((value) => {
       scrollToTopOnPageChangeRef.current = !!value;
     }, []);
-    const [snapshotMode, setSnapshotMode] = reactExports.useState(false);
+    const [snapshotMode] = reactExports.useState(createPdfSnapshotMode);
     const snapPreviewRef = reactExports.useRef(null);
     const snapStartRef = reactExports.useRef(null);
     const [pageCards, setPageCards] = reactExports.useState([]);
@@ -11855,7 +11958,7 @@
       const ey = e.clientY - overlayRect.top;
       const { x: sx, y: sy } = snapStartRef.current;
       snapStartRef.current = null;
-      setSnapshotMode(false);
+      snapshotMode.setActive(false);
       paintPdfSnapshotPreview(snapPreviewRef.current, null);
       const rx = Math.min(sx, ex), ry = Math.min(sy, ey);
       const rw = Math.abs(ex - sx), rh = Math.abs(ey - sy);
@@ -11900,7 +12003,7 @@
       }).catch(() => {
         console.warn("PDF snapshot encoding failed");
       });
-    }, [activeCvsRef, canvasARef, canvasBRef, cardIdRef, makeSnapshotHighlight, pageRef]);
+    }, [activeCvsRef, canvasARef, canvasBRef, cardIdRef, makeSnapshotHighlight, pageRef, snapshotMode]);
     const deleteHighlight = reactExports.useCallback((id) => {
       var _a;
       setHighlights((prev) => prev.filter((h) => h.id !== id));
@@ -11962,7 +12065,7 @@
     }, [activateHighlightResize, containerRef, deactivateHighlightResize, pageHighlights, renderInfo, showHighlightControls]);
     const activateHighlightFromPageClick = reactExports.useCallback((event) => {
       var _a, _b, _c;
-      if (snapshotMode || (event == null ? void 0 : event.defaultPrevented)) return;
+      if (snapshotMode.getSnapshot() || (event == null ? void 0 : event.defaultPrevented)) return;
       const interactive = (_b = (_a = event == null ? void 0 : event.target) == null ? void 0 : _a.closest) == null ? void 0 : _b.call(_a, 'button,a,input,textarea,select,[contenteditable="true"]');
       if (interactive) return;
       const selection = (_c = window.getSelection) == null ? void 0 : _c.call(window);
@@ -12406,6 +12509,8 @@
       const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null, startLocale = "en", startCustomLanguage = null, startAppearanceMode = "original", startShowHighlightDeleteButtons = true, startLinkPreviewZoom = DEFAULT_PDF_LINK_PREVIEW_ZOOM, startPageY = null) => {
         setPageLinksDocument((current) => ({ cardId: Number(cardId), generation: current.generation + 1 }));
         contentsGenerationRef.current += 1;
+        snapshotMode.setActive(false);
+        snapStartRef.current = null;
         pendingContentsFractionRef.current = null;
         pendingDestinationPointRef.current = typeof startPageY === "number" && Number.isFinite(startPageY) && startPageY >= 0 && startPageY <= 1 ? startPageY : null;
         if (Number(cardIdRef.current || 0) !== Number(cardId || 0)) {
@@ -12557,7 +12662,8 @@
       applyAutoHighlightSetting,
       applyScrollToTopOnPageChangeSetting,
       openFind,
-      suppressScrollPersistence
+      suppressScrollPersistence,
+      snapshotMode
     ]);
     reactExports.useEffect(() => {
       if (!pdfDocRef.current || !cardIdRef.current) return;
@@ -13352,31 +13458,10 @@
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: TOOLBAR_STACK_STYLE, children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_LABEL_STYLE, children: tr("reader_capture") }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                          "button",
-                          {
-                            title: snapshotMode ? tr("reader_cancel_snapshot") : tr("reader_draw_snapshot"),
-                            style: {
-                              background: snapshotMode ? "rgba(37,99,235,0.2)" : "transparent",
-                              border: "1px solid rgba(37,99,235,0.5)",
-                              borderRadius: 8,
-                              color: snapshotMode ? "rgb(37,99,235)" : "inherit",
-                              cursor: "pointer",
-                              padding: "4px 10px",
-                              fontSize: 12,
-                              fontWeight: snapshotMode ? "bold" : "normal"
-                            },
-                            onClick: () => {
-                              setSnapshotMode((o) => !o);
-                              paintPdfSnapshotPreview(snapPreviewRef.current, null);
-                              snapStartRef.current = null;
-                            },
-                            children: [
-                              "📷 ",
-                              tr("reader_snapshot")
-                            ]
-                          }
-                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(PdfSnapshotButton, { mode: snapshotMode, tr, onToggle: () => {
+                          paintPdfSnapshotPreview(snapPreviewRef.current, null);
+                          snapStartRef.current = null;
+                        } }),
                         /* @__PURE__ */ jsxRuntimeExports.jsxs(
                           "button",
                           {
@@ -14052,7 +14137,8 @@
               tlLeft: renderInfo.tlLeft,
               sourcePage: page,
               documentToken: contentsGenerationRef.current,
-              disabled: snapshotMode || !!resizingHighlightId,
+              snapshotMode,
+              disabled: !!resizingHighlightId,
               maxPage: limitEnabled && limitMode !== "warning" && !overrideEnabled && allowedMaxPage != null ? Math.max(page, allowedMaxPage) : null,
               pageLabels,
               appearance: pageAppearance,
@@ -14198,7 +14284,7 @@
                           background: clickableLinks ? "rgba(59,130,246,0.07)" : "transparent",
                           color: "transparent",
                           cursor: clickableLinks ? "pointer" : "text",
-                          pointerEvents: clickableLinks && !snapshotMode ? "auto" : "none"
+                          pointerEvents: clickableLinks ? "auto" : "none"
                         }
                       },
                       `${link.kind}-${link.url || link.targetPage || ""}-${index}`
@@ -14234,12 +14320,17 @@
                     focusedHighlightId,
                     showHighlightNote,
                     moveHighlightNote,
-                    hideHighlightNote,
-                    snapshotMode,
-                    snapPreviewRef,
-                    handleSnapStart,
-                    handleSnapMove,
-                    handleSnapEnd
+                    hideHighlightNote
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  PdfSnapshotLayer,
+                  {
+                    mode: snapshotMode,
+                    previewRef: snapPreviewRef,
+                    onStart: handleSnapStart,
+                    onMove: handleSnapMove,
+                    onEnd: handleSnapEnd
                   }
                 ),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(

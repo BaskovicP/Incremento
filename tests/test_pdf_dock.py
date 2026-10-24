@@ -1661,6 +1661,65 @@ def test_pdf_highlight_bulk_snapshot_uses_first_compatible_note_type(monkeypatch
     assert snapshot["note_type_options"][0]["name"] == "Compatible"
 
 
+def test_highlight_payload_batches_links_and_live_notes_without_cross_document_cleanup(monkeypatch, tmp_path):
+    import sqlite3
+    import db
+
+    root, profile = str(tmp_path), "TestProfile"
+    conn = db.get_connection(root, profile)
+    conn.executemany("INSERT INTO pdf_highlights(id, card_id, page, text) VALUES(?,88,1,'passage')",
+                     ((f"h{i}",) for i in range(1203)))
+    conn.executemany("INSERT INTO pdf_card_sources(pdf_card_id,page,note_id,highlight_id) VALUES(88,1,?,?)",
+                     ((i + 1, f"h{i}") for i in range(1202)))
+    conn.execute("INSERT INTO pdf_card_sources(pdf_card_id,page,note_id,highlight_id) VALUES(99,1,1202,'h1201')")
+    conn.commit()
+    notes = sqlite3.connect(":memory:")
+    notes.execute("CREATE TABLE notes(id INTEGER PRIMARY KEY)")
+    notes.executemany("INSERT INTO notes VALUES(?)", ((i + 1,) for i in range(1201)))
+    note_queries, queries = [], []
+
+    def note_ids(sql, *args):
+        note_queries.append(args)
+        return [row[0] for row in notes.execute(sql, args)]
+
+    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", root)
+    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: profile)
+    monkeypatch.setattr(pdf_dock, "mw", types.SimpleNamespace(col=types.SimpleNamespace(
+        db=types.SimpleNamespace(list=note_ids),
+        get_note=lambda nid: types.SimpleNamespace(id=nid) if nid <= 1201 else None)))
+    conn.set_trace_callback(queries.append)
+    try:
+        payload = {row["id"]: row for row in pdf_dock._pdf_highlights_payload(88)}
+        assert len(payload) == 1203
+        assert payload["h1200"]["linked_note_id"] == 1201
+        assert payload["h1200"]["linked_highlight_count"] == 1
+        assert payload["h1201"]["linked_note_id"] == 0
+        assert payload["h1201"]["linked_highlight_count"] == 0
+        assert payload["h1202"]["linked_highlight_count"] == 0
+        assert conn.execute("SELECT note_id FROM pdf_card_sources WHERE pdf_card_id=99").fetchall() == [(1202,)]
+        assert 1 <= len(note_queries) <= 2
+        assert all(len(args) <= 900 for args in note_queries)
+        assert not any("SELECT COUNT(*) FROM pdf_card_sources" in query for query in queries)
+        assert len([query for query in queries if "FROM pdf_highlights WHERE" in query]) == 1
+    finally:
+        conn.set_trace_callback(None)
+        notes.close()
+
+
+def test_highlight_source_cleanup_preserves_links_when_collection_read_fails(monkeypatch):
+    sources = {"h1": {"note_id": 42}, "h2": {"note_id": 43}}
+    monkeypatch.setattr(pdf_dock, "get_pdf_card_sources_for_highlights", lambda *args: sources)
+    def unavailable(*args):
+        raise RuntimeError("collection unavailable")
+    monkeypatch.setattr(pdf_dock, "mw", types.SimpleNamespace(
+        col=types.SimpleNamespace(db=types.SimpleNamespace(list=unavailable))))
+    monkeypatch.setattr(pdf_dock, "delete_pdf_card_sources_for_note_ids",
+                        lambda *args: pytest.fail("unverified links must not be deleted"))
+    assert pdf_dock._reconcile_pdf_highlight_sources(
+        88, [{"id": "h1"}, {"id": "h2"}], profile="TestProfile",
+    ) == sources
+
+
 def test_pdf_highlights_payload_prunes_stale_link_and_makes_highlight_creatable(monkeypatch):
     deleted = []
     monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
@@ -1677,16 +1736,12 @@ def test_pdf_highlights_payload_prunes_stale_link_and_makes_highlight_creatable(
             "hl-stale": {"note_id": 123, "highlight_id": "hl-stale", "page": 4, "excerpt": "Recovered"}
         },
     )
-    monkeypatch.setattr(pdf_dock, "_note_exists", lambda note_id: False)
+    monkeypatch.setattr(pdf_dock, "mw", types.SimpleNamespace(
+        col=types.SimpleNamespace(db=types.SimpleNamespace(list=lambda *args: []))))
     monkeypatch.setattr(
         pdf_dock,
         "delete_pdf_card_sources_for_note_ids",
         lambda addon_dir, profile, pdf_card_id, note_ids: deleted.append(sorted(note_ids)),
-    )
-    monkeypatch.setattr(
-        pdf_dock,
-        "count_pdf_card_sources_for_highlight",
-        lambda *args, **kwargs: 0,
     )
 
     payload = pdf_dock._pdf_highlights_payload(88)

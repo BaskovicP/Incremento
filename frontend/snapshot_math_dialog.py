@@ -38,6 +38,18 @@ def _error_text(code: str) -> str:
     } else t("reader_math_local_error_process")
 
 
+def _encode_math_image(image) -> bytes:
+    """Encode a detached QImage in the worker, never a GUI-owned QPixmap."""
+    buffer = QBuffer()
+    buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    try:
+        if not image.save(buffer, "PNG") or buffer.size() > MAX_IMAGE_BYTES:
+            raise MathRecognitionError("image")
+        return bytes(buffer.data())
+    finally:
+        buffer.close()
+
+
 class SnapshotMathDialog(QDialog):
     def __init__(self, parent, pixmap, *, is_current):
         super().__init__(parent)
@@ -253,14 +265,8 @@ class SnapshotMathDialog(QDialog):
         if self._pixmap.isNull() or self._pixmap.width() * self._pixmap.height() > MAX_IMAGE_PIXELS:
             self._status.setText(_error_text("image"))
             return
-        buffer = QBuffer()
-        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
-        if not self._pixmap.save(buffer, "PNG") or buffer.size() > MAX_IMAGE_BYTES:
-            buffer.close()
-            self._status.setText(_error_text("image"))
-            return
-        image = bytes(buffer.data())
-        buffer.close()
+        image = self._pixmap.toImage()
+        cancel = self._cancel
         self._running = True
         self._recognized = False
         self._result.clear()
@@ -291,7 +297,8 @@ class SnapshotMathDialog(QDialog):
 
         try:
             mw.taskman.run_in_background(
-                lambda: recognize_snapshot(image, cancel=self._cancel, progress=progress), finished, uses_collection=False,
+                lambda: recognize_snapshot(_encode_math_image(image), cancel=cancel, progress=progress),
+                finished, uses_collection=False,
             )
         except Exception:
             self._running = False

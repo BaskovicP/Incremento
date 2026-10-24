@@ -359,7 +359,7 @@ class ReaderContentsPopup(QFrame):
         return visible
 
     def _update_fold_button(self, *_args):
-        expanded = bool(self._branches) and all(item.isExpanded() for item in self._branches)
+        expanded = any(item.isExpanded() for item in self._branches)
         label = t("reader_contents_collapse_all") if expanded else t("reader_contents_expand_all")
         hint = t("reader_contents_folds_search_hint") if self._query else label
         self._fold_button.setText(label)
@@ -373,7 +373,7 @@ class ReaderContentsPopup(QFrame):
     def _toggle_all_folds(self):
         if self._query or not self._branches:
             return
-        collapse = all(item.isExpanded() for item in self._branches)
+        collapse = any(item.isExpanded() for item in self._branches)
         with QSignalBlocker(self._tree):
             if collapse:
                 self._tree.collapseAll()

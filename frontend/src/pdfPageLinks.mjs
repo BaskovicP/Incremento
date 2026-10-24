@@ -52,6 +52,9 @@ export function createPdfPageLinks(send, changed) {
         command('jump', {id: row.id, direction: row.direction, mode});
       }
     },
+    remove(row) {
+      if (links.includes(row)) command('remove', {id: row.id, direction: row.direction});
+    },
     create() {command('create');},
     manage() {command('manage');},
     close() {current = null; links = [];},

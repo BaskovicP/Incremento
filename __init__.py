@@ -14,6 +14,7 @@ from .backend.i18n import initialize_language as _initialize_language, t as _t, 
 from .backend import language_packs as _language_packs
 from .backend.config_service import load_addon_config as _load_initial_config
 
+from anki import hooks as _anki_hooks
 from anki import lang as _anki_language
 from aqt.errors import show_exception
 from aqt.reviewer import Reviewer
@@ -291,6 +292,7 @@ from .frontend.database_entries_dialog import show_database_entries_dialog
 from .frontend.reviewer_tag_dialog import ReviewerTagDialog
 from .frontend.current_document_search_dialog import _CurrentDocumentSearchDialog
 from .frontend.search_all import _SearchAllDialog
+from .frontend.pdf_search_lifecycle import PdfSearchLifecycle
 from .frontend.note_type_update_dialog import (
     ACTION_APPLY as _NOTE_TYPE_ACTION_APPLY,
     ACTION_SYNC_FIRST as _NOTE_TYPE_ACTION_SYNC_FIRST,
@@ -2972,9 +2974,29 @@ def _activate_profile_language(profile: str | None) -> None:
     _retranslate_incremento_menu()
 
 
+_pdf_search_lifecycle = None
+
+
+def _close_pdf_search_lifecycle() -> None:
+    global _pdf_search_lifecycle
+    if _pdf_search_lifecycle is not None:
+        _pdf_search_lifecycle.close()
+        _pdf_search_lifecycle = None
+
+
+def _pdf_notes_will_be_deleted(col, note_ids) -> None:
+    if _pdf_search_lifecycle is not None:
+        _pdf_search_lifecycle.notes_will_be_deleted(col, note_ids)
+
+
+def _pdf_search_collection_changed(changes, handler=None) -> None:
+    if _pdf_search_lifecycle is not None:
+        _pdf_search_lifecycle.collection_changed(changes, handler)
+
+
 def _on_profile_did_open() -> None:
     """Activate per-profile paths and run one-time migration on first load."""
-    global _diagnostic_pending_final_interval, _diagnostic_recorder
+    global _diagnostic_pending_final_interval, _diagnostic_recorder, _pdf_search_lifecycle
     from .backend.migration import migrate_to_profile_dir
     profile = _current_profile_name()
     cfg = _load_addon_config(mw.addonManager, __name__)
@@ -2987,7 +3009,13 @@ def _on_profile_did_open() -> None:
     _video_dock_mod.reset_for_profile_switch()
     _web_dock_mod.reset_for_profile_switch()
     _pdf_dock_mod.reset_for_profile_switch()
+    _close_pdf_search_lifecycle()
     _paths.set_active_profile(profile)
+    collection = mw.col
+    _pdf_search_lifecycle = PdfSearchLifecycle(
+        _ADDON_DIR, profile, collection, parent=mw, taskman=mw.taskman,
+        valid=lambda: mw.col is collection and _active_profile() == profile,
+    )
     _activate_profile_language(profile)
     migrate_to_profile_dir(_ADDON_DIR, profile)
     if _diagnostic_recorder is not None:
@@ -3013,6 +3041,9 @@ def _on_profile_did_open() -> None:
         pass
 
 
+_anki_hooks.notes_will_be_deleted.append(_pdf_notes_will_be_deleted)
+gui_hooks.operation_did_execute.append(_pdf_search_collection_changed)
+gui_hooks.profile_will_close.append(_close_pdf_search_lifecycle)
 gui_hooks.profile_did_open.append(_on_profile_did_open)
 gui_hooks.profile_will_close.append(_close_diagnostic_profile)
 gui_hooks.profile_will_close.append(lambda: _activate_profile_language(None))
@@ -3599,7 +3630,6 @@ def _open_document_bookshelf() -> None:
         (
             QueryOp(parent=mw, op=load_entries, success=show_bookshelf)
             .failure(failed)
-            .with_progress(_t("root_bookshelf_loading"))
             .run_in_background()
         )
     except Exception as exc:
@@ -5519,7 +5549,7 @@ def addWebpageFunction() -> None:
 def reindexPdfTextFunction() -> None:
     import threading
 
-    from .backend.pdf_manager import get_pdf_dir
+    from .backend.pdf_search import prepare_pdf_index_documents
     from .backend.search_indexer import index_pdf_documents
 
     profile = _active_profile()
@@ -5533,22 +5563,9 @@ def reindexPdfTextFunction() -> None:
         showInfo(_t("root_browser_no_pdf_reindex"))
         return
 
-    pdf_dir = get_pdf_dir(profile)
-    documents: list[tuple[int, str]] = []
-    missing = 0
-    for note_id in note_ids:
-        try:
-            note = mw.col.get_note(note_id)
-            pdf_path = os.path.join(pdf_dir, str(note["PDF_Filename"] or ""))
-            if not os.path.isfile(pdf_path):
-                missing += 1
-                continue
-            documents.extend(
-                (int(card_id), pdf_path)
-                for card_id in mw.col.find_cards(f"nid:{int(note_id)}")
-            )
-        except Exception:
-            missing += 1
+    card_ids = [int(cid) for nid in note_ids for cid in mw.col.card_ids_of_note(nid)]
+    documents = prepare_pdf_index_documents(_ADDON_DIR, profile, mw.col, card_ids)
+    missing = len(card_ids) - len(documents)
 
     if not documents:
         showInfo(_t("root_browser_no_pdf_files"))

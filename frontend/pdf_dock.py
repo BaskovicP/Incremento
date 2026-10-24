@@ -222,7 +222,6 @@ except ImportError:
 try:
     from ..backend.db import (
         add_pdf_card_source,
-        count_pdf_card_sources_for_highlight,
         delete_pdf_card_source_for_highlight,
         delete_pdf_card_sources_for_note_ids,
         get_pdf_card_sources,
@@ -235,7 +234,6 @@ try:
 except ImportError:
     from db import (  # type: ignore
         add_pdf_card_source,
-        count_pdf_card_sources_for_highlight,
         delete_pdf_card_source_for_highlight,
         delete_pdf_card_sources_for_note_ids,
         get_pdf_card_sources,
@@ -718,10 +716,11 @@ def _sorted_pdf_highlights(highlights: list[dict]) -> list[dict]:
     return sorted(list(highlights or []), key=_sort_key)
 
 
-def _reconcile_pdf_highlight_sources(pdf_card_id: int) -> dict[str, dict]:
+def _reconcile_pdf_highlight_sources(
+    pdf_card_id: int, highlights: list[dict], *, profile: str,
+) -> dict[str, dict]:
     if int(pdf_card_id or 0) <= 0:
         return {}
-    highlights = load_highlights(_ADDON_DIR, _active_profile(), int(pdf_card_id))
     highlight_ids = [
         str(row.get("id") or "").strip()
         for row in highlights
@@ -729,22 +728,35 @@ def _reconcile_pdf_highlight_sources(pdf_card_id: int) -> dict[str, dict]:
     ]
     source_map = get_pdf_card_sources_for_highlights(
         _ADDON_DIR,
-        _active_profile(),
+        profile,
         int(pdf_card_id),
         highlight_ids,
     )
+    note_ids = sorted({int(row.get("note_id", 0) or 0) for row in source_map.values()} - {0})
+    live_note_ids: set[int] = set()
+    try:
+        collection = mw.col
+        for start in range(0, len(note_ids), 900):
+            chunk = note_ids[start:start + 900]
+            placeholders = ",".join("?" for _ in chunk)
+            live_note_ids.update(collection.db.list(
+                f"SELECT id FROM notes WHERE id IN ({placeholders})", *chunk,
+            ))
+    except Exception:
+        # A failed collection read cannot establish that any source was deleted.
+        return source_map
     stale_note_ids: set[int] = set()
     stale_highlight_ids: list[str] = []
     for highlight_id, row in list(source_map.items()):
         note_id = int(row.get("note_id", 0) or 0)
-        if note_id <= 0 or _note_exists(note_id):
+        if note_id <= 0 or note_id in live_note_ids:
             continue
         stale_note_ids.add(note_id)
         stale_highlight_ids.append(highlight_id)
     if stale_note_ids:
         delete_pdf_card_sources_for_note_ids(
             _ADDON_DIR,
-            _active_profile(),
+            profile,
             int(pdf_card_id),
             stale_note_ids,
         )
@@ -754,22 +766,20 @@ def _reconcile_pdf_highlight_sources(pdf_card_id: int) -> dict[str, dict]:
 
 
 def _pdf_highlights_payload(pdf_card_id: int) -> list[dict]:
+    profile = _active_profile()
     highlights = _sorted_pdf_highlights(
-        load_highlights(_ADDON_DIR, _active_profile(), int(pdf_card_id))
+        load_highlights(_ADDON_DIR, profile, int(pdf_card_id))
     )
-    source_map = _reconcile_pdf_highlight_sources(int(pdf_card_id))
+    source_map = _reconcile_pdf_highlight_sources(int(pdf_card_id), highlights, profile=profile)
     payload: list[dict] = []
     for row in highlights:
         enriched = dict(row)
         highlight_id = str(row.get("id") or "").strip()
         source_row = source_map.get(highlight_id) or {}
         enriched["linked_note_id"] = int(source_row.get("note_id", 0) or 0)
-        enriched["linked_highlight_count"] = count_pdf_card_sources_for_highlight(
-            _ADDON_DIR,
-            _active_profile(),
-            int(pdf_card_id),
-            highlight_id,
-        )
+        # Nonempty highlight IDs have a unique (pdf_card_id, highlight_id)
+        # source row; the reconciled map already contains its exact 0/1 count.
+        enriched["linked_highlight_count"] = int(highlight_id in source_map)
         payload.append(enriched)
     return payload
 

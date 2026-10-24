@@ -82,3 +82,21 @@ test('unavailable and forged destinations cannot dispatch jumps', () => {
   model.manage();
   assert.equal(sent.at(-1).operation, 'manage');
 });
+
+test('remove accepts a visible missing destination but rejects stale and forged rows', () => {
+  const sent = [];
+  const model = createPdfPageLinks(message => sent.push(message), () => {});
+  model.start(8, 42, 1);
+  const request = sent.at(-1);
+  const row = {id: 4, direction: 'incoming', title: 'Missing', target_page: 3, available: false};
+  model.receive({...request, links: [row]});
+  model.remove(row);
+  assert.deepEqual(sent.at(-1), {...request, operation: 'remove', id: 4, direction: 'incoming'});
+  const count = sent.length;
+  model.remove({...row});
+  assert.equal(sent.length, count);
+  model.start(8, 43, 1);
+  const afterNavigation = sent.length;
+  model.remove(row);
+  assert.equal(sent.length, afterNavigation);
+});

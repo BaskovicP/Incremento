@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import os
 import re
 import threading
 from dataclasses import dataclass
 from html import escape
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, urlparse
 
 from aqt import mw
 from aqt.qt import (
@@ -25,6 +24,13 @@ from aqt.qt import (
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtCore import QTimer, QUrl
+
+try:
+    from .latest_query import LatestQuery
+    from .search_all_results import run_search, _document_result_url, _highlight_result_url
+except ImportError:
+    from latest_query import LatestQuery  # type: ignore
+    from search_all_results import run_search, _document_result_url, _highlight_result_url  # type: ignore
 
 try:
     from ..backend.i18n import t
@@ -55,48 +61,37 @@ except ImportError:
 
 try:
     from ..backend.db import (
-        search_note_ocr_index,
-        search_epub_text_index,
-        search_pdf_text_index,
-        search_text_match_score,
         split_search_terms,
     )
     from ..backend.config_service import load_addon_config, save_addon_config
+    from ..backend.pdf_search import PdfIndexDocument, prepare_pdf_index_documents
     from ..backend.search_indexer import index_pdf_documents
     from ..backend.search_repository import (
         epub_section_text,
         pdf_candidate_card_ids,
         pdf_page_text,
-        search_excerpt_rows,
     )
     from ..backend.epub_manager import EPUB_NOTE_TYPE, load_epub_metadata
-    from ..backend.pdf_manager import PDF_NOTE_TYPE, pdf_storage_abspath
+    from ..backend.pdf_manager import PDF_NOTE_TYPE
 except ImportError:
     from db import (  # type: ignore
-        search_note_ocr_index,
-        search_epub_text_index,
-        search_pdf_text_index,
-        search_text_match_score,
         split_search_terms,
     )
     from config_service import load_addon_config, save_addon_config  # type: ignore
+    from pdf_search import PdfIndexDocument, prepare_pdf_index_documents
     from search_indexer import index_pdf_documents  # type: ignore
     from search_repository import (  # type: ignore
         epub_section_text,
         pdf_candidate_card_ids,
         pdf_page_text,
-        search_excerpt_rows,
     )
     from epub_manager import EPUB_NOTE_TYPE, load_epub_metadata  # type: ignore
-    from pdf_manager import PDF_NOTE_TYPE, pdf_storage_abspath  # type: ignore
+    from pdf_manager import PDF_NOTE_TYPE  # type: ignore
 
 
 _ADDON_PKG = __name__.split(".")[0]
 _MIN_SEARCH_CHARS = 3
 _SEARCH_DEBOUNCE_MS = 250
-_MAX_CARD_SEARCH_CANDIDATES = 1000
-_MAX_CATEGORY_RESULTS = 120
-_LIVE_RESULT_OVERSAMPLE_FACTOR = 10
 _SEARCH_WHILE_TYPING_CONFIG_KEY = "search_all_search_while_typing"
 _SEARCH_ALL_FILTER_CONFIG_KEYS = {
     "annotations": "search_all_filter_annotations",
@@ -142,48 +137,6 @@ class _DocumentPreviewTarget:
     position: int
     query: str
     highlight_text: str | None
-
-
-def _document_result_url(
-    media: str,
-    card_id: int,
-    position: int,
-    query: str,
-    *,
-    highlight_key: str = "",
-) -> str:
-    normalized_media = str(media or "").strip().lower()
-    if normalized_media not in {"pdf", "epub"}:
-        raise ValueError("Unsupported document preview type.")
-    suffix = f"&highlight={quote(str(highlight_key))}" if highlight_key else ""
-    return (
-        f"inc://{normalized_media}/{int(card_id)}/{int(position)}"
-        f"?q={quote(str(query or ''))}{suffix}"
-    )
-
-
-def _highlight_result_url(
-    previews: dict[str, str],
-    *,
-    media: str,
-    card_id: int,
-    position: int,
-    query: str,
-    text: str,
-) -> str:
-    preview_index = len(previews)
-    preview_key = f"h{preview_index}"
-    while preview_key in previews:
-        preview_index += 1
-        preview_key = f"h{preview_index}"
-    previews[preview_key] = str(text or "")
-    return _document_result_url(
-        media,
-        card_id,
-        position,
-        query,
-        highlight_key=preview_key,
-    )
 
 
 def _document_preview_target(
@@ -284,18 +237,26 @@ class _SearchAllDialog(QDialog):
         self._addon_dir = addon_dir
         self._open_pdf_card = open_pdf_card
         self._open_epub_card = open_epub_card
-        # Runtime data is already per-profile. Cache only the bounded card IDs
-        # encountered in results instead of loading every card in the
-        # collection when the dialog opens.
-        self._live_card_cache: dict[int, bool] = {}
-        self._live_note_cache: dict[int, bool] = {}
+        self._profile = _active_profile()
+        self._collection = getattr(mw, "col", None)
         self._highlight_previews: dict[str, str] = {}
         self._pdf_index_cancel = threading.Event()
         self._pdf_index_running = False
+        self._pdf_cache_checked = False
         self._pdf_index_attempted = False
         self._pdf_index_generation = 0
         self._pdf_index_activity_id = ""
+        self._refresh_after_pdf_index = False
         self._closed = False
+        self._search_query = LatestQuery(
+            dispatch=self._dispatch_search,
+            success=self._search_finished,
+            failure=self._search_failed,
+            progress=self._search_progress,
+            accept=lambda request: (
+                self._valid_context() and request["query"] == self._query_text()
+            ),
+        )
         self._search_debounce = QTimer(self)
         self._search_debounce.setSingleShot(True)
         self._search_debounce.setInterval(_SEARCH_DEBOUNCE_MS)
@@ -318,11 +279,18 @@ class _SearchAllDialog(QDialog):
         self._search_btn = QPushButton(t("common_search"))
         self._search_btn.clicked.connect(self._run_search)
         search_row.addWidget(self._search_btn)
+        self._search_cancel_btn = QPushButton(t("common_cancel"))
+        self._search_cancel_btn.clicked.connect(self._cancel_search)
+        self._search_cancel_btn.setVisible(False)
+        search_row.addWidget(self._search_cancel_btn)
         self._cb_search_while_typing = QCheckBox(t("search_all_while_typing"))
         self._cb_search_while_typing.setChecked(configured_search_all_search_while_typing())
         self._cb_search_while_typing.toggled.connect(self._on_search_while_typing_toggled)
         search_row.addWidget(self._cb_search_while_typing)
         layout.addLayout(search_row)
+        self._search_status = QLabel("")
+        self._search_status.setVisible(False)
+        layout.addWidget(self._search_status)
 
         filter_row = QHBoxLayout()
         filter_row.setSpacing(16)
@@ -417,6 +385,11 @@ class _SearchAllDialog(QDialog):
 
         self._search.textChanged.connect(self._on_search_text_changed)
         self._search.returnPressed.connect(self._run_search)
+        from aqt import gui_hooks
+        self._hooks = gui_hooks
+        self._hooks.operation_did_execute.append(self._on_collection_changed)
+        self._hooks.profile_will_close.append(self._on_profile_close)
+        self.finished.connect(self._dispose_search)
         initial_query = str(initial_query or "").strip()
         if initial_query:
             self._search.setText(initial_query)
@@ -457,6 +430,9 @@ class _SearchAllDialog(QDialog):
         )
 
     def _on_search_text_changed(self, _text: str) -> None:
+        self._invalidate_search()
+        self._results.clear()
+        self._highlight_previews.clear()
         self._update_search_button()
         if not self._query_ready():
             self._search_debounce.stop()
@@ -485,6 +461,9 @@ class _SearchAllDialog(QDialog):
             return
         if force or self._cb_search_while_typing.isChecked():
             self._refresh(self._search.text())
+        else:
+            self._invalidate_search()
+            self._show_manual_search_hint()
 
     def _run_search(self) -> None:
         self._search_debounce.stop()
@@ -494,114 +473,121 @@ class _SearchAllDialog(QDialog):
             return
         self._refresh(self._search.text())
 
-    @staticmethod
-    def _snippet(text: str, q: str, max_len: int = 120) -> str:
-        if not text:
-            return ""
-        plain = " ".join(text.split())
-        if not q:
-            return plain[:max_len]
-        i = plain.lower().find(q.lower())
-        if i < 0:
-            for tok in split_search_terms(q):
-                match = re.search(rf"(?i)\b{re.escape(tok)}\w*", plain)
-                if match is not None:
-                    i = match.start()
-                    break
-        if i < 0:
-            return plain[:max_len]
-        start = max(0, i - max_len // 3)
-        end = min(len(plain), start + max_len)
-        s = plain[start:end]
-        if start > 0:
-            s = "..." + s
-        if end < len(plain):
-            s = s + "..."
-        return s
+    def _valid_context(self) -> bool:
+        return (not self._closed and _active_profile() == self._profile
+                and getattr(mw, "col", None) is self._collection)
 
-    def _is_current_profile_card(self, card_id: int) -> bool:
-        cid = int(card_id)
-        if cid in self._live_card_cache:
-            return self._live_card_cache[cid]
-        try:
-            is_live = mw.col.get_card(cid) is not None
-        except Exception:
-            is_live = False
-        self._live_card_cache[cid] = is_live
-        return is_live
+    def _invalidate_search(self) -> None:
+        self._search_query.invalidate()
+        self._refresh_after_pdf_index = False
+        self._search_cancel_btn.setVisible(False)
+        self._search_status.setVisible(False)
 
-    def _is_current_profile_note(self, note_id: int) -> bool:
-        nid = int(note_id)
-        if nid in self._live_note_cache:
-            return self._live_note_cache[nid]
-        try:
-            is_live = mw.col.get_note(nid) is not None
-        except Exception:
-            is_live = False
-        self._live_note_cache[nid] = is_live
-        return is_live
+    def _cancel_search(self) -> None:
+        self._search_debounce.stop()
+        self._invalidate_search()
+        self._search_status.setText(t("search_all_cancelled"))
+        self._search_status.setVisible(True)
 
-    def _filter_current_profile_rows(
-        self,
-        rows: list[tuple],
-        *,
-        note_id_index: int | None = None,
-        limit: int | None = None,
-    ) -> list[tuple]:
-        if not self._cb_current_profile.isChecked():
-            return rows[:limit] if limit is not None else rows
-        out: list[tuple] = []
-        for row in rows:
-            try:
-                if not self._is_current_profile_card(row[0]):
-                    continue
-                if note_id_index is not None and not self._is_current_profile_note(
-                    row[note_id_index]
-                ):
-                    continue
-                out.append(row)
-                if limit is not None and len(out) >= limit:
-                    break
-            except Exception:
-                continue
-        return out
+    def _refresh(self, query: str) -> None:
+        if not self._valid_context():
+            return
+        self._search_debounce.stop()
+        self._highlight_previews.clear()
+        self._results.clear()
+        query = str(query or "").strip()
+        if len(query) < _MIN_SEARCH_CHARS:
+            self._invalidate_search()
+            self._show_search_hint()
+            return
+        filters = {name for name, checkbox in self._filter_checkboxes.items() if checkbox.isChecked()}
+        if self._cb_current_profile.isChecked():
+            filters.add("current_profile")
+        self._search_status.setText(t("search_all_searching"))
+        self._search_status.setVisible(True)
+        self._search_cancel_btn.setVisible(True)
+        self._refresh_after_pdf_index = True
+        self._search_query.submit({
+            "addon_dir": self._addon_dir, "profile": self._profile, "collection": self._collection,
+            "query": query, "filters": frozenset(filters),
+            "check_pdf_cache": not self._pdf_cache_checked,
+        })
 
-    def _safe_find_notes(self, query: str) -> list[int]:
-        try:
-            return mw.col.find_notes(query)
-        except Exception:
-            pass
-        escaped = query.replace('"', r"\"")
-        try:
-            return mw.col.find_notes(f'"{escaped}"')
-        except Exception:
-            return []
+    def _dispatch_search(self, ticket, success, failure, progress) -> None:
+        from concurrent.futures import CancelledError
+        from aqt.operations import QueryOp
 
-    def _search_excerpt_hits(
-        self,
-        kind: str,
-        query: str,
-        *,
-        source_rows: bool = False,
-        limit: int = _MAX_CATEGORY_RESULTS,
-    ) -> list[tuple]:
-        search_limit = (
-            limit * _LIVE_RESULT_OVERSAMPLE_FACTOR
-            if self._cb_current_profile.isChecked()
-            else limit
+        request = ticket.payload
+        on_main = mw.taskman.run_on_main
+
+        def search(col):
+            if ticket.cancel.is_set() or col is not request["collection"]:
+                raise CancelledError()
+            return run_search(
+                request["addon_dir"], request["profile"], col, request["query"], request["filters"],
+                cancel=ticket.cancel, check_pdf_cache=request["check_pdf_cache"],
+                progress=lambda result: on_main(lambda: progress(result)),
+            )
+
+        QueryOp(parent=self, op=search, success=success).failure(failure).run_in_background()
+
+    def _search_progress(self, _request, result) -> None:
+        position = self._results.verticalScrollBar().value()
+        self._highlight_previews = result.highlight_previews
+        self._results.setHtml(result.html)
+        self._results.verticalScrollBar().setValue(position)
+
+    def _search_finished(self, request, result) -> None:
+        self._search_progress(request, result)
+        self._search_cancel_btn.setVisible(False)
+        self._search_status.setVisible(False)
+        if request["check_pdf_cache"]:
+            self._pdf_cache_checked = True
+        if result.pdf_reindex_documents:
+            if self._pdf_index_running or not self._cb_content.isChecked():
+                self._pdf_cache_checked = False
+            else:
+                self._start_pdf_index(list(result.pdf_reindex_documents))
+        elif result.pdf_needs_index:
+            self._start_pdf_index()
+
+    def _search_failed(self, _request, error) -> None:
+        self._refresh_after_pdf_index = False
+        self._search_cancel_btn.setVisible(False)
+        self._search_status.setVisible(False)
+        self._highlight_previews.clear()
+        self._results.setHtml(
+            "<div style='padding:8px'>" + escape(t("search_all_failed", error=error)) + "</div>"
         )
-        rows = search_excerpt_rows(
-            self._addon_dir,
-            _active_profile(),
-            kind,
-            query,
-            limit=search_limit,
-        )
-        return self._filter_current_profile_rows(
-            rows,
-            note_id_index=3 if source_rows else None,
-            limit=limit,
-        )
+
+    def _on_collection_changed(self, changes, _handler=None) -> None:
+        if self._valid_context() and any(
+            getattr(changes, name, False) for name in ("note", "card", "deck", "notetype")
+        ):
+            self._pdf_cache_checked = False
+            self._on_search_text_changed(self._query_text())
+
+    def _dispose_search(self, *_args) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._search_debounce.stop()
+        self._search_query.close()
+        # Do not mutate the profile-close callback list while it is iterating.
+        QTimer.singleShot(0, self._remove_search_hooks)
+        if self._pdf_index_running:
+            self._cancel_pdf_index()
+
+    def _remove_search_hooks(self) -> None:
+        self._hooks.operation_did_execute.remove(self._on_collection_changed)
+        self._hooks.profile_will_close.remove(self._on_profile_close)
+
+    def _on_profile_close(self) -> None:
+        if self._closed:
+            return
+        self._dispose_search()
+        self.reject()
+
 
     def _pdf_title(self, card_id: int) -> str:
         try:
@@ -637,24 +623,11 @@ class _SearchAllDialog(QDialog):
             pass
         return sorted(cids)
 
-    def _candidate_pdf_documents(
-        self,
-        collection,
-        profile: str,
-    ) -> list[tuple[int, str]]:
-        documents: list[tuple[int, str]] = []
-        for card_id in self._candidate_pdf_card_ids(collection, profile):
-            try:
-                card = collection.get_card(card_id)
-                note = collection.get_note(card.nid)
-                filename = str(note["PDF_Filename"] or "").strip()
-                if filename:
-                    path = pdf_storage_abspath(filename, profile=profile)
-                    if path and os.path.isfile(path):
-                        documents.append((card_id, path))
-            except Exception:
-                continue
-        return documents
+    def _candidate_pdf_documents(self, collection, profile: str) -> list[PdfIndexDocument]:
+        return prepare_pdf_index_documents(
+            self._addon_dir, profile, collection,
+            self._candidate_pdf_card_ids(collection, profile), cancel=self._pdf_index_cancel,
+        )
 
     def _request_pdf_index_cancel(self) -> None:
         self._pdf_index_cancel.set()
@@ -694,11 +667,12 @@ class _SearchAllDialog(QDialog):
             t("search_all_pdf_index_progress", completed=completed, total=total)
         )
 
-    def _start_pdf_index(self) -> None:
-        if self._pdf_index_running or self._pdf_index_attempted or self._closed:
+    def _start_pdf_index(self, documents: list[PdfIndexDocument] | None = None) -> None:
+        if (self._pdf_index_running or (self._pdf_index_attempted and documents is None)
+                or not self._valid_context()):
             return
         self._pdf_index_attempted = True
-        profile = _active_profile()
+        profile = self._profile
         self._pdf_index_running = True
         self._pdf_index_generation += 1
         generation = self._pdf_index_generation
@@ -726,10 +700,10 @@ class _SearchAllDialog(QDialog):
             activity_ref["activity_id"] = activity_id
             self._pdf_index_activity_id = activity_id
 
-        def collected(documents: list[tuple[int, str]]) -> None:
+        def collected(documents: list[PdfIndexDocument]) -> None:
             if generation != self._pdf_index_generation:
                 return
-            if self._closed or _active_profile() != profile:
+            if not self._valid_context():
                 self._pdf_index_running = False
                 cancel_activity(self._pdf_index_activity_id)
                 return
@@ -772,17 +746,21 @@ class _SearchAllDialog(QDialog):
                 t("search_all_pdf_index_prepare_failed_detail"),
             )
 
+        if documents is not None:
+            collected(documents)
+            return
+
         from aqt.operations import QueryOp
 
         QueryOp(
             parent=self,
-            op=lambda col: self._candidate_pdf_documents(col, profile),
+            op=lambda col: self._candidate_pdf_documents(col, profile) if col is self._collection else [],
             success=collected,
         ).failure(collection_failed).run_in_background()
 
     def _run_pdf_file_index(
         self,
-        documents: list[tuple[int, str]],
+        documents: list[PdfIndexDocument],
         *,
         profile: str,
         generation: int,
@@ -838,318 +816,17 @@ class _SearchAllDialog(QDialog):
                         t("search_all_pdf_index_ready_detail", updated=result.indexed, failed=result.failed)
                     ),
                 )
-                if self._query_ready() and self._cb_content.isChecked():
+                if (self._refresh_after_pdf_index and self._query_ready()
+                        and self._cb_content.isChecked()):
                     self._refresh(self._query_text())
 
         mw.taskman.run_in_background(task, done, uses_collection=False)
 
-    def _search_pdf_file_hits(
-        self, q: str, limit: int = _MAX_CATEGORY_RESULTS
-    ) -> list[tuple[int, int, str]]:
-        """Search indexed PDF text and start any missing extraction off-thread."""
-        search_limit = (
-            limit * _LIVE_RESULT_OVERSAMPLE_FACTOR
-            if self._cb_current_profile.isChecked()
-            else limit
-        )
-        hits = search_pdf_text_index(self._addon_dir, _active_profile(), q, limit=search_limit)
-        hits = self._filter_current_profile_rows(hits, limit=limit)
-        if hits:
-            return [
-                (cid, page, self._snippet(text or "", q, max_len=180))
-                for cid, page, text in hits[:limit]
-            ]
-
-        self._start_pdf_index()
-        return []
 
     def closeEvent(self, event) -> None:
-        self._closed = True
-        self._search_debounce.stop()
-        if self._pdf_index_running:
-            self._cancel_pdf_index()
+        self._dispose_search()
         super().closeEvent(event)
 
-    def _search_epub_file_hits(
-        self, q: str, limit: int = _MAX_CATEGORY_RESULTS
-    ) -> list[tuple[int, int, str, str]]:
-        search_limit = (
-            limit * _LIVE_RESULT_OVERSAMPLE_FACTOR
-            if self._cb_current_profile.isChecked()
-            else limit
-        )
-        hits = search_epub_text_index(self._addon_dir, _active_profile(), q, limit=search_limit)
-        hits = self._filter_current_profile_rows(hits, limit=limit)
-        return [
-            (cid, section_index, title, self._snippet(text or title or "", q, max_len=180))
-            for cid, section_index, title, text in hits[:limit]
-        ]
-
-    def _refresh(self, query: str) -> None:
-        self._highlight_previews.clear()
-        q = (query or "").strip()
-        if len(q) < _MIN_SEARCH_CHARS:
-            self._show_search_hint()
-            return
-
-        html = ["<div style='font-family:sans-serif'>"]
-        total = 0
-
-        def _score_text(text: str):
-            return search_text_match_score(text or "", q)
-
-        # PDF highlights (go directly to page)
-        for kind, enabled, heading in (
-            ("pdf_highlights", self._cb_highlights.isChecked(), t("search_all_pdf_highlights")),
-            ("pdf_annotations", self._cb_annotations.isChecked(), t("search_all_annotations") + " (PDF)"),
-        ):
-            if not enabled:
-                continue
-            try:
-                rows = self._search_excerpt_hits(
-                    kind,
-                    q,
-                )
-            except Exception:
-                rows = []
-
-            if rows:
-                html.append(f"<h3>{escape(heading)}</h3>")
-                by_file: dict = {}
-                for cid, page, text in rows:
-                    by_file.setdefault(cid, []).append((page, text))
-                for cid, pages in by_file.items():
-                    title = escape(self._pdf_title(cid))
-                    html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
-                    for page, text in pages:
-                        snippet = escape(self._snippet(text or "", q))
-                        result_url = escape(
-                            _highlight_result_url(
-                                self._highlight_previews,
-                                media="pdf",
-                                card_id=cid,
-                                position=page,
-                                query=q,
-                                text=text or "",
-                            ),
-                            quote=True,
-                        )
-                        html.append(
-                            f"<li><a href='{result_url}'>{escape(t('search_all_page', page=page))}</a>"
-                            f" — <span style='color:#888'>{snippet}</span></li>"
-                        )
-                        total += 1
-                    html.append("</ul>")
-
-        # Cards created from PDF pages (go to page)
-        if self._cb_sources.isChecked():
-            try:
-                rows = self._search_excerpt_hits(
-                    "pdf_sources",
-                    q,
-                    source_rows=True,
-                )
-            except Exception:
-                rows = []
-
-            if rows:
-                html.append(f"<h3>{escape(t('search_all_pdf_sources'))}</h3>")
-                by_file: dict = {}
-                for cid, page, excerpt, _note_id in rows:
-                    by_file.setdefault(cid, []).append((page, excerpt))
-                for cid, pages in by_file.items():
-                    title = escape(self._pdf_title(cid))
-                    html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
-                    for page, excerpt in pages:
-                        snippet = escape(self._snippet(excerpt or "", q))
-                        html.append(
-                            f"<li><a href='inc://pdf/{cid}/{int(page)}?q={quote(q)}'>{escape(t('search_all_page', page=page))}</a>"
-                            f" — <span style='color:#888'>{snippet}</span></li>"
-                        )
-                        total += 1
-                    html.append("</ul>")
-
-        for kind, enabled, heading in (
-            ("epub_highlights", self._cb_epub_highlights.isChecked(), t("search_all_epub_highlights")),
-            ("epub_annotations", self._cb_annotations.isChecked(), t("search_all_annotations") + " (EPUB)"),
-        ):
-            if not enabled:
-                continue
-            try:
-                rows = self._search_excerpt_hits(
-                    kind,
-                    q,
-                )
-            except Exception:
-                rows = []
-
-            if rows:
-                html.append(f"<h3>{escape(heading)}</h3>")
-                by_file: dict = {}
-                for cid, section_index, text in rows:
-                    by_file.setdefault(cid, []).append((section_index, text))
-                for cid, entries in by_file.items():
-                    title = escape(self._epub_title(cid))
-                    html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
-                    for section_index, text in entries:
-                        snippet = escape(self._snippet(text or "", q))
-                        result_url = escape(
-                            _highlight_result_url(
-                                self._highlight_previews,
-                                media="epub",
-                                card_id=cid,
-                                position=section_index,
-                                query=q,
-                                text=text or "",
-                            ),
-                            quote=True,
-                        )
-                        html.append(
-                            f"<li><a href='{result_url}'>{escape(t('search_all_section', section=section_index + 1))}</a>"
-                            f" — <span style='color:#888'>{snippet}</span></li>"
-                        )
-                        total += 1
-                    html.append("</ul>")
-
-        if self._cb_epub_sources.isChecked():
-            try:
-                rows = self._search_excerpt_hits(
-                    "epub_sources",
-                    q,
-                    source_rows=True,
-                )
-            except Exception:
-                rows = []
-
-            if rows:
-                html.append(f"<h3>{escape(t('search_all_epub_sources'))}</h3>")
-                by_file: dict = {}
-                for cid, section_index, excerpt, _note_id in rows:
-                    by_file.setdefault(cid, []).append((section_index, excerpt))
-                for cid, entries in by_file.items():
-                    title = escape(self._epub_title(cid))
-                    html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
-                    for section_index, excerpt in entries:
-                        snippet = escape(self._snippet(excerpt or "", q))
-                        html.append(
-                            f"<li><a href='inc://epub/{cid}/{int(section_index)}?q={quote(q)}'>{escape(t('search_all_section', section=section_index + 1))}</a>"
-                            f" — <span style='color:#888'>{snippet}</span></li>"
-                        )
-                        total += 1
-                    html.append("</ul>")
-
-        # Actual PDF file text (page-level)
-        if self._cb_content.isChecked():
-            pdf_page_hits = self._search_pdf_file_hits(q, limit=_MAX_CATEGORY_RESULTS)
-            if pdf_page_hits:
-                html.append(f"<h3>{escape(t('search_all_pdf_file_content'))}</h3>")
-                by_file: dict = {}
-                for cid, page, snippet_text in pdf_page_hits:
-                    by_file.setdefault(cid, []).append((page, snippet_text))
-                for cid, pages in by_file.items():
-                    title = escape(self._pdf_title(cid))
-                    html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
-                    for page, snippet_text in pages:
-                        snippet = escape(snippet_text)
-                        html.append(
-                            f"<li><a href='inc://pdf/{cid}/{int(page)}?q={quote(q)}'>{escape(t('search_all_page', page=page))}</a>"
-                            f" — <span style='color:#888'>{snippet}</span></li>"
-                        )
-                        total += 1
-                    html.append("</ul>")
-
-        if self._cb_epub_content.isChecked():
-            epub_section_hits = self._search_epub_file_hits(
-                q,
-                limit=_MAX_CATEGORY_RESULTS,
-            )
-            if epub_section_hits:
-                html.append(f"<h3>{escape(t('search_all_epub_file_content'))}</h3>")
-                by_file: dict = {}
-                for cid, section_index, title, snippet_text in epub_section_hits:
-                    by_file.setdefault(cid, []).append((section_index, title, snippet_text))
-                for cid, entries in by_file.items():
-                    title = escape(self._epub_title(cid))
-                    html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
-                    for section_index, section_title, snippet_text in entries:
-                        snippet = escape(snippet_text)
-                        section_label = escape(section_title or t("search_all_section", section=section_index + 1))
-                        html.append(
-                            f"<li><a href='inc://epub/{cid}/{int(section_index)}?q={quote(q)}'>{section_label}</a>"
-                            f" — <span style='color:#888'>{snippet}</span></li>"
-                        )
-                        total += 1
-                    html.append("</ul>")
-
-        if self._cb_ocr.isChecked():
-            search_limit = (
-                _MAX_CATEGORY_RESULTS * _LIVE_RESULT_OVERSAMPLE_FACTOR
-                if self._cb_current_profile.isChecked()
-                else _MAX_CATEGORY_RESULTS
-            )
-            ocr_hits = search_note_ocr_index(
-                self._addon_dir,
-                _active_profile(),
-                q,
-                limit=search_limit,
-            )
-            if self._cb_current_profile.isChecked():
-                ocr_hits = [
-                    row for row in ocr_hits if self._is_current_profile_card(int(row[1]))
-                ]
-            if ocr_hits:
-                html.append(f"<h3>{escape(t('search_all_image_ocr'))}</h3><ul>")
-                for note_id, card_id, image_name, text in ocr_hits[
-                    :_MAX_CATEGORY_RESULTS
-                ]:
-                    try:
-                        note = mw.col.get_note(note_id)
-                        model = mw.col.models.get(note.mid)
-                        model_name = escape(model.get("name", t("search_all_note")) if model else t("search_all_note"))
-                    except Exception:
-                        model_name = t("search_all_note")
-                    snippet = escape(self._snippet(text or "", q, max_len=180))
-                    image_label = escape(image_name or t("search_all_ocr_text"))
-                    html.append(
-                        f"<li><a href='inc://card/{note_id}'>{model_name} — {escape(t('search_all_note_number', note_id=note_id))}</a>"
-                        f"<br><span style='color:#888'>{image_label}: {snippet}</span></li>"
-                    )
-                    total += 1
-                html.append("</ul>")
-
-        # All cards/notes (open in Browser)
-        if self._cb_cards.isChecked():
-            note_ids = self._safe_find_notes(q)[:_MAX_CARD_SEARCH_CANDIDATES]
-            if note_ids:
-                ranked_notes: list[tuple[tuple[int, int, int, int], int, object, str]] = []
-                for nid in note_ids:
-                    try:
-                        note = mw.col.get_note(nid)
-                        model = mw.col.models.get(note.mid)
-                        model_name = model.get("name") if model else t("search_all_note")
-                        text = " ".join(note.fields or [])
-                        score = _score_text(text)
-                        if score is None:
-                            continue
-                        ranked_notes.append((score, int(nid), note, model_name))
-                    except Exception:
-                        continue
-                ranked_notes.sort(key=lambda item: (item[0], item[1]))
-                html.append(f"<h3>{escape(t('search_all_cards'))}</h3><ul>")
-                for _, nid, note, model_name in ranked_notes[:160]:
-                    text = " ".join((note.fields or [])[:2])
-                    snippet = escape(self._snippet(text, q))
-                    html.append(
-                        f"<li><a href='inc://card/{nid}'>{escape(model_name)} — {escape(t('search_all_note_number', note_id=nid))}</a>"
-                        f"<br><span style='color:#888'>{snippet}</span></li>"
-                    )
-                    total += 1
-                html.append("</ul>")
-
-        if total == 0:
-            html.append(f"<div style='color:#888;padding:8px'>{escape(t('search_all_no_matches'))}</div>")
-        html.append("</div>")
-        self._results.setHtml("".join(html))
 
     # ── Preview panel ─────────────────────────────────────────────────────────
 
@@ -1161,6 +838,8 @@ class _SearchAllDialog(QDialog):
         )
 
     def _on_hover(self, url) -> None:
+        if not self._valid_context():
+            return
         # Qt6: highlighted emits QUrl; Qt5 emits str — handle both
         url_str = url.toString() if hasattr(url, "toString") else str(url)
         if not url_str:
@@ -1286,6 +965,8 @@ class _SearchAllDialog(QDialog):
         )
 
     def _open_link(self, qurl) -> None:
+        if not self._valid_context():
+            return
         s = qurl.toString()
         try:
             if s.startswith("inc://pdf/"):

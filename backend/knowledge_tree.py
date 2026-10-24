@@ -5,6 +5,9 @@ import random
 import re
 from datetime import date, datetime, timedelta
 from collections import defaultdict
+from concurrent.futures import CancelledError
+from dataclasses import dataclass
+from threading import Event
 
 try:
     from .config_service import load_addon_config
@@ -16,6 +19,7 @@ try:
     from .db import (
         get_knowledge_tree_node,
         get_knowledge_tree_nodes,
+        get_connection,
         set_knowledge_tree_structure,
     )
     from .note_metadata import (
@@ -35,6 +39,7 @@ except ImportError:
     from db import (  # type: ignore
         get_knowledge_tree_node,
         get_knowledge_tree_nodes,
+        get_connection,
         set_knowledge_tree_structure,
     )
     from note_metadata import (  # type: ignore
@@ -742,6 +747,110 @@ def load_knowledge_tree_nodes(
     return enriched
 
 
+@dataclass(frozen=True)
+class KnowledgeTreeSnapshot:
+    """One profile's tree and searchable text, owned by a single dialog load."""
+
+    addon_dir: str
+    profile: str
+    rows: tuple[dict, ...]
+    ordered_rows: tuple[dict, ...]
+    note_text: dict[int, tuple[tuple[str, str], ...]]
+
+
+def load_knowledge_tree_snapshot(
+    addon_dir: str,
+    profile: str,
+    col,
+    *,
+    cancel: Event | None = None,
+) -> KnowledgeTreeSnapshot:
+    """Batch project from the operation's collection, without touching Qt or mw.
+
+    Missing cards are omitted and their children promoted in this read model.
+    Loading a view never rewrites the saved structure. Field/deck definitions
+    and normalized visible body text are reused only within this snapshot.
+    """
+    def check_cancelled() -> None:
+        if cancel is not None and cancel.is_set():
+            raise CancelledError()
+
+    check_cancelled()
+    rows = get_knowledge_tree_nodes(addon_dir, profile)
+    priorities = dict(get_connection(addon_dir, profile).execute(
+        "SELECT p.card_id, p.priority FROM priorities p "
+        "JOIN knowledge_tree_nodes k ON k.card_id = p.card_id"
+    ).fetchall())
+    cards = {}
+    for start in range(0, len(rows), _SQL_VARIABLE_CHUNK_SIZE):
+        check_cancelled()
+        ids = [row["card_id"] for row in rows[start:start + _SQL_VARIABLE_CHUNK_SIZE]]
+        placeholders = ",".join("?" for _ in ids)
+        for cid, nid, did, odid, mid, fields in col.db.all(
+            "SELECT c.id, c.nid, c.did, c.odid, n.mid, n.flds "
+            "FROM cards c JOIN notes n ON n.id = c.nid "
+            f"WHERE c.id IN ({placeholders})", *ids,
+        ):
+            cards[int(cid)] = (int(nid), int(odid or did), int(mid), str(fields or "").split("\x1f"))
+    models, decks, field_maps = {}, {}, {}
+    enriched, note_text = [], {}
+    for index, row in enumerate(rows):
+        if index % 100 == 0:
+            check_cancelled()
+        cid = int(row["card_id"])
+        if cid not in cards:
+            continue
+        nid, did, mid, values = cards[cid]
+        if mid not in models:
+            models[mid] = col.models.get(mid) or {}
+            fields = models[mid].get("flds") or []
+            visible = visible_field_names([str(f.get("name") or "") for f in fields])[1:]
+            field_maps[mid] = [
+                (str(f["name"]).strip(), int(f.get("ord", i)))
+                for i, f in enumerate(fields) if str(f.get("name") or "").strip() in visible
+            ]
+        if did not in decks:
+            decks[did] = col.decks.get(did) or {}
+        clone = _clone_row(row)
+        clone.update(
+            note_id=nid,
+            title=(_strip_html(values[0]) if values else "") or f"Card {cid}",
+            deck_name=str(decks[did].get("name") or "").strip(),
+            note_type_name=str(models[mid].get("name") or "").strip(),
+            priority=float(priorities.get(cid, 50.0)),
+        )
+        enriched.append(clone)
+        note_text[cid] = tuple(
+            (name, _strip_html(values[ordinal]).casefold())
+            for name, ordinal in field_maps[mid] if 0 <= ordinal < len(values)
+        )
+    if len(enriched) != len(rows):
+        # Preserve pre-order and promote through chains of deleted parents.
+        by_id = {row["card_id"]: row for row in rows}
+        live = {row["card_id"]: row for row in enriched}
+        counts: dict[int | None, int] = defaultdict(int)
+        for row in _rows_in_tree_order(rows):
+            cid = row["card_id"]
+            if cid not in live:
+                continue
+            parent = row["parent_card_id"]
+            visited = {cid}
+            while parent is not None and parent not in live:
+                if parent in visited or parent not in by_id:
+                    parent = None
+                    break
+                visited.add(parent)
+                parent = by_id[parent]["parent_card_id"]
+            live[cid]["parent_card_id"] = parent
+            live[cid]["sort_order"] = counts[parent]
+            counts[parent] += 1
+    check_cancelled()
+    return KnowledgeTreeSnapshot(
+        addon_dir=os.path.abspath(addon_dir), profile=profile, rows=tuple(enriched),
+        ordered_rows=tuple(_rows_in_tree_order(enriched)), note_text=note_text,
+    )
+
+
 def _rows_in_tree_order(rows: list[dict]) -> list[dict]:
     cloned_rows: list[dict] = []
     for row in rows:
@@ -870,7 +979,12 @@ def search_knowledge_tree_nodes(
     include_metadata: bool = False,
     include_note_text: bool = False,
     limit: int | None = None,
+    snapshot: KnowledgeTreeSnapshot | None = None,
 ) -> list[dict]:
+    if snapshot is not None and (
+        snapshot.profile != profile or snapshot.addon_dir != os.path.abspath(addon_dir)
+    ):
+        raise ValueError("Knowledge-tree snapshot belongs to another profile.")
     normalized_query = str(query or "").strip()
     if not normalized_query:
         return []
@@ -878,8 +992,11 @@ def search_knowledge_tree_nodes(
         return []
 
     query_text = normalized_query.casefold()
-    rows = load_knowledge_tree_nodes(addon_dir, profile, cleanup_missing=False)
-    ordered_rows = _rows_in_tree_order(rows)
+    if snapshot is None:
+        rows = load_knowledge_tree_nodes(addon_dir, profile, cleanup_missing=False)
+        ordered_rows = _rows_in_tree_order(rows)
+    else:
+        ordered_rows = snapshot.ordered_rows
     max_results = None if limit is None else max(1, int(limit))
 
     results: list[dict] = []
@@ -903,8 +1020,12 @@ def search_knowledge_tree_nodes(
                 matched_fields.append("card_id")
 
         if include_note_text:
+            names = (
+                [name for name, text in snapshot.note_text.get(card_id, ()) if query_text in text]
+                if snapshot is not None else _visible_note_text_matches(card_id, query_text)
+            )
             matched_fields.extend(
-                [f"field:{name}" for name in _visible_note_text_matches(card_id, query_text)]
+                [f"field:{name}" for name in names]
             )
 
         if not matched_fields:

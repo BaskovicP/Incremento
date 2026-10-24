@@ -200,7 +200,9 @@ def get_pdf_dir(profile: str | None = None) -> str:
     return d
 
 
-def pdf_storage_abspath(stored_filename: str, *, profile: str | None = None) -> str:
+def pdf_storage_abspath(
+    stored_filename: str, *, profile: str | None = None, addon_dir: str | None = None,
+) -> str:
     """Resolve a stored PDF filename inside the managed profile PDF directory."""
     raw = str(stored_filename or "").strip().replace("\\", "/")
     if not raw:
@@ -210,7 +212,8 @@ def pdf_storage_abspath(stored_filename: str, *, profile: str | None = None) -> 
     elif raw.startswith("pdfs/"):
         raw = raw[len("pdfs/"):]
 
-    root = Path(get_pdf_dir(profile)).resolve()
+    root = (Path(get_pdf_dir(profile)) if addon_dir is None else
+            _paths.get_pdf_dir(addon_dir, profile or _paths.get_active_profile())).resolve()
     raw_path = Path(raw)
     candidate = raw_path.resolve() if raw_path.is_absolute() else (root / raw_path).resolve()
     try:

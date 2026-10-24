@@ -56,3 +56,30 @@ test('a reader failure rejects without sending a partial snapshot', async () => 
   await assert.rejects(encodePdfSnapshot({ toBlob: callback => callback({}) }, () => true, Reader),
     /encoding failed/);
 });
+
+test('snapshot mode notifies only its subscribers and ignores redundant activation', async () => {
+  const { createPdfSnapshotMode } = await import('../src/pdfSnapshot.mjs');
+  const mode = createPdfSnapshotMode();
+  const states = [];
+  const stop = mode.subscribe(() => states.push(mode.getSnapshot()));
+  assert.equal(mode.getSnapshot(), false);
+  mode.setActive(true);
+  mode.setActive(true);
+  mode.setActive(false);
+  assert.deepEqual(states, [true, false]);
+  stop();
+  mode.setActive(true);
+  assert.deepEqual(states, [true, false]);
+});
+
+test('snapshot activation is subscribed below the reader and outside saved annotation rendering', async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = name => readFileSync(new URL(`../src/${name}`, import.meta.url), 'utf8');
+  const viewer = source('PdfViewer.jsx');
+  // Source-level ownership check complements the browser check: a toolbar
+  // toggle must not be routed back through state owned by the full reader.
+  assert.doesNotMatch(viewer, /setSnapshotMode/);
+  assert.match(viewer, /<PdfSnapshotButton\b/);
+  assert.match(viewer, /<PdfSnapshotLayer\b/);
+  assert.doesNotMatch(source('HighlightLayer.jsx'), /snapshotMode|handleSnapStart|handleSnapEnd/);
+});

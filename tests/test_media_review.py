@@ -2,6 +2,7 @@ import re
 import types
 
 import media_review
+import pytest
 
 
 class _FakeNote:
@@ -216,6 +217,18 @@ def test_live_attachment_ids_skip_review_classification_and_missing_cards(monkey
         media_kind="pdf",
     ) == (1000, 1100, 2000)
     assert not any(query.startswith("cid:") for query in col.card_queries)
+
+
+@pytest.mark.parametrize("addon,profile", [("/other", "A"), ("/unused", "B")])
+def test_attachment_tree_snapshot_cannot_be_reused_for_another_profile(monkeypatch, addon, profile):
+    monkeypatch.setattr(media_review, "get_knowledge_tree_nodes",
+                        lambda *_args: [{"card_id": 1000, "parent_card_id": 500}])
+    snapshot = media_review.load_media_review_tree_snapshot("/unused", "A")
+    with pytest.raises(ValueError, match="different profile"):
+        media_review.linked_media_attachment_card_ids(
+            addon, profile, 500, col=_FakeCollection(cards={1000: _card(1000, 10)}),
+            tree_snapshot=snapshot,
+        )
 
 
 def test_note_search_is_chunked_for_large_link_sets(monkeypatch):

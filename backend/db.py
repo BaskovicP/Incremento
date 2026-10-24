@@ -700,6 +700,13 @@ def _migration_16_document_link_positions(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_17_highlight_document_indexes(conn: sqlite3.Connection) -> None:
+    _begin_migration_script(conn, """
+        CREATE INDEX idx_pdf_highlights_card_page ON pdf_highlights(card_id, page);
+        CREATE INDEX idx_epub_highlights_card_section ON epub_highlights(card_id, section_index);
+    """)
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
@@ -716,6 +723,7 @@ _SCHEMA_MIGRATIONS = (
     (14, "document_links", _migration_14_document_links),
     (15, "document_link_targets", _migration_15_document_link_targets),
     (16, "document_link_positions", _migration_16_document_link_positions),
+    (17, "highlight_document_indexes", _migration_17_highlight_document_indexes),
 )
 
 

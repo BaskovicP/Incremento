@@ -25,12 +25,13 @@ export function usePdfPageLinks({cardId, page, generation, enabled = true, onCom
   return {cardId, page, generation, enabled, links: current ? view.links : [],
     loading: !current || view.loading, error: current && view.error,
     create: () => model.current.create(), manage: () => model.current.manage(),
+    remove: row => model.current.remove(row),
     jump: (row, mode) => model.current.jump(row, mode)};
 }
 
 /** A compact toolbar button; its dismissible panel never changes page geometry. */
 export default function PdfPageLinks({linksState, tr}) {
-  const {cardId, page, generation, enabled, links, loading, error, create, manage, jump} = linksState;
+  const {cardId, page, generation, enabled, links, loading, error, create, manage, jump, remove} = linksState;
   const [openedFor, setOpenedFor] = useState(null);
   const root = useRef(null), trigger = useRef(null);
   const key = `${cardId}:${page}:${generation}`;
@@ -85,6 +86,8 @@ export default function PdfPageLinks({linksState, tr}) {
               aria-label={tr('reader_reference_pin') + ': ' + label}
               style={{flexShrink: 0, whiteSpace: 'nowrap'}}
               onClick={() => act(() => jump(row, 'beside'))}>{tr('reader_reference_pin')}</button>
+            <button type="button" aria-label={tr('reader_reference_remove') + ': ' + label}
+              onClick={() => act(() => remove(row))}>{tr('reader_reference_remove')}</button>
           </div>;
         })}
         {!links.length && <span role="status" style={{color: '#cbd8e9'}}>

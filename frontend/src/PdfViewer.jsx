@@ -1,8 +1,9 @@
-import { encodePdfSnapshot, paintPdfSnapshotPreview } from './pdfSnapshot.mjs';
+import { createPdfSnapshotMode, encodePdfSnapshot, paintPdfSnapshotPreview } from './pdfSnapshot.mjs';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePdfRender } from './usePdfRender.js';
 import HighlightLayer, { isResizableTextHighlight } from './HighlightLayer.jsx';
 import PdfSelectionLayer from './PdfSelectionLayer.jsx';
+import PdfSnapshotLayer, { PdfSnapshotButton } from './PdfSnapshotLayer.jsx';
 import PdfLinkPreview from './PdfLinkPreview.jsx';
 import PdfPageLinks, {usePdfPageLinks} from './PdfPageLinks.jsx';
 import {observePdfToolbarHeight, pdfPageLinksViewport} from './pdfPageLinks.mjs';
@@ -462,7 +463,7 @@ export default function PdfViewer() {
   }, []);
 
   // ── Snapshot state ─────────────────────────────────────────────────────────
-  const [snapshotMode, setSnapshotMode] = useState(false);
+  const [snapshotMode] = useState(createPdfSnapshotMode);
   const snapPreviewRef = useRef(null);
   const snapStartRef = useRef(null);
 
@@ -1091,7 +1092,7 @@ export default function PdfViewer() {
     const ey = e.clientY - overlayRect.top;
     const { x: sx, y: sy } = snapStartRef.current;
     snapStartRef.current = null;
-    setSnapshotMode(false);
+    snapshotMode.setActive(false);
     paintPdfSnapshotPreview(snapPreviewRef.current, null);
 
     const rx = Math.min(sx, ex), ry = Math.min(sy, ey);
@@ -1135,7 +1136,7 @@ export default function PdfViewer() {
     encodePdfSnapshot(tmp, isCurrent).then(image => {
       if (image) window.pycmd('incremento_pdf_snapshot:' + JSON.stringify({ cardId, page, image }));
     }).catch(() => { console.warn('PDF snapshot encoding failed'); });
-  }, [activeCvsRef, canvasARef, canvasBRef, cardIdRef, makeSnapshotHighlight, pageRef]);
+  }, [activeCvsRef, canvasARef, canvasBRef, cardIdRef, makeSnapshotHighlight, pageRef, snapshotMode]);
 
   // ── Highlight helpers ──────────────────────────────────────────────────────
   const deleteHighlight = useCallback((id) => {
@@ -1205,7 +1206,7 @@ export default function PdfViewer() {
   }, [activateHighlightResize, containerRef, deactivateHighlightResize, pageHighlights, renderInfo, showHighlightControls]);
 
   const activateHighlightFromPageClick = useCallback((event) => {
-    if (snapshotMode || event?.defaultPrevented) return;
+    if (snapshotMode.getSnapshot() || event?.defaultPrevented) return;
     const interactive = event?.target?.closest?.('button,a,input,textarea,select,[contenteditable="true"]');
     if (interactive) return;
     const selection = window.getSelection?.();
@@ -1714,6 +1715,8 @@ export default function PdfViewer() {
     ) => {
       setPageLinksDocument(current => ({cardId: Number(cardId), generation: current.generation + 1}));
       contentsGenerationRef.current += 1;
+      snapshotMode.setActive(false);
+      snapStartRef.current = null;
       pendingContentsFractionRef.current = null;
       pendingDestinationPointRef.current = typeof startPageY === 'number' && Number.isFinite(startPageY)
         && startPageY >= 0 && startPageY <= 1 ? startPageY : null;
@@ -1870,6 +1873,7 @@ export default function PdfViewer() {
     applyScrollToTopOnPageChangeSetting,
     openFind,
     suppressScrollPersistence,
+    snapshotMode,
   ]);
 
   // ── Request card sources for current page ─────────────────────────────────
@@ -2613,19 +2617,10 @@ export default function PdfViewer() {
               <div style={TOOLBAR_STACK_STYLE}>
                 <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_capture')}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <button
-                    title={snapshotMode ? tr('reader_cancel_snapshot') : tr('reader_draw_snapshot')}
-                    style={{
-                      background:  snapshotMode ? 'rgba(37,99,235,0.2)' : 'transparent',
-                      border:      '1px solid rgba(37,99,235,0.5)',
-                      borderRadius: 8, color: snapshotMode ? 'rgb(37,99,235)' : 'inherit',
-                      cursor: 'pointer', padding: '4px 10px', fontSize: 12,
-                      fontWeight: snapshotMode ? 'bold' : 'normal',
-                    }}
-                    onClick={() => { setSnapshotMode(o => !o); paintPdfSnapshotPreview(snapPreviewRef.current, null); snapStartRef.current = null; }}
-                  >
-                    &#x1F4F7; {tr('reader_snapshot')}
-                  </button>
+                  <PdfSnapshotButton mode={snapshotMode} tr={tr} onToggle={() => {
+                    paintPdfSnapshotPreview(snapPreviewRef.current, null);
+                    snapStartRef.current = null;
+                  }} />
                   <button
                     title={tr("reader_show_highlights")}
                     style={{
@@ -3257,7 +3252,7 @@ export default function PdfViewer() {
 
       <PdfLinkPreview containerRef={containerRef} pdfDocRef={pdfDocRef}
         links={linkAnnotations} tlLeft={renderInfo.tlLeft} sourcePage={page}
-        documentToken={contentsGenerationRef.current} disabled={snapshotMode || !!resizingHighlightId}
+        documentToken={contentsGenerationRef.current} snapshotMode={snapshotMode} disabled={!!resizingHighlightId}
         maxPage={limitEnabled && limitMode !== 'warning' && !overrideEnabled && allowedMaxPage != null
           ? Math.max(page, allowedMaxPage) : null}
         pageLabels={pageLabels} appearance={pageAppearance} tr={tr}
@@ -3379,7 +3374,7 @@ export default function PdfViewer() {
                 background: clickableLinks ? 'rgba(59,130,246,0.07)' : 'transparent',
                 color: 'transparent',
                 cursor: clickableLinks ? 'pointer' : 'text',
-                pointerEvents: clickableLinks && !snapshotMode ? 'auto' : 'none',
+                pointerEvents: clickableLinks ? 'auto' : 'none',
               }}
             />
           ))}
@@ -3411,12 +3406,9 @@ export default function PdfViewer() {
           showHighlightNote={showHighlightNote}
           moveHighlightNote={moveHighlightNote}
           hideHighlightNote={hideHighlightNote}
-          snapshotMode={snapshotMode}
-          snapPreviewRef={snapPreviewRef}
-          handleSnapStart={handleSnapStart}
-          handleSnapMove={handleSnapMove}
-          handleSnapEnd={handleSnapEnd}
         />
+        <PdfSnapshotLayer mode={snapshotMode} previewRef={snapPreviewRef}
+          onStart={handleSnapStart} onMove={handleSnapMove} onEnd={handleSnapEnd} />
 
         <div
           ref={textLayerRef}

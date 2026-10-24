@@ -2545,3 +2545,12 @@ msgstr "Annotations"
 
 msgid "search_all_annotations_tooltip"
 msgstr "Search notes attached to PDF and EPUB highlights."
+
+msgid "search_all_searching"
+msgstr "Searching…"
+
+msgid "search_all_cancelled"
+msgstr "Search cancelled."
+
+msgid "search_all_failed"
+msgstr "Search failed: {error}"

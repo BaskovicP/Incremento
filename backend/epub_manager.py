@@ -90,13 +90,15 @@ _MAX_FILENAME_STEM = 80
 _EPUB_COVER_EXTS = {".gif", ".jpeg", ".jpg", ".png", ".svg", ".webp"}
 _MAX_EPUB_ARCHIVE_BYTES = 256 * 1024 * 1024
 _MAX_EPUB_MEMBERS = 5_000
+_MAX_EPUB_PACKAGE_ITEMS = 5_000
+_MAX_EPUB_METADATA_BYTES = 32 * 1024 * 1024
 _MAX_EPUB_MEMBER_BYTES = 64 * 1024 * 1024
 _MAX_EPUB_TOTAL_BYTES = 512 * 1024 * 1024
 _MAX_EPUB_COMPRESSION_RATIO = 500.0
 _MAX_EPUB_MEMBER_NAME_CHARS = 512
 _MAX_EPUB_EXTRACTION_SECONDS = 30.0
 _EPUB_COPY_CHUNK_BYTES = 1024 * 1024
-_EPUB_SANITIZER_VERSION = 3
+_EPUB_SANITIZER_VERSION = 4
 _EPUB_HTML_SUFFIXES = {".htm", ".html", ".xht", ".xhtml"}
 _EPUB_ALLOWED_COMPRESSION = {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
 _WINDOWS_RESERVED_NAMES = {
@@ -532,11 +534,15 @@ def _clean_html_file(path: str) -> None:
         except Exception as exc:
             raise RuntimeError("Invalid EPUB: could not parse an HTML section") from exc
 
-    for tag in list(soup.find_all(_EPUB_BLOCKED_TAGS)):
-        tag.decompose()
-
-    for tag in soup.find_all(True):
-        tag_name = str(tag.name or "").casefold()
+    # .xhtml is parsed as XML by the reader. HTML-parser names such as
+    # "x:script" can therefore become executable XHTML/SVG elements later.
+    for tag in list(soup.find_all(True)):
+        if not tag.name:  # An ancestor was already decomposed.
+            continue
+        tag_name = str(tag.name).casefold().rsplit(":", 1)[-1]
+        if tag_name in _EPUB_BLOCKED_TAGS:
+            tag.decompose()
+            continue
         if tag_name == "link":
             rel_values = {str(value).casefold() for value in (tag.get("rel") or [])}
             if "stylesheet" not in rel_values:
@@ -559,9 +565,8 @@ def _clean_html_file(path: str) -> None:
                     continue
             if normalized == "style":
                 tag.attrs[attr_name] = _sanitize_css_text(str(value or ""))
-
-    for style_tag in soup.find_all("style"):
-        style_tag.string = _sanitize_css_text(style_tag.get_text("", strip=False))
+        if tag_name == "style":
+            tag.string = _sanitize_css_text(tag.get_text("", strip=False))
 
     head = soup.head
     if head is None:
@@ -570,6 +575,11 @@ def _clean_html_file(path: str) -> None:
             soup.html.insert(0, head)
         else:
             soup.insert(0, head)
+    # An attacker-controlled xmlns on head/html must not make our policy an
+    # inert XML element. Keep the policy in a real XHTML head for XML readers.
+    if soup.html is not None:
+        soup.html.attrs["xmlns"] = "http://www.w3.org/1999/xhtml"
+    head.attrs["xmlns"] = "http://www.w3.org/1999/xhtml"
     csp = soup.new_tag("meta")
     csp.attrs["http-equiv"] = "Content-Security-Policy"
     csp.attrs["content"] = _EPUB_CSP
@@ -820,7 +830,9 @@ def ensure_epub_extracted(
             title = str(title_el.text or "").strip()
 
         manifest: dict[str, dict] = {}
-        for item in opf_root.findall(".//opf:manifest/opf:item", ns):
+        for item_number, item in enumerate(opf_root.iterfind(".//opf:manifest/opf:item", ns)):
+            if item_number >= _MAX_EPUB_PACKAGE_ITEMS:
+                raise RuntimeError("Invalid EPUB: too many manifest items")
             item_id = str(item.get("id") or "").strip()
             href = str(item.get("href") or "").strip()
             if not item_id or not href:
@@ -835,13 +847,21 @@ def ensure_epub_extracted(
                 ],
             }
 
+        spine = []
+        for itemref in opf_root.iterfind(".//opf:spine/opf:itemref", ns):
+            if len(spine) >= _MAX_EPUB_PACKAGE_ITEMS:
+                raise RuntimeError("Invalid EPUB: too many spine items")
+            spine.append(itemref)
+
         _sanitize_epub_html_documents(stage_dir, opf_dir, manifest)
         cover_href = _find_epub_cover_href(opf_root, ns, opf_dir, manifest)
         nav_labels = _load_nav_labels(str(stage_dir), opf_dir, manifest)
         sections: list[dict] = []
-        for idx, itemref in enumerate(
-            opf_root.findall(".//opf:spine/opf:itemref", ns)
-        ):
+        parsed_sections: dict[str, tuple[str, str]] = {}
+        index_bytes = 0
+        for idx, itemref in enumerate(spine):
+            if time.monotonic() - started_at > _MAX_EPUB_EXTRACTION_SECONDS:
+                raise RuntimeError("Invalid EPUB: extraction timed out")
             item_id = str(itemref.get("idref") or "").strip()
             item = manifest.get(item_id)
             if not item or item.get("media_type") not in _HTML_MEDIA_TYPES:
@@ -855,17 +875,21 @@ def ensure_epub_extracted(
                 or Path(rel_href).stem.replace("-", " ").replace("_", " ").strip()
                 or f"Section {idx + 1}"
             )
-            text, section_title = _html_text_and_title(
-                str(section_path), fallback_title
-            )
-            sections.append(
-                {
-                    "index": len(sections),
-                    "href": rel_href,
-                    "title": section_title,
-                    "text": text,
-                }
-            )
+            if rel_href not in parsed_sections:
+                parsed_sections[rel_href] = _html_text_and_title(str(section_path), fallback_title)
+            text, section_title = parsed_sections[rel_href]
+            section = {
+                "index": len(sections),
+                "href": rel_href,
+                "title": section_title,
+                "text": text,
+            }
+            # ZIP budgets do not cover repeated spine references or JSON escaping.
+            # Charge every occurrence before accumulating the expanded text index.
+            index_bytes += len(json.dumps(section, ensure_ascii=False, indent=2).encode("utf-8"))
+            if index_bytes > _MAX_EPUB_METADATA_BYTES:
+                raise RuntimeError("Invalid EPUB: text index is too large")
+            sections.append(section)
 
         if not sections:
             raise RuntimeError("Invalid EPUB: no readable HTML spine sections found.")
@@ -877,10 +901,10 @@ def ensure_epub_extracted(
             "cover_href": cover_href,
             "sections": sections,
         }
-        _atomic_write_text(
-            str(stage_dir / "metadata.json"),
-            json.dumps(metadata, ensure_ascii=False, indent=2),
-        )
+        metadata_json = json.dumps(metadata, ensure_ascii=False, indent=2)
+        if len(metadata_json.encode("utf-8")) > _MAX_EPUB_METADATA_BYTES:
+            raise RuntimeError("Invalid EPUB: text index is too large")
+        _atomic_write_text(str(stage_dir / "metadata.json"), metadata_json)
 
         final_dir = Path(extract_dir)
         old_dir = extract_root / f".{final_dir.name}-old-{uuid.uuid4().hex}"

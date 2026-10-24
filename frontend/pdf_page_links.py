@@ -7,13 +7,13 @@ from aqt.operations import QueryOp
 from aqt.utils import tooltip
 
 try:
-    from ..backend.document_links import list_pdf_page_links
+    from ..backend.document_links import list_pdf_page_links, remove_pdf_page_link
     from ..backend.i18n import t
     from ..backend.paths import get_active_profile
     from ..backend.pdf_manager import get_pdf_daily_limit_status
     from ..backend.pdf_reference import resolve_pdf_reference
 except ImportError:
-    from backend.document_links import list_pdf_page_links
+    from backend.document_links import list_pdf_page_links, remove_pdf_page_link
     from backend.i18n import t
     from backend.paths import get_active_profile
     from backend.pdf_manager import get_pdf_daily_limit_status
@@ -72,17 +72,17 @@ class PdfPageLinksBridge:
         point = payload.get('page_y')
         if point is not None and (type(point) not in (int, float) or not 0 <= point <= 1):
             return False
-        if operation not in ('list', 'jump', 'create', 'manage'):
+        if operation not in ('list', 'jump', 'create', 'manage', 'remove'):
             return False
         location = tuple(payload[key] for key in ('page', 'request', 'generation'))
         if operation == 'list':
             self.location = location
         elif self.location != location:
             return False
-        if operation == 'jump' and (
+        if operation in ('jump', 'remove') and (
                 type(payload.get('id')) is not int or not 1 <= payload['id'] <= 2**63 - 1
                 or payload.get('direction') not in ('outgoing', 'incoming')
-                or payload.get('mode') not in ('jump', 'beside')):
+                or (operation == 'jump' and payload.get('mode') not in ('jump', 'beside'))):
             return False
         request = {key: payload[key] for key in ('cardId', 'page', 'request', 'generation')}
         def current():
@@ -100,11 +100,13 @@ class PdfPageLinksBridge:
             if operation in ('create', 'manage'):
                 return True
             rows = list_pdf_page_links(_ADDON_DIR, self.profile, self.card_id, location[0])
-            if operation == 'jump':
+            if operation in ('jump', 'remove'):
                 link = next((row for row in rows if row['id'] == payload['id']
                              and row['direction'] == payload['direction']), None)
                 if link is None:
                     raise ValueError('Connection unavailable')
+                if operation == 'remove':
+                    return remove_pdf_page_link(_ADDON_DIR, self.profile, self.card_id, location[0], link['id'])
                 snapshot = resolve_pdf_reference(_ADDON_DIR, self.profile, col, link['target_card_id'])
                 if link['target_page'] > pdf_page_count(snapshot['path']):
                     raise ValueError('Destination page unavailable')
@@ -131,6 +133,9 @@ class PdfPageLinksBridge:
                 return
             if operation == 'list':
                 self.reply({**request, 'links': result})
+            elif operation == 'remove':
+                if result:
+                    refresh_page_links()
             elif operation == 'jump':
                 snapshot, link = result
                 if payload['mode'] == 'beside':

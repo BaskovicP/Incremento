@@ -2209,3 +2209,12 @@ msgstr "批注"
 
 msgid "search_all_annotations_tooltip"
 msgstr "搜索 PDF 和 EPUB 高亮附带的批注。"
+
+msgid "search_all_searching"
+msgstr "正在搜索…"
+
+msgid "search_all_cancelled"
+msgstr "搜索已取消。"
+
+msgid "search_all_failed"
+msgstr "搜索失败：{error}"

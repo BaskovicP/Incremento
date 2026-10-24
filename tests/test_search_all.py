@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 import search_all
+import search_all_results
 
 
 def _load_dialog_module():
@@ -113,6 +114,24 @@ class _HtmlSink:
 
     def setHtml(self, html: str) -> None:
         self.html = html
+
+
+class _LiveSearchDb:
+    def all(self, sql, *ids):
+        if "FROM cards" in sql:
+            return [(17, 101)] if 17 in ids else []
+        if "FROM notes" in sql:
+            return [(101, 1, "Document\x1fBody\x1fbook.pdf")] if 101 in ids else []
+        raise AssertionError(sql)
+
+
+def _result_builder(filters, addon_dir="/tmp/search-all-test"):
+    col = SimpleNamespace(
+        db=_LiveSearchDb(), models=SimpleNamespace(get=lambda _mid: {"name": "Incremento PDF",
+            "flds": [{"name": "Title", "ord": 0}, {"name": "Body", "ord": 1},
+                     {"name": "PDF_Filename", "ord": 2}]}),
+    )
+    return search_all_results.SearchResultsBuilder(str(addon_dir), "TestProfile", col, filters)
 
 
 class _SplitterPane:
@@ -260,7 +279,11 @@ def test_live_anki_filter_label_does_not_claim_cross_profile_search():
 
 
 @pytest.mark.parametrize("annotations_only", [False, True])
-def test_highlight_search_filters_live_rows_before_the_display_limit(monkeypatch, annotations_only):
+def test_highlight_search_filters_live_rows_before_the_display_limit(monkeypatch, annotations_only, tmp_path):
+    from paths import get_pdf_dir
+    pdf_dir = get_pdf_dir(str(tmp_path), "TestProfile")
+    pdf_dir.mkdir(parents=True)
+    (pdf_dir / "book.pdf").write_bytes(b"%PDF-fixture")
     requested_limits: list[int | None] = []
     all_rows = [
         (99, page, "faith") for page in range(1, 121)
@@ -275,42 +298,14 @@ def test_highlight_search_filters_live_rows_before_the_display_limit(monkeypatch
         return all_rows[: kwargs.get("limit", 120)]
 
     monkeypatch.setattr(
-        _DIALOG_MODULE,
+        search_all_results,
         "search_excerpt_rows",
         fake_search_excerpt_rows,
     )
-    results = _HtmlSink()
-    dialog = SimpleNamespace(
-        _addon_dir="/tmp/search-all-test",
-        _highlight_previews={},
-        _cb_highlights=_Checked(not annotations_only),
-        _cb_annotations=_Checked(annotations_only),
-        _cb_sources=_Checked(False),
-        _cb_epub_highlights=_Checked(False),
-        _cb_epub_sources=_Checked(False),
-        _cb_content=_Checked(False),
-        _cb_epub_content=_Checked(False),
-        _cb_ocr=_Checked(False),
-        _cb_cards=_Checked(False),
-        _cb_current_profile=_Checked(True),
-        _is_current_profile_card=lambda card_id: card_id == 17,
-        _pdf_title=lambda _card_id: "Document",
-        _snippet=lambda text, _query, max_len=120: text[:max_len],
-        _results=results,
+    builder = _result_builder(
+        {"current_profile", "annotations" if annotations_only else "pdf_highlights"}, tmp_path
     )
-    dialog._filter_current_profile_rows = lambda rows, **kwargs: (
-        _SearchAllDialog._filter_current_profile_rows(dialog, rows, **kwargs)
-    )
-    dialog._search_excerpt_hits = lambda kind, query, **kwargs: (
-        _SearchAllDialog._search_excerpt_hits(
-            dialog,
-            kind,
-            query,
-            **kwargs,
-        )
-    )
-
-    _SearchAllDialog._refresh(dialog, "faith")
+    results = builder.run("faith")
 
     assert requested_limits == [1200]
     assert results.html.count("<li>") == 120
@@ -322,19 +317,14 @@ def test_highlight_search_filters_live_rows_before_the_display_limit(monkeypatch
 
 
 def test_source_live_filter_requires_document_card_and_source_note():
-    dialog = SimpleNamespace(
-        _cb_current_profile=_Checked(True),
-        _is_current_profile_card=lambda card_id: card_id == 17,
-        _is_current_profile_note=lambda note_id: note_id == 101,
-    )
+    builder = _result_builder({"current_profile"})
     rows = [
         (17, 1, "live", 101),
         (17, 2, "deleted source note", 102),
         (18, 3, "deleted document card", 101),
     ]
 
-    filtered = _SearchAllDialog._filter_current_profile_rows(
-        dialog,
+    filtered = builder._filter_current_profile_rows(
         rows,
         note_id_index=3,
     )

@@ -6,7 +6,7 @@ import os
 import re
 from typing import Callable, cast
 
-from aqt import mw
+from aqt import gui_hooks, mw
 from aqt.qt import (
     QAbstractItemView,
     QAction,
@@ -41,8 +41,13 @@ from aqt.qt import (
     qconnect,
 )
 from aqt.utils import showInfo, tooltip
-from PyQt6.QtCore import QRect, QSize
+from PyQt6.QtCore import QEvent, QRect, QSize, QTimer
 from PyQt6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPalette, QPen, QPixmap
+
+try:
+    from .latest_query import LatestQuery
+except ImportError:
+    from latest_query import LatestQuery  # type: ignore
 
 try:
     from ..backend.i18n import t, tn
@@ -131,7 +136,7 @@ try:
         get_parent_card_id,
         link_card_to_tree,
         link_cards_to_tree,
-        load_knowledge_tree_nodes,
+        load_knowledge_tree_snapshot,
         normalize_node_kind,
         randomize_subtree_priorities,
         rename_card_title,
@@ -166,7 +171,7 @@ except ImportError:
         get_parent_card_id,
         link_card_to_tree,
         link_cards_to_tree,
-        load_knowledge_tree_nodes,
+        load_knowledge_tree_snapshot,
         normalize_node_kind,
         randomize_subtree_priorities,
         rename_card_title,
@@ -901,6 +906,20 @@ class KnowledgeTreeDialog(QDialog):
             else self._initial_select_card_id
         )
         self._rows_cache: list[dict] = []
+        self._snapshot = None
+        self._closed = False
+        self._snapshot_query = LatestQuery(
+            dispatch=self._dispatch_snapshot,
+            success=self._apply_snapshot,
+            failure=self._snapshot_failed,
+            accept=lambda request: (
+                not self._closed and active_profile() == request["profile"]
+                and getattr(mw, "col", None) is request["collection"]
+            ),
+        )
+        self._snapshot_refresh = QTimer(self)
+        self._snapshot_refresh.setSingleShot(True)
+        self._snapshot_refresh.timeout.connect(self.reload)
         self._row_by_card_id: dict[int, dict] = {}
         self._search_results_cache: list[dict] = []
         self._updating_search_results = False
@@ -954,7 +973,75 @@ class KnowledgeTreeDialog(QDialog):
         self._install_context_menu()
         self._responsive_ready = True
         self._update_responsive_layout()
+        gui_hooks.operation_did_execute.append(self._on_collection_changed)
+        gui_hooks.profile_will_close.append(self._on_profile_close)
+        qconnect(self.finished, self._dispose_snapshot)
         self.reload(select_card_id=self._initial_select_card_id, focus_card_id=self._focus_card_id)
+
+    def _dispose_snapshot(self, *_args) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._snapshot_refresh.stop()
+        self._snapshot_query.close()
+        self._snapshot = None
+        # A profile-close hook may be iterating this same callback list.
+        QTimer.singleShot(0, self._remove_snapshot_hooks)
+
+    def _remove_snapshot_hooks(self) -> None:
+        gui_hooks.operation_did_execute.remove(self._on_collection_changed)
+        gui_hooks.profile_will_close.remove(self._on_profile_close)
+
+    def _on_profile_close(self) -> None:
+        if self._closed:
+            return
+        self._dispose_snapshot()
+        self.reject()
+
+    def _on_collection_changed(self, changes, _handler=None) -> None:
+        if self._closed:
+            return
+        if any(getattr(changes, name, False) for name in ("note", "card", "deck", "notetype")):
+            self._invalidate_snapshot()
+            self._snapshot_refresh.start(0)
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        # Supplemental priority/structure writes may come from another dialog
+        # without an Anki operation hook. Refresh when this workspace regains focus.
+        if (event.type() == QEvent.Type.ActivationChange and self.isActiveWindow()
+                and getattr(self, "_snapshot", None) is not None and not self._closed):
+            self._invalidate_snapshot()
+            self._snapshot_refresh.start(0)
+
+    def _invalidate_snapshot(self) -> None:
+        self._snapshot = None
+        self._snapshot_query.invalidate()
+        self._tree.setEnabled(False)
+        self._inspector_panel.setEnabled(False)
+        for button in (self._add_btn, self._study_btn, self._mind_map_btn):
+            button.setEnabled(False)
+        self._search_results_cache = []
+        self._search_results_list.clear()
+        self._search_results_label.setText(t("imports_loading"))
+
+    def _dispatch_snapshot(self, ticket, success, failure, _progress) -> None:
+        from concurrent.futures import CancelledError
+        from aqt.operations import QueryOp
+
+        request = ticket.payload
+
+        def load(col):
+            if ticket.cancel.is_set() or col is not request["collection"]:
+                raise CancelledError()
+            return load_knowledge_tree_snapshot(
+                request["addon_dir"], request["profile"], col, cancel=ticket.cancel,
+            )
+
+        QueryOp(parent=self, op=load, success=success).failure(failure).run_in_background()
+
+    def _snapshot_failed(self, _request, error) -> None:
+        self._search_results_label.setText(t("knowledge_tree_load_failed", error=error))
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -1820,6 +1907,9 @@ class KnowledgeTreeDialog(QDialog):
         select_card_ids: list[int] | tuple[int, ...] | set[int] | object = _KEEP_SELECTION,
         focus_card_id: int | None | object = _KEEP_FOCUS,
     ) -> None:
+        if self._closed or active_profile() != self._profile:
+            return
+        self._snapshot_refresh.stop()
         if focus_card_id is not _KEEP_FOCUS:
             self._focus_card_id = (
                 None if focus_card_id is None else int(cast(int, focus_card_id))
@@ -1842,11 +1932,20 @@ class KnowledgeTreeDialog(QDialog):
             requested_card_ids.insert(0, requested_card_id)
         expanded_card_ids = self._expanded_card_ids()
 
-        try:
-            rows = load_knowledge_tree_nodes(self._addon_dir, self._profile)
-        except Exception as exc:
-            showInfo(t("knowledge_tree_load_failed", error=exc))
-            return
+        self._invalidate_snapshot()
+        self._snapshot_query.submit({
+            "addon_dir": self._addon_dir, "profile": self._profile,
+            "collection": getattr(mw, "col", None),
+            "requested_card_id": requested_card_id, "requested_card_ids": tuple(requested_card_ids),
+            "expanded_card_ids": frozenset(expanded_card_ids),
+        })
+
+    def _apply_snapshot(self, request, snapshot) -> None:
+        self._snapshot = snapshot
+        rows = snapshot.ordered_rows
+        requested_card_id = request["requested_card_id"]
+        requested_card_ids = request["requested_card_ids"]
+        expanded_card_ids = request["expanded_card_ids"]
 
         self._rows_cache = list(rows)
         self._row_by_card_id = {int(row["card_id"]): row for row in rows}
@@ -1872,11 +1971,17 @@ class KnowledgeTreeDialog(QDialog):
 
             if expanded_card_ids:
                 for card_id in expanded_card_ids:
-                    self._set_item_expanded(card_id, True)
+                    item = item_by_card_id.get(card_id)
+                    if item is not None:
+                        item.setExpanded(True)
             else:
                 self._tree.expandToDepth(1)
         finally:
             self._building = False
+
+        self._tree.setEnabled(True)
+        self._inspector_panel.setEnabled(True)
+        self._add_btn.setEnabled(True)
 
         if requested_card_ids:
             self._apply_selection(requested_card_ids, anchor_card_id=requested_card_id)
@@ -1924,6 +2029,11 @@ class KnowledgeTreeDialog(QDialog):
         return "  ·  ".join(part for part in parts if part)
 
     def _refresh_search_results(self, *_args) -> None:
+        if self._snapshot is None:
+            self._search_results_cache = []
+            self._search_results_list.clear()
+            self._search_results_label.setText(t("imports_loading"))
+            return
         query = self._search_edit.text().strip()
         scope = self._search_scope_options()
         if not query:
@@ -1957,6 +2067,7 @@ class KnowledgeTreeDialog(QDialog):
                 query,
                 **scope,
                 limit=100,
+                snapshot=self._snapshot,
             )
         except Exception as exc:
             self._search_results_cache = []
@@ -2147,6 +2258,8 @@ class KnowledgeTreeDialog(QDialog):
         item.setExpanded(False)
 
     def _refresh_selection_ui(self) -> None:
+        if self._building:
+            return
         selected_count = len(self._selected_card_ids())
         card_id = self._selected_card_id()
         single = selected_count == 1 and card_id is not None
@@ -2388,14 +2501,7 @@ class KnowledgeTreeDialog(QDialog):
     def _link_node(self, node_kind: str) -> None:
         kind = normalize_node_kind(node_kind)
         selected_card_id = self._selected_card_id()
-        existing = {
-            int(row["card_id"])
-            for row in load_knowledge_tree_nodes(
-                self._addon_dir,
-                self._profile,
-                cleanup_missing=False,
-            )
-        }
+        existing = set(self._row_by_card_id)
         dlg = _LinkExistingDialog(
             existing,
             has_selected_node=selected_card_id is not None,

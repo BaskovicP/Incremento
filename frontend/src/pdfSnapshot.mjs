@@ -23,3 +23,27 @@ export function paintPdfSnapshotPreview(element, rect) {
     width: `${rect.w}px`, height: `${rect.h}px`,
   });
 }
+
+/** Only the capture button/overlay subscribe; activation must not render the reader. */
+export function createPdfSnapshotMode() {
+  let active = false;
+  const listeners = new Set();
+  return {
+    getSnapshot: () => active,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    setActive(value) {
+      const next = value === true;
+      if (next === active) return;
+      active = next;
+      for (const listener of listeners) listener();
+    },
+  };
+}
+
+export const INACTIVE_PDF_SNAPSHOT_MODE = {
+  getSnapshot: () => false,
+  subscribe: () => () => {},
+};

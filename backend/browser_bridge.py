@@ -558,13 +558,17 @@ def normalize_add_content_batch_payload(payload) -> list[dict]:
     return normalized
 
 
-def normalize_add_content_request(payload) -> dict:
+class _NormalizedAddContentRequest(dict):
+    """In-process validation marker that untrusted JSON cannot supply."""
+
+
+def normalize_add_content_request(payload) -> _NormalizedAddContentRequest:
     if isinstance(payload, dict) and str(payload.get("type") or "").strip().lower() == "browser_capture":
-        return {"batch": False, "browser_capture": True, "items": [normalize_browser_capture_payload(payload)]}
+        return _NormalizedAddContentRequest(batch=False, browser_capture=True, items=[normalize_browser_capture_payload(payload)])
     if isinstance(payload, dict) and payload.get("items") is not None:
         items = normalize_add_content_batch_payload(payload)
-        return {"batch": True, "browser_capture": False, "items": items}
-    return {"batch": False, "browser_capture": False, "items": [normalize_add_content_payload(payload)]}
+        return _NormalizedAddContentRequest(batch=True, browser_capture=False, items=items)
+    return _NormalizedAddContentRequest(batch=False, browser_capture=False, items=[normalize_add_content_payload(payload)])
 
 
 def normalize_update_web_card_payload(payload) -> dict:
@@ -714,10 +718,13 @@ def _run_on_main_and_wait(fn, timeout_sec: float = 180.0):
     from aqt import mw
 
     done = threading.Event()
+    cancelled = threading.Event()
     box: dict[str, object] = {}
 
     def _wrapped() -> None:
         try:
+            if cancelled.is_set():
+                return
             box["result"] = fn()
         except Exception as exc:
             box["error"] = exc
@@ -726,6 +733,7 @@ def _run_on_main_and_wait(fn, timeout_sec: float = 180.0):
 
     mw.taskman.run_on_main(_wrapped)
     if not done.wait(timeout=timeout_sec):
+        cancelled.set()
         raise TimeoutError("Incremento browser bridge timed out.")
     if "error" in box:
         raise box["error"]
@@ -753,7 +761,9 @@ def _refresh_anki_after_import() -> None:
         pass
 
 
-def _run_browser_capture_and_wait(normalized: dict, timeout_sec: float = 180.0) -> dict:
+def _run_browser_capture_and_wait(
+    normalized: dict, timeout_sec: float = 180.0, *, require_authorized=None,
+) -> dict:
     """Wait on frontend-owned background inspection without blocking Qt."""
     from aqt import mw
 
@@ -771,11 +781,16 @@ def _run_browser_capture_and_wait(normalized: dict, timeout_sec: float = 180.0) 
         box["error"] = error
         done.set()
 
+    def is_cancelled():
+        if require_authorized is not None:
+            require_authorized()
+        return cancelled.is_set()
+
     def launch():
-        if cancelled.is_set():
-            return
         try:
-            _browser_capture_dispatch(normalized, success, failure, is_cancelled=cancelled.is_set)
+            if is_cancelled():
+                return
+            _browser_capture_dispatch(normalized, success, failure, is_cancelled=is_cancelled)
         except Exception as error:
             failure(error)
 
@@ -792,17 +807,6 @@ def _make_temp_pdf_path() -> str:
     fd, temp_path = tempfile.mkstemp(prefix="incremento-webpage-", suffix=".pdf")
     os.close(fd)
     return temp_path
-
-
-def _looks_like_normalized_add_content_request(payload) -> bool:
-    if not isinstance(payload, dict):
-        return False
-    if "batch" not in payload or "browser_capture" not in payload:
-        return False
-    items = payload.get("items")
-    if not isinstance(items, list):
-        return False
-    return all(isinstance(item, dict) for item in items)
 
 
 def _extract_pdf_pages_text_off_main(pdf_path: str) -> list[str]:
@@ -882,7 +886,7 @@ def _prepare_writing_item_off_main(normalized: dict) -> None:
 def prepare_add_content_request_off_main(payload_or_request) -> dict:
     request = (
         payload_or_request
-        if _looks_like_normalized_add_content_request(payload_or_request)
+        if isinstance(payload_or_request, _NormalizedAddContentRequest)
         else normalize_add_content_request(payload_or_request)
     )
     prepared = {
@@ -1512,7 +1516,7 @@ def _add_content_request_on_main(request: dict) -> dict:
 def _add_content_on_main(payload: dict) -> dict:
     request = (
         payload
-        if _looks_like_normalized_add_content_request(payload)
+        if isinstance(payload, _NormalizedAddContentRequest)
         else normalize_add_content_request(payload)
     )
     return _add_content_request_on_main(request)
@@ -1816,6 +1820,21 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
             and hmac.compare_digest(token, expected)
         )
 
+    def _require_current_authorization(self) -> None:
+        # A request may have waited on a download or Qt queue across profile
+        # close/browser changes. Recheck at the point of collection access.
+        if not self._request_origin_allowed() or not self._request_authenticated():
+            # A 401 would make Companion replay the old mutation in the new
+            # profile automatically; fail the in-flight request instead.
+            raise ValueError("Anki profile or Companion browser changed. Reopen the extension popup.")
+
+    def _run_authorized_on_main_and_wait(self, fn):
+        def authorized():
+            self._require_current_authorization()
+            return fn()
+
+        return _run_on_main_and_wait(authorized)
+
     def _send_cors_headers(self) -> None:
         origin = str(self.headers.get("Origin") or "")
         if self._request_origin_allowed(allow_unbound=True):
@@ -1943,10 +1962,10 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
 
         try:
             if request_path == BROWSER_CAPTURE_META_PATH:
-                result = _run_on_main_and_wait(_browser_capture_meta_on_main)
+                result = self._run_authorized_on_main_and_wait(_browser_capture_meta_on_main)
             else:
                 query = normalize_browser_media_ref_query(parse_qs(parsed.query, keep_blank_values=True))
-                result = _run_on_main_and_wait(
+                result = self._run_authorized_on_main_and_wait(
                     lambda: _load_browser_media_ref_on_main(int(query["card_id"]))
                 )
         except ValueError as exc:
@@ -1993,12 +2012,12 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
                 return
             try:
                 if request_path == BROWSER_CAPTURE_META_PATH:
-                    result = _run_on_main_and_wait(_browser_capture_meta_on_main)
+                    result = self._run_authorized_on_main_and_wait(_browser_capture_meta_on_main)
                 else:
                     query = normalize_browser_media_ref_query(
                         parse_qs(parsed.query, keep_blank_values=True)
                     )
-                    result = _run_on_main_and_wait(
+                    result = self._run_authorized_on_main_and_wait(
                         lambda: _load_browser_media_ref_on_main(int(query["card_id"]))
                     )
             except ValueError as exc:
@@ -2045,7 +2064,7 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
         try:
             if request_path == WEBSITE_TAGS_PATH:
                 token = str(self.headers.get("X-Incremento-Token") or "")
-                result = _run_on_main_and_wait(lambda: _website_tags_on_main(payload, token))
+                result = self._run_authorized_on_main_and_wait(lambda: _website_tags_on_main(payload, token))
             elif request_path == HANDOFF_RPC_PATH:
                 if (not isinstance(payload, dict) or set(payload) - {"action", "ticket", "url", "html"}
                         or not isinstance(payload.get("ticket"), str)
@@ -2066,19 +2085,21 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
                 prepared_request = prepare_add_content_request_off_main(payload)
                 try:
                     if prepared_request.get("browser_capture"):
-                        result = _run_browser_capture_and_wait(prepared_request["items"][0])
+                        result = _run_browser_capture_and_wait(
+                            prepared_request["items"][0], require_authorized=self._require_current_authorization,
+                        )
                     else:
-                        result = _run_on_main_and_wait(
+                        result = self._run_authorized_on_main_and_wait(
                             lambda: _add_content_request_on_main(prepared_request)
                         )
                 finally:
                     cleanup_prepared_add_content_request(prepared_request)
             elif request_path == WEB_TRACK_MEDIA_PATH:
-                result = _run_on_main_and_wait(lambda: _update_web_card_media_on_main(payload))
+                result = self._run_authorized_on_main_and_wait(lambda: _update_web_card_media_on_main(payload))
             elif request_path == WEB_TRACK_PATH:
-                result = _run_on_main_and_wait(lambda: _update_web_card_on_main(payload))
+                result = self._run_authorized_on_main_and_wait(lambda: _update_web_card_on_main(payload))
             else:
-                result = _run_on_main_and_wait(lambda: _save_browser_media_ref_on_main(payload))
+                result = self._run_authorized_on_main_and_wait(lambda: _save_browser_media_ref_on_main(payload))
         except ValueError as exc:
             self._send_json(400, {"ok": False, "error": str(exc), "error_code": "invalid_request"})
             return

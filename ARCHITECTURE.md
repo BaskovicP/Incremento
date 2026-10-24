@@ -171,6 +171,8 @@ Searchable PDF/EPUB/OCR text is stored in ordinary SQLite tables with optional F
 
 Manual **Reindex PDF Text** is also background, cancellable, profile-captured, and forced. A large library must never be synchronously extracted from a Search ALL keypress.
 
+PDF results require both a live Anki document and an available managed file. `backend/pdf_search.py` prunes only derived PDF text after confirming that its Anki card is gone; a missing file alone never authorizes deletion. `frontend/pdf_search_lifecycle.py` captures exact PDF IDs before note deletion and reconciles them through the serialized collection queue after deletion or Undo/Redo. Explicit Search ALL also audits older indexed owners in the background; profile open performs no index scan. A `deleted` marker in `document_index_state` lets Search ALL rebuild restored documents on demand without modifying Anki's undo stack. Generation guards prevent retired extraction jobs from republishing text after deletion or profile closure. Highlights, annotations, source links, extracted notes, and files are outside this cleanup.
+
 ## Configuration and statistics
 
 All shipped Python reads/writes add-on configuration through `backend/config_service.py`. The service versions the shape, normalizes risky values, preserves unknown forward-compatible keys, and keeps the legacy `profiles` scheduler-preset alias synchronized with `scheduler_presets`.

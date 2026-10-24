@@ -67,6 +67,33 @@ def _write_test_epub(path: Path) -> None:
 
 
 class TestEnsureEpubExtracted:
+    @pytest.mark.parametrize("budget, error", [
+        ("_MAX_EPUB_PACKAGE_ITEMS", "too many spine items"),
+        ("_MAX_EPUB_METADATA_BYTES", "text index is too large"),
+    ])
+    def test_repeated_chapter_amplification_is_rejected_atomically(self, tmp_path, monkeypatch, budget, error):
+        src = tmp_path / "repeated.epub"
+        with zipfile.ZipFile(src, "w") as zf:
+            zf.writestr("META-INF/container.xml", '<container><rootfile full-path="book.opf"/></container>')
+            zf.writestr("book.opf", '<package xmlns="http://www.idpf.org/2007/opf">'
+                        '<manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest>'
+                        '<spine>' + '<itemref idref="chapter"/>' * 20 + '</spine></package>')
+            zf.writestr("chapter.xhtml", '<html><body><p>' + 'Chapter text. ' * 100 + '</p></body></html>')
+        extract_root = tmp_path / "extracted"
+        previous = extract_root / src.name
+        previous.mkdir(parents=True)
+        (previous / "keep.txt").write_text("previous safe extraction")
+        monkeypatch.setattr(epub_manager, "get_epub_extract_root", lambda profile=None: str(extract_root))
+        # Small budgets exercise the same amplification without exhausting the test host.
+        monkeypatch.setattr(epub_manager, budget, 10 if budget.endswith("ITEMS") else 4096, raising=False)
+
+        with pytest.raises(RuntimeError, match=error):
+            epub_manager.ensure_epub_extracted(str(src))
+
+        assert (previous / "keep.txt").read_text() == "previous safe extraction"
+        assert not (previous / "metadata.json").exists()
+        assert list(extract_root.glob(".*-extract-*")) == []
+
     def test_extracts_metadata_and_sections(self, tmp_path):
         src = tmp_path / "sample.epub"
         _write_test_epub(src)
@@ -171,6 +198,30 @@ class TestEnsureEpubExtracted:
 
 
 class TestEpubSanitization:
+    @pytest.mark.parametrize("prefix", ["x:", ""])
+    def test_namespace_active_elements_are_removed_and_policy_has_html_namespace(self, tmp_path, prefix):
+        from xml.etree import ElementTree as ET
+
+        chapter = tmp_path / "namespace.xhtml"
+        chapter.write_text(
+            '<html xmlns="urn:untrusted" xmlns:x="http://www.w3.org/1999/xhtml">'
+            '<head xmlns=""><title>Book</title></head><body>'
+            f'<{prefix}script>window.owned=1</{prefix}script>'
+            f'<{prefix}iframe src="chapter.xhtml"></{prefix}iframe>'
+            '<p>Readable text</p></body></html>', encoding="utf-8",
+        )
+
+        epub_manager._clean_html_file(str(chapter))
+
+        document = ET.parse(chapter).getroot()
+        assert not any(element.tag.rsplit("}", 1)[-1] in {"script", "iframe"}
+                       for element in document.iter())
+        ns = "{http://www.w3.org/1999/xhtml}"
+        policy = document.find(f"{ns}head/{ns}meta")
+        assert policy is not None
+        assert "script-src 'none'" in policy.get("content")
+        assert "Readable text" in "".join(document.itertext())
+
     def test_extraction_sanitizes_non_spine_html_documents(self, tmp_path):
         src = tmp_path / "linked-page.epub"
         _write_test_epub(src)

@@ -6,6 +6,45 @@ import db_schema
 from db_schema import DatabaseSchemaTooNewError, initialize_schema
 
 
+def test_highlight_document_indexes_upgrade_existing_rows_and_are_reused():
+    import db
+
+    with sqlite3.connect(":memory:") as conn:
+        previous = tuple(m for m in db._SCHEMA_MIGRATIONS if m[0] <= 16)
+        initialize_schema(conn, bootstrap=db._create_tables, migrations=previous)
+        for table in ("pdf_highlights", "epub_highlights"):
+            conn.execute(f"INSERT INTO {table}(id, card_id, text) VALUES('same', 7, 'kept')")
+            conn.execute(f"INSERT INTO {table}(id, card_id, text) VALUES('same', 8, 'other')")
+        conn.commit()
+        for _ in range(2):
+            assert initialize_schema(conn, bootstrap=db._create_tables, migrations=db._SCHEMA_MIGRATIONS) == 17
+        for table in ("pdf_highlights", "epub_highlights"):
+            assert conn.execute(f"SELECT text FROM {table} WHERE card_id=7").fetchall() == [("kept",)]
+            plan = conn.execute(f"EXPLAIN QUERY PLAN SELECT * FROM {table} WHERE card_id=7").fetchall()
+            assert any("SEARCH" in row[3] and "card_id=?" in row[3] for row in plan)
+        assert conn.execute("SELECT count(*) FROM schema_migrations WHERE version=17").fetchone() == (1,)
+
+
+def test_highlight_document_index_migration_rolls_back_both_indexes_and_ledger():
+    import db
+
+    with sqlite3.connect(":memory:") as conn:
+        previous = tuple(m for m in db._SCHEMA_MIGRATIONS if m[0] <= 16)
+        initialize_schema(conn, bootstrap=db._create_tables, migrations=previous)
+        before = conn.execute("SELECT name FROM sqlite_master WHERE type='index' ORDER BY name").fetchall()
+
+        def fail(connection):
+            db._migration_17_highlight_document_indexes(connection)
+            raise RuntimeError("index migration interrupted")
+
+        with pytest.raises(RuntimeError, match="interrupted"):
+            initialize_schema(conn, bootstrap=db._create_tables,
+                              migrations=previous + ((17, "highlight_document_indexes", fail),))
+        assert conn.execute("SELECT name FROM sqlite_master WHERE type='index' ORDER BY name").fetchall() == before
+        assert conn.execute("PRAGMA user_version").fetchone() == (16,)
+        assert conn.execute("SELECT max(version) FROM schema_migrations").fetchone() == (16,)
+
+
 def _bootstrap(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE TABLE baseline(id INTEGER PRIMARY KEY)")
 
@@ -161,7 +200,7 @@ def test_statistics_history_schema_rejects_invalid_rows(tmp_path):
     db.close_connection()
     conn = db.get_connection(str(tmp_path), "TestProfile")
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 16
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 17
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 "INSERT INTO reading_page_history "

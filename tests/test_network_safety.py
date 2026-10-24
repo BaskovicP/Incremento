@@ -69,6 +69,28 @@ def test_public_url_validation_accepts_public_dns_answer():
     ) == "https://example.test/file.pdf"
 
 
+@pytest.mark.parametrize("address", ["224.0.0.1", "239.255.255.250", "ff02::1", "ff0e::1", "::ffff:224.0.0.1"])
+def test_public_fetch_rejects_multicast_literals_and_dns_before_connecting(address):
+    host = f"[{address}]" if ":" in address else address
+    with pytest.raises(network_safety.UnsafeNetworkTargetError):
+        network_safety.validate_public_http_url(f"https://{host}/resource")
+
+    created = []
+    with pytest.raises(network_safety.UnsafeNetworkTargetError):
+        network_safety._create_public_connection(
+            ("example.test", 443),
+            resolver=_resolver_for(address),
+            socket_factory=lambda *_args: created.append(object()),
+        )
+    assert created == []
+
+
+@pytest.mark.parametrize("host", ["93.184.216.34", "[2606:4700:4700::1111]", "[::ffff:93.184.216.34]"])
+def test_public_fetch_still_accepts_public_unicast_literals(host):
+    url = f"https://{host}/resource"
+    assert network_safety.validate_public_http_url(url) == url
+
+
 def test_connection_rejects_mixed_dns_before_opening_a_socket():
     created = []
 

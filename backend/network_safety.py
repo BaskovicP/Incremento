@@ -115,7 +115,11 @@ def _address_is_public(address: str) -> bool:
         parsed = ipaddress.ip_address(str(address).split("%", 1)[0])
     except ValueError:
         return False
-    return bool(parsed.is_global)
+    if isinstance(parsed, ipaddress.IPv6Address) and parsed.ipv4_mapped is not None:
+        parsed = parsed.ipv4_mapped
+    # ipaddress considers multicast ranges global, including link-scoped IPv6.
+    # HTTP fetches may connect only to public unicast destinations.
+    return bool(parsed.is_global and not parsed.is_multicast)
 
 
 def validate_public_http_url(
@@ -135,7 +139,7 @@ def validate_public_http_url(
     except ValueError:
         literal = None
     if literal is not None:
-        if not literal.is_global:
+        if not _address_is_public(str(literal)):
             raise UnsafeNetworkTargetError("Private or special network addresses are not allowed.")
         return clean_url
 

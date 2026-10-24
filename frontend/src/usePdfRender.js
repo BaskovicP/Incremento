@@ -64,8 +64,29 @@ export function usePdfRender() {
   const loadSequenceRef    = useRef(0);
   const loadingTaskRef     = useRef(null);
 
-  useEffect(() => { pageRef.current = page; }, [page]);
-  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  const pendingRenderRef   = useRef(null);
+  const renderTaskRef      = useRef(null);
+  const workerPollRef      = useRef(null);
+
+  // Refs track the requested destination; React state describes the last
+  // displayed page. A delayed state effect must not rewind queued navigation.
+  const retireRender = useCallback(() => {
+    ++renderSequenceRef.current;
+    pendingRenderRef.current = null;
+    try { renderTaskRef.current?.cancel(); } catch (_) {}
+    if (textLayerRef.current?._cancelTextLayer) {
+      textLayerRef.current._cancelTextLayer();
+      textLayerRef.current._cancelTextLayer = null;
+    }
+  }, []);
+
+  useEffect(() => () => {
+    ++loadSequenceRef.current;
+    retireRender();
+    clearInterval(workerPollRef.current);
+    pdfDocRef.current = null;
+    try { loadingTaskRef.current?.destroy()?.catch(() => {}); } catch (_) {}
+  }, [retireRender]);
 
   /* ── Text layer (PDF.js 4.x) ──────────────────────────────────────────────── */
   const renderTextLayer = useCallback((pg, viewport) => {
@@ -129,63 +150,73 @@ export function usePdfRender() {
   /* ── Render page ──────────────────────────────────────────────────────────── */
   const renderPage = useCallback((num) => {
     const doc = pdfDocRef.current;
-    if (busyRef.current || !doc) return;
-    busyRef.current = true;
-    const renderSequence = ++renderSequenceRef.current;
+    if (!doc) return;
+    const sequence = ++renderSequenceRef.current;
+    pendingRenderRef.current = {doc, num, zoom: zoomRef.current, sequence,
+      cardId: cardIdRef.current};
     setLinkAnnotations([]);
-
     if (textLayerRef.current?._cancelTextLayer) {
       textLayerRef.current._cancelTextLayer();
       textLayerRef.current._cancelTextLayer = null;
     }
+    if (busyRef.current) return;
+    busyRef.current = true;
 
-    doc.getPage(num).then(pg => {
-      if (renderSequence !== renderSequenceRef.current) return;
-      const backId  = activeCvsRef.current === 'a' ? 'b' : 'a';
-      const frontId = activeCvsRef.current;
-      const backCvs  = backId  === 'a' ? canvasARef.current : canvasBRef.current;
-      const frontCvs = frontId === 'a' ? canvasARef.current : canvasBRef.current;
-      if (!backCvs) { busyRef.current = false; return; }
-
-      const colW = containerRef.current?.offsetWidth || 800;
-      lastRenderWidthRef.current = colW;
-      const maxH = Math.max(window.innerHeight - 120, 300);
-      const base = pg.getViewport({ scale: 1 });
-      let scale  = Math.min(colW / base.width, maxH / base.height) * zoomRef.current;
-      if (!scale || scale <= 0) scale = 1;
-
-      const viewport = pg.getViewport({ scale });
-      const dpr      = window.devicePixelRatio || 1;
-
-      backCvs.width        = viewport.width  * dpr;
-      backCvs.height       = viewport.height * dpr;
-      backCvs.style.width  = viewport.width  + 'px';
-      backCvs.style.height = viewport.height + 'px';
-
-      pg.render({ canvasContext: backCvs.getContext('2d'), viewport, transform: [dpr, 0, 0, dpr, 0, 0] })
-        .promise
-        .then(() => {
-          if (renderSequence !== renderSequenceRef.current) return;
-          backCvs.dataset.pdfCard = String(cardIdRef.current);
-          backCvs.dataset.pdfPage = String(num);
-          backCvs.style.display  = 'block';
-          if (frontCvs) frontCvs.style.display = 'none';
-          activeCvsRef.current = backId;
-          setPage(num);
-          pageRef.current = num;
-          busyRef.current = false;
-          if (containerRef.current) containerRef.current.style.height = viewport.height + 'px';
-          renderTextLayer(pg, viewport);
-          renderLinkAnnotations(pg, viewport, renderSequence, num);
-        })
-        .catch(() => {
-          if (renderSequence !== renderSequenceRef.current) return;
-          setError('reader_render_error'); busyRef.current = false;
-        });
-    }).catch(() => {
-      if (renderSequence !== renderSequenceRef.current) return;
-      setError('reader_page_error'); busyRef.current = false;
-    });
+    // One owner drains the slot, including across document switches. Never
+    // resize/reuse a back canvas until its previous PDF.js render has settled.
+    const drain = async () => {
+      try {
+        while (pendingRenderRef.current) {
+          const request = pendingRenderRef.current;
+          pendingRenderRef.current = null;
+          const current = () => request.sequence === renderSequenceRef.current
+            && request.doc === pdfDocRef.current;
+          let failure = 'reader_page_error';
+          try {
+            const pg = await request.doc.getPage(request.num);
+            if (!current()) continue;
+            const backId = activeCvsRef.current === 'a' ? 'b' : 'a';
+            const backCvs = backId === 'a' ? canvasARef.current : canvasBRef.current;
+            const frontCvs = backId === 'a' ? canvasBRef.current : canvasARef.current;
+            if (!backCvs) continue;
+            const colW = containerRef.current?.offsetWidth || 800;
+            lastRenderWidthRef.current = colW;
+            const maxH = Math.max(window.innerHeight - 120, 300);
+            const base = pg.getViewport({scale: 1});
+            let scale = Math.min(colW / base.width, maxH / base.height) * request.zoom;
+            if (!scale || scale <= 0) scale = 1;
+            const viewport = pg.getViewport({scale});
+            const dpr = window.devicePixelRatio || 1;
+            backCvs.width = viewport.width * dpr;
+            backCvs.height = viewport.height * dpr;
+            backCvs.style.width = viewport.width + 'px';
+            backCvs.style.height = viewport.height + 'px';
+            failure = 'reader_render_error';
+            renderTaskRef.current = pg.render({canvasContext: backCvs.getContext('2d'),
+              viewport, transform: [dpr, 0, 0, dpr, 0, 0]});
+            await renderTaskRef.current.promise;
+            if (!current()) continue;
+            backCvs.dataset.pdfCard = String(request.cardId);
+            backCvs.dataset.pdfPage = String(request.num);
+            backCvs.style.display = 'block';
+            if (frontCvs) frontCvs.style.display = 'none';
+            activeCvsRef.current = backId;
+            setError('');
+            setPage(request.num);
+            if (containerRef.current) containerRef.current.style.height = viewport.height + 'px';
+            renderTextLayer(pg, viewport);
+            renderLinkAnnotations(pg, viewport, request.sequence, request.num);
+          } catch (_error) {
+            if (current()) setError(failure);
+          } finally {
+            renderTaskRef.current = null;
+          }
+        }
+      } finally {
+        busyRef.current = false;
+      }
+    };
+    void drain();
   }, [renderLinkAnnotations, renderTextLayer]);
 
   /* ── PDF loading ──────────────────────────────────────────────────────────── */
@@ -197,8 +228,8 @@ export function usePdfRender() {
     setContents([]);
     setContentsReady(false);
     setTotalPages(0);
-    ++renderSequenceRef.current;
-    busyRef.current = false;
+    retireRender();
+    setError('');
     pdfDocRef.current = null;
     try { loadingTaskRef.current?.destroy()?.catch(() => {}); } catch (_) {}
     const lib = window.pdfjsLib;
@@ -245,13 +276,17 @@ export function usePdfRender() {
       .catch(() => {
         if (sequence === loadSequenceRef.current) setError('reader_load_error');
       });
-  }, [renderPage]);
+  }, [renderPage, retireRender]);
 
   /**
    * startViewer — initialise state for a new card.
    * NOTE: does NOT touch window._incPdfHighlights — caller must handle that.
    */
   const startViewer = useCallback((cardId, filename, startPage, startZoom, startReadPage = 0) => {
+    retireRender();
+    ++loadSequenceRef.current;
+    pdfDocRef.current = null;
+    clearInterval(workerPollRef.current);
     const normalizedCardId = Number(cardId);
     cardIdRef.current   = Number.isFinite(normalizedCardId) && normalizedCardId > 0 ? normalizedCardId : 0;
     filenameRef.current = filename;
@@ -269,10 +304,11 @@ export function usePdfRender() {
         if (typeof window.pdfjsLib !== 'undefined') { clearInterval(poll); doStart(); }
         else if (++attempts > POLL_MAX) { clearInterval(poll); setError('PDF.js failed to load.'); }
       }, POLL_MS);
+      workerPollRef.current = poll;
       return;
     }
     doStart();
-  }, [doStart]);
+  }, [doStart, retireRender]);
 
   const nav = useCallback((delta) => {
     const doc = pdfDocRef.current;
@@ -337,7 +373,7 @@ export function usePdfRender() {
       if (Math.abs(newW - lastRenderWidthRef.current) < 5) return;
       clearTimeout(timer);
       timer = setTimeout(() => {
-        if (!busyRef.current && pdfDocRef.current) renderPage(pageRef.current);
+        if (pdfDocRef.current) renderPage(pageRef.current);
       }, 150);
     });
     observer.observe(container);

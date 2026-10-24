@@ -1,8 +1,11 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
+import { INACTIVE_PDF_SNAPSHOT_MODE } from './pdfSnapshot.mjs';
 import {attachPdfLinkPreview, createPdfPreviewRenderer} from './pdfLinkPreview.mjs';
 
 export default function PdfLinkPreview({containerRef, pdfDocRef, links, tlLeft, sourcePage,
-  documentToken, disabled, maxPage, pageLabels, appearance, tr, zoom, onZoom}) {
+  documentToken, disabled, snapshotMode = INACTIVE_PDF_SNAPSHOT_MODE, maxPage, pageLabels, appearance, tr, zoom, onZoom}) {
+  const capturing = useSyncExternalStore(snapshotMode.subscribe, snapshotMode.getSnapshot);
+  const unavailable = disabled || capturing;
   const [preview, setPreview] = useState(null);
   const popupRef = useRef(null);
   const contentRef = useRef(null);
@@ -12,14 +15,14 @@ export default function PdfLinkPreview({containerRef, pdfDocRef, links, tlLeft, 
   useEffect(() => {
     const container = containerRef.current, popup = popupRef.current;
     const doc = pdfDocRef.current;
-    if (!container || !popup || !doc || disabled || !links.length) return;
+    if (!container || !popup || !doc || unavailable || !links.length) return;
     const renderer = createPdfPreviewRenderer({createCanvas: () => document.createElement('canvas'),
       onChange: setPreview, pixelRatio: window.devicePixelRatio, zoom: zoomRef.current});
     rendererRef.current = renderer;
     const detach = attachPdfLinkPreview({container, popup, host: window, links, tlLeft, doc,
       preview: renderer, maxPage});
     return () => {detach(); renderer.dispose(); rendererRef.current = null;};
-  }, [containerRef, pdfDocRef, links, tlLeft, sourcePage, documentToken, disabled, maxPage]);
+  }, [containerRef, pdfDocRef, links, tlLeft, sourcePage, documentToken, unavailable, maxPage]);
 
   useEffect(() => {void rendererRef.current?.setZoom(zoom);}, [zoom]);
 
@@ -52,7 +55,7 @@ export default function PdfLinkPreview({containerRef, pdfDocRef, links, tlLeft, 
   return (
     <aside ref={popupRef} id="pdf-link-preview" role="dialog" aria-modal="false"
       aria-label={tr('reader_link_preview')}
-      style={{display: preview ? 'flex' : 'none', flexDirection: 'column', position: 'fixed',
+      style={{display: preview && !unavailable ? 'flex' : 'none', flexDirection: 'column', position: 'fixed',
         left, top, width, maxHeight: Math.max(40, window.innerHeight - top - 12), zIndex: 180,
         textAlign: 'left', background: '#252525', color: '#f4f4f5', border: '1px solid #777',
         borderRadius: 8, boxShadow: '0 8px 28px rgba(0,0,0,0.45)', overflow: 'hidden'}}>

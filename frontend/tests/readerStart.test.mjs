@@ -30,6 +30,7 @@ function registerBridge(pending = null) {
     setPageLinksDocument: update => {state.pageLinksDocument = update(state.pageLinksDocument);},
     startViewer: (...args) => state.starts.push(args),
     clampScrollRatio: (value) => value,
+    snapshotMode: {setActive: value => {state.snapshotActive = value;}},
     compareHighlights: () => 0,
     DEFAULT_LIMIT_STATUS: {},
   };
@@ -48,7 +49,7 @@ function registerBridge(pending = null) {
     'pendingPageTopScrollRef', 'pendingResumeScrollRef', 'pendingResumePageRef',
     'pageRef', 'cardIdRef', 'suppressSearchSyncRef', 'pendingHighlightSelectionRef',
     'resizeHighlightRef', 'contentsGenerationRef', 'pendingContentsFractionRef',
-    'pendingDestinationPointRef',
+    'pendingDestinationPointRef', 'snapStartRef',
   ]) scope[name] = { current: null };
   scope.highlightRangeCacheRef = { current: new Map() };
   vm.runInNewContext(source.slice(start, finish), scope);
@@ -126,3 +127,12 @@ for (const entry of ['pending', 'direct']) {
     assert.equal(state.language.tr('reader_previous_page'), 'Previous page');
   });
 }
+
+test('starting another PDF exits snapshot selection and clears an unfinished drag', () => {
+  const {scope, state} = registerBridge(null);
+  state.snapshotActive = true;
+  scope.snapStartRef.current = {x: 10, y: 20};
+  scope.window.incrementoPdfStart(17, 'fixture.pdf', 1, 1);
+  assert.equal(state.snapshotActive, false);
+  assert.equal(scope.snapStartRef.current, null);
+});

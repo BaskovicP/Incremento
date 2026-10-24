@@ -76,13 +76,14 @@ function loader() {
   const contents = [];
   const scope = {
     useCallback: callback => callback,
+    retireRender: () => {},
     resolveWorkerSrc: () => 'local-worker.js',
     pdfDocRef: { current: null }, pageRef: { current: 1 },
     filenameRef: { current: 'sample.pdf' },
     cardIdRef: { current: 55 },
     loadSequenceRef: { current: 0 }, loadingTaskRef: { current: null },
     renderSequenceRef: { current: 0 }, busyRef: { current: false },
-    setTotalPages: () => {}, renderPage: page => rendered.push(page), setError: error => errors.push(error),
+    setTotalPages: () => {}, renderPage: page => rendered.push(page), setError: error => { if (error) errors.push(error); },
     setPageLabels: value => labels.push(value),
     setContents: value => contents.push(value), setContentsReady: () => {}, loadPdfContents,
     setPage: value => pages.push(value),
@@ -210,4 +211,151 @@ test('a cancelled older PDF load cannot show an error over a newer document', as
   await tasks[0].promise.catch(() => {});
   await Promise.resolve();
   assert.deepEqual(errors, []);
+});
+
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
+  return {promise, resolve, reject};
+}
+
+// Run the real hook; only React lifecycle, DOM and PDF.js are boundaries.
+function renderHarness() {
+  const source = readFileSync(new URL('../src/usePdfRender.js', import.meta.url), 'utf8')
+    .replace(/^import .*;\n/gm, '').replace('export function usePdfRender', 'function usePdfRender');
+  const slots = [], effects = [], renders = [], commands = [], textPages = [];
+  let cursor = 0;
+  const useState = initial => {
+    const index = cursor++;
+    if (!(index in slots)) slots[index] = initial;
+    return [slots[index], value => { slots[index] = typeof value === 'function' ? value(slots[index]) : value; }];
+  };
+  const documents = [];
+  const timers = [];
+  let resize;
+  const scope = {
+    useState, useRef: initial => useState({current: initial})[0],
+    useCallback: callback => callback, useEffect: callback => effects.push(callback),
+    resolvePdfAnnotationLink: async annotation => annotation,
+    normalizePdfPageLabels, pdfPageLabelsMessage: pageLabelModule.pdfPageLabelsMessage,
+    annotatePdfTextStyles, loadPdfContents,
+    setTimeout: callback => {timers.push(callback); return timers.length;}, clearTimeout() {},
+    setInterval() {}, clearInterval() {},
+    ResizeObserver: class { constructor(callback) { resize = callback; } observe() {} disconnect() {} },
+    window: {innerHeight: 920, devicePixelRatio: 2, location: {href: 'http://localhost/'},
+      pycmd: command => commands.push(command), pdfjsLib: {
+        GlobalWorkerOptions: {},
+        TextLayer: class {
+          constructor({textContentSource}) { this.page = textContentSource; }
+          render() { textPages.push(this.page); return Promise.resolve(); }
+          cancel() {}
+        },
+        getDocument: () => ({promise: Promise.resolve(documents.shift()), destroy: async () => {}}),
+      }},
+    URL,
+  };
+  vm.runInNewContext(source + '\nglobalThis.hook = usePdfRender;', scope);
+  function state() { cursor = 0; return scope.hook(); }
+  const api = state();
+  for (const ref of [api.canvasARef, api.canvasBRef]) {
+    ref.current = {style: {}, dataset: {}, getContext: () => ({canvas: ref.current})};
+  }
+  api.containerRef.current = {offsetWidth: 600, style: {}};
+  api.textLayerRef.current = {style: {setProperty() {}}, addEventListener() {}, removeEventListener() {}};
+  const cleanups = effects.map(effect => effect()).filter(Boolean);
+  function document(id, {delayedPage = false} = {}) {
+    const pages = [];
+    const doc = {numPages: 20, getPageLabels: async () => null, getOutline: async () => [],
+      getPage: number => {
+        const page = {pageNumber: number, streamTextContent: () => `${id}:${number}`,
+          getTextContent: async () => ({items: []}), getAnnotations: async () => [],
+          getViewport: ({scale}) => ({width: 600 * scale, height: 800 * scale, scale}),
+          render: options => {
+            const completion = deferred();
+            const job = {id, number, ...options, ...completion, cancelled: false,
+              cancel() {this.cancelled = true;}};
+            renders.push(job);
+            return job;
+          }};
+        const ready = deferred(); pages.push({number, ready, page});
+        return delayedPage ? ready.promise : Promise.resolve(page);
+      }};
+    documents.push(doc);
+    return {doc, pages};
+  }
+  return {api, state, document, renders, commands, textPages,
+    resize: width => {api.containerRef.current.offsetWidth = width; resize([{contentRect: {width}}]); timers.splice(0).forEach(run => run());},
+    unmount: () => cleanups.forEach(cleanup => cleanup())};
+}
+
+test('rapid page and zoom requests render only the latest pending destination at unchanged pixel density', async () => {
+  const h = renderHarness(); h.document('first');
+  h.api.startViewer(7, 'first.pdf', 1, 1);
+  await setImmediate();
+  h.api.nav(1); h.api.nav(1); h.api.adjustZoom(1); h.api.adjustZoom(1);
+  assert.equal(h.renders.length, 1, 'never render concurrently into a canvas');
+  h.renders[0].resolve(); await setImmediate();
+  assert.deepEqual(h.renders.map(job => job.number), [1, 3]);
+  assert.equal(h.api.pageRef.current, 3, 'obsolete completion must not rewind the requested page');
+  assert.equal(h.renders[1].viewport.scale, 1.2);
+  h.renders[1].resolve(); await setImmediate();
+  assert.equal(h.state().page, 3);
+  assert.equal(h.state().zoom, 1.2);
+  assert.equal(h.api.busyRef.current, false);
+  assert.deepEqual(h.textPages, ['first:3']);
+  assert.equal(h.renders[1].canvasContext.canvas.width, 600 * 1.2 * 2);
+  assert.ok(h.commands.includes('incremento_pdf_nav:7:3'));
+});
+
+test('a resize during rendering is queued and the newest width wins', async () => {
+  const h = renderHarness(); h.document('first');
+  h.api.startViewer(7, 'first.pdf', 1, 1); await setImmediate();
+  h.resize(500); h.resize(450);
+  h.renders[0].resolve(); await setImmediate();
+  assert.equal(h.renders.length, 2);
+  assert.equal(h.renders[1].viewport.width, 450);
+  h.renders[1].resolve(); await setImmediate();
+  assert.equal(h.api.busyRef.current, false);
+});
+
+test('an obsolete render failure drains the queue without showing a stale error', async () => {
+  const h = renderHarness(); h.document('first');
+  h.api.startViewer(7, 'first.pdf', 1, 1); await setImmediate();
+  h.api.nav(1);
+  h.renders[0].reject(new Error('obsolete render')); await setImmediate();
+  assert.equal(h.renders.length, 2);
+  assert.equal(h.state().error, '');
+  h.renders[1].reject(new Error('current render')); await setImmediate();
+  assert.equal(h.state().error, 'reader_render_error');
+  assert.equal(h.api.busyRef.current, false);
+  h.api.nav(1); await setImmediate();
+  h.renders[2].resolve(); await setImmediate();
+  assert.equal(h.state().error, '');
+  assert.equal(h.state().page, 3);
+});
+
+test('switching PDFs cancels obsolete work and waits for its canvas before rendering the new document', async () => {
+  const h = renderHarness(); h.document('old');
+  h.api.startViewer(7, 'old.pdf', 1, 1); await setImmediate();
+  h.api.nav(1);
+  h.document('new'); h.api.startViewer(8, 'new.pdf', 9, 1); await setImmediate();
+  assert.equal(h.renders[0].cancelled, true);
+  assert.equal(h.renders.length, 1, 'cancellation must settle before reusing the canvas');
+  h.renders[0].resolve(); await setImmediate();
+  assert.deepEqual(h.renders.map(job => `${job.id}:${job.number}`), ['old:1', 'new:9']);
+  h.renders[1].resolve(); await setImmediate();
+  assert.deepEqual(h.textPages, ['new:9']);
+  assert.equal(h.state().page, 9);
+});
+
+test('obsolete page loading is discarded and unmount prevents queued rendering', async () => {
+  const h = renderHarness(); const old = h.document('old', {delayedPage: true});
+  h.api.startViewer(7, 'old.pdf', 1, 1); await setImmediate();
+  h.document('new'); h.api.startViewer(8, 'new.pdf', 5, 1); await setImmediate();
+  old.pages[0].ready.resolve(old.pages[0].page); await setImmediate();
+  assert.deepEqual(h.renders.map(job => job.id), ['new']);
+  h.api.nav(1); h.unmount();
+  h.renders[0].resolve(); await setImmediate();
+  assert.equal(h.renders.length, 1);
+  assert.deepEqual(h.textPages, []);
 });

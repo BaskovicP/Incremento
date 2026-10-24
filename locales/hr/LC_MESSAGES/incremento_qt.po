@@ -2247,3 +2247,12 @@ msgstr "Bilješke"
 
 msgid "search_all_annotations_tooltip"
 msgstr "Pretraži bilješke uz PDF i EPUB istaknute dijelove."
+
+msgid "search_all_searching"
+msgstr "Pretraživanje…"
+
+msgid "search_all_cancelled"
+msgstr "Pretraživanje je otkazano."
+
+msgid "search_all_failed"
+msgstr "Pretraživanje nije uspjelo: {error}"

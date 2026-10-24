@@ -47,7 +47,10 @@ def test_fold_button_toggles_every_level_and_saved_places_without_navigating():
                 branches = [popup._tree.topLevelItem(0),
                     popup._tree.topLevelItem(0).child(0),
                     popup._tree.topLevelItem(1), popup._tree.topLevelItem(2)]
-                assert button.accessibleName() == t('reader_contents_expand_all')
+                assert button.accessibleName() == t('reader_contents_collapse_all')
+                QTest.mouseClick(button, Qt.MouseButton.LeftButton)
+                assert not any(item.isExpanded() for item in branches)
+                assert popup._tree.currentItem() == branches[0]
                 QTest.mouseClick(button, Qt.MouseButton.LeftButton)
                 assert all(item.isExpanded() for item in branches)
                 assert button.accessibleName() == t('reader_contents_collapse_all')
@@ -62,10 +65,10 @@ def test_fold_button_toggles_every_level_and_saved_places_without_navigating():
                     item.setExpanded(True)
                 assert button.accessibleName() == t('reader_contents_collapse_all')
                 branches[1].setExpanded(False)
-                assert button.accessibleName() == t('reader_contents_expand_all')
+                assert button.accessibleName() == t('reader_contents_collapse_all')
                 button.setFocus()
                 QTest.keyClick(button, Qt.Key.Key_Space)
-                assert all(item.isExpanded() for item in branches)
+                assert not any(item.isExpanded() for item in branches)
                 assert popup.isVisible()
                 assert opened == [] and saved == []
                 popup.close()

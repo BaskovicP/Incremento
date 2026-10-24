@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from concurrent.futures import CancelledError
+from dataclasses import dataclass
+import os
+
 try:
     from .db import get_connection, search_text_match_score, split_search_terms
 except ImportError:
@@ -28,6 +32,100 @@ _SEARCH_SPECS = {
         "excerpt",
     ),
 }
+
+
+@dataclass(frozen=True)
+class SearchNote:
+    fields: tuple[str, ...]
+    model_name: str
+    pdf_filename: str | None = None
+
+
+class SearchCollection:
+    """Bounded metadata batches belonging to one search and operation collection."""
+
+    def __init__(self, col, *, cancel=None):
+        self.col = col
+        self.cancel = cancel
+        self.cards: dict[int, int | None] = {}
+        self.notes: dict[int, SearchNote | None] = {}
+        self._model_names: dict[int, str] = {}
+        self._pdf_fields: dict[int, int | None] = {}
+        self._pdf_files: dict[tuple[str, str, str], bool] = {}
+
+    def check_cancelled(self) -> None:
+        if self.cancel is not None and self.cancel.is_set():
+            raise CancelledError()
+
+    def _batches(self, ids, cache):
+        missing = list(dict.fromkeys(int(value) for value in ids if int(value) not in cache))
+        for start in range(0, len(missing), 900):
+            self.check_cancelled()
+            yield missing[start:start + 900]
+        self.check_cancelled()
+
+    def load_cards(self, ids) -> None:
+        for batch in self._batches(ids, self.cards):
+            self.cards.update((cid, None) for cid in batch)
+            placeholders = ",".join("?" for _ in batch)
+            self.cards.update(
+                (int(cid), int(nid)) for cid, nid in self.col.db.all(
+                    f"SELECT id, nid FROM cards WHERE id IN ({placeholders})", *batch,
+                )
+            )
+
+    def load_notes(self, ids) -> None:
+        for batch in self._batches(ids, self.notes):
+            self.notes.update((nid, None) for nid in batch)
+            placeholders = ",".join("?" for _ in batch)
+            for nid, mid, fields in self.col.db.all(
+                f"SELECT id, mid, flds FROM notes WHERE id IN ({placeholders})", *batch,
+            ):
+                self.check_cancelled()
+                if mid not in self._model_names:
+                    model = self.col.models.get(mid) or {}
+                    self._model_names[mid] = str(model.get("name") or "")
+                    self._pdf_fields[mid] = next(
+                        (int(field.get("ord", i)) for i, field in enumerate(model.get("flds", ()))
+                         if field.get("name") == "PDF_Filename"), None,
+                    )
+                values = tuple(str(fields or "").split("\x1f"))
+                ordinal = self._pdf_fields[mid]
+                filename = (values[ordinal].strip()
+                            if ordinal is not None and 0 <= ordinal < len(values) else "")
+                if not filename and self._model_names[mid] != "Incremento PDF":
+                    filename = None
+                self.notes[int(nid)] = SearchNote(
+                    values, self._model_names[mid], filename,
+                )
+
+    def pdf_available(self, note, addon_dir: str, profile: str) -> bool:
+        if note is None or note.pdf_filename is None:
+            return False
+        key = (addon_dir, profile, note.pdf_filename)
+        if key not in self._pdf_files:
+            try:
+                from .pdf_manager import pdf_storage_abspath
+            except ImportError:
+                from pdf_manager import pdf_storage_abspath
+            try:
+                path = pdf_storage_abspath(note.pdf_filename, profile=profile, addon_dir=addon_dir)
+                self._pdf_files[key] = bool(path and os.path.isfile(path))
+            except (OSError, ValueError, RuntimeError):
+                self._pdf_files[key] = False
+        return self._pdf_files[key]
+
+    def pdf_card_available(self, cid: int, addon_dir: str, profile: str) -> bool:
+        return self.pdf_available(self.notes.get(self.cards.get(cid)), addon_dir, profile)
+
+    def load_document_titles(self, ids) -> None:
+        ids = tuple(ids)
+        self.load_cards(ids)
+        self.load_notes(self.cards[cid] for cid in ids if self.cards.get(cid) is not None)
+
+    def document_title(self, cid: int) -> str | None:
+        note = self.notes.get(self.cards.get(cid))
+        return note.fields[0] if note is not None and note.fields else None
 
 
 def search_excerpt_rows(
