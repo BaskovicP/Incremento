@@ -1,4 +1,6 @@
 {
+  "reader_pdf_focus_mode_hint": "隐藏左侧 Anki 区域，让 PDF 占满可用宽度。可在牌组列表、概览和复习时使用。回答按钮仍保持可见，您的选择会自动保存。",
+  "reader_pdf_focus_mode": "PDF 专注模式",
   "reader_previous_page": "上一页",
   "reader_next_page": "下一页",
   "reader_go_to_page": "跳转到第 {page} 页",

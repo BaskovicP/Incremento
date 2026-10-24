@@ -1,4 +1,4 @@
-"""A disposable browser with no Anki bridge, cookies, or local-file access."""
+"""Selected-text web search, with optional isolated persistent website storage."""
 
 from aqt.qt import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, Qt, QUrl
 from PyQt6.QtWebEngineCore import (
@@ -14,11 +14,14 @@ except ImportError:
     from backend.i18n import t
 
 from .file_shell import open_companion_url
+from .browser_profiles import create_browser_profile, destroy_browser
 
 
 def _http_url(url) -> bool:
     try:
-        normalize_external_http_url(url.toString())
+        # The default display form decodes %20 into spaces, causing valid
+        # search-result requests and links to fail the whitespace check.
+        normalize_external_http_url(url.toString(QUrl.ComponentFormattingOption.FullyEncoded))
         return True
     except (TypeError, ValueError):
         return False
@@ -45,10 +48,12 @@ class _SearchPage(QWebEnginePage):
 
 
 class GoogleSearchDialog(QDialog):
-    def __init__(self, parent=None, *, anki_profile):
+    def __init__(self, parent=None, *, anki_profile, addon_dir=None, remember_logins=False):
         super().__init__(parent)
         self.anki_profile = anki_profile
-        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        # Keep a remembered browser alive when hidden so rapidly reopening it
+        # cannot create two profiles writing to the same Chromium database.
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, not remember_logins)
         self.setWindowModality(Qt.WindowModality.NonModal)
         self.setWindowTitle(t("selection_search_title"))
         self.resize(760, 560)
@@ -66,9 +71,12 @@ class GoogleSearchDialog(QDialog):
 
         self._view = QWebEngineView(self)
         self._view.setAccessibleName(t("selection_search_results"))
-        # An unnamed profile is off the record. Destroy pages before the profile.
-        self._profile = QWebEngineProfile()
-        self._view.destroyed.connect(self._profile.deleteLater)
+        # Search never shares cookies or the reader's bridge with the Web dock.
+        self._profile = (create_browser_profile(addon_dir, anki_profile, search=True)
+                         if remember_logins else QWebEngineProfile())
+        # The view was added first and owns the page. Parenting the profile after
+        # it also guarantees ordered cleanup if the originating editor closes.
+        self._profile.setParent(self)
         self._profile.downloadRequested.connect(lambda download: download.cancel())
         self._requests = _SearchRequests(self._profile)
         self._profile.setUrlRequestInterceptor(self._requests)
@@ -124,8 +132,11 @@ class GoogleSearchDialog(QDialog):
     def _open_browser(self) -> None:
         url = self._view.url()
         if _http_url(url):
-            open_companion_url(url.toString())
+            open_companion_url(url.toString(QUrl.ComponentFormattingOption.FullyEncoded))
 
     def done(self, result: int) -> None:
         self._view.stop()
         super().done(result)
+
+    def dispose(self) -> None:
+        destroy_browser(self, self._profile)

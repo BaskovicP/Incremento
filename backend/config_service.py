@@ -51,6 +51,7 @@ _BOOLEAN_DEFAULTS = {
     "auto_create_topics_deck": True,
     "topic_postpone_enabled": False,
     "pdf_force_default_appearance": False,
+    "pdf_focus_mode": False,
     "pdf_link_hover_preview_enabled": True,
     "pdf_show_highlight_delete_buttons": True,
 }
@@ -246,6 +247,16 @@ def configured_companion_browser(config: Mapping[str, Any] | None = None) -> str
     return browser if browser in {"chrome", "firefox"} else "chrome"
 
 
+def configured_web_search_engine(config: Mapping[str, Any] | None = None) -> str:
+    value = (config or {}).get("web_search_engine")
+    engine = value.strip().casefold() if isinstance(value, str) else ""
+    return engine if engine in {"google", "duckduckgo"} else "google"
+
+
+def configured_search_remember_logins(config: Mapping[str, Any] | None = None) -> bool:
+    return _bool((config or {}).get("search_remember_logins"), False)
+
+
 def configured_pdf_default_appearance(
     config: Mapping[str, Any] | None = None,
 ) -> str:
@@ -311,6 +322,8 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     """Return a validated config while preserving forward-compatible keys."""
     config = copy.deepcopy(dict(raw or {}))
     config["companion_browser"] = configured_companion_browser(config)
+    config["web_search_engine"] = configured_web_search_engine(config)
+    config["search_remember_logins"] = configured_search_remember_logins(config)
     config["day_end_time"] = configured_day_end_time(config)
     config["ui_language"] = normalize_language_choice(config.get("ui_language"))
     config["config_schema_version"] = CONFIG_SCHEMA_VERSION
@@ -330,6 +343,7 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     }
     config["pdf_citation_page_numbering"] = configured_pdf_citation_page_numbering(config)
     config["pdf_force_default_appearance"] = configured_pdf_force_default_appearance(config)
+    config.setdefault("pdf_focus_mode", False)
     config["pdf_snapshot_auto_field_enabled"] = (
         configured_pdf_snapshot_auto_field_enabled(config)
     )

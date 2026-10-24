@@ -2,6 +2,8 @@
 
 This document defines Incremento's persistence boundaries, dependency direction, and recovery model. It is the durable reference for changes that span Anki, SQLite, profile files, Qt, or the browser companion.
 
+Embedded website storage is managed by `frontend/browser_profiles.py`: the Web reader keeps its existing per-profile `web_profile/` directory, and the search popup uses a separate `search_profile/` directory only when **Remember website logins** is enabled. Both paths come from `backend/paths.py`. Persistent profiles have unique storage names and profile-local cache paths; pages are owned by their widgets and destroyed before the profile at profile close/application shutdown so Chromium can flush cookies and local storage. The search popup remains bridge-free, with temporary storage by default. Search provider and persistence preferences are normalized through `backend/config_service.py` and applied only after Settings saves successfully.
+
 ## System boundaries
 
 Incremento is an Anki add-on, not a second flashcard database. Anki remains authoritative for:

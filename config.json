@@ -26,9 +26,12 @@
     "pdf_snapshot_auto_fields": {},
     "pdf_default_appearance": "original",
     "pdf_force_default_appearance": false,
+    "pdf_focus_mode": false,
     "priority_lower_is_more_important": true,
     "remember_browser_card_scroll": true,
     "companion_browser": "chrome",
+    "web_search_engine": "google",
+    "search_remember_logins": false,
     "show_priority_dialog_after_answer": false,
     "reviewer_priority_badge_card_types": {
         "topics": true,

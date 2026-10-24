@@ -833,3 +833,15 @@ msgstr "请输入应用 ID 和密钥，或清空两个字段。凭据最多 512 
 #. SimpleTex saved credentials in Extraction settings.
 msgid "settings_simpletex_activation"
 msgstr "扫描步骤：打开阅读器 → 截图 → 选择公式 → 扫描 MathJax…。如果 PDF 图片自动插入，请关闭下方的自动使用记忆的 PDF 截图字段。"
+
+#. Web search preferences
+msgid "settings_web_search_engine"
+msgstr "所选文本的搜索引擎："
+
+#. Web search preferences
+msgid "settings_search_remember_logins"
+msgstr "记住网站登录状态"
+
+#. Web search preferences
+msgid "settings_search_remember_logins_hint"
+msgstr "仅适用于搜索窗口。为每个 Anki 配置单独保存 Cookie 和网站存储。关闭此选项会关闭搜索窗口并使用临时存储；以前保存的登录状态会保留，但在重新启用前不会使用。某些网站需要使用“在浏览器中打开”。"

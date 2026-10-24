@@ -56,6 +56,16 @@ def test_focus_is_reclaimed_after_the_deferred_question_transition():
     assert focus_calls == ["reviewer", "reviewer", "reviewer"]
 
 
+def test_hidden_pdf_card_pane_returns_keyboard_focus_to_answer_controls():
+    calls = []
+    mw = _main_window(calls)
+    mw.web.isHidden = lambda: True
+    mw.bottomWeb = types.SimpleNamespace(setFocus=lambda: calls.append("answers"))
+
+    assert reviewer_focus.restore_reviewer_focus(mw) is True
+    assert calls == ["answers"]
+
+
 def test_focus_recovery_retries_after_a_reader_dock_steals_focus_late():
     focus_calls = []
     mw = _main_window(focus_calls)

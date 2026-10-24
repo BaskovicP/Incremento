@@ -309,6 +309,9 @@ def reset_for_profile_switch() -> None:
     _hide_pdf_dock_for_inactive_context()
     if _pdf_dock is not None:
         try:
+            focus_mode = getattr(_pdf_dock, '_pdf_focus_mode', None)
+            if focus_mode is not None:
+                focus_mode.stop(reset=True)
             dialog = getattr(_pdf_dock, '_annotation_dialog', None)
             if dialog:
                 dialog.reject()
@@ -509,6 +512,43 @@ def configured_scroll_to_top_on_page_change(config: dict | None = None) -> bool:
     return bool(cfg.get("pdf_scroll_to_top_on_page_change", True))
 
 
+def configured_pdf_focus_mode(config: dict | None = None) -> bool:
+    return bool(_config(config).get('pdf_focus_mode', False))
+
+
+def save_pdf_focus_mode(enabled: bool) -> bool:
+    try:
+        cfg = load_addon_config(mw.addonManager, _ADDON_PKG)
+        cfg['pdf_focus_mode'] = bool(enabled)
+        save_addon_config(mw.addonManager, _ADDON_PKG, cfg)
+    except Exception:
+        tooltip(t('reader_pdf_focus_save_failed'))
+        return False
+    return True
+
+
+def apply_pdf_focus_preference(config: dict | None = None) -> None:
+    focus_mode = getattr(_pdf_dock, '_pdf_focus_mode', None)
+    if focus_mode is not None:
+        focus_mode.set_enabled(configured_pdf_focus_mode(config))
+
+
+def _pdf_focus_state_js() -> str:
+    focus_mode = getattr(_pdf_dock, '_pdf_focus_mode', None)
+    state = {'cardId': current_pdf_card_id(),
+             'enabled': bool(focus_mode is not None and focus_mode.enabled),
+             'available': bool(focus_mode is not None and focus_mode.available)}
+    return (
+        f'window._incPdfFocusState = {json.dumps(state)};'
+        'window.incrementoSetPdfFocusState?.(window._incPdfFocusState);'
+    )
+
+
+def _push_pdf_focus_state() -> None:
+    if _pdf_dock is not None:
+        _pdf_dock._view.page().runJavaScript(_pdf_focus_state_js())
+
+
 def configured_pdf_default_appearance(config: dict | None = None) -> str:
     return _configured_pdf_default_appearance(_config(config))
 
@@ -585,6 +625,9 @@ def _clear_current_pdf_context() -> int | None:
 
 
 def _stop_current_pdf_view() -> None:
+    focus_mode = getattr(_pdf_dock, '_pdf_focus_mode', None)
+    if focus_mode is not None:
+        focus_mode.stop()
     previous_card_id = _clear_current_pdf_context()
     if previous_card_id is None or not _cb_pdf_view_stopped:
         return
@@ -603,6 +646,35 @@ def _hide_pdf_dock_for_inactive_context() -> None:
         _pdf_dock.hide()
     except RuntimeError:
         _pdf_dock = None
+
+
+def _pdf_reader_is_visible() -> bool:
+    if _pdf_dock is None:
+        return False
+    try:
+        focus_mode = getattr(_pdf_dock, '_pdf_focus_mode', None)
+        return focus_mode.is_visible() if focus_mode is not None else _pdf_dock.isVisible()
+    except RuntimeError:
+        return False
+
+
+def _present_pdf_reader(card_id: int, note, filename: str) -> None:
+    focus_mode = getattr(_pdf_dock, '_pdf_focus_mode', None)
+    if focus_mode is None:
+        _pdf_dock.show()
+        _pdf_dock.raise_()
+        return
+    title = pdf_display_label_from_filename(filename, fallback='PDF')
+    try:
+        title = str(note['Title'] or '').strip() or title
+    except (KeyError, TypeError):
+        pass
+    focus_mode.set_enabled(configured_pdf_focus_mode())
+    # Focus belongs to the open reader, including PDFs opened from the bookshelf
+    # on Decks/Overview or as references. The next-card hook restores card UI.
+    focus_mode.present(eligible=True, title=title)
+
+
 _pdf_shortcuts = []
 _pdf_key_filter = None
 
@@ -1307,7 +1379,7 @@ def current_pdf_search_context() -> dict | None:
     if card_id is None or _pdf_dock is None:
         return None
     try:
-        if not _pdf_dock.isVisible():
+        if not _pdf_reader_is_visible():
             return None
     except Exception:
         return None
@@ -1684,7 +1756,7 @@ def _show_pdf_reader_context_menu(view, position) -> bool:
     def is_current(menu):
         try:
             return (
-                _pdf_dock is not None and _pdf_dock._view is view and _pdf_dock.isVisible()
+                _pdf_dock is not None and _pdf_dock._view is view and _pdf_reader_is_visible()
                 and _active_profile() == profile and _current_pdf_card_id == card_id
                 and _current_pdf_filename == filename and viewer_page._bridge_nonce == nonce
                 and view._incremento_image_menu_request is request
@@ -2594,7 +2666,7 @@ def _open_pdf_contents(payload: object) -> bool:
     def is_current():
         return (_pdf_dock is dock and _active_profile() == profile
                 and current_pdf_card_id() == card_id and viewer_page._bridge_nonce == nonce
-                and dock.isVisible())
+                and _pdf_reader_is_visible())
 
     def open_entry(entry):
         if is_current():
@@ -2868,7 +2940,23 @@ def _pdf_extract_html(payload: dict) -> str:
 
 
 def _handle_pdf_js_message(msg: str) -> None:
-    if msg.startswith('incremento_pdf_page_links:'):
+    if msg.startswith('incremento_pdf_focus:'):
+        if len(msg) > 512:
+            return
+        try:
+            payload = json.loads(msg.split(':', 1)[1])
+        except (TypeError, ValueError):
+            return
+        if not isinstance(payload, dict):
+            return
+        cid, enabled = payload.get('cardId'), payload.get('enabled')
+        if (type(cid) is not int or cid <= 0 or cid != current_pdf_card_id()
+                or type(enabled) is not bool):
+            return
+        focus_mode = getattr(_pdf_dock, '_pdf_focus_mode', None)
+        if focus_mode is not None:
+            focus_mode.request_enabled(enabled)
+    elif msg.startswith('incremento_pdf_page_links:'):
         if len(msg) <= 10_000:
             try:
                 _handle_pdf_page_links(json.loads(msg.split(':', 1)[1]))
@@ -3411,7 +3499,7 @@ def _focused_pdf_extraction_view():
     if reference is not None:
         return reference.view
     focus = QApplication.focusWidget()
-    if focus is None or _pdf_dock is None or not _pdf_dock.isVisible():
+    if focus is None or _pdf_dock is None or not _pdf_reader_is_visible():
         return None
     view = _pdf_dock._view
     return view if focus is view or view.isAncestorOf(focus) else None
@@ -3678,7 +3766,14 @@ def _build_pdf_dock():
             position,
         ),
     )
-    dock.setWidget(view)
+    try:
+        from .pdf_focus_mode import PdfFocusMode
+    except ImportError:
+        from pdf_focus_mode import PdfFocusMode
+    dock._pdf_focus_mode = PdfFocusMode(
+        mw, dock, view, enabled=configured_pdf_focus_mode(), save_preference=save_pdf_focus_mode,
+        state_changed=_push_pdf_focus_state,
+    )
     dock._pdf_profile = profile
     dock._pdf_request_interceptor = interceptor
     dock._view = view
@@ -3775,7 +3870,7 @@ def trigger_viewer_action(action: str) -> None:
         return
     try:
         view = _pdf_dock._view
-        if not _pdf_dock.isVisible():
+        if not _pdf_reader_is_visible():
             return
     except Exception:
         return
@@ -3802,7 +3897,7 @@ def open_current_document_find() -> bool:
     if _pdf_dock is None:
         return False
     try:
-        if not _pdf_dock.isVisible():
+        if not _pdf_reader_is_visible():
             return False
         _pdf_dock._view.page().runJavaScript(
             "window.incrementoPdfOpenFind && window.incrementoPdfOpenFind();",
@@ -3860,7 +3955,7 @@ def open_current_pdf_search_hit(hit: dict, index: int, query: str) -> bool:
 
 
 def open_current_document_contents() -> bool:
-    if _pdf_dock is None or current_pdf_card_id() is None or not _pdf_dock.isVisible():
+    if _pdf_dock is None or current_pdf_card_id() is None or not _pdf_reader_is_visible():
         return False
     trigger_viewer_action("contents")
     return True
@@ -3908,6 +4003,7 @@ def show_pdf_in_dock(
     except Exception:
         normalized_card_id = 0
     resolved_filename = str(filename or "").strip()
+    note = None
     if normalized_card_id > 0:
         try:
             card = mw.col.get_card(normalized_card_id) if getattr(mw, "col", None) else None
@@ -3995,8 +4091,7 @@ def show_pdf_in_dock(
         showInfo(t("reader_pdf_secure_failed", error=exc))
         return
 
-    _pdf_dock.show()
-    _pdf_dock.raise_()
+    _present_pdf_reader(normalized_card_id, note, resolved_filename)
 
     if _cb_pdf_view_started:
         try:
@@ -4059,6 +4154,7 @@ def show_pdf_in_dock(
     _sync_pdf_search_state(str(search_query or ""), list(search_hits or []), resolved_search_index)
 
     js = (
+        _pdf_focus_state_js() +
         f"window._pdfWorkerSrc    = {json.dumps(_WORKER_URL)};"
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
@@ -4110,11 +4206,13 @@ def on_pdf_question_shown(card) -> None:
     global _pdf_dock
     try:
         if card is None:
+            _hide_pdf_dock_for_inactive_context()
             return
         try:
             note = mw.col.get_note(card.nid)
             model = mw.col.models.get(note.mid)
         except Exception:
+            _hide_pdf_dock_for_inactive_context()
             return
         if model is None or model.get("name") != PDF_NOTE_TYPE:
             _hide_pdf_dock_for_inactive_context()
@@ -4122,6 +4220,7 @@ def on_pdf_question_shown(card) -> None:
         try:
             filename = note["PDF_Filename"]
         except (KeyError, TypeError):
+            _hide_pdf_dock_for_inactive_context()
             return
         page = get_page(_ADDON_DIR, _active_profile(), card.id)
         zoom = get_zoom(_ADDON_DIR, _active_profile(), card.id)
@@ -4141,6 +4240,7 @@ def on_pdf_question_shown(card) -> None:
             offer_due_review_prompt=False,
         )
     except Exception as e:
+        _hide_pdf_dock_for_inactive_context()
         print(f"[Incremento] on_pdf_question_shown error: {e}")
 
 
@@ -4221,7 +4321,7 @@ def on_add_cards_did_add_note(note) -> None:
         if active_card_id is not None and active_card_id != cid:
             return  # a different PDF card became active; don't interfere
         try:
-            if _pdf_dock is not None and not _pdf_dock.isVisible():
+            if _pdf_dock is not None and not _pdf_reader_is_visible():
                 if active_card_id is None:
                     _current_pdf_card_id = cid
                     _current_pdf_filename = restore_filename

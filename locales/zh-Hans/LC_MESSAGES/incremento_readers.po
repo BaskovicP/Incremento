@@ -3416,15 +3416,15 @@ msgstr "使用 Google 搜索"
 
 #. Selected-text search popup
 msgid "selection_search_title"
-msgstr "Google 搜索"
+msgstr "网页搜索"
 
 #. Selected-text search popup
 msgid "selection_search_results"
-msgstr "Google 搜索结果"
+msgstr "搜索结果"
 
 #. Selected-text search popup
 msgid "selection_search_loading"
-msgstr "正在加载 Google…"
+msgstr "正在加载…"
 
 #. Selected-text search popup
 msgid "selection_search_failed"
@@ -3751,3 +3751,16 @@ msgstr "目标位置"
 
 msgid "reader_destination_saving"
 msgstr "正在检查目标位置…"
+
+#. Web search preferences
+msgid "selection_search_duckduckgo"
+msgstr "使用 DuckDuckGo 搜索"
+
+msgid "reader_pdf_focus_mode"
+msgstr "PDF 专注模式"
+
+msgid "reader_pdf_focus_mode_hint"
+msgstr "隐藏左侧 Anki 区域，让 PDF 占满可用宽度。可在牌组列表、概览和复习时使用。回答按钮仍保持可见，您的选择会自动保存。"
+
+msgid "reader_pdf_focus_save_failed"
+msgstr "无法保存 PDF 专注模式。请重试。"

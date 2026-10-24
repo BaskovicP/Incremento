@@ -2631,6 +2631,24 @@ def _add_document_link_context_actions(view, menu):
 _register_selection_search_hooks()
 
 
+def _close_website_browsers() -> None:
+    _selection_search_mod.reset_for_profile_switch()
+    _web_dock_mod.reset_for_profile_switch()
+
+
+def _register_website_browser_shutdown() -> None:
+    gui_hooks.profile_will_close.remove(_web_dock_mod.reset_for_profile_switch)
+    gui_hooks.profile_will_close.append(_web_dock_mod.reset_for_profile_switch)
+    try:
+        mw.app.aboutToQuit.disconnect(_close_website_browsers)
+    except (TypeError, RuntimeError):
+        pass
+    mw.app.aboutToQuit.connect(_close_website_browsers)
+
+
+_register_website_browser_shutdown()
+
+
 def _register_document_link_hooks():
     gui_hooks.webview_will_show_context_menu.remove(_add_document_link_context_actions)
     gui_hooks.webview_will_show_context_menu.append(_add_document_link_context_actions)
@@ -3001,6 +3019,7 @@ def _on_profile_did_open() -> None:
     profile = _current_profile_name()
     cfg = _load_addon_config(mw.addonManager, __name__)
     _reset_topic_answer_runtime_state()
+    _selection_search_mod.configure_search(cfg)
     _reset_custom_schedule_answer_runtime_state()
     _learning_leech_tracker.clear()
     _diagnostic_pending_final_interval = None
@@ -7018,9 +7037,12 @@ def openSettingsFunction() -> None:
         current_pdf_default_appearance=_pdf_dock_mod.configured_pdf_default_appearance(cfg),
         current_pdf_link_preview_zoom=_pdf_dock_mod.configured_pdf_link_preview_zoom(cfg, settings_profile),
         current_pdf_force_default_appearance=_pdf_dock_mod.configured_pdf_force_default_appearance(cfg),
+        current_pdf_focus_mode=_pdf_dock_mod.configured_pdf_focus_mode(cfg),
         current_prefer_web_card_resume_in_original_page=configured_prefer_web_card_resume_in_original_page(cfg),
         current_track_web_window_with_extension=configured_track_web_window_with_extension(cfg),
         current_companion_browser=configured_companion_browser(cfg),
+        current_web_search_engine=cfg.get("web_search_engine", "google"),
+        current_search_remember_logins=cfg.get("search_remember_logins", False),
         current_use_fail_pass_on_items=_configured_use_fail_pass_on_items(cfg),
         current_learning_leech_enabled=cfg["learning_leech_enabled"],
         current_learning_leech_threshold=cfg["learning_leech_threshold"],
@@ -7102,9 +7124,12 @@ def openSettingsFunction() -> None:
     cfg["pdf_default_appearance"] = dlg.pdf_default_appearance
     cfg["pdf_link_preview_zoom_by_profile"][settings_profile] = dlg.pdf_link_preview_zoom
     cfg["pdf_force_default_appearance"] = dlg.pdf_force_default_appearance
+    cfg["pdf_focus_mode"] = dlg.pdf_focus_mode
     cfg["prefer_web_card_resume_in_original_page"] = dlg.prefer_web_card_resume_in_original_page
     cfg["track_web_window_with_extension"] = dlg.track_web_window_with_extension
     cfg["companion_browser"] = dlg.companion_browser
+    cfg["web_search_engine"] = dlg.web_search_engine
+    cfg["search_remember_logins"] = dlg.search_remember_logins
     cfg["use_fail_pass_on_items"] = dlg.use_fail_pass_on_items
     cfg["learning_leech_enabled"] = dlg.learning_leech_enabled
     cfg["learning_leech_threshold"] = dlg.learning_leech_threshold
@@ -7148,6 +7173,7 @@ def openSettingsFunction() -> None:
         showInfo(_t("settings_save_failed"))
         return
     _configure_companion_browser(cfg)
+    _selection_search_mod.configure_search(cfg)
     if extract_default_type_changed:
         _add_card_dock_mod.set_current_extract_options(
             mark_topic=dlg.extract_default_type == "topic",
@@ -7168,6 +7194,7 @@ def openSettingsFunction() -> None:
             _web_dock_mod._runtime.dock._track_cb.setChecked(checked)
     except Exception:
         pass
+    _pdf_dock_mod.apply_pdf_focus_preference(cfg)
     try:
         _pdf_dock_mod._pdf_dock._view.page().runJavaScript(
             f"window.incrementoSetAutoHighlightOnExtract && window.incrementoSetAutoHighlightOnExtract({json.dumps(dlg.extract_highlight_when_extracting)});"

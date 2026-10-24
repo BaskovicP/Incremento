@@ -3454,15 +3454,15 @@ msgstr "Search Google"
 
 #. Selected-text search popup
 msgid "selection_search_title"
-msgstr "Google Search"
+msgstr "Web Search"
 
 #. Selected-text search popup
 msgid "selection_search_results"
-msgstr "Google search results"
+msgstr "Search results"
 
 #. Selected-text search popup
 msgid "selection_search_loading"
-msgstr "Loading Google…"
+msgstr "Loading…"
 
 #. Selected-text search popup
 msgid "selection_search_failed"
@@ -3789,3 +3789,16 @@ msgstr "Destination"
 
 msgid "reader_destination_saving"
 msgstr "Checking destination…"
+
+#. Web search preferences
+msgid "selection_search_duckduckgo"
+msgstr "Search DuckDuckGo"
+
+msgid "reader_pdf_focus_mode"
+msgstr "PDF focus"
+
+msgid "reader_pdf_focus_mode_hint"
+msgstr "Hide the left Anki pane and show the PDF across the full available width. Works on Decks, Overview, and during review. Answer controls stay visible and your choice is saved."
+
+msgid "reader_pdf_focus_save_failed"
+msgstr "Could not save PDF focus. Please try again."

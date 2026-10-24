@@ -4,7 +4,43 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from textwrap import dedent
+from textwrap import dedent, indent
+
+
+def _run_popup_test(script):
+    # WebEngine initializes asynchronously. Exercise and destroy the widgets
+    # within QApplication's event loop, just as Anki does.
+    setup = dedent('''
+        import faulthandler
+        faulthandler.enable()
+        from PyQt6.QtQuick import QQuickWindow, QSGRendererInterface
+        QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.Software)
+        from aqt.qt import QApplication, QTimer
+        app = QApplication(['selection-search-test'])
+        app.setQuitOnLastWindowClosed(False)
+    ''')
+    teardown = dedent('''
+        errors = []
+        def run():
+            try:
+                exercise()
+            except BaseException as error:
+                errors.append(error)
+            finally:
+                app.quit()
+        QTimer.singleShot(0, run)
+        app.exec()
+        if errors:
+            raise errors[0]
+    ''')
+    result = subprocess.run(
+        [sys.executable, '-c', setup + '\ndef exercise():\n' + indent(dedent(script), '    ') + teardown],
+        cwd=Path(__file__).resolve().parents[1],
+        env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen', 'QTWEBENGINE_DISABLE_SANDBOX': '1',
+             'QTWEBENGINE_CHROMIUM_FLAGS': '--disable-gpu'},
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_real_popup_is_nonmodal_isolated_and_disposed_on_profile_close():
@@ -12,14 +48,13 @@ def test_real_popup_is_nonmodal_isolated_and_disposed_on_profile_close():
         from types import SimpleNamespace
         from urllib.parse import parse_qs, urlsplit
         from unittest.mock import patch
-        from aqt.qt import QApplication, QCoreApplication, QEvent, QMenu, QPoint, QTextEdit, QUrl, Qt
+        from aqt.qt import QCoreApplication, QEvent, QMenu, QPoint, QTextEdit, QUrl, Qt
         from PyQt6 import sip
         from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineSettings
         from PyQt6.QtWebEngineWidgets import QWebEngineView
         from frontend import selection_search as search
         from frontend.google_search_dialog import _SearchRequests
 
-        app = QApplication(['selection-search-test'])
         loaded = []
         search._active_profile = lambda: 'Synthetic'
 
@@ -101,11 +136,56 @@ def test_real_popup_is_nonmodal_isolated_and_disposed_on_profile_close():
             interceptor.interceptRequest(SimpleNamespace(requestUrl=lambda: QUrl(url), block=blocked.append))
             assert bool(blocked) is expected, (url, blocked)
     ''')
-    result = subprocess.run(
-        [sys.executable, '-c', script],
-        cwd=Path(__file__).resolve().parents[1],
-        env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen', 'QTWEBENGINE_DISABLE_SANDBOX': '1',
-             'QTWEBENGINE_CHROMIUM_FLAGS': '--disable-gpu'},
-        capture_output=True, text=True, timeout=30,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
+    _run_popup_test(script)
+
+
+def test_encoded_search_requests_and_result_links_remain_usable():
+    # DuckDuckGo's results request encodes spaces as %20, unlike our initial
+    # search URL's '+'. Qt's default display string decodes those spaces.
+    script = dedent('''
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from aqt.qt import QUrl
+        from PyQt6.QtWebEngineCore import QWebEnginePage
+        from frontend.google_search_dialog import GoogleSearchDialog
+
+        popup = GoogleSearchDialog(anki_profile='Synthetic')
+        navigation = QWebEnginePage.NavigationType.NavigationTypeLinkClicked
+        allowed = (
+            'https://links.duckduckgo.com/d.js?q=If%20a%20height%20is%20accurately%20recorded%20as',
+            'https://www.google.com/search?q=tea%20%26%20coffee',
+            'https://example.test/a%20b?q=%C4%8Daj%20%2B%20tea#part%20one',
+        )
+        try:
+            for encoded in allowed:
+                url = QUrl(encoded)
+                blocked, loaded, opened = [], [], []
+                popup._requests.interceptRequest(SimpleNamespace(requestUrl=lambda: url, block=blocked.append))
+                assert not blocked, ('request blocked', encoded)
+                assert popup._page.acceptNavigationRequest(url, navigation, True), encoded
+                with patch.object(popup._view, 'load', loaded.append):
+                    popup.search(encoded)
+                assert loaded == [url], encoded
+                with patch.object(popup._view, 'url', lambda: url), patch(
+                        'frontend.google_search_dialog.open_companion_url', opened.append):
+                    popup._open_browser()
+                assert opened == [encoded], ('external URL changed', opened)
+
+            for unsafe in ('file:///tmp/a%20b', 'qrc:/a%20b', 'javascript:alert(1)',
+                           'https://user:secret@example.test/a%20b', 'https://',
+                           'https://example.test:invalid/a', 'https://example.test/?q=' + '%C4%8D' * 1500):
+                url = QUrl(unsafe)
+                blocked, loaded, opened = [], [], []
+                popup._requests.interceptRequest(SimpleNamespace(requestUrl=lambda: url, block=blocked.append))
+                assert blocked == [True], unsafe
+                assert not popup._page.acceptNavigationRequest(url, navigation, True), unsafe
+                with patch.object(popup._view, 'load', loaded.append):
+                    popup.search(unsafe)
+                with patch.object(popup._view, 'url', lambda: url), patch(
+                        'frontend.google_search_dialog.open_companion_url', opened.append):
+                    popup._open_browser()
+                assert loaded == opened == [], unsafe
+        finally:
+            popup.dispose()
+    ''')
+    _run_popup_test(script)

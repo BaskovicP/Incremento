@@ -422,6 +422,19 @@ resolved_runtime_shortcuts = _MOD.resolved_runtime_shortcuts
 SHORTCUT_ACTION_SPECS = _MOD.SHORTCUT_ACTION_SPECS
 
 
+def test_search_settings_default_to_google_and_private_and_restore_saved_choices():
+    dialog = IncrementoSettingsDialog({})
+    assert dialog.web_search_engine == "google"
+    assert dialog.search_remember_logins is False
+    restored = IncrementoSettingsDialog({}, current_web_search_engine="duckduckgo", current_search_remember_logins=True)
+    assert restored.web_search_engine == "duckduckgo"
+    assert restored.search_remember_logins is True
+    restored._web_search_engine_combo.setCurrentIndex(0)
+    restored._search_remember_logins_cb.setChecked(False)
+    assert restored.web_search_engine == "google"
+    assert restored.search_remember_logins is False
+
+
 def test_companion_browser_defaults_to_chrome_and_can_select_firefox():
     dialog = IncrementoSettingsDialog({})
     assert dialog.companion_browser == "chrome"
@@ -473,6 +486,7 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         "companion_browser": "chrome", "day_end_time": "05:30", "dialog": {"day_end_time": "06:00"},
         "scheduler_presets": {"Evening": {"day_end_time": "23:00"}},
         "future_setting": {"keep": True},
+        "pdf_focus_mode": True,
     })
     original = copy.deepcopy(saved)
     manager = Mock()
@@ -484,10 +498,17 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
 
     def open_dialog(shortcuts, **kwargs):
         assert kwargs["current_companion_browser"] == "chrome"
+        assert kwargs["current_web_search_engine"] == "google"
+        assert kwargs["current_search_remember_logins"] is False
         assert kwargs["current_day_end_time"] == "05:30"
-        dialog = IncrementoSettingsDialog(shortcuts, current_day_end_time=kwargs["current_day_end_time"])
+        assert kwargs["current_pdf_focus_mode"] is True
+        dialog = IncrementoSettingsDialog(shortcuts, current_day_end_time=kwargs["current_day_end_time"],
+            current_pdf_focus_mode=kwargs["current_pdf_focus_mode"])
+        dialog._pdf_focus_mode_cb.setChecked(False)
         dialog._day_end_edit.setTime(_Time(0, 0))
         dialog._companion_browser_combo.setCurrentIndex(1)
+        dialog._web_search_engine_combo.setCurrentIndex(1)
+        dialog._search_remember_logins_cb.setChecked(True)
         dialog.exec = lambda: accepted
         return dialog
 
@@ -500,6 +521,7 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         "_load_addon_config": config_service.load_addon_config,
         "_save_addon_config": config_service.save_addon_config,
     })
+    namespace['_pdf_dock_mod'].configured_pdf_focus_mode.side_effect = lambda cfg: cfg['pdf_focus_mode']
     exec(compile(ast.Module(body=[helper, function], type_ignores=[]), str(path), "exec"), namespace)
     namespace["openSettingsFunction"]()
 
@@ -507,6 +529,11 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
     if accepted and not save_fails:
         stored = manager.writeConfig.call_args.args[1]
         assert stored["companion_browser"] == "firefox"
+        assert stored["web_search_engine"] == "duckduckgo"
+        assert stored["search_remember_logins"] is True
+        assert stored["pdf_focus_mode"] is False
+        namespace['_pdf_dock_mod'].apply_pdf_focus_preference.assert_called_once_with(stored)
+        namespace["_selection_search_mod"].configure_search.assert_called_once_with(stored)
         namespace["_configure_companion_browser"].assert_called_once_with(stored)
         assert stored["day_end_time"] == "00:00"
         assert stored["scheduler_presets"] == original["scheduler_presets"]
@@ -516,6 +543,8 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         if not accepted:
             manager.writeConfig.assert_not_called()
         namespace["_configure_companion_browser"].assert_not_called()
+        namespace["_selection_search_mod"].configure_search.assert_not_called()
+        namespace['_pdf_dock_mod'].apply_pdf_focus_preference.assert_not_called()
 
 
 @pytest.mark.parametrize("choice,expected", [("auto", "auto"),("hr", "hr"),("zh_CN", "zh-Hans")])
@@ -1110,6 +1139,13 @@ class TestIncrementoSettingsDialogReviewerPriorityBadge:
 
 
 class TestIncrementoSettingsDialogPdfPaging:
+    def test_saved_pdf_focus_is_loaded_and_can_be_disabled(self):
+        assert IncrementoSettingsDialog({}).pdf_focus_mode is False
+        dialog = IncrementoSettingsDialog({}, current_pdf_focus_mode=True)
+        assert dialog.pdf_focus_mode is True
+        dialog._pdf_focus_mode_cb.setChecked(False)
+        assert dialog.pdf_focus_mode is False
+
     def test_scroll_to_top_on_next_page_defaults_enabled(self):
         dialog = IncrementoSettingsDialog({})
         assert dialog.pdf_scroll_to_top_on_page_change is True

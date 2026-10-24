@@ -15,6 +15,7 @@ The ZIP now includes:
   - `videos/`
   - `writing/`
   - `web_profile/`
+  - `search_profile/` (website logins saved by the search popup, when enabled)
   - `video_profile/`
 - `config.json` - Incremento add-on config
 - `data/*.json` - human-readable exports of priorities, PDF progress, highlights, and stats

@@ -1,4 +1,6 @@
 {
+  "reader_pdf_focus_mode_hint": "Sakrijte lijevi Anki prikaz i proširite PDF preko pune raspoložive širine. Radi na zaslonima Špilovi i Pregled te tijekom ponavljanja. Gumbi za odgovore ostaju vidljivi, a odabir se sprema.",
+  "reader_pdf_focus_mode": "Fokus na PDF",
   "reader_previous_page": "Prethodna stranica",
   "reader_next_page": "Sljedeća stranica",
   "reader_go_to_page": "Idi na stranicu {page}",

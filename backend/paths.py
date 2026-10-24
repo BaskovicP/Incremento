@@ -173,6 +173,10 @@ def get_web_profile_dir(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "web_profile"
 
 
+def get_search_profile_dir(addon_dir: str, profile: str) -> Path:
+    return get_user_files_dir(addon_dir, profile) / "search_profile"
+
+
 def get_language_packs_dir(addon_dir: str, profile: str) -> Path:
     """Installed user translations; shipped catalogs remain outside user_files."""
     return get_user_files_dir(addon_dir, profile) / 'language_packs'

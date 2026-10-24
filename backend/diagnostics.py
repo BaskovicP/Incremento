@@ -346,6 +346,8 @@ _EVENT_SCHEMAS: dict[str, dict[str, str]] = {
 _KNOWN_CONFIG_KEYS = {
     "pdf_link_preview_zoom_by_profile",
     "companion_browser",
+    "web_search_engine",
+    "search_remember_logins",
     "ui_language",
     "add_card_item_tags",
     "add_card_topic_tags",
@@ -380,6 +382,7 @@ _KNOWN_CONFIG_KEYS = {
     "pdf_citation_page_numbering",
     "pdf_default_appearance",
     "pdf_force_default_appearance",
+    "pdf_focus_mode",
     "pdf_highlight_extract_field",
     "pdf_show_highlight_delete_buttons",
     "pdf_context_rows",
@@ -1186,6 +1189,8 @@ def _sanitize_config_value(value: object, path: tuple[str, ...], default: object
             return _redacted("private_string", text)
         if key == "companion_browser":
             return text if text in {"chrome", "firefox"} else _redacted("free_text", text)
+        if key == "web_search_engine":
+            return text if text in {"google", "duckduckgo"} else _redacted("free_text", text)
         if key == "extract_default_type":
             return text if text in {"item", "topic", "none"} else _redacted("free_text", text)
         if text.casefold() in _SAFE_ENUM_STRINGS:

@@ -64,9 +64,11 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 try:
     from .file_shell import open_companion_url
     from .selection_search import install_selection_search_menu
+    from .browser_profiles import create_browser_profile, destroy_browser
 except ImportError:
     from file_shell import open_companion_url
     from frontend.selection_search import install_selection_search_menu
+    from frontend.browser_profiles import create_browser_profile, destroy_browser
 
 try:
     from ..backend.i18n import get_locale, t, tn
@@ -1109,7 +1111,6 @@ class _WebDockController:
 
     def build_dock(self):
         from PyQt6.QtWebEngineCore import (
-            QWebEngineProfile as _WEProf,
             QWebEngineSettings as _WES,
         )
 
@@ -1127,12 +1128,7 @@ class _WebDockController:
         install_selection_search_menu(view)
 
         if self.runtime.profile is None:
-            self.runtime.profile = _WEProf("incremento_web")
-            _web_profile_dir = str(_paths.get_web_profile_dir(_ADDON_DIR, _active_profile()))
-            self.runtime.profile.setPersistentStoragePath(_web_profile_dir)
-            self.runtime.profile.setPersistentCookiesPolicy(
-                _WEProf.PersistentCookiesPolicy.ForcePersistentCookies
-            )
+            self.runtime.profile = create_browser_profile(_ADDON_DIR, _active_profile())
             self.runtime.profile.setHttpUserAgent(
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -1154,7 +1150,7 @@ class _WebDockController:
                 if attribute is not None:
                     self.runtime.profile.settings().setAttribute(attribute, False)
 
-        page = _WebDockPage(self.runtime)
+        page = _WebDockPage(self.runtime, view)
         view.setPage(page)
 
         def _on_load_started():
@@ -2003,8 +1999,10 @@ def web_citation(url: str | None = None) -> str:
 
 
 class _WebDockPage(QWebEnginePage):
-    def __init__(self, runtime: _WebDockRuntime):
-        super().__init__(runtime.profile)
+    def __init__(self, runtime: _WebDockRuntime, parent=None):
+        if parent is None and runtime.dock is not None:
+            parent = runtime.dock._view
+        super().__init__(runtime.profile, parent)
         self._runtime = runtime
         self._bridge_nonce = secrets.token_urlsafe(24)
 
@@ -3414,19 +3412,15 @@ def reset_for_profile_switch() -> None:
     """
     _clear_native_web_extraction_markers()
     _runtime.extraction_schedule_generation += 1
+    dock, profile = _runtime.dock, _runtime.profile
+    _runtime.dock = None
     _runtime.profile = None
     _runtime.current_card_id = None
     _runtime.current_home_url = None
     _runtime.pending_restore = None
     _runtime.pending_bookmark_restore = None
-    if _runtime.dock is not None:
-        try:
-            _runtime.dock.hide()
-            _runtime.dock.deleteLater()
-        except Exception:
-            pass
-        _runtime.dock = None
     _runtime.extraction_overlay = None
+    destroy_browser(dock, profile)
 
 
 def show_web_in_dock(

@@ -2,6 +2,24 @@ import config_service
 import pytest
 
 
+@pytest.mark.parametrize("engine,remember,expected", [
+    (None, None, ("google", False)),
+    (" DUCKDUCKGO ", "yes", ("duckduckgo", True)),
+    ("google", "false", ("google", False)),
+    ([], {}, ("google", False)),
+    ("https://untrusted.test/?q=", "invalid", ("google", False)),
+])
+def test_search_preferences_are_normalized_and_preserve_unknown_keys(engine, remember, expected):
+    from copy import deepcopy
+    raw = {"web_search_engine": engine, "search_remember_logins": remember, "future": [1]}
+    before = deepcopy(raw)
+    normalized = config_service.normalize_config(raw)
+    assert (normalized["web_search_engine"], normalized["search_remember_logins"]) == expected
+    assert normalized["future"] == [1]
+    assert config_service.normalize_config(normalized) == normalized
+    assert raw == before
+
+
 @pytest.mark.parametrize("raw, expected", [
     (None, 1.5), (True, 1.5), (float("nan"), 1.5), (float("inf"), 1.5),
     ("2.5", 2.5), (0, 1.0), (9, 4.0), (2.13, 2.25),
@@ -227,6 +245,12 @@ def test_missing_pdf_appearance_policy_defaults_to_original_without_force():
 
     assert normalized["pdf_default_appearance"] == "original"
     assert normalized["pdf_force_default_appearance"] is False
+
+
+@pytest.mark.parametrize('raw,expected', [(True, True), ('yes', True), ('false', False), (None, False), ({}, False)])
+def test_pdf_focus_preference_is_normalized(raw, expected):
+    assert config_service.normalize_config({'pdf_focus_mode': raw})['pdf_focus_mode'] is expected
+    assert config_service.normalize_config({})['pdf_focus_mode'] is False
 
 
 def test_pdf_snapshot_field_preferences_are_bounded_and_normalized():

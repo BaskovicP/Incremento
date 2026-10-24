@@ -1,4 +1,6 @@
 {
+  "reader_pdf_focus_mode_hint": "Hide the left Anki pane and show the PDF across the full available width. Works on Decks, Overview, and during review. Answer controls stay visible and your choice is saved.",
+  "reader_pdf_focus_mode": "PDF focus",
   "reader_previous_page": "Previous page",
   "reader_next_page": "Next page",
   "reader_go_to_page": "Go to page {page}",

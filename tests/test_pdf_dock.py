@@ -530,6 +530,30 @@ def test_current_pdf_appearance_re_resolves_after_settings_change(monkeypatch):
     ) == "dark"
 
 
+@pytest.mark.parametrize('payload,expected', [
+    ({'cardId': 42, 'enabled': True}, [True]),
+    ({'cardId': 42, 'enabled': False}, [False]),
+    ({'cardId': 99, 'enabled': True}, []),
+    ({'cardId': '42', 'enabled': True}, []),
+    ({'cardId': 42, 'enabled': 'false'}, []),
+    ({'cardId': 42, 'enabled': 1}, []),
+    ({'cardId': 42}, []),
+    ([], []),
+    (None, []),
+])
+def test_pdf_focus_toolbar_bridge_only_changes_current_pdf(monkeypatch, payload, expected):
+    requested = []
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 42)
+    monkeypatch.setattr(pdf_dock, '_pdf_dock', types.SimpleNamespace(
+        _pdf_focus_mode=types.SimpleNamespace(request_enabled=requested.append)))
+    page = types.SimpleNamespace(_bridge_nonce='test-token', _bridge_card_id=42)
+    message = 'incremento_pdf_focus:' + json.dumps(payload)
+    pdf_dock._dispatch_pdf_bridge_message(page, pdf_dock._PYCMD_BRIDGE + 'wrong:' + message)
+    assert requested == [], 'An unauthenticated message must not change layout or preference'
+    pdf_dock._dispatch_pdf_bridge_message(page, pdf_dock._PYCMD_BRIDGE + 'test-token:' + message)
+    assert requested == expected
+
+
 def test_pdf_appearance_bridge_saves_only_for_current_card(monkeypatch):
     saved = []
     monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)
@@ -2365,8 +2389,10 @@ def test_on_add_cards_did_add_note_ignores_unknown_source_on_non_pdf_reviewer_ca
     assert calls == []
 
 
-def test_on_pdf_question_shown_clears_context_for_non_pdf_card(monkeypatch):
+@pytest.mark.parametrize('transition', ['regular', 'missing-card', 'missing-note', 'review-end'])
+def test_leaving_pdf_review_restores_card_pane_and_clears_context(monkeypatch, transition):
     stopped = []
+    restored = []
 
     class _FakeDock:
         def __init__(self):
@@ -2376,9 +2402,14 @@ def test_on_pdf_question_shown_clears_context_for_non_pdf_card(monkeypatch):
             self.hidden = True
 
     fake_dock = _FakeDock()
+    fake_dock._pdf_focus_mode = types.SimpleNamespace(stop=lambda **kwargs: restored.append(kwargs))
     fake_note = types.SimpleNamespace(mid=1)
+    def get_note(note_id):
+        if transition == 'missing-note':
+            raise KeyError(note_id)
+        return fake_note
     fake_col = types.SimpleNamespace(
-        get_note=lambda note_id: fake_note,
+        get_note=get_note,
         models=types.SimpleNamespace(get=lambda mid: {"name": "Basic"}),
     )
 
@@ -2392,12 +2423,87 @@ def test_on_pdf_question_shown_clears_context_for_non_pdf_card(monkeypatch):
         lambda card_id: stopped.append(card_id),
     )
 
-    pdf_dock.on_pdf_question_shown(types.SimpleNamespace(id=88, nid=123))
+    if transition == 'review-end':
+        pdf_dock.on_pdf_reviewer_will_end()
+    else:
+        pdf_dock.on_pdf_question_shown(None if transition == 'missing-card' else types.SimpleNamespace(id=88, nid=123))
 
     assert fake_dock.hidden is True
     assert pdf_dock.current_pdf_card_id() is None
     assert pdf_dock._current_pdf_filename is None
     assert stopped == [55]
+    assert restored == [{}]
+
+
+def test_focused_pdf_keeps_search_and_toolbar_actions_available(monkeypatch):
+    scripts = []
+    dock = types.SimpleNamespace(
+        isVisible=lambda: False,
+        _pdf_focus_mode=types.SimpleNamespace(is_visible=lambda: True),
+        _view=types.SimpleNamespace(page=lambda: types.SimpleNamespace(runJavaScript=scripts.append)),
+    )
+    monkeypatch.setattr(pdf_dock, '_pdf_dock', dock)
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 55)
+    monkeypatch.setattr(pdf_dock, '_current_pdf_filename', 'source.pdf')
+    assert pdf_dock.current_pdf_search_context()['cardId'] == 55
+    pdf_dock.trigger_viewer_action('open_find')
+    assert pdf_dock.open_current_document_find()
+    assert scripts == ["window.incrementoPdfOpenFind && window.incrementoPdfOpenFind();"] * 2
+
+
+def test_pdf_focus_toggle_saves_through_config_and_survives_reader_restart(monkeypatch):
+    stored = {'future_setting': {'keep': True}, 'pdf_focus_mode': False}
+    class Manager:
+        def getConfig(self, package): return dict(stored)
+        def writeConfig(self, package, config): stored.update(config)
+    monkeypatch.setattr(pdf_dock, 'mw', types.SimpleNamespace(addonManager=Manager()))
+    assert pdf_dock.save_pdf_focus_mode(True)
+    assert stored['pdf_focus_mode'] is True
+    assert stored['future_setting'] == {'keep': True}
+    assert pdf_dock.configured_pdf_focus_mode() is True
+    assert pdf_dock.save_pdf_focus_mode(False)
+    assert pdf_dock.configured_pdf_focus_mode() is False
+
+
+@pytest.mark.parametrize('state,review_id,model_name,eligible', [
+    ('review', 55, 'PDF', True), ('review', 56, 'PDF', True),
+    ('overview', 55, 'PDF', True), ('review', 55, 'Basic', True),
+    ('deckBrowser', None, None, True), ('overview', None, None, True),
+])
+def test_open_pdf_focus_is_available_on_decks_overview_and_review(monkeypatch, state, review_id, model_name, eligible):
+    presentations = []
+    preferences = []
+    note = type('Note', (dict,), {'mid': 1})(Title='A <title>')
+    monkeypatch.setattr(pdf_dock, '_pdf_dock', types.SimpleNamespace(
+        _pdf_focus_mode=types.SimpleNamespace(set_enabled=preferences.append,
+            present=lambda **kwargs: presentations.append(kwargs))))
+    monkeypatch.setattr(pdf_dock, '_config', lambda config=None: {'pdf_focus_mode': True})
+    monkeypatch.setattr(pdf_dock, 'mw', types.SimpleNamespace(
+        state=state, reviewer=types.SimpleNamespace(card=types.SimpleNamespace(id=review_id)),
+        col=types.SimpleNamespace(models=types.SimpleNamespace(
+            get=lambda mid: {'name': pdf_dock.PDF_NOTE_TYPE if model_name == 'PDF' else model_name}))))
+    pdf_dock._present_pdf_reader(55, note, 'source.pdf')
+    assert presentations == [{'eligible': eligible, 'title': 'A <title>'}]
+    assert preferences == [True]
+
+
+@pytest.mark.parametrize('failure', ['load', 'save'])
+def test_pdf_focus_save_failure_reports_error_without_claiming_success(monkeypatch, failure):
+    writes, messages = [], []
+    def load(*args):
+        if failure == 'load':
+            raise OSError('synthetic read failure')
+        return {'future_setting': True}
+    def save(*args):
+        writes.append(args)
+        raise OSError('synthetic write failure')
+    monkeypatch.setattr(pdf_dock, 'mw', types.SimpleNamespace(addonManager=object()))
+    monkeypatch.setattr(pdf_dock, 'load_addon_config', load)
+    monkeypatch.setattr(pdf_dock, 'save_addon_config', save)
+    monkeypatch.setattr(pdf_dock, 'tooltip', messages.append)
+    assert not pdf_dock.save_pdf_focus_mode(True)
+    assert len(messages) == 1
+    assert len(writes) == (1 if failure == 'save' else 0)
 
 
 def test_on_pdf_question_shown_never_opens_automatic_due_prompt(monkeypatch):

@@ -448,6 +448,21 @@ def test_shipped_config_keys_are_explicitly_known() -> None:
     assert set(shipped) <= diagnostics._KNOWN_CONFIG_KEYS
 
 
+def test_search_and_pdf_focus_preferences_export_safe_behavior() -> None:
+    for engine in ("google", "duckduckgo"):
+        config = {"web_search_engine": engine, "search_remember_logins": True, "pdf_focus_mode": False}
+        snapshot = diagnostics.sanitize_config(config)
+        assert snapshot["settings"] == config
+        assert snapshot["redacted_unknown_setting_count"] == 0
+
+
+def test_search_provider_diagnostics_redact_private_values() -> None:
+    for private in PRIVATE_VALUES:
+        snapshot = diagnostics.sanitize_config({"web_search_engine": private})
+        assert snapshot["settings"]["web_search_engine"]["redacted"] is True
+        assert private not in json.dumps(snapshot)
+
+
 def test_extract_default_type_exports_only_safe_choices() -> None:
     for choice in ("item", "topic", "none"):
         snapshot = diagnostics.sanitize_config({"extract_default_type": choice})

@@ -234,6 +234,18 @@
     "reason": "Browser product name; the persisted browser identifier is separate."
   },
   {
+    "file": "frontend/settings_dialog.py",
+    "sink": "addItem",
+    "text": "Google",
+    "reason": "Search provider product name; the persisted provider identifier is separate."
+  },
+  {
+    "file": "frontend/settings_dialog.py",
+    "sink": "addItem",
+    "text": "DuckDuckGo",
+    "reason": "Search provider product name; the persisted provider identifier is separate."
+  },
+  {
     "file": "frontend/companion_setup.py",
     "sink": "getSaveFileName",
     "text": "incremento-firefox.xpi",

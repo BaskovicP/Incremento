@@ -5,10 +5,11 @@ import vm from 'node:vm';
 import { createReaderLanguage, normalizeReaderLocale } from '../src/i18n.mjs';
 import { normalizePdfAppearanceMode } from '../src/pdfAppearance.mjs';
 import {DEFAULT_PDF_LINK_PREVIEW_ZOOM, normalizePdfLinkPreviewZoom} from '../src/pdfLinkPreview.mjs';
+import {pdfFocusState} from '../src/pdfFocus.mjs';
 
 // Exercise the actual global bridge registration without mounting the canvas or
 // PDF.js. React state setters and the render pipeline are the boundary fakes.
-function registerBridge(pending = null) {
+function registerBridge(pending = null, focus = null) {
   const source = readFileSync(new URL('../src/PdfViewer.jsx', import.meta.url), 'utf8');
   const start = source.indexOf('    const startWithHighlights = (');
   const finish = source.indexOf('    return () => {', start);
@@ -16,7 +17,7 @@ function registerBridge(pending = null) {
   const state = { language: createReaderLanguage('en'), starts: [], appearance: 'original', showDeleteX: true, previewZoom: 1.5,
     pageLinksDocument: {cardId: 0, generation: 0} };
   const scope = {
-    window: { _incPdfPending: pending },
+    window: { _incPdfPending: pending, _incPdfFocusState: focus },
     document: { documentElement: { lang: 'en' } },
     createReaderLanguage,
     normalizeReaderLocale,
@@ -25,6 +26,7 @@ function registerBridge(pending = null) {
     setLanguage: (value) => { state.language = value; },
     setLocale: () => {},
     setAppearanceMode: (value) => { state.appearance = value; },
+    setPdfFocusState: value => {state.focus = value;},
     setShowHighlightDeleteButtons: (value) => { state.showDeleteX = value; },
     setLinkPreviewZoom: (value) => {state.previewZoom = value;},
     setPageLinksDocument: update => {state.pageLinksDocument = update(state.pageLinksDocument);},
@@ -54,6 +56,23 @@ function registerBridge(pending = null) {
   scope.highlightRangeCacheRef = { current: new Map() };
   vm.runInNewContext(source.slice(start, finish), scope);
   return { scope, state };
+}
+
+for (const entry of ['pending', 'direct']) {
+  test(`${entry} startup restores PDF focus and accepts committed toolbar/settings changes`, () => {
+    const saved = {cardId: 42, enabled: true, available: true};
+    const {scope, state} = registerBridge(entry === 'pending'
+      ? {cardId: 42, filename: 'fixture.pdf', page: 1, zoom: 1} : null, saved);
+    if (entry === 'direct') scope.window.incrementoPdfStart(42, 'fixture.pdf', 1, 1);
+    assert.deepEqual(pdfFocusState(state.focus, state.pageLinksDocument.cardId), {enabled: true, available: true});
+    scope.window.incrementoSetPdfFocusState({...saved, enabled: false});
+    assert.deepEqual(pdfFocusState(state.focus, state.pageLinksDocument.cardId), {enabled: false, available: true});
+    scope.window.incrementoPdfStart(43, 'next.pdf', 1, 1);
+    assert.equal(pdfFocusState(state.focus, state.pageLinksDocument.cardId).available, false,
+      'The old document must not enable the new toolbar before its current state arrives');
+    scope.window.incrementoSetPdfFocusState({...saved, cardId: 43});
+    assert.equal(pdfFocusState(state.focus, state.pageLinksDocument.cardId).available, true);
+  });
 }
 
 test('PDF startup keeps the selected physical page spot and clears it for a normal open', () => {

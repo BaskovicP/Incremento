@@ -7809,6 +7809,8 @@
       setReadProgress
     };
   }
+  const reader_pdf_focus_mode_hint$2 = "Hide the left Anki pane and show the PDF across the full available width. Works on Decks, Overview, and during review. Answer controls stay visible and your choice is saved.";
+  const reader_pdf_focus_mode$2 = "PDF focus";
   const reader_previous_page$2 = "Previous page";
   const reader_next_page$2 = "Next page";
   const reader_go_to_page$2 = "Go to page {page}";
@@ -8017,6 +8019,8 @@
   const reader_destination_saving$2 = "Checking destination…";
   const reader_cancel$2 = "Cancel";
   const en = {
+    reader_pdf_focus_mode_hint: reader_pdf_focus_mode_hint$2,
+    reader_pdf_focus_mode: reader_pdf_focus_mode$2,
     reader_previous_page: reader_previous_page$2,
     reader_next_page: reader_next_page$2,
     reader_go_to_page: reader_go_to_page$2,
@@ -8225,6 +8229,8 @@
     reader_destination_saving: reader_destination_saving$2,
     reader_cancel: reader_cancel$2
   };
+  const reader_pdf_focus_mode_hint$1 = "Sakrijte lijevi Anki prikaz i proširite PDF preko pune raspoložive širine. Radi na zaslonima Špilovi i Pregled te tijekom ponavljanja. Gumbi za odgovore ostaju vidljivi, a odabir se sprema.";
+  const reader_pdf_focus_mode$1 = "Fokus na PDF";
   const reader_previous_page$1 = "Prethodna stranica";
   const reader_next_page$1 = "Sljedeća stranica";
   const reader_go_to_page$1 = "Idi na stranicu {page}";
@@ -8435,6 +8441,8 @@
   const reader_destination_saving$1 = "Provjera odredišta…";
   const reader_cancel$1 = "Odustani";
   const hr = {
+    reader_pdf_focus_mode_hint: reader_pdf_focus_mode_hint$1,
+    reader_pdf_focus_mode: reader_pdf_focus_mode$1,
     reader_previous_page: reader_previous_page$1,
     reader_next_page: reader_next_page$1,
     reader_go_to_page: reader_go_to_page$1,
@@ -8645,6 +8653,8 @@
     reader_destination_saving: reader_destination_saving$1,
     reader_cancel: reader_cancel$1
   };
+  const reader_pdf_focus_mode_hint = "隐藏左侧 Anki 区域，让 PDF 占满可用宽度。可在牌组列表、概览和复习时使用。回答按钮仍保持可见，您的选择会自动保存。";
+  const reader_pdf_focus_mode = "PDF 专注模式";
   const reader_previous_page = "上一页";
   const reader_next_page = "下一页";
   const reader_go_to_page = "跳转到第 {page} 页";
@@ -8851,6 +8861,8 @@
   const reader_destination_saving = "正在检查目标位置…";
   const reader_cancel = "取消";
   const zhHans = {
+    reader_pdf_focus_mode_hint,
+    reader_pdf_focus_mode,
     reader_previous_page,
     reader_next_page,
     reader_go_to_page,
@@ -10994,6 +11006,16 @@
     const y = (clientY - top) / height;
     return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null;
   }
+  function pdfFocusState(state, cardId) {
+    if (!Number.isSafeInteger(cardId) || cardId <= 0 || (state == null ? void 0 : state.cardId) !== cardId) {
+      return { enabled: false, available: false };
+    }
+    return { enabled: state.enabled === true, available: state.available === true };
+  }
+  function pdfFocusCommand(state, cardId) {
+    const current = pdfFocusState(state, cardId);
+    return current.available ? "incremento_pdf_focus:" + JSON.stringify({ cardId, enabled: !current.enabled }) : null;
+  }
   const PDF_APPEARANCE_MODES = Object.freeze(["original", "dark", "night"]);
   const PAGE_APPEARANCE = Object.freeze({
     original: Object.freeze({
@@ -11447,6 +11469,29 @@
     const suppressSearchSyncRef = reactExports.useRef(false);
     const [searchJumpNonce, setSearchJumpNonce] = reactExports.useState(0);
     const [controlsCollapsed, setControlsCollapsed] = reactExports.useState(false);
+    const [savedPdfFocusState, setPdfFocusState] = reactExports.useState(null);
+    const focusState = pdfFocusState(savedPdfFocusState, pageLinksDocument.cardId);
+    const focusButton = /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        "aria-pressed": focusState.enabled,
+        disabled: !focusState.available,
+        title: tr("reader_pdf_focus_mode_hint"),
+        onClick: () => {
+          const command = pdfFocusCommand(savedPdfFocusState, cardIdRef.current);
+          if (command) window.pycmd(command);
+        },
+        style: {
+          border: focusState.enabled ? "1px solid rgba(96,165,250,0.78)" : "1px solid rgba(180,180,180,0.35)",
+          background: focusState.enabled ? "rgba(59,130,246,0.20)" : "rgba(255,255,255,0.04)",
+          color: focusState.enabled ? "rgb(147,197,253)" : "inherit",
+          fontWeight: focusState.enabled ? 700 : 400,
+          ...controlsCollapsed ? {} : { padding: "2px 9px", fontSize: 11 }
+        },
+        children: tr("reader_pdf_focus_mode")
+      }
+    );
     const controlsRef = reactExports.useRef(null);
     const [measuredControlsHeight, setMeasuredControlsHeight] = reactExports.useState(0);
     const [showControlChooser, setShowControlChooser] = reactExports.useState(false);
@@ -12520,6 +12565,7 @@
         setLanguage(nextLanguage);
         document.documentElement.lang = nextLanguage.locale;
         setAppearanceMode(normalizePdfAppearanceMode(startAppearanceMode));
+        setPdfFocusState(window._incPdfFocusState);
         setShowHighlightDeleteButtons(startShowHighlightDeleteButtons !== false);
         setLinkPreviewZoom(normalizePdfLinkPreviewZoom(startLinkPreviewZoom));
         setLinkBackHistory([]);
@@ -12556,6 +12602,7 @@
       };
       window.incrementoPickPdfHighlightColor = finishHighlightColorPicker;
       window.incrementoPdfStart = startWithHighlights;
+      window.incrementoSetPdfFocusState = setPdfFocusState;
       window.incrementoSetPdfLinkPreviewZoom = (value) => setLinkPreviewZoom(normalizePdfLinkPreviewZoom(value));
       window.incrementoPdfNav = limitAwareNav;
       window.incrementoPdfZoom = adjustZoom;
@@ -12635,6 +12682,7 @@
       return () => {
         delete window.incrementoPickPdfHighlightColor;
         delete window.incrementoPdfStart;
+        delete window.incrementoSetPdfFocusState;
         delete window.incrementoSetPdfLinkPreviewZoom;
         delete window.incrementoPdfNav;
         delete window.incrementoPdfZoom;
@@ -12913,6 +12961,7 @@
                       }
                     ),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(PdfPageLinks, { linksState: pageLinksState, tr }),
+                    focusButton,
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "button",
                       {
@@ -12933,6 +12982,7 @@
                 }
               ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "flex-end", gap: 6, marginBottom: 4 }, children: [
+                  focusButton,
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "button",
                     {

@@ -833,3 +833,15 @@ msgstr "Enter both the App ID and app secret, or clear both fields. Use credenti
 #. SimpleTex saved credentials in Extraction settings.
 msgid "settings_simpletex_activation"
 msgstr "To scan: open a reader → Snapshot → select the formula → Scan for MathJax…. If PDF images insert automatically, turn off Automatically use remembered PDF snapshot fields below."
+
+#. Web search preferences
+msgid "settings_web_search_engine"
+msgstr "Search engine for selected text:"
+
+#. Web search preferences
+msgid "settings_search_remember_logins"
+msgstr "Remember website logins"
+
+#. Web search preferences
+msgid "settings_search_remember_logins_hint"
+msgstr "Applies to the search popup only. Saves cookies and website storage separately for each Anki profile. Turning this off closes the popup and uses temporary storage; previously saved logins are retained but not used until you turn it on again. Some websites require Open in Browser."

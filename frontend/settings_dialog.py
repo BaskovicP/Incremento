@@ -36,6 +36,8 @@ try:
         normalize_pdf_link_preview_zoom,
         configured_extract_default_type,
         configured_companion_browser,
+        configured_web_search_engine,
+        configured_search_remember_logins,
         configured_topic_done_tag, configured_day_end_time, normalize_pdf_appearance_mode,
         normalize_topic_done_tag,
     )
@@ -55,6 +57,8 @@ except ImportError:
         normalize_pdf_link_preview_zoom,
         configured_extract_default_type,
         configured_companion_browser,
+        configured_web_search_engine,
+        configured_search_remember_logins,
         configured_topic_done_tag, configured_day_end_time, normalize_pdf_appearance_mode,
         normalize_topic_done_tag,
     )
@@ -393,9 +397,12 @@ class IncrementoSettingsDialog(QDialog):
         current_pdf_default_appearance: str = "original",
         current_pdf_link_preview_zoom: float = 1.5,
         current_pdf_force_default_appearance: bool = False,
+        current_pdf_focus_mode: bool = False,
         current_prefer_web_card_resume_in_original_page: bool = True,
         current_track_web_window_with_extension: bool = True,
         current_companion_browser: str = "chrome",
+        current_web_search_engine: str = "google",
+        current_search_remember_logins: bool = False,
         current_use_fail_pass_on_items: bool = True,
         current_item_skip_enabled: bool = False,
         current_item_skip_minutes: int = 30,
@@ -954,6 +961,11 @@ class IncrementoSettingsDialog(QDialog):
         )
         reviewer_controls_layout.addWidget(self._pdf_scroll_to_top_on_page_change_cb)
 
+        self._pdf_focus_mode_cb = QCheckBox(t('reader_pdf_focus_mode'))
+        self._pdf_focus_mode_cb.setChecked(bool(current_pdf_focus_mode))
+        self._pdf_focus_mode_cb.setToolTip(t('reader_pdf_focus_mode_hint'))
+        reviewer_controls_layout.addWidget(self._pdf_focus_mode_cb)
+
         pdf_appearance_row = QWidget()
         pdf_appearance_layout = QHBoxLayout(pdf_appearance_row)
         pdf_appearance_layout.setContentsMargins(0, 0, 0, 0)
@@ -1029,6 +1041,29 @@ class IncrementoSettingsDialog(QDialog):
         browser_hint = QLabel(t("settings_companion_browser_hint"))
         browser_hint.setWordWrap(True)
         reviewer_controls_layout.addWidget(browser_hint)
+
+        search_row = QHBoxLayout()
+        search_label = QLabel(t("settings_web_search_engine"))
+        self._web_search_engine_combo = QComboBox()
+        self._web_search_engine_combo.addItem("Google", "google")
+        self._web_search_engine_combo.addItem("DuckDuckGo", "duckduckgo")
+        self._web_search_engine_combo.setCurrentIndex(self._web_search_engine_combo.findData(
+            configured_web_search_engine({"web_search_engine": current_web_search_engine})
+        ))
+        search_label.setBuddy(self._web_search_engine_combo)
+        self._web_search_engine_combo.setAccessibleName(t("settings_web_search_engine"))
+        search_row.addWidget(search_label)
+        search_row.addWidget(self._web_search_engine_combo)
+        search_row.addStretch(1)
+        reviewer_controls_layout.addLayout(search_row)
+        self._search_remember_logins_cb = QCheckBox(t("settings_search_remember_logins"))
+        self._search_remember_logins_cb.setChecked(configured_search_remember_logins(
+            {"search_remember_logins": current_search_remember_logins}
+        ))
+        reviewer_controls_layout.addWidget(self._search_remember_logins_cb)
+        search_hint = QLabel(t("settings_search_remember_logins_hint"))
+        search_hint.setWordWrap(True)
+        reviewer_controls_layout.addWidget(search_hint)
 
         self._track_web_window_with_extension_cb = QCheckBox(
             t('settings_track_web_card_external_pages_via_chrome_extension_by')
@@ -1932,6 +1967,10 @@ class IncrementoSettingsDialog(QDialog):
         return normalize_language_choice(self._language_combo.currentData())
 
     @property
+    def pdf_focus_mode(self) -> bool:
+        return bool(self._pdf_focus_mode_cb.isChecked())
+
+    @property
     def pending_language_pack(self) -> dict | None:
         return self._language_pack_controls.pending_pack if self._language_pack_controls else None
 
@@ -2036,6 +2075,14 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def companion_browser(self) -> str:
         return configured_companion_browser({"companion_browser": self._companion_browser_combo.currentData()})
+
+    @property
+    def web_search_engine(self) -> str:
+        return configured_web_search_engine({"web_search_engine": self._web_search_engine_combo.currentData()})
+
+    @property
+    def search_remember_logins(self) -> bool:
+        return bool(self._search_remember_logins_cb.isChecked())
 
     def _open_companion_setup(self) -> None:
         try:

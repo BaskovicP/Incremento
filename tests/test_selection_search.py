@@ -6,6 +6,28 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 
+@pytest.mark.parametrize("engine,host,path", [
+    ("google", "www.google.com", "/search"),
+    ("duckduckgo", "duckduckgo.com", "/"),
+    ("https://untrusted.test/", "www.google.com", "/search"),
+])
+def test_selected_engine_receives_one_encoded_bounded_query(engine, host, path):
+    from frontend import selection_search as search
+    url = urlsplit(search.search_url("čaj & <tea>#?", engine))
+    assert (url.scheme, url.netloc, url.path, url.fragment) == ("https", host, path, "")
+    assert parse_qs(url.query) == {"q": ["čaj & <tea>#?"]}
+
+
+def test_configured_engine_is_named_in_the_menu(monkeypatch):
+    from frontend import selection_search as search
+    monkeypatch.setattr(search, "_search_engine", "google", raising=False)
+    monkeypatch.setattr(search, "_remember_logins", False, raising=False)
+    search.configure_search({"web_search_engine": "duckduckgo"})
+    menu = Menu()
+    search.add_selection_search_action(SimpleNamespace(selectedText=lambda: "tea"), menu)
+    assert menu.items[-1].label == "Search DuckDuckGo"
+
+
 class Signal:
     def connect(self, callback):
         self.callback = callback
@@ -134,7 +156,7 @@ def test_profile_close_disposes_of_popup_and_clears_reference(monkeypatch):
     from frontend import selection_search as search
 
     events = []
-    popup = SimpleNamespace(close=lambda: events.append("close"), deleteLater=lambda: events.append("delete"))
+    popup = SimpleNamespace(close=lambda: events.append("close"), dispose=lambda: events.append("delete"))
     monkeypatch.setattr(search, "_popup", popup)
 
     search.reset_for_profile_switch()
@@ -201,3 +223,39 @@ def test_root_registers_card_editor_and_profile_hooks_once_without_replacing_oth
     for name in ("webview_will_show_context_menu", "editor_will_show_context_menu"):
         assert getattr(hooks, name).callbacks == ["another addon", search.add_selection_search_action]
     assert hooks.profile_will_close.callbacks == ["another addon", search.reset_for_profile_switch]
+
+
+def test_web_browsers_close_on_profile_close_and_quit_with_idempotent_registration():
+    import ast
+    from pathlib import Path
+    from unittest.mock import Mock
+
+    class Callbacks:
+        def __init__(self):
+            self.callbacks = ["another addon"]
+
+        def remove(self, callback):
+            if callback in self.callbacks:
+                self.callbacks.remove(callback)
+
+        append = lambda self, callback: self.callbacks.append(callback)
+        connect = append
+        disconnect = remove
+
+    tree = ast.parse((Path(__file__).resolve().parents[1] / "__init__.py").read_text())
+    names = {"_close_website_browsers", "_register_website_browser_shutdown"}
+    definitions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names]
+    assert {node.name for node in definitions} == names
+    hook, quit_signal = Callbacks(), Callbacks()
+    web, search = Mock(), Mock()
+    namespace = {"_web_dock_mod": web, "_selection_search_mod": search,
+                 "gui_hooks": SimpleNamespace(profile_will_close=hook),
+                 "mw": SimpleNamespace(app=SimpleNamespace(aboutToQuit=quit_signal))}
+    exec(compile(ast.Module(body=definitions, type_ignores=[]), "<browser-shutdown>", "exec"), namespace)
+    namespace["_register_website_browser_shutdown"]()
+    namespace["_register_website_browser_shutdown"]()
+    assert hook.callbacks == ["another addon", web.reset_for_profile_switch]
+    assert quit_signal.callbacks == ["another addon", namespace["_close_website_browsers"]]
+    quit_signal.callbacks[-1]()
+    web.reset_for_profile_switch.assert_called_once_with()
+    search.reset_for_profile_switch.assert_called_once_with()

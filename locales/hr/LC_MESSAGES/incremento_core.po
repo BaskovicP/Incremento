@@ -833,3 +833,15 @@ msgstr "Unesite App ID i tajni ključ ili ispraznite oba polja. Vjerodajnice smi
 #. SimpleTex saved credentials in Extraction settings.
 msgid "settings_simpletex_activation"
 msgstr "Za prepoznavanje: otvorite čitač → Snimka → odaberite formulu → Pretraži MathJax…. Ako se PDF slike umeću automatski, ispod isključite automatsko korištenje zapamćenih polja za PDF snimke."
+
+#. Web search preferences
+msgid "settings_web_search_engine"
+msgstr "Tražilica za odabrani tekst:"
+
+#. Web search preferences
+msgid "settings_search_remember_logins"
+msgstr "Zapamti prijave na web-stranice"
+
+#. Web search preferences
+msgid "settings_search_remember_logins_hint"
+msgstr "Odnosi se samo na prozor pretraživanja. Kolačići i pohrana web-stranica spremaju se zasebno za svaki Anki profil. Isključivanje zatvara prozor i koristi privremenu pohranu; prethodno spremljene prijave ostaju spremljene, ali se ne koriste do ponovnog uključivanja. Neke web-stranice zahtijevaju Otvori u pregledniku."

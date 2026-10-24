@@ -71,6 +71,10 @@ def restore_reviewer_focus(main_window, *, application=None) -> bool:
                 return False
 
     web = getattr(main_window, "web", None)
+    if callable(getattr(web, "isHidden", None)) and web.isHidden():
+        # PDF focus mode embeds the reader in place of the card webview. Keep
+        # keyboard review on the visible answer bar, never a hidden widget.
+        web = getattr(main_window, "bottomWeb", None)
     set_focus = getattr(web, "setFocus", None)
     if not callable(set_focus):
         return False

@@ -16360,6 +16360,30 @@
     },
     {
       "component": "addon",
+      "key": "reader_pdf_focus_mode",
+      "form": "",
+      "source": "PDF focus",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_focus_mode_hint",
+      "form": "",
+      "source": "Hide the left Anki pane and show the PDF across the full available width. Works on Decks, Overview, and during review. Answer controls stay visible and your choice is saved.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_focus_save_failed",
+      "form": "",
+      "source": "Could not save PDF focus. Please try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_pdf_highlight_card_missing",
       "form": "",
       "source": "Could not determine which PDF card owns this highlight.",
@@ -25936,6 +25960,14 @@
     },
     {
       "component": "addon",
+      "key": "selection_search_duckduckgo",
+      "form": "",
+      "source": "Search DuckDuckGo",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "selection_search_failed",
       "form": "",
       "source": "Could not load this page. Use Open in Browser to continue.",
@@ -25954,7 +25986,7 @@
       "component": "addon",
       "key": "selection_search_loading",
       "form": "",
-      "source": "Loading Google…",
+      "source": "Loading…",
       "tokens": [],
       "markup": []
     },
@@ -25962,7 +25994,7 @@
       "component": "addon",
       "key": "selection_search_results",
       "form": "",
-      "source": "Google search results",
+      "source": "Search results",
       "tokens": [],
       "markup": []
     },
@@ -25970,7 +26002,7 @@
       "component": "addon",
       "key": "selection_search_title",
       "form": "",
-      "source": "Google Search",
+      "source": "Web Search",
       "tokens": [],
       "markup": []
     },
@@ -29649,6 +29681,22 @@
     },
     {
       "component": "addon",
+      "key": "settings_search_remember_logins",
+      "form": "",
+      "source": "Remember website logins",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_search_remember_logins_hint",
+      "form": "",
+      "source": "Applies to the search popup only. Saves cookies and website storage separately for each Anki profile. Turning this off closes the popup and uses temporary storage; previously saved logins are retained but not used until you turn it on again. Some websites require Open in Browser.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "settings_session",
       "form": "",
       "source": "Session",
@@ -30112,6 +30160,14 @@
       "key": "settings_web_pages_urls",
       "form": "",
       "source": "Web pages / URLs",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_web_search_engine",
+      "form": "",
+      "source": "Search engine for selected text:",
       "tokens": [],
       "markup": []
     },
@@ -37758,6 +37814,22 @@
         "{page}",
         "{title}"
       ],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_pdf_focus_mode",
+      "form": "",
+      "source": "PDF focus",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_pdf_focus_mode_hint",
+      "form": "",
+      "source": "Hide the left Anki pane and show the PDF across the full available width. Works on Decks, Overview, and during review. Answer controls stay visible and your choice is saved.",
+      "tokens": [],
       "markup": []
     },
     {

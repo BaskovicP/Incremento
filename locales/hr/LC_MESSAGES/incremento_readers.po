@@ -3492,15 +3492,15 @@ msgstr "Pretraži Google"
 
 #. Selected-text search popup
 msgid "selection_search_title"
-msgstr "Google pretraživanje"
+msgstr "Web-pretraživanje"
 
 #. Selected-text search popup
 msgid "selection_search_results"
-msgstr "Rezultati Google pretraživanja"
+msgstr "Rezultati pretraživanja"
 
 #. Selected-text search popup
 msgid "selection_search_loading"
-msgstr "Učitavanje Googlea…"
+msgstr "Učitavanje…"
 
 #. Selected-text search popup
 msgid "selection_search_failed"
@@ -3827,3 +3827,16 @@ msgstr "Odredište"
 
 msgid "reader_destination_saving"
 msgstr "Provjera odredišta…"
+
+#. Web search preferences
+msgid "selection_search_duckduckgo"
+msgstr "Pretraži DuckDuckGo"
+
+msgid "reader_pdf_focus_mode"
+msgstr "Fokus na PDF"
+
+msgid "reader_pdf_focus_mode_hint"
+msgstr "Sakrijte lijevi Anki prikaz i proširite PDF preko pune raspoložive širine. Radi na zaslonima Špilovi i Pregled te tijekom ponavljanja. Gumbi za odgovore ostaju vidljivi, a odabir se sprema."
+
+msgid "reader_pdf_focus_save_failed"
+msgstr "Nije moguće spremiti fokus na PDF. Pokušajte ponovno."

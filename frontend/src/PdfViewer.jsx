@@ -18,6 +18,7 @@ import { pdfImagePoint } from './pdfImagePoint.mjs';
 import { pdfPageLocation } from './pdfPageLabels.mjs';
 import { resolvePdfContentsLocation } from './pdfContents.mjs';
 import { createReaderLanguage } from './i18n.mjs';
+import { pdfFocusState, pdfFocusCommand } from './pdfFocus.mjs';
 import { joinPdfTextParts, truncatePdfText } from './pdfCjkText.mjs';
 import { selectionCleaned, selectionFormatted } from './pdfTextSelection.mjs';
 import { stablePdfEndpointCaret } from './pdfSelection.mjs';
@@ -504,6 +505,29 @@ export default function PdfViewer() {
   const suppressSearchSyncRef = useRef(false);
   const [searchJumpNonce, setSearchJumpNonce] = useState(0);
   const [controlsCollapsed, setControlsCollapsed] = useState(false);
+  const [savedPdfFocusState, setPdfFocusState] = useState(null);
+  const focusState = pdfFocusState(savedPdfFocusState, pageLinksDocument.cardId);
+  const focusButton = (
+    <button
+      type="button"
+      aria-pressed={focusState.enabled}
+      disabled={!focusState.available}
+      title={tr('reader_pdf_focus_mode_hint')}
+      onClick={() => {
+        const command = pdfFocusCommand(savedPdfFocusState, cardIdRef.current);
+        if (command) window.pycmd(command);
+      }}
+      style={{
+        border: focusState.enabled ? '1px solid rgba(96,165,250,0.78)' : '1px solid rgba(180,180,180,0.35)',
+        background: focusState.enabled ? 'rgba(59,130,246,0.20)' : 'rgba(255,255,255,0.04)',
+        color: focusState.enabled ? 'rgb(147,197,253)' : 'inherit',
+        fontWeight: focusState.enabled ? 700 : 400,
+        ...(controlsCollapsed ? {} : {padding: '2px 9px', fontSize: 11}),
+      }}
+    >
+      {tr('reader_pdf_focus_mode')}
+    </button>
+  );
   const controlsRef = useRef(null);
   const [measuredControlsHeight, setMeasuredControlsHeight] = useState(0);
   const [showControlChooser, setShowControlChooser] = useState(false);
@@ -1727,6 +1751,7 @@ export default function PdfViewer() {
       setLanguage(nextLanguage);
       document.documentElement.lang = nextLanguage.locale;
       setAppearanceMode(normalizePdfAppearanceMode(startAppearanceMode));
+      setPdfFocusState(window._incPdfFocusState);
       setShowHighlightDeleteButtons(startShowHighlightDeleteButtons !== false);
       setLinkPreviewZoom(normalizePdfLinkPreviewZoom(startLinkPreviewZoom));
       setLinkBackHistory([]);
@@ -1764,6 +1789,7 @@ export default function PdfViewer() {
 
     window.incrementoPickPdfHighlightColor = finishHighlightColorPicker;
     window.incrementoPdfStart = startWithHighlights;
+    window.incrementoSetPdfFocusState = setPdfFocusState;
     window.incrementoSetPdfLinkPreviewZoom = value => setLinkPreviewZoom(normalizePdfLinkPreviewZoom(value));
     window.incrementoPdfNav   = limitAwareNav;
     window.incrementoPdfZoom  = adjustZoom;
@@ -1845,6 +1871,7 @@ export default function PdfViewer() {
     return () => {
       delete window.incrementoPickPdfHighlightColor;
       delete window.incrementoPdfStart;
+      delete window.incrementoSetPdfFocusState;
       delete window.incrementoSetPdfLinkPreviewZoom;
       delete window.incrementoPdfNav;
       delete window.incrementoPdfZoom;
@@ -2111,6 +2138,7 @@ export default function PdfViewer() {
               ↩ {tr('reader_jump_back')}
             </button>
             <PdfPageLinks linksState={pageLinksState} tr={tr} />
+            {focusButton}
             <button
               type="button"
               onClick={() => setControlsCollapsed(false)}
@@ -2131,6 +2159,7 @@ export default function PdfViewer() {
         ) : (
           <>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginBottom: 4 }}>
+              {focusButton}
               <button
                 type="button"
                 onClick={() => setShowControlChooser(true)}
