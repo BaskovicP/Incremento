@@ -2109,6 +2109,7 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     monkeypatch.setattr(pdf_dock, "configured_highlight_when_extracting", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "configured_pdf_show_highlight_delete_buttons", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "configured_pdf_link_preview_zoom", lambda *args, **kwargs: 2.5)
+    monkeypatch.setattr(pdf_dock, "configured_pdf_controls_collapsed", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "configured_scroll_to_top_on_page_change", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "_consume_due_review_prompt_suppression", lambda card_id: False)
     monkeypatch.setattr(pdf_dock, "_show_missing_pdf_screen", lambda filename: events.append(("missing", filename)))
@@ -2171,11 +2172,12 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     assert "scrollToTopOnPageChange: false" in js_calls[0]
     assert "showHighlightDeleteButtons: false" in js_calls[0]
     assert "linkPreviewZoom: 2.5" in js_calls[0]
+    assert "controlsCollapsed: false" in js_calls[0]
     assert f'pageY: {json.dumps(page_y_override)}' in js_calls[0]
     assert f'locale: {json.dumps(reader_locale)}' in js_calls[0]
     assert f'customLanguage: {json.dumps(custom_language)}' in js_calls[0]
     assert (
-        f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}, "night", false, 2.5, {json.dumps(page_y_override)}));'
+        f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}, "night", false, 2.5, {json.dumps(page_y_override)}, false));'
         in js_calls[0]
     )
     assert 'appearanceMode: "night"' in js_calls[0]
@@ -2463,6 +2465,39 @@ def test_pdf_focus_toggle_saves_through_config_and_survives_reader_restart(monke
     assert pdf_dock.configured_pdf_focus_mode() is True
     assert pdf_dock.save_pdf_focus_mode(False)
     assert pdf_dock.configured_pdf_focus_mode() is False
+
+
+def test_controls_bridge_remembers_main_and_side_independently_after_reopening(monkeypatch):
+    from copy import deepcopy
+    stored = {'future_setting': {'keep': True},
+              'pdf_controls_collapsed_by_profile': {'Other': {'main': True}}}
+    class Manager:
+        def getConfig(self, package): return deepcopy(stored)
+        def writeConfig(self, package, config): stored.update(deepcopy(config))
+    monkeypatch.setattr(pdf_dock, 'mw', types.SimpleNamespace(addonManager=Manager()))
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 42)
+    monkeypatch.setattr(pdf_dock, '_active_profile', lambda: 'A')
+    for collapsed in (True, False):
+        pdf_dock._handle_pdf_js_message('incremento_pdf_controls:' + json.dumps({
+            'cardId': 42, 'collapsed': collapsed}))
+        assert pdf_dock.configured_pdf_controls_collapsed() is collapsed
+    assert pdf_dock.save_pdf_controls_collapsed(True, profile='A', reading_only=True)
+    assert pdf_dock.configured_pdf_controls_collapsed() is False
+    assert pdf_dock.configured_pdf_controls_collapsed(reading_only=True) is True
+    assert stored['pdf_controls_collapsed_by_profile']['Other'] == {'main': True}
+    assert stored['future_setting'] == {'keep': True}
+
+
+@pytest.mark.parametrize('payload', [
+    {'cardId': 99, 'collapsed': True}, {'cardId': 42, 'collapsed': 'false'},
+    {'cardId': 42, 'collapsed': 0}, {'collapsed': False}, [], None,
+])
+def test_controls_bridge_rejects_stale_or_malformed_requests(monkeypatch, payload):
+    writes = []
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 42)
+    monkeypatch.setattr(pdf_dock, 'save_addon_config', lambda *args: writes.append(args))
+    pdf_dock._handle_pdf_js_message('incremento_pdf_controls:' + json.dumps(payload))
+    assert writes == []
 
 
 @pytest.mark.parametrize('state,review_id,model_name,eligible', [
@@ -2902,3 +2937,16 @@ def test_custom_color_result_is_delivered_only_to_its_current_pdf(monkeypatch, s
         assert not scripts
     else:
         assert len(scripts) == 1 and 'incrementoPickPdfHighlightColor("#123abc")' in scripts[0]
+
+
+@pytest.mark.parametrize('action', ['next_page', 'prev_page', 'zoom_in', 'zoom_out', 'mark_read', 'open_find', 'contents'])
+def test_reader_shortcuts_target_the_focused_side_pane_without_moving_the_main_pdf(monkeypatch, action):
+    primary, beside = [], []
+    main_view = types.SimpleNamespace(page=lambda: types.SimpleNamespace(runJavaScript=primary.append))
+    side_view = types.SimpleNamespace(page=lambda: types.SimpleNamespace(runJavaScript=beside.append))
+    monkeypatch.setattr(pdf_dock, '_pdf_dock', types.SimpleNamespace(_view=main_view))
+    monkeypatch.setattr(pdf_dock, '_pdf_reader_is_visible', lambda: True)
+    monkeypatch.setattr(pdf_dock, '_focused_pdf_extraction_view', lambda: side_view)
+    pdf_dock.trigger_viewer_action(action)
+    assert len(beside) == 1
+    assert primary == []

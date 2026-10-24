@@ -383,6 +383,8 @@ _KNOWN_CONFIG_KEYS = {
     "pdf_default_appearance",
     "pdf_force_default_appearance",
     "pdf_focus_mode",
+    "epub_focus_mode",
+    "pdf_controls_collapsed_by_profile",
     "pdf_highlight_extract_field",
     "pdf_show_highlight_delete_buttons",
     "pdf_context_rows",
@@ -578,6 +580,7 @@ _SENSITIVE_COLLECTION_KEYS = {
 }
 _ALWAYS_REDACT_CONFIG_KEYS = {
     "pdf_link_preview_zoom_by_profile",
+    "pdf_controls_collapsed_by_profile",
     # Keep credentials private even if a future config migration changes the
     # stored type from text to a number or another JSON value.
     "pin_hash",
@@ -620,6 +623,7 @@ _SAFE_DATABASE_TABLES = (
     "content_items",
     "document_index_state",
     "document_links",
+    "epub_connections",
     "epub_card_sources",
     "epub_daily_limit_usage",
     "epub_daily_limits",

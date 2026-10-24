@@ -16,8 +16,8 @@ for (const [, specifier] of code.matchAll(/require\("([^"]+)"\)/g)) {
 
 // Keep actual JSX, translations, and state transitions. Only React's lifecycle
 // and PDF.js/DOM effects are replaced so the panel can be used without Anki.
-function viewer() {
-  const slots = [];
+function viewer(props = {}, startup = {}) {
+  const slots = [], effects = [];
   let cursor = 0;
   const useState = initial => {
     const index = cursor++;
@@ -36,13 +36,15 @@ function viewer() {
   const PdfLinkPreview = () => null;
   const PdfPageLinks = () => null;
   const module = { exports: {} };
+  const dom = {innerWidth: 1200, innerHeight: 900, ...startup,
+    setTimeout: callback => callback(), pycmd: command => commands.push(command)};
   vm.runInNewContext(code, {
     module, exports: module.exports,
-    window: { pycmd: command => commands.push(command) },
+    window: dom,
     require: specifier => ({
       ...imports,
       react: { useState, useRef: initial => useState({ current: initial })[0],
-        useEffect: () => {}, useCallback: callback => callback },
+        useEffect: run => effects.push(run), useCallback: callback => callback },
       './usePdfRender.js': { usePdfRender: () => renderState },
       './HighlightLayer.jsx': { __esModule: true, default: HighlightLayer },
       './PdfSelectionLayer.jsx': { __esModule: true, default: () => null },
@@ -57,16 +59,68 @@ function viewer() {
   }
   const render = () => {
     cursor = 0;
-    return elements(module.exports.default());
+    return elements(module.exports.default(props));
   };
   const layer = nodes => nodes.find(node => node.type === HighlightLayer);
   const button = (nodes, text) => nodes.find(node => node.type === 'button' && (
     node.props.children === text || node.props.title === text
   ));
   return { render, layer, button, commands, renderState,
+    openFind: () => {
+      effects.find(run => run.toString().includes('window.incrementoPdfStart ='))();
+      dom.incrementoPdfOpenFind();
+    },
     pageLinks: nodes => nodes.filter(node => node.type === PdfPageLinks), elements,
     preview: nodes => nodes.find(node => node.type === PdfLinkPreview) };
 }
+
+test('Find opens visibly from a minimized side reader even when the Reading group was hidden', () => {
+  const ui = viewer({readingOnly: true});
+  ui.button(ui.render(), 'Customize controls').props.onClick();
+  const labels = ui.render().filter(node => node.type === 'label');
+  const reading = labels.find(node => ui.elements(node).some(child => child.props?.children === 'Reading'));
+  ui.elements(reading).find(node => node.type === 'input').props.onChange({target: {checked: false}});
+  ui.button(ui.render(), 'Minimize controls').props.onClick();
+  ui.openFind();
+  assert.ok(ui.button(ui.render(), 'Minimize controls'), 'Find must expand the controls');
+  assert.ok(ui.render().find(node => node.type === 'input' && node.props.placeholder === 'Search this PDF'),
+    'Find must restore the Reading group and display the search field');
+});
+
+test('side-reader Highlights and Bookmarks panels stay above the bottom toolbar in a short window', () => {
+  for (const title of ['Show highlights list', 'Show saved interesting-place bookmarks']) {
+    const ui = viewer({readingOnly: true});
+    ui.button(ui.render(), title).props.onClick();
+    const panel = ui.render().find(node => node.props?.style?.overflowY === 'auto'
+      && node.props.style.position === 'fixed');
+    assert.equal(panel.props.style.top, 8);
+    assert.equal(panel.props.style.maxHeight, 'calc(100vh - var(--pdf-controls-height, 58px) - 24px)');
+  }
+});
+
+for (const readingOnly of [false, true]) {
+  test(`PDF controls restore the saved open/closed choice after reopening (${readingOnly ? 'side' : 'main'})`, () => {
+    const open = viewer({readingOnly}, {innerWidth: 600, innerHeight: 500,
+      _incPdfPending: {controlsCollapsed: false}});
+    assert.ok(open.button(open.render(), 'Minimize controls'), 'saved open wins over narrow size');
+    assert.deepEqual(open.commands, [], 'restoring a preference must not write it back');
+    open.button(open.render(), 'Minimize controls').props.onClick();
+    assert.deepEqual(open.commands, ['incremento_pdf_controls:{"cardId":42,"collapsed":true}']);
+
+    const closed = viewer({readingOnly}, {_incPdfPending: {controlsCollapsed: true}});
+    assert.ok(closed.button(closed.render(), 'Show controls'), 'saved closed wins over wide size');
+    closed.button(closed.render(), 'Show controls').props.onClick();
+    assert.deepEqual(closed.commands, ['incremento_pdf_controls:{"cardId":42,"collapsed":false}']);
+  });
+}
+
+test('a reader with no saved controls preference uses its initial window size', () => {
+  const compact = viewer({}, {innerWidth: 600, innerHeight: 500});
+  assert.ok(compact.button(compact.render(), 'Show controls'));
+  const expanded = viewer();
+  assert.ok(expanded.button(expanded.render(), 'Minimize controls'));
+  assert.deepEqual(compact.commands, []);
+});
 
 test('page links live inside the existing toolbar in both expanded and compact modes', () => {
   const {render, elements, pageLinks, button} = viewer();
@@ -107,4 +161,25 @@ test('the Highlights panel hides controls across pages and restores them without
   button(nodes, 'Show highlight controls').props.onClick();
   assert.equal(layer(render()).props.showHighlightControls, true);
   assert.deepEqual(commands, [], 'visibility changes must not delete or rewrite annotations');
+});
+
+
+test('side reading keeps navigation, reading and annotation tools but cannot expose review controls', () => {
+  const {render, button, elements, layer, commands} = viewer({readingOnly: true});
+  let nodes = render();
+  assert.ok(button(nodes, 'Contents'));
+  assert.ok(button(nodes, 'Show highlights list'));
+  assert.ok(button(nodes, 'Bookmark the current page as an interesting place'));
+  assert.ok(layer(nodes));
+  const text = nodes.flatMap(node => typeof node.props?.children === 'string' ? [node.props.children] : []);
+  for (const label of ['Review', 'Review All', 'Add card', 'Finished reading', 'Cards']) {
+    assert.ok(!text.includes(label), label + ' must not appear in side reading');
+  }
+  button(nodes, 'Customize controls').props.onClick();
+  nodes = render();
+  const chooser = nodes.find(node => node.props?.role === 'dialog');
+  const checkboxLabels = elements(chooser).filter(node => node.type === 'label')
+    .flatMap(node => elements(node).flatMap(child => typeof child.props?.children === 'string' ? [child.props.children] : []));
+  assert.ok(!checkboxLabels.includes('Review & cards'));
+  assert.deepEqual(commands, []);
 });

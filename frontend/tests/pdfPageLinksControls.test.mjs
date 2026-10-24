@@ -31,12 +31,14 @@ function controls(locale = 'en') {
     effects.push(() => {before?.cleanup?.(); slots[index] = {deps, cleanup: run()};});
   };
   const dom = {
+    body: {nodeType: 1},
     addEventListener: (name, handler) => listeners.set(name, handler),
     removeEventListener: (name, handler) => {if (listeners.get(name) === handler) listeners.delete(name);},
   };
   const module = {exports: {}};
   vm.runInNewContext(code, {module, exports: module.exports, window: dom, document: dom,
     require: name => ({react: {useState, useRef: initial => useState({current: initial})[0], useEffect},
+      'react-dom': {createPortal: (children, container) => ({type: 'portal', props: {children, container}})},
       'react/jsx-runtime': jsx, './pdfPageLinks.mjs': model})[name]});
   const all = node => Array.isArray(node) ? node.flatMap(all)
     : !node || typeof node !== 'object' ? [] : [node, ...all(node.props?.children)];
@@ -46,6 +48,12 @@ function controls(locale = 'en') {
       const linksState = module.exports.usePdfPageLinks?.({...location, onCommand: value => commands.push(value)});
       nodes = all(module.exports.default({...location, linksState, tr: createReaderLanguage(locale).tr,
         onCommand: value => commands.push(value)}));
+      for (const node of nodes) {
+        if (node.ref && typeof node.ref === 'object') {
+          node.ref.current = {contains: target => node.props.id === 'pdf-page-links-panel'
+            ? !!target?.insidePanel : !!target?.insideTrigger, focus() {}};
+        }
+      }
       effects.splice(0).forEach(run => run());
     } while (dirty);
     return nodes;
@@ -53,12 +61,28 @@ function controls(locale = 'en') {
   const button = label => render().find(node => node.type === 'button'
     && (node.props['aria-label'] === label || node.props.children === label || node.props.title === label));
   return {render, button, commands,
+    body: dom.body,
     receive: (links, request = commands.at(-1)) => {dom.incrementoReceivePdfPageLinks({...request, links}); render();},
     move: next => {location = {...location, ...next}; render();},
     event: (name, extra = {}) => {listeners.get(name)?.({preventDefault() {}, stopPropagation() {}, ...extra}); render();}};
 }
 
 const destination = {id: 4, direction: 'outgoing', title: 'Other book', target_page: 42, available: true};
+
+test('Page links opens outside the scrollable side toolbar and its destinations remain clickable', () => {
+  const ui = controls();
+  ui.render(); ui.receive([destination]);
+  ui.button('Page links').props.onClick();
+  const overlay = ui.render().find(node => node.type === 'portal');
+  assert.equal(overlay?.props.container, ui.body,
+    'the popup must escape the toolbar overflow and backdrop-filter clipping');
+  ui.event('pointerdown', {target: {insidePanel: true}});
+  assert.equal(ui.button('Page links').props['aria-expanded'], true);
+  ui.button('Jump to linked page').props.onClick();
+  assert.equal(ui.commands.at(-1).operation, 'jump');
+  assert.equal(ui.commands.at(-1).id, destination.id);
+  assert.equal(ui.button('Page links').props['aria-expanded'], false);
+});
 
 for (const locale of ['en', 'hr', 'zh-Hans']) {
   test(`opening a linked PDF beside the reader has a visible text label in ${locale}`, () => {

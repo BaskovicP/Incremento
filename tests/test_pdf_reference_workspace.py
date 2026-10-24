@@ -122,6 +122,18 @@ def test_profile_close_retires_pending_reference_load_before_ui_creation(workspa
     assert opened == []
 
 
+def test_side_controls_choice_is_saved_immediately_before_the_pane_can_close(workspace):
+    from pdf_reader_state import PdfReaderState
+    module, received = workspace.module, []
+    window = module.ReferenceWindow.__new__(module.ReferenceWindow)
+    window.state = PdfReaderState('A', 7, 'book.pdf', page=3)
+    window.reader = SimpleNamespace(handle=received.append)
+    message = 'incremento_pdf_controls:{"cardId":7,"collapsed":false}'
+    window.command('reader', {'command': message})
+    assert received == [message]
+    assert workspace.pending == []
+
+
 def test_preview_request_does_not_cancel_a_pending_pinned_reader(workspace, monkeypatch):
     module = workspace.module
     opened = []
@@ -194,3 +206,88 @@ def test_visible_page_link_jump_keeps_the_reference_in_its_own_pane(workspace, m
     assert opened[0][0] == (8, 42)
     assert opened[0][1]['beside'] is True
     assert opened[0][1]['owner'] is window.owner
+
+
+def test_shared_reader_commands_are_bound_to_the_reference_nonce_and_profile(workspace):
+    from pdf_reader_state import PdfReaderState
+    module = workspace.module
+    state = PdfReaderState('A', 7, 'book.pdf', page=2)
+    calls = []
+    page = module._ReferencePage(None, None, None, state, lambda *args: calls.append(args), full_reader=True)
+    payload = json.dumps({'action': 'reader', 'command': 'incremento_pdf_hl_add:' + json.dumps({
+        'cardId': 7, 'highlight': {'id': 'shared', 'page': 2}})})
+    page.javaScriptConsoleMessage(None, '__incremento_reference__:wrong:' + payload, 0, '')
+    assert calls == []
+    page.javaScriptConsoleMessage(None, '__incremento_reference__:' + state.nonce + ':' + payload, 0, '')
+    assert calls[0][0] == 'reader'
+    workspace.profile[0] = 'B'
+    page.javaScriptConsoleMessage(None, '__incremento_reference__:' + state.nonce + ':' + payload, 0, '')
+    assert len(calls) == 1
+
+
+def test_document_refresh_only_reaches_live_panes_for_that_profile_and_card(workspace):
+    from pdf_reader_state import PdfReaderState
+    calls = []
+    for profile, cid, closed in [('A', 7, False), ('A', 8, False), ('B', 7, False), ('A', 7, True)]:
+        state = PdfReaderState(profile, cid, 'book.pdf', closed=closed)
+        workspace.module._windows.append(SimpleNamespace(state=state,
+            reader=SimpleNamespace(refresh=lambda kind, key=(profile, cid, closed): calls.append((key, kind)))))
+    workspace.module.refresh_reference_readers('A', 7, 'highlights')
+    assert calls == [(('A', 7, False), 'highlights')]
+
+
+def test_delayed_snapshot_uses_the_captured_page_for_its_citation(workspace, monkeypatch):
+    from pdf_reader_state import PdfReaderState
+    module = workspace.module
+    window = module.ReferenceWindow.__new__(module.ReferenceWindow)
+    window.state = PdfReaderState('A', 7, 'book.pdf', page=8)
+    applied = []
+    window._apply_action = lambda action, location, payload, snapshot: applied.append(location.page)
+    monkeypatch.setattr(module, 'resolve_pdf_reference', lambda *a: {
+        'filename': 'book.pdf', 'path': '/unused/book.pdf', 'title': 'Source'})
+    monkeypatch.setattr(module, 'get_pdf_daily_limit_status', lambda *a, **kw: {})
+    window.command('snapshot', {'cardId': 7, 'page': 3, 'image': 'data:image/png;base64,example'})
+    pending = workspace.pending[0]
+    pending.options['success'](pending.options['op'](object()))
+    assert applied == [3]
+
+
+def test_side_context_menu_copies_the_clicked_location_without_using_the_main_reader(workspace, monkeypatch):
+    from pdf_reader_state import PdfReaderState
+    window = workspace.module.ReferenceWindow.__new__(workspace.module.ReferenceWindow)
+    window.state = PdfReaderState('A', 7, 'book.pdf', page=3)
+    calls = []
+    window.view = object()
+    window.reader = SimpleNamespace(current=lambda: window.state.is_current(workspace.profile[0], window.state.nonce))
+    window.command = lambda action, payload: calls.append((action, payload))
+    menus = []
+    def show(view, position, **options):
+        menus.append(options)
+        return True
+    monkeypatch.setattr(workspace.module, 'show_reader_anchor_context_menu', show, raising=False)
+    window.show_context_menu(SimpleNamespace(x=lambda: 20, y=lambda: 100))
+    anchor = {'cardId': 7, 'page': 3, 'scrollRatio': .6}
+    menus[0]['on_copy'](anchor)
+    assert calls == [('copy', anchor)]
+    window.state.close()
+    menus[0]['on_copy'](anchor)
+    assert len(calls) == 1
+
+
+def test_side_context_copy_preserves_clicked_scroll_and_its_own_printed_label(workspace, monkeypatch):
+    from pdf_reader_state import PdfReaderState
+    from reader_links import reader_anchor_command_from_html
+    module, copied = workspace.module, []
+    window = module.ReferenceWindow.__new__(module.ReferenceWindow)
+    window.state = PdfReaderState('A', 7, 'book.pdf', page=3)
+    window.reader = SimpleNamespace(citation_page=lambda page: 'v' if page == 2 else str(page))
+    monkeypatch.setattr(module, 'set_reader_anchor_clipboard', lambda *args: copied.append(args))
+    monkeypatch.setattr(module, 'resolve_pdf_reference', lambda *args: {
+        'filename': 'book.pdf', 'path': '/unused/book.pdf', 'title': 'Source'})
+    monkeypatch.setattr(module, 'get_pdf_daily_limit_status', lambda *a, **kw: {})
+    window.command('copy', {'cardId': 7, 'page': 2, 'scrollRatio': .7})
+    op = workspace.pending[0].options
+    op['success'](op['op'](object()))
+    data = json.loads(reader_anchor_command_from_html(copied[0][0]).split(':', 1)[1])
+    assert data['page'] == 2 and data['scroll_ratio'] == .7
+    assert 'v' in copied[0][1]

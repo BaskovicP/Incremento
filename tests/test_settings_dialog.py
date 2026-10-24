@@ -487,6 +487,7 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         "scheduler_presets": {"Evening": {"day_end_time": "23:00"}},
         "future_setting": {"keep": True},
         "pdf_focus_mode": True,
+        "epub_focus_mode": True,
     })
     original = copy.deepcopy(saved)
     manager = Mock()
@@ -497,14 +498,19 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
     col.models.all_names_and_ids.return_value = []
 
     def open_dialog(shortcuts, **kwargs):
+        # A background side pane can change its own controls while Settings is open.
+        saved['pdf_controls_collapsed_by_profile'] = {'A': {'main': False, 'side': True}}
         assert kwargs["current_companion_browser"] == "chrome"
         assert kwargs["current_web_search_engine"] == "google"
         assert kwargs["current_search_remember_logins"] is False
         assert kwargs["current_day_end_time"] == "05:30"
         assert kwargs["current_pdf_focus_mode"] is True
+        assert kwargs["current_epub_focus_mode"] is True
         dialog = IncrementoSettingsDialog(shortcuts, current_day_end_time=kwargs["current_day_end_time"],
-            current_pdf_focus_mode=kwargs["current_pdf_focus_mode"])
+            current_pdf_focus_mode=kwargs["current_pdf_focus_mode"],
+            current_epub_focus_mode=kwargs["current_epub_focus_mode"])
         dialog._pdf_focus_mode_cb.setChecked(False)
+        dialog._epub_focus_mode_cb.setChecked(False)
         dialog._day_end_edit.setTime(_Time(0, 0))
         dialog._companion_browser_combo.setCurrentIndex(1)
         dialog._web_search_engine_combo.setCurrentIndex(1)
@@ -521,17 +527,21 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         "_load_addon_config": config_service.load_addon_config,
         "_save_addon_config": config_service.save_addon_config,
     })
+    namespace['_epub_dock_mod'].configured_epub_focus_mode.side_effect = lambda cfg: cfg['epub_focus_mode']
     namespace['_pdf_dock_mod'].configured_pdf_focus_mode.side_effect = lambda cfg: cfg['pdf_focus_mode']
     exec(compile(ast.Module(body=[helper, function], type_ignores=[]), str(path), "exec"), namespace)
     namespace["openSettingsFunction"]()
 
-    assert saved == original
+    assert saved == {**original, 'pdf_controls_collapsed_by_profile': {'A': {'main': False, 'side': True}}}
     if accepted and not save_fails:
         stored = manager.writeConfig.call_args.args[1]
         assert stored["companion_browser"] == "firefox"
         assert stored["web_search_engine"] == "duckduckgo"
         assert stored["search_remember_logins"] is True
         assert stored["pdf_focus_mode"] is False
+        assert stored["epub_focus_mode"] is False
+        namespace['_epub_dock_mod'].apply_epub_focus_preference.assert_called_once_with(stored)
+        assert stored['pdf_controls_collapsed_by_profile'] == {'A': {'main': False, 'side': True}}
         namespace['_pdf_dock_mod'].apply_pdf_focus_preference.assert_called_once_with(stored)
         namespace["_selection_search_mod"].configure_search.assert_called_once_with(stored)
         namespace["_configure_companion_browser"].assert_called_once_with(stored)

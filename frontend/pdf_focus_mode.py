@@ -1,4 +1,4 @@
-"""Put the live PDF reader across Anki's content area, retaining review controls."""
+"""Put a live document reader across Anki's content area, retaining review controls."""
 
 from aqt.qt import QSignalBlocker, QVBoxLayout
 
@@ -84,6 +84,10 @@ class PdfFocusMode:
         layout = self._target_layout()
         if layout is None:
             return
+        previous = getattr(self.main, '_incremento_document_focus', None)
+        if previous is not None and previous is not self:
+            previous.stop()
+        self.main._incremento_document_focus = self
         web = self.main.web
         self._layout, self._web = layout, web
         self._web_was_hidden = web.isHidden()
@@ -102,6 +106,8 @@ class PdfFocusMode:
         if not self.active:
             return
         self.active = False
+        if getattr(self.main, "_incremento_document_focus", None) is self:
+            self.main._incremento_document_focus = None
         with QSignalBlocker(self.dock):
             self._layout.removeWidget(self.host)
             self.host.hide()

@@ -38,15 +38,28 @@ class PdfAnnotationSyncQueue:
         self.sync = sync
         self.jobs = {}
         self.auto_suppressed = set()
+        self.retained = {}
+
+    def retain(self, key):
+        """An additional open pane still owns this document's pending writes."""
+        self.retained[key] = self.retained.get(key, 0) + 1
+
+    def release(self, key):
+        count = self.retained.get(key, 0)
+        if count <= 1:
+            self.retained.pop(key, None)
+        else:
+            self.retained[key] = count - 1
 
     def reset(self):
+        self.retained.clear()
         self.cancel_except(None)
         self.auto_suppressed.clear()
 
     def cancel_except(self, keep_key):
         """Cancel jobs that no longer belong to the PDF visible in the reader."""
         for key, job in list(self.jobs.items()):
-            if key == keep_key:
+            if key == keep_key or key in self.retained:
                 continue
             job['cancel'].set()
             activity_log.cancel_activity(job['activity'])

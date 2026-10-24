@@ -3764,3 +3764,134 @@ msgstr "隐藏左侧 Anki 区域，让 PDF 占满可用宽度。可在牌组列�
 
 msgid "reader_pdf_focus_save_failed"
 msgstr "无法保存 PDF 专注模式。请重试。"
+
+#. EPUB focus and reference workspace
+msgid "reader_epub_focus_mode"
+msgstr "EPUB 专注模式"
+
+msgid "reader_epub_focus_mode_hint"
+msgstr "让 EPUB 占满 Anki 可用宽度，同时保留答题按钮。设置会保存。"
+
+msgid "reader_epub_focus_save_failed"
+msgstr "无法保存 EPUB 专注设置，请重试。"
+
+msgid "reader_epub_reference"
+msgstr "EPUB 参考书…"
+
+msgid "reader_epub_reference_hint"
+msgstr "并排阅读另一份 EPUB，不改变主阅读位置。"
+
+msgid "reader_epub_connections_hint"
+msgstr "连接 EPUB 章节或选中的段落。两端都会显示连接；可预览或并排阅读，保留当前位置。"
+
+msgid "reader_epub_change_highlight_color"
+msgstr "更改高亮颜色…"
+
+msgid "reader_epub_use_passage"
+msgstr "使用此段落"
+
+msgid "reader_epub_link_passage"
+msgstr "链接段落…"
+
+msgid "reader_epub_connection_label"
+msgstr "{title} — 第 {section} 节"
+
+
+msgid "reader_epub_reference_unavailable"
+msgstr "链接的 EPUB 不可用或超出阅读限制。请正常打开书籍、选择其他段落或移除链接。"
+
+msgid "reader_epub_reference_preview"
+msgstr "预览 EPUB"
+
+msgid "reader_epub_appearance"
+msgstr "EPUB 外观"
+
+msgid "workspace_title"
+msgstr "工作区"
+
+msgid "workspace_write_beside"
+msgstr "在文档旁写作…"
+
+msgid "workspace_columns"
+msgstr "并排排列"
+
+msgid "workspace_rows"
+msgstr "垂直排列"
+
+msgid "workspace_grid"
+msgstr "网格排列"
+
+msgid "workspace_restore"
+msgstr "恢复上一个布局"
+
+msgid "workspace_position"
+msgstr "窗口位置"
+
+msgid "workspace_left"
+msgstr "左半屏"
+
+msgid "workspace_right"
+msgstr "右半屏"
+
+msgid "workspace_top"
+msgstr "上半屏"
+
+msgid "workspace_bottom"
+msgstr "下半屏"
+
+msgid "workspace_top_left"
+msgstr "左上角四分之一屏"
+
+msgid "workspace_top_right"
+msgstr "右上角四分之一屏"
+
+msgid "workspace_bottom_left"
+msgstr "左下角四分之一屏"
+
+msgid "workspace_bottom_right"
+msgstr "右下角四分之一屏"
+
+msgid "workspace_maximize"
+msgstr "填满可用屏幕"
+
+msgid "workspace_need_two"
+msgstr "请至少打开两个 Incremento 窗格以排列布局。"
+
+msgid "workspace_too_small"
+msgstr "此窗口需要更多空间。请选择更大的屏幕区域。"
+
+msgid "workspace_keep_open"
+msgstr "学习时保持打开"
+
+msgid "workspace_keep_open_hint"
+msgstr "复习其他卡片或退出复习时保持此写作卡片可见。关闭写作窗格会取消此选项。"
+
+msgid "workspace_writing_tools"
+msgstr "写作工具（滚动查看更多）"
+
+msgid "workspace_loading"
+msgstr "正在加载写作卡片…"
+
+msgid "workspace_search"
+msgstr "搜索写作标题"
+
+msgid "workspace_writing_cards"
+msgstr "写作卡片"
+
+msgid "workspace_open_beside"
+msgstr "在旁边打开"
+
+msgid "workspace_new_writing"
+msgstr "新建写作…"
+
+msgid "workspace_choose_writing"
+msgstr "选择一张写作卡片。学习时它会在文档旁保持打开。"
+
+msgid "workspace_no_writing"
+msgstr "还没有写作卡片。请点击“新建写作…”，然后在此处选择。"
+
+msgid "workspace_writing_limit"
+msgstr "显示前 {count} 张写作卡片。请使用“快速打开内容”查找其他卡片。"
+
+msgid "workspace_load_failed"
+msgstr "无法加载写作卡片。请关闭此窗口后重试。"

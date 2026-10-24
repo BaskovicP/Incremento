@@ -1,3 +1,4 @@
+import {referenceRenderPlan} from './referencePdfReader.mjs';
 /**
  * usePdfRender — custom hook encapsulating the PDF.js rendering pipeline.
  *
@@ -34,7 +35,7 @@ function resolveWorkerSrc(rawWorkerSrc) {
   }
 }
 
-export function usePdfRender() {
+export function usePdfRender({boundedCanvas = false} = {}) {
   const [page,       setPage]       = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [pageLabels, setPageLabels] = useState(null);
@@ -108,7 +109,7 @@ export function usePdfRender() {
 
     lastScaleRef.current = viewport.scale;
     setRenderInfo({ scale: viewport.scale, tlLeft, pageWidth: viewport.width,
-      cardId: cardIdRef.current, page: pg.pageNumber });
+      cardId: cardIdRef.current, page: pg.pageNumber, textReady: false });
 
     try {
       const stream = pg.streamTextContent();
@@ -122,6 +123,7 @@ export function usePdfRender() {
         .then(content => {
           if (tl._cancelTextLayer === cancelTextLayer) {
             annotatePdfTextStyles(task.textDivs, content, pg.commonObjs);
+            setRenderInfo(current => ({...current, textReady: true}));
           }
         })
         .catch(() => {});
@@ -185,15 +187,18 @@ export function usePdfRender() {
             const base = pg.getViewport({scale: 1});
             let scale = Math.min(colW / base.width, maxH / base.height) * request.zoom;
             if (!scale || scale <= 0) scale = 1;
-            const viewport = pg.getViewport({scale});
+            let viewport = pg.getViewport({scale});
             const dpr = window.devicePixelRatio || 1;
-            backCvs.width = viewport.width * dpr;
-            backCvs.height = viewport.height * dpr;
+            const plan = boundedCanvas ? referenceRenderPlan(viewport, viewport.width, 1, dpr) : null;
+            if (plan && plan.scale !== 1) viewport = pg.getViewport({scale: scale * plan.scale});
+            const pixels = plan?.pixels ?? dpr;
+            backCvs.width = plan?.canvasWidth ?? viewport.width * pixels;
+            backCvs.height = plan?.canvasHeight ?? viewport.height * pixels;
             backCvs.style.width = viewport.width + 'px';
             backCvs.style.height = viewport.height + 'px';
             failure = 'reader_render_error';
             renderTaskRef.current = pg.render({canvasContext: backCvs.getContext('2d'),
-              viewport, transform: [dpr, 0, 0, dpr, 0, 0]});
+              viewport, transform: [pixels, 0, 0, pixels, 0, 0]});
             await renderTaskRef.current.promise;
             if (!current()) continue;
             backCvs.dataset.pdfCard = String(request.cardId);
@@ -329,11 +334,11 @@ export function usePdfRender() {
     window.pycmd('incremento_pdf_zoom:' + cardIdRef.current + ':' + clamped);
   }, [renderPage]);
 
-  const setReadProgress = useCallback((readPageValue, anchor = null) => {
+  const setReadProgress = useCallback((readPageValue, anchor = null, notify = true) => {
     const newRp = Math.max(0, parseInt(readPageValue, 10) || 0);
     readPageRef.current = newRp;
     setReadPage(newRp);
-    window.pycmd('incremento_pdf_mark_read:' + JSON.stringify({
+    if (notify) window.pycmd('incremento_pdf_mark_read:' + JSON.stringify({
       cardId: cardIdRef.current,
       readPage: newRp,
       anchor: newRp > 0 ? anchor : null,

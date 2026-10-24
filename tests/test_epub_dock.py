@@ -41,7 +41,7 @@ def test_epub_custom_hex_color_is_selected_without_falling_back_to_yellow(monkey
     assert epub_dock._current_epub_highlight_color == '#123abc'
 
 
-def test_epub_page_links_slot_explains_that_pdf_page_connections_are_unavailable(monkeypatch):
+def test_epub_page_links_slot_opens_connections_for_the_current_document(monkeypatch):
     button = MagicMock()
     factory = MagicMock(return_value=button)
     monkeypatch.setattr(epub_dock, "_make_epub_button", factory)
@@ -50,9 +50,8 @@ def test_epub_page_links_slot_explains_that_pdf_page_connections_are_unavailable
     assert epub_dock._make_epub_page_links_button(None) is button
 
     assert factory.call_args.args[1] == "Page links"
-    assert "not available" in factory.call_args.args[2]
     assert "EPUB" in factory.call_args.args[2]
-    button.setEnabled.assert_called_once_with(False)
+    button.clicked.connect.assert_called_once()
     button.setAccessibleDescription.assert_called_once_with(factory.call_args.args[2])
 
 
@@ -272,6 +271,7 @@ def test_epub_control_customization_hides_only_selected_groups(monkeypatch):
     dock = types.SimpleNamespace(
         _control_groups=groups,
         _control_groups_layout=group_layout,
+        setMinimumWidth=lambda _width: None,
     )
     monkeypatch.setattr(epub_dock, "_epub_dock", dock)
 
@@ -490,10 +490,14 @@ def test_due_review_details_escape_card_content():
 
 def test_browse_note_ids_in_browser_builds_deduplicated_query(monkeypatch):
     searches = []
+    state = types.SimpleNamespace(sort_column='cardDue', sort_backwards=True)
 
     class _FakeBrowser:
+        table = types.SimpleNamespace(_state=state, _set_sort_indicator=lambda: None)
         def search_for(self, query):
             searches.append(query)
+            assert state.sort_column == 'noteCrt'
+            assert state.sort_backwards is False
 
     fake_dialogs = types.SimpleNamespace(open=lambda name, parent: _FakeBrowser())
     monkeypatch.setitem(sys.modules, "aqt.dialogs", fake_dialogs)
@@ -599,6 +603,402 @@ def test_build_page_script_includes_highlight_note_action_menu(monkeypatch):
     assert "if (!event.isTrusted) return" in script
 
 
+def test_highlight_action_icons_and_paths_keep_svg_namespace_in_xhtml(monkeypatch):
+    """Issue #13: XHTML innerHTML must not inherit the chapter namespace."""
+    import subprocess
+    from xml.etree import ElementTree
+
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": "Example section"}])
+    monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
+    script = epub_dock._build_page_script(
+        card_id=7, section_index=0, scroll_ratio=0.0, text_scale=1.0,
+        read_anchor=None, focus_offset=-1, search_query="", highlights=[],
+        bridge_nonce="test-nonce",
+    )
+    icons = script[script.index("      function iconSvg"):script.index("      function removeHighlightActionMenu")]
+    result = subprocess.run(
+        ["node", "-e", icons + ";process.stdout.write(JSON.stringify(['note', 'resize', 'delete'].map(iconSvg)));"],
+        capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+
+    for action, markup in zip(("note", "resize", "delete"), json.loads(result.stdout), strict=True):
+        button = ElementTree.fromstring(f'<button xmlns="http://www.w3.org/1999/xhtml">{markup}</button>')
+        svg = button[0]
+        assert svg.tag == "{http://www.w3.org/2000/svg}svg", action
+        assert svg.attrib["viewBox"] == "0 0 16 16", action
+        assert len(svg) > 0, action
+        for path in svg:
+            assert path.tag == "{http://www.w3.org/2000/svg}path", action
+            assert path.attrib["d"], action
+
+
+@pytest.mark.parametrize("suffix, content_type", [
+    (".xhtml", "application/xhtml+xml"),
+    (".html", "text/html"),
+])
+def test_saved_highlight_menu_renders_all_three_svg_icons_in_local_chapter(
+    tmp_path, monkeypatch, suffix, content_type,
+):
+    import os
+    import subprocess
+    from textwrap import dedent
+
+    from webpage_browser import browser_runtime, _runtime_dir
+
+    runtime = browser_runtime()
+    if runtime is None:
+        pytest.skip("Optional webpage browser component has not been explicitly installed")
+    chapter = tmp_path / ("chapter" + suffix)
+    chapter.write_text(
+        '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Highlight icons</title></head>'
+        '<body style="padding-top:80px"><p>Example section text</p></body></html>', encoding="utf-8",
+    )
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": "Example section text"}])
+    monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
+    page_script = epub_dock._build_page_script(
+        card_id=7, section_index=0, scroll_ratio=0.0, text_scale=1.0,
+        read_anchor=None, focus_offset=-1, search_query="",
+        highlights=[{"id": "hl-1", "startOffset": 0, "endOffset": 7, "text": "Example"}],
+        bridge_nonce="test-nonce",
+    )
+    script = dedent('''
+        import json, sys
+        from pathlib import Path
+        sys.path.insert(0, sys.argv[1])
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = p.chromium.launch(executable_path=sys.argv[2], headless=True,
+                                        chromium_sandbox=True)
+            page = browser.new_page()
+            page.goto(Path(sys.argv[3]).as_uri())
+            assert page.evaluate('document.contentType') == sys.argv[4]
+            page.evaluate(json.load(sys.stdin))
+            highlight = page.locator('span.incremento-epub-highlight')
+            assert highlight.evaluate("""node =>
+                getComputedStyle(node).backgroundColor === 'rgba(255, 220, 0, 0.45)'
+            """), 'Saved highlight must have its visible yellow background'
+            assert page.locator('#incremento-epub-style').evaluate('node => !!node.sheet'), \
+                'Reader styles must be an active stylesheet in XHTML'
+            highlight.click()
+            menu = page.locator('#incremento-epub-highlight-actions')
+            assert menu.locator('button svg').count() == 3
+            assert menu.locator('button').evaluate_all("""nodes => nodes.every(node =>
+                getComputedStyle(node).opacity === '1'
+                && getComputedStyle(node).pointerEvents !== 'none')
+            """), 'All three actions must stay visible before hovering over the menu'
+            menu_rect = menu.bounding_box()
+            menu.hover()
+            page.mouse.move(850, 500)
+            assert menu.bounding_box() == menu_rect
+            assert menu.locator('button').evaluate_all("""nodes => nodes.every(node =>
+                getComputedStyle(node).opacity === '1')
+            """), 'Moving the pointer away must not make action icons flicker'
+            for action in ('note', 'resize', 'delete'):
+                button = menu.locator('#incremento-epub-highlight-' + action + '-btn')
+                assert button.evaluate('node => node instanceof HTMLButtonElement'), action
+                assert button.get_attribute('aria-label'), action
+                icon = button.locator('svg')
+                assert icon.is_visible(), action
+                assert icon.evaluate("""svg => svg instanceof SVGSVGElement
+                    && svg.getBBox().width > 0 && svg.getBBox().height > 0
+                    && Array.from(svg.children).every(path => path instanceof SVGPathElement)
+                """), action + ' must contain rendered SVG paths'
+            browser.close()
+    ''')
+    result = subprocess.run(
+        [runtime[0], "-I", "-c", script, str(_runtime_dir() / "packages"), runtime[1], str(chapter), content_type],
+        input=json.dumps(page_script), capture_output=True, text=True, timeout=30, env=dict(os.environ),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("suffix", [".html", ".xhtml"])
+def test_cross_paragraph_highlight_preserves_layout_and_edits_as_one_highlight(tmp_path, monkeypatch, suffix):
+    """A selection crossing paragraphs must not clone blocks into a span."""
+    import os
+    import subprocess
+    from textwrap import dedent
+
+    from webpage_browser import browser_runtime, _runtime_dir
+
+    runtime = browser_runtime()
+    if runtime is None:
+        pytest.skip("Optional webpage browser component has not been explicitly installed")
+    chapter = tmp_path / ("chapter" + suffix)
+    chapter.write_text(
+        '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Paragraph fixture</title>'
+        '<style>body { font: 20px serif; } p, em { background: white; }</style></head><body>'
+        '<p id="first">First paragraph with <em>styled text</em> and an ending.</p>'
+        '<p id="second">Second paragraph with another ending.</p>'
+        '<p id="third">Final paragraph.</p></body></html>', encoding="utf-8",
+    )
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": "Synthetic chapter"}])
+    monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
+    page_script = epub_dock._build_page_script(
+        card_id=7, section_index=0, scroll_ratio=0.0, text_scale=1.0,
+        read_anchor=None, focus_offset=-1, search_query="", highlights=[],
+        bridge_nonce="test-nonce",
+    )
+    script = dedent('''
+        import json, sys
+        from pathlib import Path
+        sys.path.insert(0, sys.argv[1])
+        from playwright.sync_api import sync_playwright
+        page_script = json.load(sys.stdin)
+        with sync_playwright() as p:
+            browser = p.chromium.launch(executable_path=sys.argv[2], headless=True,
+                                        chromium_sandbox=True)
+            page = browser.new_page(viewport={"width": 900, "height": 600})
+            page.goto(Path(sys.argv[3]).as_uri())
+            page.evaluate(page_script)
+            original_text = page.locator('body').text_content()
+            rectangles = """() => Array.from(document.querySelectorAll('p')).map(p => {
+                const r = p.getBoundingClientRect(); return [r.x, r.y, r.width, r.height];
+            })"""
+            original_rectangles = page.evaluate(rectangles)
+            messages = []
+            page.on('console', lambda message: messages.append(message.text))
+            page.evaluate("""() => {
+                const range = document.createRange();
+                range.setStart(document.getElementById('first').firstChild, 6);
+                range.setEnd(document.getElementById('second').firstChild, 16);
+                window.getSelection().removeAllRanges();
+                window.getSelection().addRange(range);
+            }""")
+            page.keyboard.press('Alt+h')
+            highlights = page.locator('span.incremento-epub-highlight')
+            assert highlights.count() > 0
+            assert page.locator('p').count() == 3, 'Highlighting must not clone paragraph elements'
+            assert page.locator('body').text_content() == original_text
+            assert page.evaluate(rectangles) == original_rectangles, 'Highlighting must not reflow the chapter'
+            assert highlights.evaluate_all("""nodes => nodes.every(node =>
+                !node.querySelector('p, em')
+                && getComputedStyle(node).backgroundColor === 'rgba(255, 220, 0, 0.45)')
+            """), 'Each selected text run must paint above the chapter backgrounds'
+            added = [json.loads(message.split('incremento_epub_hl_add:', 1)[1])['highlight']
+                     for message in messages if 'incremento_epub_hl_add:' in message]
+            assert len(added) == 1, 'One selection must remain one saved highlight'
+            highlight = added[0]
+            assert highlight['text'] == 'paragraph with styled text and an ending. Second paragraph'
+
+            # Reopen from the saved logical range, preserving the same layout.
+            page.reload()
+            page.evaluate(page_script.replace('"highlights": []', '"highlights": ' + json.dumps(added), 1))
+            assert page.evaluate(rectangles) == original_rectangles
+            highlights = page.locator('span.incremento-epub-highlight')
+            assert highlights.count() > 1
+            page.evaluate('([id, note]) => window.incrementoUpdateEpubHighlightNote(id, note)',
+                          [highlight['id'], 'Shared note'])
+            assert highlights.evaluate_all("nodes => nodes.every(node => node.dataset.note === 'Shared note')")
+            highlights.last.click()
+            menu = page.locator('#incremento-epub-highlight-actions')
+            menu.hover()
+            menu.locator('#incremento-epub-highlight-resize-btn').click()
+            assert page.locator('.incremento-epub-resize-handle').count() == 2
+            assert page.evaluate('window._incrementoEpubHighlightResize.highlight.text') == highlight['text']
+            assert page.evaluate('window._incrementoEpubHighlightResize.highlight.note') == 'Shared note'
+            handle = page.locator('.incremento-epub-resize-handle[data-endpoint="end"]').bounding_box()
+            destination = page.evaluate("""() => {
+                const range = document.createRange();
+                range.setStart(document.getElementById('third').firstChild, 5);
+                range.setEnd(document.getElementById('third').firstChild, 6);
+                const r = range.getBoundingClientRect();
+                return {x: r.left, y: r.top + r.height / 2};
+            }""")
+            page.mouse.move(handle['x'] + handle['width'] / 2, handle['y'] + handle['height'] / 2)
+            page.mouse.down()
+            origin = page.evaluate("""() => {
+                const s = window._incrementoEpubHighlightResize;
+                return {x: s.pointerOffsetX, y: s.pointerOffsetY};
+            }""")
+            page.mouse.move(destination['x'] + origin['x'], destination['y'] + origin['y'], steps=4)
+            page.mouse.up()
+            resized = page.evaluate('window._incrementoEpubHighlightResize.highlight')
+            assert resized['endOffset'] > highlight['endOffset'], resized
+            assert resized['id'] == highlight['id'] and resized['note'] == 'Shared note'
+            updated = [json.loads(message.split('incremento_epub_hl_update:', 1)[1])['highlight']
+                       for message in messages if 'incremento_epub_hl_update:' in message]
+            assert updated == [resized], 'Resizing must update the one logical highlight once'
+            assert page.evaluate(rectangles) == original_rectangles
+            highlights.last.click()
+            page.locator('#incremento-epub-highlight-delete-btn').click()
+            assert highlights.count() == 0, 'Delete must remove every segment of the logical highlight'
+            assert page.locator('body').text_content() == original_text
+            assert page.evaluate(rectangles) == original_rectangles
+            browser.close()
+    ''')
+    result = subprocess.run(
+        [runtime[0], "-I", "-c", script, str(_runtime_dir() / "packages"), runtime[1], str(chapter)],
+        input=json.dumps(page_script), capture_output=True, text=True, timeout=30, env=dict(os.environ),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("mode", ["selection", "highlight"])
+@pytest.mark.parametrize("endpoint", ["start", "end"])
+def test_epub_pin_pickup_preserves_endpoint_and_drag_tracks_pointer(tmp_path, monkeypatch, mode, endpoint):
+    import os
+    import subprocess
+    from textwrap import dedent
+
+    from webpage_browser import browser_runtime, _runtime_dir
+
+    runtime = browser_runtime()
+    if runtime is None:
+        pytest.skip("Optional webpage browser component has not been explicitly installed")
+    text = "abcdefghij klmnopqrst uvwxyzabcd " * 10
+    chapter = tmp_path / "chapter.xhtml"
+    chapter.write_text(
+        '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Pin fixture</title>'
+        '<style>body { font: 20px monospace; line-height: 1.5; } p { width: 480px; }</style>'
+        '</head><body><p id="passage">' + text + '</p></body></html>', encoding="utf-8",
+    )
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": text}])
+    monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
+    highlights = [{"id": "hl-1", "startOffset": 40, "endOffset": 114, "text": text[40:114]}] if mode == "highlight" else []
+    page_script = epub_dock._build_page_script(
+        card_id=7, section_index=0, scroll_ratio=0, text_scale=1.3,
+        read_anchor=None, focus_offset=-1, search_query="", highlights=highlights,
+        bridge_nonce="test-nonce",
+    )
+    script = dedent('''
+        import json, sys
+        from pathlib import Path
+        sys.path.insert(0, sys.argv[1])
+        from playwright.sync_api import sync_playwright
+        mode, endpoint = sys.argv[4:6]
+        with sync_playwright() as p:
+            browser = p.chromium.launch(executable_path=sys.argv[2], headless=True,
+                                        chromium_sandbox=True)
+            page = browser.new_page(viewport={"width": 900, "height": 900})
+            page.goto(Path(sys.argv[3]).as_uri())
+            page.evaluate(json.load(sys.stdin))
+            if mode == 'selection':
+                page.evaluate("""() => {
+                    const text = document.getElementById('passage').firstChild;
+                    const range = document.createRange();
+                    range.setStart(text, 40); range.setEnd(text, 114);
+                    window.getSelection().removeAllRanges();
+                    window.getSelection().addRange(range);
+                    window._incrementoEpubSelectionHandlesRequested = true;
+                    document.dispatchEvent(new Event('selectionchange'));
+                }""")
+                selector = '.incremento-epub-selection-resize-handle'
+                read_offsets = """() => {
+                    const range = window.getSelection().getRangeAt(0);
+                    return [range.startOffset, range.endOffset];
+                }"""
+            else:
+                page.locator('.incremento-epub-highlight').click()
+                page.locator('#incremento-epub-highlight-resize-btn').click()
+                selector = '.incremento-epub-resize-handle'
+                read_offsets = """() => {
+                    const h = window._incrementoEpubHighlightResize.highlight;
+                    return [h.startOffset, h.endOffset];
+                }"""
+            handle = page.locator(selector + '[data-endpoint="' + endpoint + '"]')
+            original = page.evaluate(read_offsets)
+            box = handle.bounding_box()
+            x = box['x'] + 14
+            y = box['y'] + (8 if endpoint == 'start' else 21)
+            page.mouse.move(x, y)
+            page.mouse.down()
+            page.mouse.move(x, y)
+            page.mouse.up()
+            assert page.evaluate(read_offsets) == original, 'Picking up a pin must not jump to another line'
+
+            # Move the grip by three monospace characters, staying on its row.
+            box = handle.bounding_box()
+            x = box['x'] + 16  # A grab slightly off the dot's center is valid too.
+            y = box['y'] + (10 if endpoint == 'start' else 23)
+            char_width = page.locator('#passage').evaluate("""node => {
+                const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+                const text = walker.nextNode();
+                const range = document.createRange();
+                range.setStart(text, 0); range.setEnd(text, 1);
+                return range.getBoundingClientRect().width;
+            }""")
+            page.mouse.move(x, y)
+            page.mouse.down()
+            page.mouse.move(x + 3 * char_width, y, steps=6)
+            page.mouse.up()
+            expected = original.copy()
+            expected[0 if endpoint == 'start' else 1] += 3
+            assert page.evaluate(read_offsets) == expected, (page.evaluate(read_offsets), expected)
+            browser.close()
+    ''')
+    result = subprocess.run(
+        [runtime[0], "-I", "-c", script, str(_runtime_dir() / "packages"), runtime[1], str(chapter), mode, endpoint],
+        input=json.dumps(page_script), capture_output=True, text=True, timeout=30, env=dict(os.environ),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("mode", ["selection", "highlight"])
+def test_epub_start_pin_at_text_node_boundary_anchors_to_first_selected_line(tmp_path, monkeypatch, mode):
+    import os
+    import subprocess
+    from textwrap import dedent
+
+    from webpage_browser import browser_runtime, _runtime_dir
+
+    runtime = browser_runtime()
+    if runtime is None:
+        pytest.skip("Optional webpage browser component has not been explicitly installed")
+    before, after = "Previous row.", "Next selected row."
+    chapter = tmp_path / "chapter.xhtml"
+    chapter.write_text(
+        '<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Line fixture</title></head>'
+        '<body><p><span>' + before + '</span><br/><span id="next">' + after + '</span></p></body></html>',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": before + after}])
+    monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
+    highlights = [{"id": "hl-1", "startOffset": len(before), "endOffset": len(before) + 8, "text": after[:8]}] if mode == "highlight" else []
+    page_script = epub_dock._build_page_script(
+        card_id=7, section_index=0, scroll_ratio=0, text_scale=1.3,
+        read_anchor=None, focus_offset=-1, search_query="", highlights=highlights,
+        bridge_nonce="test-nonce",
+    )
+    script = dedent('''
+        import json, sys
+        from pathlib import Path
+        sys.path.insert(0, sys.argv[1])
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = p.chromium.launch(executable_path=sys.argv[2], headless=True,
+                                        chromium_sandbox=True)
+            page = browser.new_page()
+            page.goto(Path(sys.argv[3]).as_uri())
+            page.evaluate(json.load(sys.stdin))
+            if sys.argv[4] == 'selection':
+                page.evaluate("""() => {
+                    const range = document.createRange();
+                    range.setStart(document.getElementById('next').firstChild, 0);
+                    range.setEnd(document.getElementById('next').firstChild, 8);
+                    window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+                    window._incrementoEpubSelectionHandlesRequested = true;
+                    document.dispatchEvent(new Event('selectionchange'));
+                }""")
+                selector = '.incremento-epub-selection-resize-handle'
+            else:
+                page.locator('.incremento-epub-highlight').click()
+                page.locator('#incremento-epub-highlight-resize-btn').click()
+                selector = '.incremento-epub-resize-handle'
+            actual = page.locator(selector + '[data-endpoint="start"]').bounding_box()
+            expected = page.locator('#next').evaluate("node => node.getBoundingClientRect().toJSON()")
+            assert abs(actual['x'] + 14 - expected['left']) <= 1, (actual, expected)
+            assert abs(actual['y'] + 30 - expected['top']) <= 1, (actual, expected)
+            browser.close()
+    ''')
+    result = subprocess.run(
+        [runtime[0], "-I", "-c", script, str(_runtime_dir() / "packages"), runtime[1], str(chapter), mode],
+        input=json.dumps(page_script), capture_output=True, text=True, timeout=30, env=dict(os.environ),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_build_page_script_supports_dragging_both_highlight_endpoints(monkeypatch):
     monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"text": "Example section text"}])
     monkeypatch.setattr(epub_dock, "configured_highlight_when_extracting", lambda: False)
@@ -626,8 +1026,10 @@ def test_build_page_script_supports_dragging_both_highlight_endpoints(monkeypatc
     assert "highlight: session.highlight" in script
     assert "id: String(target.dataset.id || '')" in script
     assert "if (endOffset <= startOffset) return null" in script
-    assert "opacity: 0;\n            pointer-events: none;" in script
-    assert "#incremento-epub-highlight-actions:hover #incremento-epub-highlight-resize-btn" in script
+    # All actions stay visible while the menu is open, including outside hover.
+    resize_style = script.split("#incremento-epub-highlight-resize-btn {", 1)[1].split("}", 1)[0]
+    assert "opacity: 0" not in resize_style
+    assert "pointer-events: none" not in resize_style
     finish_resize = script[
         script.index("      function finishHighlightResize"):
         script.index("      function cancelHighlightResize")
@@ -758,6 +1160,10 @@ def test_epub_end_handle_stays_on_its_row_in_the_right_margin(monkeypatch):
         const document = {createRange: () => makeRange()};
         const window = {getSelection: () => selection};
         const textNodes = () => [textNode];
+        const offsetFromPoint = (_node, offset) => offset;
+        const rectForOffset = offset => ({
+          left: offset, right: offset + 1, top: visualTop(offset), height: 18,
+        });
         const caretRangeAtPoint = (x, y) => {
           const offset = x > 10 ? 15 : (x >= 9 ? (y < 40 ? 5 : 11) : Math.trunc(x));
           return makeRange(offset, offset);
@@ -1571,7 +1977,10 @@ def test_epub_picker_remembers_selection_and_drops_result_after_navigation(monke
 
 
 @pytest.mark.parametrize('accepted', [True, False], ids=['hex-selected', 'cancelled'])
-def test_epub_hex_selection_survives_picker_and_paints_selected_text(monkeypatch, accepted):
+@pytest.mark.parametrize('text_parts', [
+    ['Selected passage longer'], ['Se', 'lected ', 'passage', ' longer'],
+], ids=['one-text-run', 'several-text-runs'])
+def test_epub_hex_selection_survives_picker_and_paints_selected_text(monkeypatch, accepted, text_parts):
     import json
     import subprocess
     monkeypatch.setattr(epub_dock, '_current_sections', lambda: [{'text': 'Selected passage'}])
@@ -1591,7 +2000,7 @@ def test_epub_hex_selection_survives_picker_and_paints_selected_text(monkeypatch
         let selection = { text: 'Selected passage', startOffset: 2, endOffset: 18 };
         const selectionMeta = () => selection;
         const clearSelection = () => { selection = null; };
-        const pointFromOffset = offset => ({ node: {nodeValue: 'Selected passage longer'}, offset });
+        const textNodes = () => input.textParts.map(nodeValue => ({nodeValue}));
         const updateHighlightNodeNote = () => {};
         const resizeHighlightRange = () => true;
         const removeSelectionResizeHandles = () => {};
@@ -1610,7 +2019,7 @@ def test_epub_hex_selection_survives_picker_and_paints_selected_text(monkeypatch
         process.stdout.write(JSON.stringify({rows, wrappers}));
     '''
     result = subprocess.run(['node', '-e', program], input=json.dumps({
-        'code': normalize + paint + set_color + picker, 'accepted': accepted}),
+        'code': normalize + paint + set_color + picker, 'accepted': accepted, 'textParts': text_parts}),
         capture_output=True, text=True, timeout=10)
     assert result.returncode == 0, result.stderr
     state = json.loads(result.stdout)
@@ -1621,4 +2030,31 @@ def test_epub_hex_selection_survives_picker_and_paints_selected_text(monkeypatch
         assert state['rows'][0]['color'] == '#123abc'
         assert state['rows'][0]['text'] == 'Selected passage'
         assert state['rows'][0]['startOffset'] == 2 and state['rows'][0]['endOffset'] == 18
-        assert state['wrappers'][0]['style']['backgroundColor'] == 'rgba(18,58,188,0.42)'
+        assert state['wrappers']
+        assert all(wrapper['style']['backgroundColor'] == 'rgba(18,58,188,0.42)'
+                   for wrapper in state['wrappers'])
+        assert all(wrapper['dataset']['id'] == state['rows'][0]['id'] for wrapper in state['wrappers'])
+
+
+def test_epub_focus_visibility_and_teardown_restore_anki_without_losing_preference(monkeypatch):
+    mode = types.SimpleNamespace(is_visible=lambda: True, stop=MagicMock(), enabled=True)
+    dock = types.SimpleNamespace(_epub_focus_mode=mode, hide=MagicMock(), isVisible=lambda: False)
+    monkeypatch.setattr(epub_dock, '_epub_dock', dock)
+    monkeypatch.setattr(epub_dock, '_cb_epub_view_stopped', None)
+    assert epub_dock._epub_reader_is_visible()
+    epub_dock.on_epub_reviewer_will_end()
+    mode.stop.assert_called_once_with()
+    dock.hide.assert_called_once_with()
+    assert mode.enabled
+
+
+def test_epub_focus_config_is_saved_before_layout_is_changed(monkeypatch):
+    saved = []
+    mode = types.SimpleNamespace(set_enabled=lambda value: saved.append(('apply', value)))
+    monkeypatch.setattr(epub_dock, '_epub_dock', types.SimpleNamespace(_epub_focus_mode=mode))
+    monkeypatch.setattr(epub_dock, 'load_addon_config', lambda *a: {'unknown': 'keep'})
+    monkeypatch.setattr(epub_dock, 'save_addon_config', lambda *a: saved.append(('save', a[-1])))
+    assert epub_dock.save_epub_focus_mode(True)
+    assert saved == [('save', {'unknown': 'keep', 'epub_focus_mode': True})]
+    epub_dock.apply_epub_focus_preference({'epub_focus_mode': True})
+    assert saved[-1] == ('apply', True)

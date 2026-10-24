@@ -12046,6 +12046,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_epub_appearance",
+      "form": "",
+      "source": "EPUB appearance",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_epub_bookmark_delete_failed",
       "form": "",
       "source": "Could not delete EPUB bookmark:\n{error}",
@@ -12134,6 +12142,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_epub_change_highlight_color",
+      "form": "",
+      "source": "Change highlight color…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_epub_choose_controls",
       "form": "",
       "source": "Choose which EPUB control groups are visible",
@@ -12145,6 +12161,25 @@
       "key": "reader_epub_compact_location_accessible",
       "form": "",
       "source": "EPUB reader compact location",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_epub_connection_label",
+      "form": "",
+      "source": "{title} — section {section}",
+      "tokens": [
+        "{section}",
+        "{title}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_epub_connections_hint",
+      "form": "",
+      "source": "Connect EPUB sections or selected passages. Connections appear at both ends; preview or read beside your main book without losing your place.",
       "tokens": [],
       "markup": []
     },
@@ -12312,6 +12347,30 @@
       "key": "reader_epub_finished_tooltip",
       "form": "",
       "source": "Mark this EPUB as finished or unfinished",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_epub_focus_mode",
+      "form": "",
+      "source": "EPUB focus",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_epub_focus_mode_hint",
+      "form": "",
+      "source": "Show the EPUB across Anki’s available width while keeping answer controls visible. Your choice is saved.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_epub_focus_save_failed",
+      "form": "",
+      "source": "Could not save EPUB focus. Please try again.",
       "tokens": [],
       "markup": []
     },
@@ -12585,6 +12644,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_epub_link_passage",
+      "form": "",
+      "source": "Link a passage…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_epub_links_accessible",
       "form": "",
       "source": "EPUB reader: Links",
@@ -12847,6 +12914,38 @@
       "key": "reader_epub_read_to_here_tooltip",
       "form": "",
       "source": "Mark EPUB sections as read up to here without placing an exact marker",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_epub_reference",
+      "form": "",
+      "source": "EPUB reference…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_epub_reference_hint",
+      "form": "",
+      "source": "Read another EPUB beside this one without changing your main reading position.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_epub_reference_preview",
+      "form": "",
+      "source": "Preview EPUB",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_epub_reference_unavailable",
+      "form": "",
+      "source": "Linked EPUB unavailable or beyond its reading limit. Open the book normally, choose another passage, or remove the link.",
       "tokens": [],
       "markup": []
     },
@@ -13115,6 +13214,14 @@
       "tokens": [
         "{error}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_epub_use_passage",
+      "form": "",
+      "source": "Use this passage",
+      "tokens": [],
       "markup": []
     },
     {
@@ -32614,6 +32721,248 @@
       "key": "web_snapshot_outside_viewport",
       "form": "",
       "source": "The selected region was outside the current viewport.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_bottom",
+      "form": "",
+      "source": "Bottom half",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_bottom_left",
+      "form": "",
+      "source": "Bottom left quarter",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_bottom_right",
+      "form": "",
+      "source": "Bottom right quarter",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_choose_writing",
+      "form": "",
+      "source": "Choose a writing card. It stays open beside your document while you study.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_columns",
+      "form": "",
+      "source": "Side by side",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_grid",
+      "form": "",
+      "source": "Grid",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_keep_open",
+      "form": "",
+      "source": "Keep open while studying",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_keep_open_hint",
+      "form": "",
+      "source": "Keep this writing card visible when reviewing other cards or leaving review. Closing the writing pane turns this off.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_left",
+      "form": "",
+      "source": "Left half",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_load_failed",
+      "form": "",
+      "source": "Writing cards could not be loaded. Close this window and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_loading",
+      "form": "",
+      "source": "Loading writing cards…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_maximize",
+      "form": "",
+      "source": "Fill available screen",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_need_two",
+      "form": "",
+      "source": "Open at least two Incremento panes to arrange them.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_new_writing",
+      "form": "",
+      "source": "New writing…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_no_writing",
+      "form": "",
+      "source": "No writing cards yet. Create one with New writing…, then select it here.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_open_beside",
+      "form": "",
+      "source": "Open beside",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_position",
+      "form": "",
+      "source": "Position window",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_restore",
+      "form": "",
+      "source": "Restore previous layout",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_right",
+      "form": "",
+      "source": "Right half",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_rows",
+      "form": "",
+      "source": "Stack vertically",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_search",
+      "form": "",
+      "source": "Search writing titles",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_title",
+      "form": "",
+      "source": "Workspace",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_too_small",
+      "form": "",
+      "source": "This window needs more room. Choose a larger screen position.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_top",
+      "form": "",
+      "source": "Top half",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_top_left",
+      "form": "",
+      "source": "Top left quarter",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_top_right",
+      "form": "",
+      "source": "Top right quarter",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_write_beside",
+      "form": "",
+      "source": "Write beside document…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_writing_cards",
+      "form": "",
+      "source": "Writing cards",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_writing_limit",
+      "form": "",
+      "source": "Showing the first {count} writing cards. Use Quick Open Content to find others.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_writing_tools",
+      "form": "",
+      "source": "Writing tools (scroll for more)",
       "tokens": [],
       "markup": []
     },

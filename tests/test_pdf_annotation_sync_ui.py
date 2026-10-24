@@ -142,3 +142,26 @@ def test_automatic_sync_stops_retrying_an_unchanged_over_limit_pdf_until_explici
 
     assert queue.request(*request, callback=lambda *args: results.append(args)) is True
     assert len(runner.tasks) == 1
+
+
+def test_switching_the_main_pdf_keeps_annotation_writes_for_open_side_panes():
+    runner = Runner()
+    results = []
+    queue = ui.PdfAnnotationSyncQueue(runner.submit, lambda *args, **kw: {})
+    side = ('/addon', 'Profile', 42, 'side.pdf')
+    queue.retain(side)
+    queue.retain(side)
+    queue.request(*side, callback=lambda *args: results.append('saved'))
+    queue.cancel_except(('/addon', 'Profile', 77, 'main.pdf'))
+    runner.complete()
+    assert results == ['saved']
+    queue.release(side)
+    queue.request(*side)
+    queue.cancel_except(None)
+    assert side in queue.jobs
+    queue.release(side)
+    queue.cancel_except(None)
+    assert side not in queue.jobs
+    queue.retain(side)
+    queue.reset()
+    assert not queue.retained

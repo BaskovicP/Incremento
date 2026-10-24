@@ -115,7 +115,7 @@ def test_epub_reader_uses_pdf_style_bottom_customizable_controls():
     build_source = source[build_start:build_end]
 
     document_position = build_source.index("layout.addWidget(view, stretch=1)")
-    controls_position = build_source.index("layout.addWidget(dock._controls_host)")
+    controls_position = build_source.index("layout.addWidget(controls_scroll)")
 
     assert document_position < controls_position
     assert 't("reader_customize_controls")' in build_source
@@ -151,17 +151,18 @@ def test_epub_reader_uses_pdf_style_bottom_customizable_controls():
     assert "_control_group_rows" in build_source
 
 
-def test_epub_pdf_clone_keeps_subgroups_horizontal_and_scopes_group_styling():
+def test_epub_pdf_clone_allows_subgroup_wrapping_and_scopes_group_styling():
     source = (ROOT / "frontend" / "epub_dock.py").read_text(encoding="utf-8")
     stack_start = source.index("def _make_epub_toolbar_stack(")
-    stack_end = source.index("\ndef _make_epub_toolbar_separator(", stack_start)
+    stack_end = source.index("\ndef _make_epub_progress_meter(", stack_start)
     stack_source = source[stack_start:stack_end]
     group_start = source.index("def _make_epub_compound_group(")
     group_end = source.index("\ndef _epub_read_progress_state(", group_start)
     group_source = source[group_start:group_end]
 
-    assert "actions_row = QHBoxLayout(actions)" in stack_source
-    assert "_FlowLayout(actions" not in stack_source
+    # Expanded controls must wrap at narrow widths without requiring Minimize.
+    assert "actions_row = _FlowLayout(actions" in stack_source
+    assert "row = _FlowLayout(frame" in group_source
     assert 'frame.setObjectName("incremento_epub_toolbar_group")' in group_source
     assert "QFrame#incremento_epub_toolbar_group" in group_source
     assert '"QFrame {"' not in group_source
@@ -243,7 +244,8 @@ def test_epub_find_row_matches_the_centered_pdf_find_position():
     find_source = build_source[find_start:find_end]
 
     assert "dock._find_input.setFixedWidth(260)" in find_source
-    assert find_source.count("find_layout.addStretch(1)") == 2
+    assert "find_layout = _FlowLayout(find_bar" in find_source
+    assert "center_lines=True" in find_source
     assert "find_layout.addWidget(dock._find_input, 1)" not in find_source
 
 

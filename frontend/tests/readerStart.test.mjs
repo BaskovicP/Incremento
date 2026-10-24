@@ -27,6 +27,9 @@ function registerBridge(pending = null, focus = null) {
     setLocale: () => {},
     setAppearanceMode: (value) => { state.appearance = value; },
     setPdfFocusState: value => {state.focus = value;},
+    setControlsCollapsed: value => {state.controlsCollapsed = value;},
+    setSearchQuery: value => {state.query = typeof value === 'function' ? value(state.query || '') : value;},
+    setFindOpen: value => {state.findOpen = value;},
     setShowHighlightDeleteButtons: (value) => { state.showDeleteX = value; },
     setLinkPreviewZoom: (value) => {state.previewZoom = value;},
     setPageLinksDocument: update => {state.pageLinksDocument = update(state.pageLinksDocument);},
@@ -37,8 +40,8 @@ function registerBridge(pending = null, focus = null) {
     DEFAULT_LIMIT_STATUS: {},
   };
   for (const name of [
-    'setLinkBackHistory', 'setHighlights', 'setNativeHighlightsVisible', 'setBookmarks', 'setFindOpen',
-    'setSearchQuery', 'setSearchHits', 'setActiveSearchHitIndex', 'setReadAnchor',
+    'setLinkBackHistory', 'setHighlights', 'setNativeHighlightsVisible', 'setBookmarks',
+    'setSearchHits', 'setActiveSearchHitIndex', 'setReadAnchor',
     'setFindStartPage',
     'setActiveHighlightId', 'suppressScrollPersistence', 'setLimitStatus',
     'setLimitNotice', 'applyAutoHighlightSetting', 'applyScrollToTopOnPageChangeSetting',
@@ -57,6 +60,33 @@ function registerBridge(pending = null, focus = null) {
   vm.runInNewContext(source.slice(start, finish), scope);
   return { scope, state };
 }
+
+test('an empty search reply does not swallow the next query or close an open Find field', () => {
+  const {scope, state} = registerBridge();
+  state.findOpen = true;
+  scope.window.incrementoReceivePdfSearchState({query: '', hits: [], activeIndex: -1});
+  assert.equal(scope.suppressSearchSyncRef.current, null,
+    'an unchanged query must not suppress the next user edit');
+  assert.equal(state.findOpen, true, 'clearing the query keeps Find available for the next search');
+  scope.window.incrementoReceivePdfSearchState({query: 'passage', hits: [], activeIndex: -1});
+  assert.equal(state.query, 'passage');
+  assert.equal(scope.suppressSearchSyncRef.current, true, 'a replaced query must not echo back to Python');
+});
+
+test('pending and direct startup restore controls visibility without toggling PDF focus', () => {
+  const focus = {cardId: 42, enabled: true, available: true};
+  const {scope, state} = registerBridge({cardId: 42, filename: 'first.pdf', page: 1,
+    controlsCollapsed: false}, focus);
+  assert.equal(state.controlsCollapsed, false);
+  assert.equal(state.focus, focus);
+  scope.window.incrementoPdfStart(42, 'first.pdf', 1, 1, 0, 0, null, '', [], -1, '', '',
+    false, null, true, true, [], 'en', null, 'original', true, 1.5, null, true);
+  assert.equal(state.controlsCollapsed, true);
+  assert.equal(state.focus, focus);
+  scope.window.incrementoPdfStart(43, 'second.pdf', 1, 1, 0, 0, null, '', [], -1, '', '',
+    false, null, true, true, [], 'en', null, 'original', true, 1.5, null, false);
+  assert.equal(state.controlsCollapsed, false);
+});
 
 for (const entry of ['pending', 'direct']) {
   test(`${entry} startup restores PDF focus and accepts committed toolbar/settings changes`, () => {

@@ -3533,3 +3533,24 @@ def test_apply_extract_topic_mark_to_editor_switches_to_default_item(monkeypatch
     assert changed is True
     assert editor.note.tags == ["keep", "item"]
     assert editor.tags.text_value == "keep item"
+
+
+def test_epub_reference_add_records_captured_source_and_section(monkeypatch):
+    recorded = []
+    note = types.SimpleNamespace(id=123, fields=['Question', 'Answer'])
+    monkeypatch.setattr(dock, '_active_profile', lambda: 'A')
+    monkeypatch.setattr(dock, '_save_epub_extract_source', lambda *args: recorded.append(args))
+    dock._notify_epub_extract_note_added(note, {'source': 'epub', 'source_card_id': 7,
+                                                      'source_position': 3})
+    assert recorded == [('A', 7, 3, 123, 'Question / Answer')]
+    assert note._incremento_epub_source_recorded is True
+
+
+def test_epub_reference_source_storage_failure_does_not_interrupt_added_note(monkeypatch):
+    note = types.SimpleNamespace(id=123, fields=['Question'])
+    def unavailable(*args):
+        raise OSError('storage unavailable')
+    monkeypatch.setattr(dock, '_save_epub_extract_source', unavailable)
+    dock._notify_epub_extract_note_added(note, {'source': 'epub', 'source_card_id': 7,
+                                              'source_position': 3})
+    assert note._incremento_epub_source_recorded is True

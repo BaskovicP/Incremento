@@ -170,6 +170,11 @@ def test_saved_focus_button_restores_after_recreation_and_failed_save_keeps_layo
         restored.save_preference = save
         restored.request_enabled(not restored.enabled)
         assert saved == [False] and not restored.active and main.web.isVisible()
+        restored.stop(reset=True)
+        restored.dock.hide()
+        restored = create()
+        restored.present(eligible=True, title='PDF')
+        assert not restored.enabled and not restored.active and main.web.isVisible()
         # Settings changes update the same button without writing it a second time.
         restored.set_enabled(True)
         assert restored.active and saved == [False]
@@ -270,4 +275,47 @@ def test_pdf_focus_keeps_the_live_webengine_document_and_selection():
              'QTWEBENGINE_CHROMIUM_FLAGS': '--disable-gpu --disable-gpu-compositing --disable-software-rasterizer --use-gl=disabled'},
         capture_output=True, text=True, timeout=25,
     )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_switching_pdf_and_epub_focus_restores_only_the_active_reader():
+    script = dedent('''
+        import sys, types
+        from PyQt6 import QtCore, QtWidgets
+        from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QDockWidget
+        from PyQt6.QtCore import Qt
+        qt = types.ModuleType('aqt.qt')
+        for module in (QtCore, QtWidgets):
+            for name in dir(module):
+                setattr(qt, name, getattr(module, name))
+        sys.modules['aqt'] = types.ModuleType('aqt')
+        sys.modules['aqt.qt'] = qt
+        from frontend.pdf_focus_mode import PdfFocusMode
+        app = QApplication([])
+        main = QMainWindow()
+        host = QWidget()
+        main.setCentralWidget(host)
+        layout = QVBoxLayout(host)
+        main.web, main.bottomWeb = QLabel('Card'), QLabel('Answers')
+        layout.addWidget(main.web)
+        layout.addWidget(main.bottomWeb)
+        modes = []
+        for label in ('PDF', 'EPUB'):
+            dock = QDockWidget(label, main)
+            main.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+            modes.append(PdfFocusMode(main, dock, QLabel(label), enabled=True))
+        main.show()
+        modes[0].present(eligible=True, title='PDF')
+        modes[1].present(eligible=True, title='EPUB')
+        assert not modes[0].active and modes[1].active
+        assert main.web.isHidden() and not main.bottomWeb.isHidden()
+        assert layout.count() == 3
+        modes[0].stop()  # A later old-reader hook must not uncover the card.
+        assert main.web.isHidden()
+        modes[1].stop()
+        assert not main.web.isHidden() and layout.count() == 2
+    ''')
+    result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
+                            env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'},
+                            capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stdout + result.stderr

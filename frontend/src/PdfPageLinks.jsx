@@ -1,4 +1,5 @@
 import {useEffect, useRef, useState} from 'react';
+import {createPortal} from 'react-dom';
 import {createPdfPageLinks} from './pdfPageLinks.mjs';
 
 /** Keep the bridge alive when responsive toolbar buttons mount or unmount. */
@@ -33,14 +34,16 @@ export function usePdfPageLinks({cardId, page, generation, enabled = true, onCom
 export default function PdfPageLinks({linksState, tr}) {
   const {cardId, page, generation, enabled, links, loading, error, create, manage, jump, remove} = linksState;
   const [openedFor, setOpenedFor] = useState(null);
-  const root = useRef(null), trigger = useRef(null);
+  const root = useRef(null), trigger = useRef(null), panel = useRef(null);
   const key = `${cardId}:${page}:${generation}`;
   const expanded = enabled && openedFor === key;
   const close = () => {setOpenedFor(null); trigger.current?.focus();};
   useEffect(() => {setOpenedFor(null);}, [key, enabled]);
   useEffect(() => {
     if (!expanded) return;
-    const outside = event => {if (!root.current?.contains(event.target)) setOpenedFor(null);};
+    const outside = event => {
+      if (!root.current?.contains(event.target) && !panel.current?.contains(event.target)) setOpenedFor(null);
+    };
     const escape = event => {
       if (event.key !== 'Escape') return;
       event.preventDefault(); event.stopPropagation();
@@ -61,8 +64,9 @@ export default function PdfPageLinks({linksState, tr}) {
       onClick={() => setOpenedFor(expanded ? null : key)}>
       {tr('reader_page_links')}{links.length > 0 ? ` (${links.length})` : ''}
     </button>
-    {expanded && <section id="pdf-page-links-panel" role="dialog" aria-label={tr('reader_page_links')}
-      style={{position: 'absolute', bottom: 'calc(100% + 6px)', left: 8, zIndex: 60,
+    {expanded && createPortal(<section ref={panel} id="pdf-page-links-panel" data-pdf-page-links="true"
+      role="dialog" aria-label={tr('reader_page_links')}
+      style={{position: 'fixed', bottom: 'calc(var(--pdf-controls-height, 58px) + 6px)', left: 8, zIndex: 60,
         width: 'min(520px, calc(100vw - 16px))', boxSizing: 'border-box',
         maxHeight: 'min(320px, calc(100vh - var(--pdf-controls-height, 58px) - 16px))',
         overflow: 'auto', background: '#27272a', color: '#f3f7ff', border: '1px solid #555',
@@ -94,6 +98,6 @@ export default function PdfPageLinks({linksState, tr}) {
           {tr(error ? 'reader_reference_unavailable' : loading ? 'reader_link_preview_loading' : 'reader_page_links_empty')}
         </span>}
       </div>
-    </section>}
+    </section>, document.body)}
   </span>;
 }

@@ -3802,3 +3802,134 @@ msgstr "Hide the left Anki pane and show the PDF across the full available width
 
 msgid "reader_pdf_focus_save_failed"
 msgstr "Could not save PDF focus. Please try again."
+
+#. EPUB focus and reference workspace
+msgid "reader_epub_focus_mode"
+msgstr "EPUB focus"
+
+msgid "reader_epub_focus_mode_hint"
+msgstr "Show the EPUB across Anki’s available width while keeping answer controls visible. Your choice is saved."
+
+msgid "reader_epub_focus_save_failed"
+msgstr "Could not save EPUB focus. Please try again."
+
+msgid "reader_epub_reference"
+msgstr "EPUB reference…"
+
+msgid "reader_epub_reference_hint"
+msgstr "Read another EPUB beside this one without changing your main reading position."
+
+msgid "reader_epub_connections_hint"
+msgstr "Connect EPUB sections or selected passages. Connections appear at both ends; preview or read beside your main book without losing your place."
+
+msgid "reader_epub_change_highlight_color"
+msgstr "Change highlight color…"
+
+msgid "reader_epub_use_passage"
+msgstr "Use this passage"
+
+msgid "reader_epub_link_passage"
+msgstr "Link a passage…"
+
+msgid "reader_epub_connection_label"
+msgstr "{title} — section {section}"
+
+
+msgid "reader_epub_reference_unavailable"
+msgstr "Linked EPUB unavailable or beyond its reading limit. Open the book normally, choose another passage, or remove the link."
+
+msgid "reader_epub_reference_preview"
+msgstr "Preview EPUB"
+
+msgid "reader_epub_appearance"
+msgstr "EPUB appearance"
+
+msgid "workspace_title"
+msgstr "Workspace"
+
+msgid "workspace_write_beside"
+msgstr "Write beside document…"
+
+msgid "workspace_columns"
+msgstr "Side by side"
+
+msgid "workspace_rows"
+msgstr "Stack vertically"
+
+msgid "workspace_grid"
+msgstr "Grid"
+
+msgid "workspace_restore"
+msgstr "Restore previous layout"
+
+msgid "workspace_position"
+msgstr "Position window"
+
+msgid "workspace_left"
+msgstr "Left half"
+
+msgid "workspace_right"
+msgstr "Right half"
+
+msgid "workspace_top"
+msgstr "Top half"
+
+msgid "workspace_bottom"
+msgstr "Bottom half"
+
+msgid "workspace_top_left"
+msgstr "Top left quarter"
+
+msgid "workspace_top_right"
+msgstr "Top right quarter"
+
+msgid "workspace_bottom_left"
+msgstr "Bottom left quarter"
+
+msgid "workspace_bottom_right"
+msgstr "Bottom right quarter"
+
+msgid "workspace_maximize"
+msgstr "Fill available screen"
+
+msgid "workspace_need_two"
+msgstr "Open at least two Incremento panes to arrange them."
+
+msgid "workspace_too_small"
+msgstr "This window needs more room. Choose a larger screen position."
+
+msgid "workspace_keep_open"
+msgstr "Keep open while studying"
+
+msgid "workspace_keep_open_hint"
+msgstr "Keep this writing card visible when reviewing other cards or leaving review. Closing the writing pane turns this off."
+
+msgid "workspace_writing_tools"
+msgstr "Writing tools (scroll for more)"
+
+msgid "workspace_loading"
+msgstr "Loading writing cards…"
+
+msgid "workspace_search"
+msgstr "Search writing titles"
+
+msgid "workspace_writing_cards"
+msgstr "Writing cards"
+
+msgid "workspace_open_beside"
+msgstr "Open beside"
+
+msgid "workspace_new_writing"
+msgstr "New writing…"
+
+msgid "workspace_choose_writing"
+msgstr "Choose a writing card. It stays open beside your document while you study."
+
+msgid "workspace_no_writing"
+msgstr "No writing cards yet. Create one with New writing…, then select it here."
+
+msgid "workspace_writing_limit"
+msgstr "Showing the first {count} writing cards. Use Quick Open Content to find others."
+
+msgid "workspace_load_failed"
+msgstr "Writing cards could not be loaded. Close this window and try again."

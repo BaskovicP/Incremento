@@ -34,6 +34,8 @@ from aqt.qt import (
     QTextFormat,
     QTextOption,
     QShortcut,
+    QScrollArea,
+    QCheckBox,
 )
 from aqt.utils import askUser, showInfo, tooltip
 from PyQt6.QtCore import QUrl
@@ -103,6 +105,8 @@ _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__fil
 _ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
 
 _writing_dock = None
+_writing_keep_open = False
+_writing_profile = None
 _current_writing_card_id: int | None = None
 _current_writing_relpath: str = ""
 _loading_editor = False
@@ -514,7 +518,8 @@ def _schedule_state_save() -> None:
 
 
 def _save_writing_progress() -> None:
-    if _writing_dock is None or _loading_editor or _current_writing_card_id is None:
+    if (_writing_dock is None or _loading_editor or _current_writing_card_id is None
+            or _writing_profile != _active_profile()):
         return
     try:
         cursor = _writing_dock._editor.textCursor()
@@ -567,7 +572,8 @@ def _sync_writing_word_stats(*, text: str | None = None) -> None:
 
 
 def _autosave_from_editor() -> None:
-    if _writing_dock is None or not _current_writing_relpath:
+    if (_writing_dock is None or not _current_writing_relpath
+            or _writing_profile != _active_profile()):
         return
     try:
         text = _writing_dock._editor.toPlainText()
@@ -1043,12 +1049,19 @@ def _add_editor_shortcuts(dock) -> None:
         dock._shortcuts.append(shortcut)
 
 
+class _WritingDock(QDockWidget):
+    def closeEvent(self, event):
+        _flush_editor_state()
+        set_keep_open(False)
+        super().closeEvent(event)
+
+
 def _build_writing_dock():
     global _writing_dock, _autosave_timer, _state_save_timer
 
-    dock = QDockWidget(t("writing_title"), mw)
+    dock = _WritingDock(t("writing_title"), mw)
     dock.setObjectName("incremento_writing_dock")
-    dock.setMinimumWidth(720)
+    dock.setMinimumWidth(320)
 
     root = QWidget(dock)
     layout = QVBoxLayout(root)
@@ -1057,6 +1070,7 @@ def _build_writing_dock():
 
     top = QVBoxLayout()
     title_lbl = QLabel("")
+    title_lbl.setWordWrap(True)
     title_lbl.setStyleSheet("font-size: 13px; font-weight: 600;")
     file_lbl = QLabel("")
     file_lbl.setStyleSheet("font-family: monospace; color: #8a8f99;")
@@ -1065,7 +1079,15 @@ def _build_writing_dock():
     top.addWidget(file_lbl)
     layout.addLayout(top)
 
-    toolbar = QHBoxLayout()
+    keep_open = QCheckBox(t("workspace_keep_open"), root)
+    keep_open.setToolTip(t("workspace_keep_open_hint"))
+    keep_open.toggled.connect(set_keep_open)
+    top.addWidget(keep_open)
+    dock._keep_open_checkbox = keep_open
+
+    toolbar_host = QWidget(root)
+    toolbar = QHBoxLayout(toolbar_host)
+    toolbar.setContentsMargins(0, 0, 0, 0)
     toolbar.setSpacing(6)
 
     toolbar.addWidget(_build_button(t("writing_smaller_text"), lambda: _adjust_font_scale(-0.1), tooltip_text=t("writing_smaller_text_tooltip")))
@@ -1113,7 +1135,13 @@ def _build_writing_dock():
     toolbar.addStretch(1)
     toolbar.addWidget(_build_button(t("writing_backups"), _open_backup_restore_dialog, tooltip_text=t("writing_backups_tooltip")))
     toolbar.addWidget(_build_button(t("writing_reveal_file"), _open_writing_folder, tooltip_text=t("writing_reveal_file_tooltip")))
-    layout.addLayout(toolbar)
+    toolbar_scroll = QScrollArea(root)
+    toolbar_scroll.setAccessibleName(t("workspace_writing_tools"))
+    toolbar_scroll.setWidget(toolbar_host)
+    toolbar_scroll.setWidgetResizable(True)
+    toolbar_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    toolbar_scroll.setMaximumHeight(toolbar_host.sizeHint().height() + 24)
+    layout.addWidget(toolbar_scroll)
 
     split = QSplitter(Qt.Orientation.Horizontal, root)
 
@@ -1170,12 +1198,15 @@ def _build_writing_dock():
     progress_value_lbl.setStyleSheet("font-size: 11px; color: #9aa0a6; font-weight: 600;")
     saved_lbl = QLabel("")
     saved_lbl.setStyleSheet("font-size: 11px; color: #9aa0a6;")
-    bottom.addWidget(status_lbl, 1)
+    status_row = QHBoxLayout()
+    status_row.addWidget(status_lbl, 1)
+    status_row.addWidget(saved_lbl)
+    layout.addLayout(status_row)
     bottom.addWidget(progress_scope_label, 0, Qt.AlignmentFlag.AlignCenter)
     bottom.addWidget(progress_scope_combo, 0, Qt.AlignmentFlag.AlignCenter)
     bottom.addWidget(progress_value_lbl, 0, Qt.AlignmentFlag.AlignCenter)
-    bottom.addWidget(detail_lbl, 0, Qt.AlignmentFlag.AlignCenter)
-    bottom.addWidget(saved_lbl, 0, Qt.AlignmentFlag.AlignRight)
+    detail_lbl.setWordWrap(True)
+    layout.addWidget(detail_lbl)
     layout.addLayout(bottom)
 
     bookmarks_panel = QTextBrowser(root)
@@ -1236,7 +1267,7 @@ def _build_writing_dock():
     qconnect(editor.cursorPositionChanged, _on_cursor_position_changed)
     qconnect(editor.verticalScrollBar().valueChanged, lambda _value: _schedule_state_save())
     qconnect(progress_scope_combo.currentIndexChanged, _on_progress_scope_changed)
-    qconnect(dock.visibilityChanged, lambda visible: None if visible else _flush_editor_state())
+    qconnect(dock.visibilityChanged, _on_writing_visibility_changed)
 
     _add_editor_shortcuts(dock)
 
@@ -1244,13 +1275,61 @@ def _build_writing_dock():
     return dock
 
 
-def show_writing_in_dock(card_id: int, title: str, relpath: str) -> None:
-    global _writing_dock, _current_writing_card_id, _current_writing_relpath, _loading_editor
-    global _writing_session_baseline_words, _writing_current_word_count
+def set_keep_open(enabled: bool) -> None:
+    global _writing_keep_open
+    _writing_keep_open = bool(enabled)
+    checkbox = getattr(_writing_dock, '_keep_open_checkbox', None)
+    if checkbox is not None and checkbox.isChecked() != _writing_keep_open:
+        checkbox.setChecked(_writing_keep_open)
 
+
+def _on_writing_visibility_changed(visible: bool) -> None:
+    if not visible:
+        _flush_editor_state()
+
+
+def reset_for_profile_switch() -> None:
+    global _writing_dock, _current_writing_card_id, _current_writing_relpath, _writing_profile
+    global _autosave_timer, _state_save_timer
+    if _writing_profile == _active_profile():
+        _flush_editor_state()
+    for timer in (_autosave_timer, _state_save_timer):
+        if timer is not None:
+            timer.stop()
+    set_keep_open(False)
+    dock, _writing_dock = _writing_dock, None
+    _current_writing_card_id, _current_writing_relpath, _writing_profile = None, "", None
+    _autosave_timer = _state_save_timer = None
+    if dock is not None:
+        try:
+            dock.hide()
+            mw.removeDockWidget(dock)
+            dock.deleteLater()
+        except RuntimeError:
+            pass
+
+
+def show_writing_in_dock(card_id: int, title: str, relpath: str, *, keep_open: bool = False) -> None:
+    global _writing_dock, _current_writing_card_id, _current_writing_relpath, _loading_editor
+    global _writing_session_baseline_words, _writing_current_word_count, _writing_profile
+
+    if _writing_profile is not None and _writing_profile != _active_profile():
+        reset_for_profile_switch()
+    if (_writing_dock is not None and _current_writing_card_id == int(card_id)
+            and _current_writing_relpath == relpath):
+        try:
+            if _writing_dock.isVisible():
+                if keep_open:
+                    set_keep_open(True)
+                _writing_dock.show()
+                _writing_dock.raise_()
+                return
+        except RuntimeError:
+            _writing_dock = None
     if _current_writing_card_id is not None and int(card_id) != int(_current_writing_card_id):
         _flush_editor_state()
 
+    _writing_profile = _active_profile()
     _current_writing_card_id = int(card_id)
     _current_writing_relpath = relpath
 
@@ -1323,6 +1402,7 @@ def show_writing_in_dock(card_id: int, title: str, relpath: str) -> None:
     _update_progress_display()
     _refresh_writing_bookmarks_panel()
     _set_status(t("writing_autosave_on_typing"))
+    set_keep_open(keep_open or _writing_keep_open)
     _writing_dock.show()
     _writing_dock.raise_()
 
@@ -1330,7 +1410,7 @@ def show_writing_in_dock(card_id: int, title: str, relpath: str) -> None:
 def on_writing_question_shown(card) -> None:
     global _writing_dock
     try:
-        if card is None:
+        if card is None or _writing_keep_open:
             return
         try:
             note = mw.col.get_note(card.nid)
@@ -1365,6 +1445,8 @@ def on_writing_question_shown(card) -> None:
 
 def on_writing_reviewer_will_end() -> None:
     _flush_editor_state()
+    if _writing_keep_open:
+        return
     if _writing_dock is not None:
         try:
             _writing_dock.hide()

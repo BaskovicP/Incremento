@@ -27,6 +27,8 @@
     "pdf_default_appearance": "original",
     "pdf_force_default_appearance": false,
     "pdf_focus_mode": false,
+  "epub_focus_mode": false,
+    "pdf_controls_collapsed_by_profile": {},
     "priority_lower_is_more_important": true,
     "remember_browser_card_scroll": true,
     "companion_browser": "chrome",

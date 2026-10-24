@@ -101,3 +101,12 @@ def remove_highlight(addon_dir: str, profile: str, card_id: int, hl_id: str) -> 
         (int(card_id), str(hl_id or "")),
     )
     conn.commit()
+
+
+def update_highlight_color(addon_dir: str, profile: str, card_id: int, hl_id: str, color: str) -> bool:
+    """Recolor in place: preserve identity, notes, ranges, and attached cards."""
+    color = normalize_highlight_color(color, allow_snapshot=False)
+    conn = get_connection(addon_dir, profile)
+    with conn:
+        return conn.execute("UPDATE epub_highlights SET color=? WHERE card_id=? AND id=?",
+                            (color, card_id, hl_id)).rowcount > 0

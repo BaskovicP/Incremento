@@ -34,6 +34,7 @@ from aqt.qt import (
     QPoint,
     QPushButton,
     QRect,
+    QScrollArea,
     QShortcut,
     QSize,
     QSizePolicy,
@@ -163,6 +164,7 @@ try:
         remove_highlight,
         update_highlight,
         update_highlight_note,
+        update_highlight_color,
     )
 except ImportError:
     from epub_highlights import (  # type: ignore
@@ -171,6 +173,7 @@ except ImportError:
         remove_highlight,
         update_highlight,
         update_highlight_note,
+        update_highlight_color,
     )
 try:
     from ..backend.reader_bookmarks import (
@@ -245,6 +248,7 @@ _MSG_FILL_FIELD = "incremento_epub_fill_field:"
 _MSG_HL_ADD = "incremento_epub_hl_add:"
 _MSG_HL_UPDATE = "incremento_epub_hl_update:"
 _MSG_HL_DEL = "incremento_epub_hl_del:"
+_MSG_HL_COLOR = "incremento_epub_hl_color:"
 _MSG_HL_NOTE = "incremento_epub_hl_note:"
 _MSG_PROGRESS = "incremento_epub_progress:"
 _MSG_MARK_READ = "incremento_epub_mark_read:"
@@ -552,7 +556,7 @@ def current_epub_search_context() -> dict | None:
     if card_id is None or _epub_dock is None:
         return None
     try:
-        if not _epub_dock.isVisible():
+        if not _epub_reader_is_visible():
             return None
     except Exception:
         return None
@@ -640,11 +644,26 @@ class _FlowLayout(QLayout):
         self._do_layout(rect, False)
 
     def sizeHint(self) -> QSize:
-        return self.minimumSize()
+        width = 0
+        height = 0
+        count = 0
+        for item in self._items:
+            widget = item.widget()
+            if widget is not None and widget.isHidden():
+                continue
+            hint = item.sizeHint()
+            width += hint.width() + (self._h_spacing if count else 0)
+            height = max(height, hint.height())
+            count += 1
+        margins = self.contentsMargins()
+        return QSize(width + margins.left() + margins.right(), height + margins.top() + margins.bottom())
 
     def minimumSize(self) -> QSize:
-        size = QSize()
+        size = QSize(0, 0)
         for item in self._items:
+            widget = item.widget()
+            if widget is not None and widget.isHidden():
+                continue
             size = size.expandedTo(item.minimumSize())
         margins = self.contentsMargins()
         size += QSize(margins.left() + margins.right(), margins.top() + margins.bottom())
@@ -658,7 +677,15 @@ class _FlowLayout(QLayout):
         line_width = 0
         line_height = 0
         for item in self._items:
+            widget = item.widget()
+            if widget is not None and widget.isHidden():
+                continue
             hint = item.sizeHint()
+            # Nested groups may wrap their own actions. Give them the available
+            # width and ask for the resulting height instead of clipping them.
+            width = max(item.minimumSize().width(), min(hint.width(), area.width()))
+            height = item.heightForWidth(width) if item.hasHeightForWidth() else hint.height()
+            hint = QSize(width, max(item.minimumSize().height(), height))
             proposed_width = line_width + (self._h_spacing if line else 0) + hint.width()
             if line and proposed_width > area.width():
                 lines.append((line, line_width, line_height))
@@ -689,6 +716,36 @@ class _FlowLayout(QLayout):
                 y += self._v_spacing
 
         return (y - rect.y()) + margins.bottom()
+
+
+class _EpubControlsArea(QScrollArea):
+    """Keep the expanded toolbar usable without consuming the whole reader."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setMaximumHeight(360)
+        policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        policy.setHeightForWidth(True)
+        self.setSizePolicy(policy)
+
+    def heightForWidth(self, width: int) -> int:
+        content = self.widget()
+        if content is None:
+            return 0
+        available = max(1, width - self.verticalScrollBar().sizeHint().width())
+        height = content.heightForWidth(available)
+        return min(self.maximumHeight(), max(0, height if height >= 0 else content.sizeHint().height()))
+
+    def sizeHint(self) -> QSize:
+        return QSize(640, self.heightForWidth(max(300, self.width())))
+
+    def minimumSizeHint(self) -> QSize:
+        content = self.widget()
+        width = content.minimumSizeHint().width() if content is not None else 0
+        return QSize(width + self.verticalScrollBar().sizeHint().width(), min(64, self.sizeHint().height()))
 
 
 def current_epub_card_id() -> int | None:
@@ -1544,6 +1601,7 @@ class _EpubDockPage(QWebEnginePage):
                     return
                 add_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), data["highlight"])
                 _update_sources_panel()
+                _refresh_epub_references()
             except Exception as exc:
                 print(f"[Incremento] epub_dock highlight add failed: {exc}")
             return
@@ -1559,6 +1617,7 @@ class _EpubDockPage(QWebEnginePage):
                     data["highlight"],
                 ):
                     _update_sources_panel()
+                    _refresh_epub_references()
             except Exception as exc:
                 print(f"[Incremento] epub_dock highlight update failed: {exc}")
             return
@@ -1569,13 +1628,23 @@ class _EpubDockPage(QWebEnginePage):
                     return
                 remove_highlight(_ADDON_DIR, _active_profile(), int(data["cardId"]), str(data["id"]))
                 _update_sources_panel()
+                _refresh_epub_references()
             except Exception as exc:
                 print(f"[Incremento] epub_dock highlight remove failed: {exc}")
+            return
+        if msg.startswith(_MSG_HL_COLOR):
+            try:
+                data = json.loads(msg[len(_MSG_HL_COLOR):])
+                if _epub_bridge_card_matches(data):
+                    _recolor_current_epub_highlight(str(data.get('id') or ''))
+            except (ValueError, TypeError):
+                pass
             return
         if msg.startswith(_MSG_HL_NOTE):
             try:
                 data = json.loads(msg[len(_MSG_HL_NOTE) :])
-                _edit_current_epub_highlight_note(str(data.get("id") or ""))
+                if _epub_bridge_card_matches(data):
+                    _edit_current_epub_highlight_note(str(data.get("id") or ""))
             except Exception as exc:
                 print(f"[Incremento] epub_dock highlight note failed: {exc}")
             return
@@ -1676,8 +1745,10 @@ def _build_page_script(
     clickable_links: bool = False,
     link_fragment: str = "",
     highlight_color: str = "yellow",
+    sections: list[dict] | None = None,
+    appearance: str = "original",
 ) -> str:
-    sections = _current_sections()
+    sections = _current_sections() if sections is None else sections
     section_lengths = [max(1, len(str(section.get("text") or ""))) for section in sections]
     try:
         resolved_highlight_color = normalize_highlight_color(highlight_color)
@@ -1685,6 +1756,7 @@ def _build_page_script(
         resolved_highlight_color = "yellow"
     state = {
         "cardId": int(card_id),
+        "appearance": appearance if appearance in ("original", "dark", "night") else "original",
         "sectionIndex": int(section_index),
         "scrollRatio": max(0.0, min(float(scroll_ratio), 1.0)),
         "textScale": max(0.7, min(float(text_scale), 2.2)),
@@ -1704,6 +1776,7 @@ def _build_page_script(
             "deleteHighlight": t("reader_delete_highlight"),
             "resizeHighlight": t("reader_highlight_actions"),
             "highlightActions": t("reader_highlight_actions"),
+            "changeColor": t("reader_epub_change_highlight_color"),
             "stoppedAt": t("reader_stopped_at", text="{text}"),
             "stoppingPoint": t("reader_stopping_point"),
             "readMarker": t("reader_read_marker"),
@@ -1715,6 +1788,7 @@ def _build_page_script(
       document.documentElement.lang = STATE.locale;
       const BRIDGE = {json.dumps(_PYCMD_BRIDGE)} + {json.dumps(str(bridge_nonce))} + ':';
       const HIGHLIGHT_COLORS = {json.dumps(tuple(_EPUB_HIGHLIGHT_COLORS))};
+      const HIGHLIGHT_DATA = new Map();
       function normalizeHighlightColor(value) {{
         const color = String(value || '').trim().toLowerCase();
         if (HIGHLIGHT_COLORS.indexOf(color) >= 0) return color;
@@ -1845,13 +1919,6 @@ def _build_page_script(
           #incremento-epub-highlight-resize-btn {{
             background: rgba(3, 105, 161, 0.96);
             color: #e0f2fe;
-            opacity: 0;
-            pointer-events: none;
-          }}
-          #incremento-epub-highlight-actions:hover #incremento-epub-highlight-resize-btn,
-          #incremento-epub-highlight-resize-btn:focus-visible {{
-            opacity: 1;
-            pointer-events: auto;
           }}
           .incremento-epub-resize-handle,
           .incremento-epub-selection-resize-handle {{
@@ -1924,6 +1991,23 @@ def _build_page_script(
         `;
         document.head.appendChild(style);
       }}
+      window.incrementoSetEpubAppearance = function(mode) {{
+        mode = ['original', 'dark', 'night'].includes(mode) ? mode : 'original';
+        const old = document.getElementById('incremento-epub-appearance');
+        if (old) old.remove();
+        if (mode === 'original') return;
+        const style = document.createElement('style');
+        style.id = 'incremento-epub-appearance';
+        const background = mode === 'night' ? '#15120f' : '#1e1e1e';
+        const foreground = mode === 'night' ? '#d9c7a4' : '#dedede';
+        style.textContent = 'html,body {{background:' + background + '!important;color:' + foreground + '!important}}'
+          + 'body :not(img):not(svg):not(svg *):not(a):not(a *):not(.incremento-epub-highlight)'
+          + ':not([id^="incremento-"]):not([id^="incremento-"] *)'
+          + '{{background-color:transparent!important;color:inherit!important}}'
+          + 'a {{color:#8ab4f8!important}}';
+        document.head.appendChild(style);
+      }};
+      window.incrementoSetEpubAppearance(STATE.appearance);
       function applyTextScale(scale) {{
         const clamped = Math.max(0.7, Math.min(Number(scale) || 1, 2.2));
         document.documentElement.classList.add('incremento-epub-scaled');
@@ -1933,6 +2017,7 @@ def _build_page_script(
         );
         window._incrementoEpubTextScale = clamped;
       }}
+      window.incrementoSetEpubTextScale = applyTextScale;
       function applyClickableLinks(value) {{
         STATE.clickableLinks = !!value;
         document.documentElement.classList.toggle(
@@ -1984,12 +2069,12 @@ def _build_page_script(
         }}
         return nodes;
       }}
-      function pointFromOffset(target) {{
+      function pointFromOffset(target, preferNext = false) {{
         let remain = Math.max(0, Number(target) || 0);
         const nodes = textNodes();
         for (const node of nodes) {{
           const len = node.nodeValue.length;
-          if (remain <= len) {{
+          if (remain < len || (!preferNext && remain === len)) {{
             return {{ node, offset: remain }};
           }}
           remain -= len;
@@ -2010,30 +2095,37 @@ def _build_page_script(
         }}
         return total;
       }}
-      function unwrapHighlight(node) {{
+      function unwrapHighlightNode(node) {{
         if (!node || !node.parentNode) return;
         while (node.firstChild) {{
           node.parentNode.insertBefore(node.firstChild, node);
         }}
         node.remove();
       }}
+      function unwrapHighlight(node) {{
+        if (!node) return;
+        const id = String(node.dataset.id || '');
+        highlightNodesById(id).forEach(unwrapHighlightNode);
+        HIGHLIGHT_DATA.delete(id);
+      }}
       function iconSvg(kind) {{
+        // XHTML innerHTML needs an explicit SVG namespace to render the icons.
         if (kind === 'delete') {{
           return (
-            '<svg aria-hidden="true" viewBox="0 0 16 16">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" viewBox="0 0 16 16">' +
             '<path d="M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' +
             '</svg>'
           );
         }}
         if (kind === 'resize') {{
           return (
-            '<svg aria-hidden="true" viewBox="0 0 16 16">' +
+            '<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" viewBox="0 0 16 16">' +
             '<path d="M2.5 8h11M2.5 8l2.4-2.4M2.5 8l2.4 2.4M13.5 8l-2.4-2.4M13.5 8l-2.4 2.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>' +
             '</svg>'
           );
         }}
         return (
-          '<svg aria-hidden="true" viewBox="0 0 16 16">' +
+          '<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" viewBox="0 0 16 16">' +
           '<path d="M3 2.5h6.5L13 6v7a.5.5 0 0 1-.5.5h-9A.5.5 0 0 1 3 13z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>' +
           '<path d="M9.5 2.5V6H13" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>' +
           '<path d="M5.2 8.1h5.2M5.2 10.2h4" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>' +
@@ -2142,6 +2234,22 @@ def _build_page_script(
             removeHighlightActionMenu();
             send('incremento_epub_hl_del:' + JSON.stringify({{ cardId: STATE.cardId, id }}));
           }});
+          const colorButton = document.createElement('button');
+          colorButton.type = 'button';
+          colorButton.id = 'incremento-epub-highlight-color-btn';
+          colorButton.textContent = '●';
+          colorButton.title = STATE.messages.changeColor;
+          colorButton.setAttribute('aria-label', STATE.messages.changeColor);
+          colorButton.addEventListener('click', function(event) {{
+            event.preventDefault();
+            event.stopPropagation();
+            const current = window._incrementoEpubHighlightActionTarget;
+            if (current) send('incremento_epub_hl_color:' + JSON.stringify({{
+              cardId: STATE.cardId, id: String(current.dataset.id || ''),
+            }}));
+            removeHighlightActionMenu();
+          }});
+          menu.appendChild(colorButton);
           menu.appendChild(noteButton);
           menu.appendChild(resizeButton);
           menu.appendChild(deleteButton);
@@ -2150,40 +2258,69 @@ def _build_page_script(
         window._incrementoEpubHighlightActionTarget = target;
         syncHighlightActionMenu(target);
       }}
+      window.incrementoUpdateEpubHighlightColor = function(id, value) {{
+        const color = normalizeHighlightColor(value);
+        if (!color) return false;
+        const stored = HIGHLIGHT_DATA.get(String(id));
+        if (stored) stored.color = color;
+        highlightNodesById(id).forEach(function(node) {{
+          node.dataset.color = color;
+          node.style.backgroundColor = color.charAt(0) === '#'
+            ? 'rgba(' + [1,3,5].map(i => parseInt(color.slice(i,i+2),16)).join(',') + ',0.42)' : '';
+        }});
+        const resize = window._incrementoEpubHighlightResize;
+        if (resize && resize.highlight.id === id) {{
+          resize.highlight.color = color;
+          resize.original.color = color;
+        }}
+        return true;
+      }};
       window.incrementoUpdateEpubHighlightNote = function(id, note) {{
-        const selector = 'span.incremento-epub-highlight[data-id="' + String(id || '').replace(/"/g, '\\"') + '"]';
-        const target = document.querySelector(selector);
-        if (!target) return;
-        updateHighlightNodeNote(target, note);
-        if (window._incrementoEpubHighlightActionTarget === target) {{
+        const stored = HIGHLIGHT_DATA.get(String(id));
+        if (stored) stored.note = String(note || '');
+        const targets = highlightNodesById(id);
+        targets.forEach(function(target) {{ updateHighlightNodeNote(target, note); }});
+        const target = window._incrementoEpubHighlightActionTarget;
+        if (target && targets.indexOf(target) >= 0) {{
           syncHighlightActionMenu(target);
         }}
       }};
       function applyHighlight(hl) {{
-        const start = pointFromOffset(hl.startOffset);
-        const end = pointFromOffset(hl.endOffset);
-        if (!start || !end) return false;
-        if (hl.endOffset <= hl.startOffset) return false;
-        const range = document.createRange();
-        range.setStart(start.node, Math.min(start.offset, start.node.nodeValue.length));
-        range.setEnd(end.node, Math.min(end.offset, end.node.nodeValue.length));
-        if (range.collapsed) return false;
-        const wrapper = document.createElement('span');
-        wrapper.className = 'incremento-epub-highlight';
-        wrapper.dataset.id = String(hl.id || '');
-        wrapper.dataset.startOffset = String(Math.max(0, Number(hl.startOffset) || 0));
-        wrapper.dataset.endOffset = String(Math.max(0, Number(hl.endOffset) || 0));
+        const startOffset = Math.max(0, Number(hl.startOffset) || 0);
+        const endOffset = Math.max(0, Number(hl.endOffset) || 0);
+        if (endOffset <= startOffset) return false;
         const color = normalizeHighlightColor(hl.color) || 'yellow';
-        wrapper.dataset.color = color;
-        if (color.charAt(0) === '#') {{
-          const rgb = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16));
-          wrapper.style.backgroundColor = 'rgba(' + rgb.join(',') + ',0.42)';
+        let offset = 0;
+        let firstWrapper = null;
+        // Wrap text runs in place. Extracting one cross-paragraph range clones
+        // block elements into an inline span, reflowing text and hiding its tint.
+        for (const node of textNodes()) {{
+          const length = node.nodeValue.length;
+          const localStart = Math.max(0, startOffset - offset);
+          const localEnd = Math.min(length, endOffset - offset);
+          offset += length;
+          if (localEnd <= localStart) continue;
+          const range = document.createRange();
+          range.setStart(node, localStart);
+          range.setEnd(node, localEnd);
+          const wrapper = document.createElement('span');
+          wrapper.className = 'incremento-epub-highlight';
+          wrapper.dataset.id = String(hl.id || '');
+          wrapper.dataset.startOffset = String(startOffset);
+          wrapper.dataset.endOffset = String(endOffset);
+          wrapper.dataset.color = color;
+          if (color.charAt(0) === '#') {{
+            const rgb = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16));
+            wrapper.style.backgroundColor = 'rgba(' + rgb.join(',') + ',0.42)';
+          }}
+          updateHighlightNodeNote(wrapper, hl.note || '');
+          wrapper.appendChild(range.extractContents());
+          range.insertNode(wrapper);
+          if (!firstWrapper) firstWrapper = wrapper;
+          if (offset >= endOffset) break;
         }}
-        updateHighlightNodeNote(wrapper, hl.note || '');
-        const fragment = range.extractContents();
-        wrapper.appendChild(fragment);
-        range.insertNode(wrapper);
-        return wrapper;
+        if (firstWrapper) HIGHLIGHT_DATA.set(String(hl.id || ''), Object.assign({{}}, hl));
+        return firstWrapper || false;
       }}
       function selectionMeta() {{
         const sel = window.getSelection ? window.getSelection() : null;
@@ -2206,7 +2343,7 @@ def _build_page_script(
         return rects.length ? rects[rects.length - 1] : null;
       }}
       function rectForOffset(offset) {{
-        const point = pointFromOffset(offset);
+        const point = pointFromOffset(offset, true);
         if (!point || !point.node) return null;
         const len = point.node.nodeValue.length;
         const startOffset = Math.max(0, Math.min(point.offset, len));
@@ -2543,11 +2680,26 @@ def _build_page_script(
           endHandle.style.top = Math.round(window.scrollY + last.bottom) + 'px';
         }}
       }}
+      function setResizePointerOrigin(session, event, startOffset, endOffset) {{
+        const isStart = session.endpoint === 'start';
+        const rect = rectForOffset(isStart ? startOffset : Math.max(startOffset, endOffset - 1));
+        session.pointerOffsetX = 0;
+        session.pointerOffsetY = 0;
+        session.activeRow = null;
+        if (!rect) return;
+        const x = Number(isStart ? rect.left : rect.right);
+        const y = Number(rect.top) + Number(rect.height) / 2;
+        if (Number.isFinite(Number(event.clientX))) session.pointerOffsetX = Number(event.clientX) - x;
+        if (Number.isFinite(Number(event.clientY))) session.pointerOffsetY = Number(event.clientY) - y;
+        session.activeRow = preciseNearestRow(session.rows, x, y);
+      }}
       function moveSelectionResizeEndpoint(event) {{
         const session = window._incrementoEpubSelectionResize;
         if (!session) return false;
         if (session.pointerId !== null && Number(event.pointerId) !== session.pointerId) return false;
-        const caret = preciseCaretAtPoint(session, Number(event.clientX), Number(event.clientY));
+        const x = Number(event.clientX) - session.pointerOffsetX;
+        const y = Number(event.clientY) - session.pointerOffsetY;
+        const caret = preciseCaretAtPoint(session, x, y);
         if (!caret || !caret.startContainer || !session.nodes.has(caret.startContainer)) return false;
         try {{
           const next = document.createRange();
@@ -2578,28 +2730,20 @@ def _build_page_script(
         const nodes = textNodes();
         const nodeSet = new Set(nodes);
         const rows = preciseTextRowRects(nodes);
-        let activeRow = null;
-        try {{
-          const boundary = document.createRange();
-          const endpoint = String(event.currentTarget.dataset.endpoint || '');
-          const container = endpoint === 'start' ? range.startContainer : range.endContainer;
-          const offset = endpoint === 'start' ? range.startOffset : range.endOffset;
-          boundary.setStart(container, offset);
-          boundary.collapse(true);
-          const point = preciseCaretVisualPoint(boundary);
-          if (point) activeRow = preciseNearestRow(rows, point.x, point.y);
-        }} catch (err) {{}}
         event.preventDefault();
         event.stopPropagation();
-        window._incrementoEpubSelectionResize = {{
+        const session = {{
           endpoint: String(event.currentTarget.dataset.endpoint || ''),
           range: range.cloneRange(),
           original: range.cloneRange(),
           pointerId: Number.isFinite(Number(event.pointerId)) ? Number(event.pointerId) : null,
           nodes: nodeSet,
           rows,
-          activeRow,
         }};
+        setResizePointerOrigin(session, event,
+          offsetFromPoint(range.startContainer, range.startOffset),
+          offsetFromPoint(range.endContainer, range.endOffset));
+        window._incrementoEpubSelectionResize = session;
         if (event.currentTarget.setPointerCapture) event.currentTarget.setPointerCapture(event.pointerId);
       }}
       function finishSelectionResize(event) {{
@@ -2650,22 +2794,26 @@ def _build_page_script(
         }}
         syncSelectionResizeHandles(meta);
       }}
-      function highlightNodeById(id) {{
+      function highlightNodesById(id) {{
         const targetId = String(id || '');
-        return Array.from(document.querySelectorAll('span.incremento-epub-highlight')).find(function(node) {{
+        return Array.from(document.querySelectorAll('span.incremento-epub-highlight')).filter(function(node) {{
           return String(node.dataset.id || '') === targetId;
-        }}) || null;
+        }});
+      }}
+      function highlightNodeById(id) {{
+        return highlightNodesById(id)[0] || null;
       }}
       function highlightFromNode(target) {{
         if (!target) return null;
         const startOffset = Math.max(0, Number(target.dataset.startOffset) || 0);
         const endOffset = Math.max(0, Number(target.dataset.endOffset) || 0);
         if (endOffset <= startOffset) return null;
+        const stored = HIGHLIGHT_DATA.get(String(target.dataset.id || ''));
         return {{
           id: String(target.dataset.id || ''),
           sectionIndex: STATE.sectionIndex,
           color: normalizeHighlightColor(target.dataset.color) || 'yellow',
-          text: normText(target.textContent || ''),
+          text: normText((stored && stored.text) || target.textContent || ''),
           note: String(target.dataset.note || ''),
           startOffset,
           endOffset,
@@ -2718,7 +2866,9 @@ def _build_page_script(
         const session = window._incrementoEpubHighlightResize;
         if (!session || !session.dragging) return false;
         if (session.pointerId !== null && Number(event.pointerId) !== session.pointerId) return false;
-        const caret = preciseCaretAtPoint(session, Number(event.clientX), Number(event.clientY));
+        const x = Number(event.clientX) - session.pointerOffsetX;
+        const y = Number(event.clientY) - session.pointerOffsetY;
+        const caret = preciseCaretAtPoint(session, x, y);
         if (!caret || !caret.startContainer || !session.nodes.has(caret.startContainer)) return false;
         const offset = offsetFromPoint(caret.startContainer, caret.startOffset);
         let startOffset = session.highlight.startOffset;
@@ -2726,6 +2876,7 @@ def _build_page_script(
         if (session.endpoint === 'start') startOffset = offset;
         else endOffset = offset;
         if (!Number.isFinite(startOffset) || !Number.isFinite(endOffset) || endOffset <= startOffset) return false;
+        if (startOffset === session.highlight.startOffset && endOffset === session.highlight.endOffset) return false;
         const start = pointFromOffset(startOffset);
         const end = pointFromOffset(endOffset);
         if (!start || !end) return false;
@@ -2776,19 +2927,7 @@ def _build_page_script(
         session.endpoint = String(event.currentTarget.dataset.endpoint || '');
         session.dragging = true;
         session.pointerId = Number.isFinite(Number(event.pointerId)) ? Number(event.pointerId) : null;
-        const boundaryOffset = session.endpoint === 'start'
-          ? session.highlight.startOffset : session.highlight.endOffset;
-        const boundaryPoint = pointFromOffset(boundaryOffset);
-        session.activeRow = null;
-        if (boundaryPoint) {{
-          try {{
-            const boundary = document.createRange();
-            boundary.setStart(boundaryPoint.node, boundaryPoint.offset);
-            boundary.collapse(true);
-            const point = preciseCaretVisualPoint(boundary);
-            if (point) session.activeRow = preciseNearestRow(session.rows, point.x, point.y);
-          }} catch (err) {{}}
-        }}
+        setResizePointerOrigin(session, event, session.highlight.startOffset, session.highlight.endOffset);
         if (event.currentTarget.setPointerCapture) event.currentTarget.setPointerCapture(event.pointerId);
       }}
       function resizeHighlightRange(target) {{
@@ -2910,6 +3049,20 @@ def _build_page_script(
           focusOffset,
           scrollRatio,
         }};
+      }};
+      window.incrementoEpubCurrentLocation = function() {{
+        const meta = selectionMeta();
+        const anchor = bestVisibleTextAnchor();
+        return {{cardId: STATE.cardId, sectionIndex: STATE.sectionIndex,
+          focusOffset: meta ? meta.startOffset : (anchor ? anchor.offset : -1),
+          scrollRatio: maxScroll() > 0 ? window.scrollY / maxScroll() : 0}};
+      }};
+      window.incrementoReplaceEpubHighlights = function(rows) {{
+        removeHighlightActionMenu();
+        removeHighlightResizeHandles();
+        document.querySelectorAll('span.incremento-epub-highlight').forEach(unwrapHighlightNode);
+        HIGHLIGHT_DATA.clear();
+        rows.forEach(applyHighlight);
       }};
       function removeReadMarker() {{
         const old = document.getElementById('incremento-epub-read-marker');
@@ -3111,7 +3264,7 @@ def _build_page_script(
         const currentY = Math.max(0, window.scrollY || 0);
         if (dir > 0) {{
           if (currentY + step >= scrollMax - 2) {{
-            send('incremento_epub_section_nav:' + JSON.stringify({{ delta: 1 }}));
+            send('incremento_epub_section_nav:' + JSON.stringify({{ cardId: STATE.cardId, delta: 1 }}));
           }} else {{
             window.scrollTo(0, Math.min(scrollMax, currentY + step));
             setTimeout(reportProgress, 40);
@@ -3119,7 +3272,7 @@ def _build_page_script(
           return;
         }}
         if (currentY <= 2) {{
-          send('incremento_epub_section_nav:' + JSON.stringify({{ delta: -1 }}));
+          send('incremento_epub_section_nav:' + JSON.stringify({{ cardId: STATE.cardId, delta: -1 }}));
         }} else {{
           window.scrollTo(0, Math.max(0, currentY - step));
           setTimeout(reportProgress, 40);
@@ -3156,7 +3309,7 @@ def _build_page_script(
       window._incrementoEpubSelectionHandlesRequested = false;
       removeSelectionResizeHandles();
       removeHighlightResizeHandles();
-      document.querySelectorAll('span.incremento-epub-highlight').forEach(unwrapHighlight);
+      document.querySelectorAll('span.incremento-epub-highlight').forEach(unwrapHighlightNode);
       const highlights = Array.isArray(STATE.highlights) ? STATE.highlights.slice() : [];
       highlights.sort(function(a, b) {{ return Number(a.startOffset || 0) - Number(b.startOffset || 0); }});
       for (const hl of highlights) {{
@@ -3380,15 +3533,152 @@ def _make_epub_button(
     return btn
 
 
+def _epub_appearance():
+    if _current_epub_card_id is None:
+        return 'original'
+    try:
+        from ..backend.epub_appearance import get_appearance
+    except ImportError:
+        from backend.epub_appearance import get_appearance
+    return get_appearance(_ADDON_DIR, _active_profile(), _current_epub_card_id)
+
+
+def _set_epub_appearance(mode):
+    if _epub_dock is None or _current_epub_card_id is None:
+        return
+    try:
+        from ..backend.epub_appearance import set_appearance
+    except ImportError:
+        from backend.epub_appearance import set_appearance
+    set_appearance(_ADDON_DIR, _active_profile(), _current_epub_card_id, mode)
+    _apply_epub_appearance(mode)
+    _refresh_epub_references(state='appearance')
+
+
+def _apply_epub_appearance(mode):
+    _run_epub_javascript(_epub_dock._view.page(),
+        f'window.incrementoSetEpubAppearance({json.dumps(mode)});')
+    for name in ('_appearance_combo', '_compact_appearance_combo'):
+        combo = getattr(_epub_dock, name, None)
+        if combo is not None:
+            combo.blockSignals(True)
+            combo.setCurrentIndex(combo.findData(mode))
+            combo.blockSignals(False)
+
+
+def _make_epub_appearance_combo(parent):
+    combo = QComboBox(parent)
+    combo.setAccessibleName(t('reader_epub_appearance'))
+    for mode in ('original', 'dark', 'night'):
+        combo.addItem(t('reader_pdf_appearance_' + mode), mode)
+    combo.activated.connect(lambda index: _set_epub_appearance(combo.itemData(index)))
+    return combo
+
+
 def _make_epub_page_links_button(parent) -> QToolButton:
-    """Keep the shared toolbar slot explicit until EPUB has page connections."""
     label = _EPUB_TOOLBAR_TEXT["page_links"]
-    reason = t("reader_unavailable", action=label, reader="EPUB")
+    reason = t("reader_epub_connections_hint")
     button = _make_epub_button(parent, label, reason)
-    button.setEnabled(False)
     button.setAccessibleName(label)
     button.setAccessibleDescription(reason)
+    button.clicked.connect(lambda: _open_epub_connections())
     return button
+
+
+def _capture_epub_location(callback):
+    if _epub_dock is None or _current_epub_card_id is None:
+        return
+    dock, profile, card, section = _epub_dock, _active_profile(), _current_epub_card_id, _current_epub_section_index
+    page = dock._view.page()
+    nonce = page.bridge_nonce()
+    def ready(value):
+        if (dock is not _epub_dock or profile != _active_profile() or card != _current_epub_card_id
+                or section != _current_epub_section_index or nonce != page.bridge_nonce()):
+            return
+        if isinstance(value, dict) and value.get('cardId') == card:
+            callback({'card_id': card, 'section': section, 'offset': value.get('focusOffset', -1),
+                      'scroll': value.get('scrollRatio', _current_epub_scroll_ratio)})
+    _run_epub_javascript(page, 'window.incrementoEpubCurrentLocation && window.incrementoEpubCurrentLocation();', ready)
+
+
+def _open_epub_connections():
+    try:
+        from .epub_reference_workspace import show_connections
+    except ImportError:
+        from epub_reference_workspace import show_connections
+    _capture_epub_location(lambda location: show_connections(location, owner=_epub_dock))
+
+
+def _choose_epub_reference():
+    try:
+        from .epub_reference_workspace import choose_reference
+    except ImportError:
+        from epub_reference_workspace import choose_reference
+    choose_reference(owner=_epub_dock)
+
+
+def configured_epub_focus_mode(config=None):
+    return bool(_config(config).get('epub_focus_mode', False))
+
+
+def save_epub_focus_mode(enabled):
+    try:
+        cfg = load_addon_config(mw.addonManager, _ADDON_PKG)
+        cfg['epub_focus_mode'] = bool(enabled)
+        save_addon_config(mw.addonManager, _ADDON_PKG, cfg)
+    except Exception:
+        tooltip(t('reader_epub_focus_save_failed'))
+        return False
+    return True
+
+
+def apply_epub_focus_preference(config=None):
+    mode = getattr(_epub_dock, '_epub_focus_mode', None)
+    if mode is not None:
+        mode.set_enabled(configured_epub_focus_mode(config))
+
+
+def _sync_epub_focus_buttons():
+    mode = getattr(_epub_dock, '_epub_focus_mode', None)
+    if mode is None:
+        return
+    for name in ('_focus_btn', '_compact_focus_btn'):
+        button = getattr(_epub_dock, name, None)
+        if button is not None:
+            button.blockSignals(True)
+            button.setChecked(mode.enabled)
+            button.setEnabled(mode.available)
+            button.blockSignals(False)
+
+
+def _epub_reader_is_visible():
+    if _epub_dock is None:
+        return False
+    mode = getattr(_epub_dock, '_epub_focus_mode', None)
+    return mode.is_visible() if mode is not None else _epub_dock.isVisible()
+
+
+def _stop_epub_focus():
+    mode = getattr(_epub_dock, '_epub_focus_mode', None)
+    if mode is not None:
+        mode.stop()
+
+
+def reset_for_profile_switch():
+    global _epub_dock, _current_epub_card_id, _current_epub_filename, _epub_link_back_history
+    try:
+        from .epub_reference_workspace import reset_for_profile_switch as reset_references
+    except ImportError:
+        from epub_reference_workspace import reset_for_profile_switch as reset_references
+    reset_references()
+    _stop_epub_focus()
+    dock, _epub_dock = _epub_dock, None
+    _current_epub_card_id = _current_epub_filename = None
+    _epub_link_back_history = []
+    if dock is not None:
+        dock._view.page()._bridge_nonce = ''
+        dock.hide()
+        dock.deleteLater()
 
 
 def _make_epub_chip(parent, text: str) -> QLabel:
@@ -3457,7 +3747,7 @@ def _make_epub_group(parent, title: str, *widgets: QWidget) -> QWidget:
 def _make_epub_toolbar_stack(parent, title: str, *widgets: QWidget) -> QWidget:
     """Create one labelled action stack matching the PDF toolbar."""
     stack = QWidget(parent)
-    stack.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    stack.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
     column = QVBoxLayout(stack)
     column.setContentsMargins(0, 0, 0, 0)
     column.setSpacing(4)
@@ -3468,25 +3758,12 @@ def _make_epub_toolbar_stack(parent, title: str, *widgets: QWidget) -> QWidget:
     )
     column.addWidget(label)
     actions = QWidget(stack)
-    actions.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
-    actions_row = QHBoxLayout(actions)
-    actions_row.setContentsMargins(0, 0, 0, 0)
-    actions_row.setSpacing(6)
+    actions.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+    actions_row = _FlowLayout(actions, margin=0, h_spacing=6, v_spacing=6)
     for widget in widgets:
         actions_row.addWidget(widget)
     column.addWidget(actions)
     return stack
-
-
-def _make_epub_toolbar_separator(parent) -> QFrame:
-    separator = QFrame(parent)
-    separator.setFrameShape(QFrame.Shape.VLine)
-    separator.setFrameShadow(QFrame.Shadow.Plain)
-    separator.setStyleSheet(
-        "QFrame { color: rgba(140,140,140,0.35);"
-        " background: rgba(140,140,140,0.25); max-width: 1px; }"
-    )
-    return separator
 
 
 def _make_epub_progress_meter(
@@ -3515,11 +3792,11 @@ def _make_epub_progress_meter(
 
 
 def _make_epub_compound_group(parent, *stacks: QWidget) -> QWidget:
-    """Create a PDF-style rounded group with dividers between action stacks."""
+    """Keep labelled stacks together while allowing them to wrap in narrow docks."""
     frame = QFrame(parent)
     frame.setObjectName("incremento_epub_toolbar_group")
     frame.setFrameShape(QFrame.Shape.NoFrame)
-    frame.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    frame.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
     frame.setStyleSheet(
         "QFrame#incremento_epub_toolbar_group {"
         " background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
@@ -3528,12 +3805,9 @@ def _make_epub_compound_group(parent, *stacks: QWidget) -> QWidget:
         " border-radius: 14px;"
         " }"
     )
-    row = QHBoxLayout(frame)
+    row = _FlowLayout(frame, h_spacing=10, v_spacing=10)
     row.setContentsMargins(12, 9, 12, 9)
-    row.setSpacing(10)
-    for index, stack in enumerate(stacks):
-        if index:
-            row.addWidget(_make_epub_toolbar_separator(frame))
+    for stack in stacks:
         row.addWidget(stack)
     return frame
 
@@ -3571,6 +3845,23 @@ def _normalize_epub_control_visibility(value: object) -> dict[str, bool]:
     }
 
 
+def _refresh_epub_dock_minimum_width() -> None:
+    dock = _epub_dock
+    if dock is None:
+        return
+
+    def refresh() -> None:
+        if _epub_dock is dock:
+            controls_scroll = getattr(dock, "_controls_scroll", None)
+            if controls_scroll is not None:
+                controls_scroll.updateGeometry()
+            dock.setMinimumWidth(300)
+
+    # Let Qt propagate new size hints through the nested toolbar first. A
+    # synchronous reset immediately reuses the old minimum and locks it again.
+    QTimer.singleShot(0, refresh)
+
+
 def _apply_epub_control_visibility(value: object) -> None:
     if _epub_dock is None:
         return
@@ -3589,6 +3880,7 @@ def _apply_epub_control_visibility(value: object) -> None:
         invalidate_row = getattr(row_layout, "invalidate", None)
         if callable(invalidate_row):
             invalidate_row()
+    _refresh_epub_dock_minimum_width()
 
 
 def _set_epub_controls_collapsed(collapsed: bool) -> None:
@@ -3598,6 +3890,7 @@ def _set_epub_controls_collapsed(collapsed: bool) -> None:
     _epub_dock._controls_collapsed = is_collapsed
     _epub_dock._controls_expanded.setVisible(not is_collapsed)
     _epub_dock._controls_compact.setVisible(is_collapsed)
+    _refresh_epub_dock_minimum_width()
 
 
 def _show_epub_control_chooser() -> None:
@@ -3950,12 +4243,21 @@ def _build_epub_dock() -> None:
     expanded_layout = QVBoxLayout(controls_expanded)
     expanded_layout.setContentsMargins(0, 0, 0, 0)
     expanded_layout.setSpacing(4)
-    control_actions = QHBoxLayout()
-    control_actions.setContentsMargins(0, 0, 0, 0)
-    control_actions.addStretch(1)
+    control_actions_host = QWidget(controls_expanded)
+    control_actions = _FlowLayout(control_actions_host, margin=0, h_spacing=6, v_spacing=4, center_lines=True)
+    dock._focus_btn = _make_epub_button(controls_expanded, t('reader_epub_focus_mode'),
+                                       t('reader_epub_focus_mode_hint'), checkable=True)
+    dock._reference_btn = _make_epub_button(controls_expanded, t('reader_epub_reference'),
+                                           t('reader_epub_reference_hint'))
+    dock._focus_btn.clicked.connect(lambda checked: dock._epub_focus_mode.request_enabled(checked))
+    dock._reference_btn.clicked.connect(_choose_epub_reference)
+    dock._appearance_combo = _make_epub_appearance_combo(controls_expanded)
+    control_actions.addWidget(dock._appearance_combo)
+    control_actions.addWidget(dock._focus_btn)
+    control_actions.addWidget(dock._reference_btn)
     control_actions.addWidget(dock._customize_controls_btn)
     control_actions.addWidget(dock._minimize_controls_btn)
-    expanded_layout.addLayout(control_actions)
+    expanded_layout.addWidget(control_actions_host)
 
     toolbar_spec = reader_toolbar_clone_spec("epub")
     toolbar_rows = reader_toolbar_expanded_group_rows("epub")
@@ -4138,6 +4440,16 @@ def _build_epub_dock() -> None:
     ):
         compact_layout.addWidget(widget)
 
+    dock._compact_focus_btn = _make_epub_button(controls_compact, t('reader_epub_focus_mode'),
+                                               t('reader_epub_focus_mode_hint'), checkable=True)
+    dock._compact_reference_btn = _make_epub_button(controls_compact, t('reader_epub_reference'),
+                                                   t('reader_epub_reference_hint'))
+    dock._compact_focus_btn.clicked.connect(lambda checked: dock._epub_focus_mode.request_enabled(checked))
+    dock._compact_reference_btn.clicked.connect(_choose_epub_reference)
+    dock._compact_appearance_combo = _make_epub_appearance_combo(controls_compact)
+    compact_layout.addWidget(dock._compact_appearance_combo)
+    compact_layout.addWidget(dock._compact_focus_btn)
+    compact_layout.addWidget(dock._compact_reference_btn)
     controls_layout.addWidget(controls_expanded)
     controls_layout.addWidget(controls_compact)
     dock._markdown_edit_btn = QPushButton(t('imports_markdown_edit_button'), controls_host)
@@ -4156,9 +4468,7 @@ def _build_epub_dock() -> None:
     dock._epub_control_visibility = _normalize_epub_control_visibility({})
 
     find_bar = QWidget(groups_host)
-    find_layout = QHBoxLayout(find_bar)
-    find_layout.setContentsMargins(0, 0, 0, 0)
-    find_layout.setSpacing(6)
+    find_layout = _FlowLayout(find_bar, margin=0, h_spacing=6, v_spacing=6, center_lines=True)
     dock._find_label = QLabel(t("reader_find"), find_bar)
     dock._find_label.setStyleSheet("color: #d4d4d8; font-weight: 600;")
     dock._find_input = QLineEdit(find_bar)
@@ -4170,7 +4480,6 @@ def _build_epub_dock() -> None:
     dock._find_next_btn = QPushButton(t("reader_next_short"), find_bar)
     dock._find_close_btn = QPushButton(t("reader_close"), find_bar)
     dock._find_all_btn = QPushButton(t("reader_all"), find_bar)
-    find_layout.addStretch(1)
     find_layout.addWidget(dock._find_label)
     find_layout.addWidget(dock._find_input)
     find_layout.addWidget(dock._find_count_lbl)
@@ -4178,7 +4487,6 @@ def _build_epub_dock() -> None:
     find_layout.addWidget(dock._find_next_btn)
     find_layout.addWidget(dock._find_close_btn)
     find_layout.addWidget(dock._find_all_btn)
-    find_layout.addStretch(1)
     find_bar.setVisible(False)
     dock._find_bar = find_bar
     dock._find_input.setAccessibleName(t("reader_epub_search_accessible"))
@@ -4237,9 +4545,19 @@ def _build_epub_dock() -> None:
     dock._bookmarks_panel.anchorClicked.connect(_open_epub_bookmark_link)
     dock._bookmarks_panel.setVisible(False)
     layout.addWidget(dock._bookmarks_panel)
-    layout.addWidget(dock._controls_host)
+    controls_scroll = _EpubControlsArea(container)
+    controls_scroll.setWidget(dock._controls_host)
+    controls_scroll.setAccessibleName(t("reader_epub_controls_accessible"))
+    dock._controls_scroll = controls_scroll
+    layout.addWidget(controls_scroll)
 
-    dock.setWidget(container)
+    try:
+        from .pdf_focus_mode import PdfFocusMode
+    except ImportError:
+        from pdf_focus_mode import PdfFocusMode
+    dock._epub_focus_mode = PdfFocusMode(mw, dock, container,
+        enabled=configured_epub_focus_mode(), save_preference=save_epub_focus_mode,
+        state_changed=_sync_epub_focus_buttons)
     mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
     def _on_visibility_changed(visible: bool) -> None:
@@ -4392,18 +4710,24 @@ def _close_epub_find_bar() -> None:
     _current_epub_search_hit_index = -1
     _epub_dock._find_bar.setVisible(False)
     _sync_epub_find_bar()
+    _refresh_epub_dock_minimum_width()
 
 
 def open_current_document_find() -> bool:
+    reference = _focused_epub_reference()
+    if reference is not None:
+        reference.search.setFocus()
+        return True
     if _epub_dock is None:
         return False
     try:
-        if not _epub_dock.isVisible():
+        if not _epub_reader_is_visible():
             return False
         _epub_dock._find_bar.setVisible(True)
         _epub_dock._find_input.setFocus()
         _epub_dock._find_input.selectAll()
         _sync_epub_find_bar()
+        _refresh_epub_dock_minimum_width()
         return True
     except Exception:
         return False
@@ -4650,6 +4974,7 @@ def _set_epub_read_marker(card_id: int, section_index: int, anchor) -> None:
         return
     _push_epub_read_anchor()
     _update_title_and_buttons()
+    _refresh_epub_references(state='read_progress')
     tooltip(t("reader_epub_marker_updated" if _current_epub_read_anchor else "reader_epub_marker_cleared"))
 
 
@@ -4683,6 +5008,7 @@ def _mark_epub_read_to_here() -> None:
         return
     _push_epub_read_anchor()
     _update_title_and_buttons()
+    _refresh_epub_references(state='read_progress')
     tooltip(t("reader_epub_progress_updated"))
 
 
@@ -4799,6 +5125,10 @@ def _browse_note_ids_in_browser(note_ids: list[int], *, empty_message: str = "")
         from aqt import dialogs
 
         browser = dialogs.open("Browser", mw)
+        if getattr(browser, "table", None) is not None:
+            browser.table._state.sort_column = "noteCrt"
+            browser.table._state.sort_backwards = False
+            browser.table._set_sort_indicator()
         browser.search_for(" OR ".join(f"nid:{note_id}" for note_id in ordered))
         return True
     except Exception:
@@ -4886,7 +5216,37 @@ def _edit_current_epub_highlight_note(hl_id: str) -> None:
     except Exception:
         pass
     _update_sources_panel()
+    _refresh_epub_references()
     tooltip(t("reader_epub_highlight_note_saved"))
+
+
+def _recolor_current_epub_highlight(hl_id):
+    try:
+        from .highlight_color_dialog import choose_highlight_color
+    except ImportError:
+        from highlight_color_dialog import choose_highlight_color
+    context = (_active_profile(), _current_epub_card_id, _current_epub_section_index)
+    target = next((h for h in _current_section_highlights() if h['id'] == hl_id), None)
+    if target is None:
+        return
+    color = choose_highlight_color(_epub_dock, target['color'], addon_dir=_ADDON_DIR, profile=context[0])
+    if not color or context != (_active_profile(), _current_epub_card_id, _current_epub_section_index):
+        return
+    if update_highlight_color(_ADDON_DIR, context[0], context[1], hl_id, color):
+        _run_epub_javascript(_epub_dock._view.page(),
+            f'window.incrementoUpdateEpubHighlightColor({json.dumps(hl_id)}, {json.dumps(color)});')
+        _update_sources_panel()
+        _refresh_epub_references()
+
+
+def _refresh_epub_references(*, state='highlights'):
+    # Avoid creating a reference workspace for users who only open the main reader.
+    import sys
+    workspace = sys.modules.get(f'{__package__}.epub_reference_workspace') or sys.modules.get('epub_reference_workspace')
+    if workspace is not None:
+        refresh = {'highlights': workspace.refresh_readers, 'appearance': workspace.refresh_appearance,
+                   'read_progress': workspace.refresh_read_progress}[state]
+        refresh(_active_profile(), _current_epub_card_id, include_main=False)
 
 
 def _delete_current_epub_highlight(hl_id: str) -> None:
@@ -4901,6 +5261,7 @@ def _delete_current_epub_highlight(hl_id: str) -> None:
         _load_current_section()
     except Exception:
         _update_sources_panel()
+    _refresh_epub_references()
     tooltip(t("reader_epub_highlight_removed"))
 
 
@@ -4915,8 +5276,18 @@ def _browse_current_epub_note() -> None:
         pass
 
 
+def _focused_epub_reference():
+    import sys
+    workspace = sys.modules.get(f'{__package__}.epub_reference_workspace') or sys.modules.get('epub_reference_workspace')
+    return workspace.focused_reference() if workspace is not None else None
+
+
 def _trigger_epub_extract_shortcut(idx: int) -> None:
-    if _epub_dock is None or not _epub_dock.isVisible():
+    reference = _focused_epub_reference()
+    if reference is not None:
+        reference.js(f'window.incrementoFillEpubField({max(0, min(3, int(idx)))});')
+        return
+    if _epub_dock is None or not _epub_reader_is_visible():
         return
     try:
         _run_epub_javascript(
@@ -4936,7 +5307,7 @@ class _EpubShortcutFilter(QObject):
                 QEvent.Type.KeyPress,
             ):
                 return False
-            if _epub_dock is None or not _epub_dock.isVisible():
+            if _epub_dock is None or not _epub_reader_is_visible():
                 return False
             mods = event.modifiers()
             if not (
@@ -5518,7 +5889,7 @@ def _open_epub_contents_entry(entry: dict, *, source_scroll_ratio: object = None
 
 def open_current_document_contents() -> bool:
     dock = _epub_dock
-    if dock is None or _current_epub_card_id is None or not dock.isVisible():
+    if dock is None or _current_epub_card_id is None or not _epub_reader_is_visible():
         return False
     try:
         from ..backend.reader_contents import epub_contents
@@ -5536,7 +5907,7 @@ def open_current_document_contents() -> bool:
     def is_current():
         return (_epub_dock is dock and _active_profile() == profile and _current_epub_card_id == card_id
                 and _current_epub_filename == filename and viewer_page.bridge_nonce() == nonce
-                and dock._contents_request is request and dock.isVisible())
+                and dock._contents_request is request and _epub_reader_is_visible())
 
     def load():
         if cached and cached[0] == (profile, filename):
@@ -5661,8 +6032,15 @@ def _on_load_finished(ok: bool) -> None:
         clickable_links=bool(_epub_dock._links_btn.isChecked()),
         link_fragment=_pending_epub_link_fragment,
         highlight_color=_current_epub_highlight_color,
+        appearance=_epub_appearance(),
     )
     _run_epub_javascript(_epub_dock._view.page(), js)
+    for name in ('_appearance_combo', '_compact_appearance_combo'):
+        combo = getattr(_epub_dock, name, None)
+        if combo is not None:
+            combo.blockSignals(True)
+            combo.setCurrentIndex(combo.findData(_epub_appearance()))
+            combo.blockSignals(False)
     _pending_focus_offset = -1
     _pending_restore_ratio = _current_epub_scroll_ratio
     _pending_search_query = ""
@@ -5770,8 +6148,13 @@ def show_epub_in_dock(
     _update_sources_panel()
     _sync_epub_find_bar()
     _sync_epub_link_back_buttons()
-    _epub_dock.show()
-    _epub_dock.raise_()
+    mode = getattr(_epub_dock, '_epub_focus_mode', None)
+    if mode is not None:
+        mode.set_enabled(configured_epub_focus_mode())
+        mode.present(eligible=True, title=_epub_dock.windowTitle())
+    else:
+        _epub_dock.show()
+        _epub_dock.raise_()
     if _cb_epub_view_started:
         try:
             _cb_epub_view_started(int(card_id))
@@ -6059,6 +6442,10 @@ def _on_extract_highlight_toggle_changed(checked: bool) -> None:
 
 def _adjust_epub_text_scale(delta: float) -> None:
     global _current_epub_font_scale
+    reference = _focused_epub_reference()
+    if reference is not None:
+        reference.zoom(delta)
+        return
     if _current_epub_card_id is None:
         return
     try:
@@ -6101,6 +6488,7 @@ def on_epub_question_shown(card) -> None:
         if model is None or model.get("name") != EPUB_NOTE_TYPE:
             if _epub_dock is not None:
                 try:
+                    _stop_epub_focus()
                     _epub_dock.hide()
                     if _cb_epub_view_stopped:
                         _cb_epub_view_stopped(_current_epub_card_id)
@@ -6128,6 +6516,7 @@ def on_epub_reviewer_will_end() -> None:
     global _epub_dock
     if _epub_dock is not None:
         try:
+            _stop_epub_focus()
             _epub_dock.hide()
             if _cb_epub_view_stopped:
                 _cb_epub_view_stopped(_current_epub_card_id)
@@ -6136,6 +6525,9 @@ def on_epub_reviewer_will_end() -> None:
 
 
 def on_add_cards_did_add_note(note) -> None:
+    if getattr(note, "_incremento_epub_source_recorded", False):
+        _update_sources_panel()
+        return
     if _current_epub_card_id is None:
         return
     source = _add_card_source_for_new_note()
@@ -6168,7 +6560,7 @@ def on_add_cards_did_add_note(note) -> None:
         if _current_epub_card_id != cid:
             return
         try:
-            if _epub_dock is not None and not _epub_dock.isVisible():
+            if _epub_dock is not None and not _epub_reader_is_visible():
                 _epub_dock.show()
         except RuntimeError:
             pass

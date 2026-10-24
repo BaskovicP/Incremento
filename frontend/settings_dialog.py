@@ -398,6 +398,7 @@ class IncrementoSettingsDialog(QDialog):
         current_pdf_link_preview_zoom: float = 1.5,
         current_pdf_force_default_appearance: bool = False,
         current_pdf_focus_mode: bool = False,
+        current_epub_focus_mode: bool = False,
         current_prefer_web_card_resume_in_original_page: bool = True,
         current_track_web_window_with_extension: bool = True,
         current_companion_browser: str = "chrome",
@@ -961,10 +962,15 @@ class IncrementoSettingsDialog(QDialog):
         )
         reviewer_controls_layout.addWidget(self._pdf_scroll_to_top_on_page_change_cb)
 
+        # Focus is the startup preference; each reader saves its toolbar visibility automatically.
         self._pdf_focus_mode_cb = QCheckBox(t('reader_pdf_focus_mode'))
         self._pdf_focus_mode_cb.setChecked(bool(current_pdf_focus_mode))
         self._pdf_focus_mode_cb.setToolTip(t('reader_pdf_focus_mode_hint'))
         reviewer_controls_layout.addWidget(self._pdf_focus_mode_cb)
+        self._epub_focus_mode_cb = QCheckBox(t('reader_epub_focus_mode'))
+        self._epub_focus_mode_cb.setChecked(bool(current_epub_focus_mode))
+        self._epub_focus_mode_cb.setToolTip(t('reader_epub_focus_mode_hint'))
+        reviewer_controls_layout.addWidget(self._epub_focus_mode_cb)
 
         pdf_appearance_row = QWidget()
         pdf_appearance_layout = QHBoxLayout(pdf_appearance_row)
@@ -1965,6 +1971,10 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def ui_language(self) -> str:
         return normalize_language_choice(self._language_combo.currentData())
+
+    @property
+    def epub_focus_mode(self) -> bool:
+        return bool(self._epub_focus_mode_cb.isChecked())
 
     @property
     def pdf_focus_mode(self) -> bool:

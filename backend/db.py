@@ -707,6 +707,31 @@ def _migration_17_highlight_document_indexes(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_18_epub_connections(conn: sqlite3.Connection) -> None:
+    _begin_migration_script(conn, """
+        ALTER TABLE epub_progress ADD COLUMN appearance_mode TEXT NOT NULL DEFAULT 'original'
+            CHECK(appearance_mode IN ('original', 'dark', 'night'));
+        CREATE TABLE epub_connections (
+            id INTEGER PRIMARY KEY,
+            source_card_id INTEGER NOT NULL CHECK(source_card_id > 0),
+            source_content_id TEXT,
+            source_section INTEGER NOT NULL CHECK(source_section BETWEEN 0 AND 1000000),
+            source_offset INTEGER NOT NULL CHECK(source_offset BETWEEN -1 AND 50000000),
+            source_scroll REAL NOT NULL CHECK(source_scroll BETWEEN 0 AND 1),
+            target_card_id INTEGER NOT NULL CHECK(target_card_id > 0),
+            target_content_id TEXT,
+            target_section INTEGER NOT NULL CHECK(target_section BETWEEN 0 AND 1000000),
+            target_offset INTEGER NOT NULL CHECK(target_offset BETWEEN -1 AND 50000000),
+            target_scroll REAL NOT NULL CHECK(target_scroll BETWEEN 0 AND 1),
+            quote TEXT NOT NULL DEFAULT '' CHECK(length(quote) <= 2000)
+        );
+        CREATE INDEX epub_connections_source ON epub_connections(source_card_id, source_section);
+        CREATE INDEX epub_connections_source_content ON epub_connections(source_content_id, source_section);
+        CREATE INDEX epub_connections_target ON epub_connections(target_card_id, target_section);
+        CREATE INDEX epub_connections_target_content ON epub_connections(target_content_id, target_section);
+    """)
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
@@ -724,6 +749,7 @@ _SCHEMA_MIGRATIONS = (
     (15, "document_link_targets", _migration_15_document_link_targets),
     (16, "document_link_positions", _migration_16_document_link_positions),
     (17, "highlight_document_indexes", _migration_17_highlight_document_indexes),
+    (18, "epub_connections", _migration_18_epub_connections),
 )
 
 

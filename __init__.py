@@ -191,6 +191,7 @@ from .frontend import pdf_reference_workspace as _pdf_reference_workspace_mod
 from .frontend import video_dock as _video_dock_mod
 from .frontend import web_dock as _web_dock_mod
 from .frontend import writing_dock as _writing_dock_mod
+from .frontend.workspace import WorkspaceLayouts, add_workspace_menu
 from .frontend import local_file_dock as _local_file_dock_mod
 from .frontend import add_card_dock as _add_card_dock_mod
 from .frontend import image_rotation as _image_rotation_mod
@@ -309,6 +310,9 @@ from .backend.reviewer_extract import (
 )
 
 _activate_pymupdf()
+
+_workspace_layouts = WorkspaceLayouts(mw)
+_writing_workspace_picker = None
 
 _learning_leech_tracker = LearningLeechTracker()
 
@@ -2683,6 +2687,20 @@ gui_hooks.reviewer_will_show_context_menu.append(_add_reviewer_button_visibility
 gui_hooks.profile_will_close.append(_topic_review_actions.reset)
 gui_hooks.profile_will_close.append(_add_card_dock_mod.reset_reviewer_extract_session)
 gui_hooks.profile_will_close.append(_pdf_dock_mod.reset_for_profile_switch)
+gui_hooks.profile_will_close.append(_epub_dock_mod.reset_for_profile_switch)
+
+
+def _reset_writing_workspace() -> None:
+    global _writing_workspace_picker
+    if _writing_workspace_picker is not None:
+        _writing_workspace_picker.close()
+        _writing_workspace_picker.deleteLater()
+        _writing_workspace_picker = None
+    _workspace_layouts.reset()
+    _writing_dock_mod.reset_for_profile_switch()
+
+
+gui_hooks.profile_will_close.append(_reset_writing_workspace)
 gui_hooks.reviewer_will_answer_card.append(_topic_reviewer_will_answer_card)
 gui_hooks.reviewer_will_answer_card.append(_learning_leech_reviewer_will_answer_card)
 gui_hooks.reviewer_will_end.append(_clear_direct_review_queue)
@@ -3028,7 +3046,9 @@ def _on_profile_did_open() -> None:
     _video_dock_mod.reset_for_profile_switch()
     _web_dock_mod.reset_for_profile_switch()
     _pdf_dock_mod.reset_for_profile_switch()
+    _epub_dock_mod.reset_for_profile_switch()
     _close_pdf_search_lifecycle()
+    _reset_writing_workspace()
     _paths.set_active_profile(profile)
     collection = mw.col
     _pdf_search_lifecycle = PdfSearchLifecycle(
@@ -3655,10 +3675,31 @@ def _open_document_bookshelf() -> None:
         failed(exc)
 
 
-def _open_writing_card(card_id: int, *, relpath: str = "") -> None:
+def _open_writing_beside() -> None:
+    global _writing_workspace_picker
+    from .frontend.writing_workspace import WritingPicker
+
+    if _writing_workspace_picker is not None:
+        _writing_workspace_picker.close()
+        _writing_workspace_picker.deleteLater()
+
+    def open_card(card_id):
+        try:
+            if _open_writing_card(card_id, keep_open=True):
+                _workspace_layouts.beside(_writing_dock_mod._writing_dock)
+        except Exception as exc:
+            showInfo(_t("root_document_open_failed", error=exc))
+
+    _writing_workspace_picker = WritingPicker(mw, open_card=open_card, new_writing=addWritingFunction)
+    _writing_workspace_picker.show()
+
+
+def _open_writing_card(card_id: int, *, relpath: str = "", keep_open: bool = False) -> bool:
     global _last_opened_writing_cid
     card = mw.col.get_card(card_id)
     note = mw.col.get_note(card.nid)
+    if (note.note_type() or {}).get("name") != WRITING_NOTE_TYPE:
+        return False
     title = str(note["Title"] or "").strip()
     stored_relpath = str(relpath or note[WRITING_FILE_FIELD] or "").strip()
     if not stored_relpath:
@@ -3668,8 +3709,9 @@ def _open_writing_card(card_id: int, *, relpath: str = "") -> None:
             mw.col.update_note(note)
         except Exception:
             pass
-    _writing_dock_mod.show_writing_in_dock(card.id, title, stored_relpath)
+    _writing_dock_mod.show_writing_in_dock(card.id, title, stored_relpath, keep_open=keep_open)
     _last_opened_writing_cid = int(card.id)
+    return True
 
 
 def _open_pdf_card(
@@ -7038,6 +7080,7 @@ def openSettingsFunction() -> None:
         current_pdf_link_preview_zoom=_pdf_dock_mod.configured_pdf_link_preview_zoom(cfg, settings_profile),
         current_pdf_force_default_appearance=_pdf_dock_mod.configured_pdf_force_default_appearance(cfg),
         current_pdf_focus_mode=_pdf_dock_mod.configured_pdf_focus_mode(cfg),
+        current_epub_focus_mode=_epub_dock_mod.configured_epub_focus_mode(cfg),
         current_prefer_web_card_resume_in_original_page=configured_prefer_web_card_resume_in_original_page(cfg),
         current_track_web_window_with_extension=configured_track_web_window_with_extension(cfg),
         current_companion_browser=configured_companion_browser(cfg),
@@ -7091,6 +7134,9 @@ def openSettingsFunction() -> None:
         showInfo(_t("settings_language_profile_changed"))
         return
 
+    # Toolbar visibility is saved directly by each reader, independently of Settings.
+    cfg['pdf_controls_collapsed_by_profile'] = copy.deepcopy(
+        _load_addon_config(mw.addonManager, __name__).get('pdf_controls_collapsed_by_profile', {}))
     cfg["ui_language"] = dlg.ui_language
     cfg["shortcuts"] = dlg.shortcuts_map
     cfg["extract_notetype"] = dlg.extract_notetype_name
@@ -7125,6 +7171,7 @@ def openSettingsFunction() -> None:
     cfg["pdf_link_preview_zoom_by_profile"][settings_profile] = dlg.pdf_link_preview_zoom
     cfg["pdf_force_default_appearance"] = dlg.pdf_force_default_appearance
     cfg["pdf_focus_mode"] = dlg.pdf_focus_mode
+    cfg["epub_focus_mode"] = dlg.epub_focus_mode
     cfg["prefer_web_card_resume_in_original_page"] = dlg.prefer_web_card_resume_in_original_page
     cfg["track_web_window_with_extension"] = dlg.track_web_window_with_extension
     cfg["companion_browser"] = dlg.companion_browser
@@ -7195,6 +7242,7 @@ def openSettingsFunction() -> None:
     except Exception:
         pass
     _pdf_dock_mod.apply_pdf_focus_preference(cfg)
+    _epub_dock_mod.apply_epub_focus_preference(cfg)
     try:
         _pdf_dock_mod._pdf_dock._view.page().runJavaScript(
             f"window.incrementoSetAutoHighlightOnExtract && window.incrementoSetAutoHighlightOnExtract({json.dumps(dlg.extract_highlight_when_extracting)});"
@@ -7400,6 +7448,7 @@ def _build_incremento_menu() -> None:
     _activityCenterAction.setProperty("incremento_translation_key", "root_menu_activity_center")
     qconnect(_activityCenterAction.triggered, _open_activity_center)
     _menu.addAction(_activityCenterAction)
+    add_workspace_menu(_menu, _workspace_layouts, _open_writing_beside)
     _register_shortcut_action("activity_center", _activityCenterAction)
 
     _settingsAction = QAction(_t("root_menu_settings"), mw)

@@ -1965,7 +1965,8 @@ def _source_card_id_from_extract_options(options: dict | None) -> int | None:
 
 
 def prepare_pending_extract_from_source_fill(source: str, *, mark_topic: bool = False,
-                                            source_card_id: int | None = None) -> dict | None:
+                                            source_card_id: int | None = None,
+                                            source_position: float | None = None) -> dict | None:
     normalized_source = str(source or "").strip()
     if normalized_source not in {"pdf", "epub", "web", "writing", "video"}:
         return None
@@ -1984,6 +1985,7 @@ def prepare_pending_extract_from_source_fill(source: str, *, mark_topic: bool = 
         link_to_knowledge_tree=True,
         source=normalized_source,
         source_card_id=source_card_id,
+        **({"source_position": source_position} if source_position is not None else {}),
     )
     if source_card_id is not None:
         set_pending_extract_context(
@@ -2705,6 +2707,34 @@ def _notify_video_extract_note_added(note, options: dict | None) -> None:
         pass
 
 
+def _save_epub_extract_source(profile, card_id, section, note_id, excerpt):
+    try:
+        from ..backend.db import add_epub_card_source
+    except ImportError:
+        from db import add_epub_card_source
+    add_epub_card_source(_ADDON_DIR, profile, card_id, section, note_id, excerpt)
+
+
+def _notify_epub_extract_note_added(note, options):
+    import re
+    if not options or options.get('source') != 'epub' or options.get('source_position') is None:
+        return
+    try:
+        cid, section = int(options['source_card_id']), int(options['source_position'])
+        if cid <= 0 or not 0 <= section <= 1_000_000:
+            return
+        # Suppress the legacy main-reader hook even when this write fails: its
+        # currently displayed book is not the captured source of this note.
+        note._incremento_epub_source_recorded = True
+        excerpt = ' / '.join(re.sub(r'<[^>]+>', '', str(f)).strip()[:120]
+                             for f in (note.fields or [])[:2])[:200]
+        _save_epub_extract_source(_active_profile(), cid, section, note.id, excerpt)
+    except Exception:
+        # The Anki note is already saved. Supplemental source storage must not
+        # interrupt its remaining add hooks or fall back to the unrelated book.
+        return
+
+
 def on_add_cards_did_add_note(note) -> None:
     owns_dock_draft = note_owns_add_card_draft(note)
     snapshot = getattr(note, _REVIEWER_EXTRACT_SNAPSHOT_ATTR, None) if owns_dock_draft else None
@@ -2723,6 +2753,7 @@ def on_add_cards_did_add_note(note) -> None:
     if not options:
         apply_priority_to_note_cards(note, scratch_priority_for_note(note))
     if owns_dock_draft:
+        _notify_epub_extract_note_added(note, options)
         _notify_video_extract_note_added(note, options)
         mark_reviewer_extract_note_added(options)
         if snapshot is None:
@@ -3729,6 +3760,7 @@ def fill_dock_field(
     mark_topic: bool = False,
     on_complete=None,
     source_card_id: int | None = None,
+    source_position: float | None = None,
 ):
     global _add_card_dock, _last_fill_source, _last_fill_seen
     citation = citation_html
@@ -3758,6 +3790,8 @@ def fill_dock_field(
             text = text + '<br>' + citation
     if link_kind:
         source_options = {"source_card_id": source_card_id} if source_card_id is not None else {}
+        if source_position is not None:
+            source_options["source_position"] = source_position
         prepare_pending_extract_from_source_fill(link_kind, mark_topic=bool(mark_topic), **source_options)
     _last_fill_source = link_kind
     _last_fill_seen = time.monotonic()

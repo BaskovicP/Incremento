@@ -2,6 +2,33 @@ import config_service
 import pytest
 
 
+def test_pdf_control_visibility_remembers_each_reader_and_profile_without_mutating_input():
+    from copy import deepcopy
+    raw = {'pdf_controls_collapsed_by_profile': {
+        'A': {'main': False, 'side': True}, 'B': {'main': True},
+        'bad': {'main': 'false', 'side': 0}, 'invalid': [], '': {'main': True}},
+        'future_setting': {'keep': True}}
+    before = deepcopy(raw)
+    config = config_service.normalize_config(raw)
+    assert config['pdf_controls_collapsed_by_profile'] == {
+        'A': {'main': False, 'side': True}, 'B': {'main': True}}
+    assert config_service.configured_pdf_controls_collapsed(config, 'A') is False
+    assert config_service.configured_pdf_controls_collapsed(config, 'A', reading_only=True) is True
+    assert config_service.configured_pdf_controls_collapsed(config, 'B') is True
+    assert config_service.configured_pdf_controls_collapsed(config, 'B', reading_only=True) is None
+    assert config_service.configured_pdf_controls_collapsed(config, 'C') is None
+    assert config['future_setting'] == {'keep': True}
+    assert raw == before
+    assert config_service.normalize_config(config) == config
+
+
+@pytest.mark.parametrize('value', [None, [], True, 'false', 5])
+def test_malformed_pdf_control_preferences_fall_back_to_unsaved(value):
+    config = config_service.normalize_config({'pdf_controls_collapsed_by_profile': value})
+    assert config['pdf_controls_collapsed_by_profile'] == {}
+    assert config_service.configured_pdf_controls_collapsed(config, 'A') is None
+
+
 @pytest.mark.parametrize("engine,remember,expected", [
     (None, None, ("google", False)),
     (" DUCKDUCKGO ", "yes", ("duckduckgo", True)),

@@ -52,6 +52,7 @@ _BOOLEAN_DEFAULTS = {
     "topic_postpone_enabled": False,
     "pdf_force_default_appearance": False,
     "pdf_focus_mode": False,
+    "epub_focus_mode": False,
     "pdf_link_hover_preview_enabled": True,
     "pdf_show_highlight_delete_buttons": True,
 }
@@ -82,6 +83,27 @@ def _bool(value: Any, default: bool) -> bool:
         if normalized in {"0", "false", "no", "off", ""}:
             return False
     return bool(default)
+
+
+def normalize_pdf_controls_preferences(value: Any) -> dict:
+    """Missing choices retain the reader's automatic initial layout."""
+    result: dict[str, dict[str, bool]] = {}
+    if not isinstance(value, Mapping):
+        return result
+    for profile, readers in value.items():
+        if not isinstance(profile, str) or not profile or len(profile) > 255 or not isinstance(readers, Mapping):
+            continue
+        choices = {key: readers[key] for key in ('main', 'side') if type(readers.get(key)) is bool}
+        if choices:
+            result[profile] = choices
+    return result
+
+
+def configured_pdf_controls_collapsed(
+    config: Mapping[str, Any] | None, profile: str, *, reading_only: bool = False,
+) -> bool | None:
+    preferences = normalize_pdf_controls_preferences((config or {}).get('pdf_controls_collapsed_by_profile'))
+    return preferences.get(profile, {}).get('side' if reading_only else 'main')
 
 
 def _number(value: Any, default, minimum, maximum, cast):
@@ -335,6 +357,8 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
         config["learning_leech_tag"],
     ) = configured_learning_leech(config)
     config["pdf_default_appearance"] = configured_pdf_default_appearance(config)
+    config['pdf_controls_collapsed_by_profile'] = normalize_pdf_controls_preferences(
+        config.get('pdf_controls_collapsed_by_profile'))
     preview_zooms = config.get("pdf_link_preview_zoom_by_profile")
     config["pdf_link_preview_zoom_by_profile"] = {
         profile: normalize_pdf_link_preview_zoom(value)

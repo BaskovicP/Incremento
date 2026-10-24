@@ -3840,3 +3840,134 @@ msgstr "Sakrijte lijevi Anki prikaz i proširite PDF preko pune raspoložive ši
 
 msgid "reader_pdf_focus_save_failed"
 msgstr "Nije moguće spremiti fokus na PDF. Pokušajte ponovno."
+
+#. EPUB focus and reference workspace
+msgid "reader_epub_focus_mode"
+msgstr "EPUB fokus"
+
+msgid "reader_epub_focus_mode_hint"
+msgstr "Prikaži EPUB preko raspoložive širine Ankija uz vidljive gumbe za odgovore. Odabir se sprema."
+
+msgid "reader_epub_focus_save_failed"
+msgstr "Nije moguće spremiti EPUB fokus. Pokušajte ponovno."
+
+msgid "reader_epub_reference"
+msgstr "EPUB referenca…"
+
+msgid "reader_epub_reference_hint"
+msgstr "Čitaj drugi EPUB uz ovaj bez promjene glavnog položaja čitanja."
+
+msgid "reader_epub_connections_hint"
+msgstr "Povežite EPUB odjeljke ili odabrane odlomke. Veze su vidljive na oba kraja; pregledajte ih ili čitajte usporedno bez gubitka položaja."
+
+msgid "reader_epub_change_highlight_color"
+msgstr "Promijeni boju isticanja…"
+
+msgid "reader_epub_use_passage"
+msgstr "Upotrijebi ovaj odlomak"
+
+msgid "reader_epub_link_passage"
+msgstr "Poveži odlomak…"
+
+msgid "reader_epub_connection_label"
+msgstr "{title} — odjeljak {section}"
+
+
+msgid "reader_epub_reference_unavailable"
+msgstr "Povezani EPUB nije dostupan ili je izvan ograničenja čitanja. Otvorite knjigu, odaberite drugi odlomak ili uklonite vezu."
+
+msgid "reader_epub_reference_preview"
+msgstr "Pregled EPUB-a"
+
+msgid "reader_epub_appearance"
+msgstr "Izgled EPUB-a"
+
+msgid "workspace_title"
+msgstr "Radni prostor"
+
+msgid "workspace_write_beside"
+msgstr "Piši uz dokument…"
+
+msgid "workspace_columns"
+msgstr "Jedno uz drugo"
+
+msgid "workspace_rows"
+msgstr "Posloži okomito"
+
+msgid "workspace_grid"
+msgstr "Mreža"
+
+msgid "workspace_restore"
+msgstr "Vrati prethodni raspored"
+
+msgid "workspace_position"
+msgstr "Postavi prozor"
+
+msgid "workspace_left"
+msgstr "Lijeva polovica"
+
+msgid "workspace_right"
+msgstr "Desna polovica"
+
+msgid "workspace_top"
+msgstr "Gornja polovica"
+
+msgid "workspace_bottom"
+msgstr "Donja polovica"
+
+msgid "workspace_top_left"
+msgstr "Gornja lijeva četvrtina"
+
+msgid "workspace_top_right"
+msgstr "Gornja desna četvrtina"
+
+msgid "workspace_bottom_left"
+msgstr "Donja lijeva četvrtina"
+
+msgid "workspace_bottom_right"
+msgstr "Donja desna četvrtina"
+
+msgid "workspace_maximize"
+msgstr "Ispuni dostupni zaslon"
+
+msgid "workspace_need_two"
+msgstr "Otvori barem dva Incremento panela za promjenu rasporeda."
+
+msgid "workspace_too_small"
+msgstr "Ovom prozoru treba više prostora. Odaberi veći dio zaslona."
+
+msgid "workspace_keep_open"
+msgstr "Ostavi otvoreno tijekom učenja"
+
+msgid "workspace_keep_open_hint"
+msgstr "Ostavi ovu karticu za pisanje vidljivom tijekom ponavljanja drugih kartica ili izlaska iz ponavljanja. Zatvaranje panela isključuje ovu opciju."
+
+msgid "workspace_writing_tools"
+msgstr "Alati za pisanje (pomakni za više)"
+
+msgid "workspace_loading"
+msgstr "Učitavanje kartica za pisanje…"
+
+msgid "workspace_search"
+msgstr "Pretraži naslove pisanja"
+
+msgid "workspace_writing_cards"
+msgstr "Kartice za pisanje"
+
+msgid "workspace_open_beside"
+msgstr "Otvori pokraj"
+
+msgid "workspace_new_writing"
+msgstr "Novo pisanje…"
+
+msgid "workspace_choose_writing"
+msgstr "Odaberi karticu za pisanje. Ostaje otvorena uz dokument tijekom učenja."
+
+msgid "workspace_no_writing"
+msgstr "Još nema kartica za pisanje. Izradi je pomoću Novo pisanje…, a zatim je ovdje odaberi."
+
+msgid "workspace_writing_limit"
+msgstr "Prikazano je prvih {count} kartica za pisanje. Ostale pronađi pomoću Brzog otvaranja sadržaja."
+
+msgid "workspace_load_failed"
+msgstr "Kartice za pisanje nije moguće učitati. Zatvori ovaj prozor i pokušaj ponovno."

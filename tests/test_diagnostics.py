@@ -450,10 +450,20 @@ def test_shipped_config_keys_are_explicitly_known() -> None:
 
 def test_search_and_pdf_focus_preferences_export_safe_behavior() -> None:
     for engine in ("google", "duckduckgo"):
-        config = {"web_search_engine": engine, "search_remember_logins": True, "pdf_focus_mode": False}
+        config = {"web_search_engine": engine, "search_remember_logins": True,
+                  "pdf_focus_mode": False, "epub_focus_mode": True}
         snapshot = diagnostics.sanitize_config(config)
         assert snapshot["settings"] == config
         assert snapshot["redacted_unknown_setting_count"] == 0
+
+
+def test_reader_toolbar_profile_preferences_redact_all_profile_names() -> None:
+    snapshot = diagnostics.sanitize_config({'pdf_controls_collapsed_by_profile': {
+        'Alice Private Profile': {'main': True}, 'pdf_focus_mode': {'side': False},
+    }})
+    assert snapshot['settings']['pdf_controls_collapsed_by_profile']['redacted'] is True
+    assert 'Alice Private Profile' not in json.dumps(snapshot)
+    assert 'pdf_focus_mode' not in json.dumps(snapshot)
 
 
 def test_search_provider_diagnostics_redact_private_values() -> None:

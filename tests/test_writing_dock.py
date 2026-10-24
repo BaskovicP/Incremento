@@ -153,3 +153,88 @@ def test_nonwriting_reviews_do_not_resave_an_already_hidden_writing_editor(monke
     writing_dock.on_writing_question_shown(card)
     assert saves == ['saved']
     assert visible == [False]
+
+
+def test_kept_open_writing_survives_pdf_questions_and_review_end(monkeypatch):
+    from types import SimpleNamespace
+    visible = [True]
+    monkeypatch.setattr(writing_dock, '_writing_dock', SimpleNamespace(
+        isVisible=lambda: visible[0], hide=lambda: visible.__setitem__(0, False)))
+    monkeypatch.setattr(writing_dock, '_flush_editor_state', lambda: None)
+    monkeypatch.setattr(writing_dock, '_writing_keep_open', True, raising=False)
+    monkeypatch.setattr(writing_dock, 'mw', SimpleNamespace(col=SimpleNamespace(
+        get_note=lambda nid: SimpleNamespace(mid=1),
+        models=SimpleNamespace(get=lambda mid: {'name': 'Incremento PDF'}))))
+    writing_dock.on_writing_question_shown(SimpleNamespace(nid=1))
+    writing_dock.on_writing_reviewer_will_end()
+    assert visible == [True]
+
+
+def test_reopening_current_writing_preserves_unsaved_text_and_session_baseline(monkeypatch):
+    from types import SimpleNamespace
+    shown = []
+    monkeypatch.setattr(writing_dock, '_writing_dock', SimpleNamespace(
+        widget=lambda: object(), isVisible=lambda: True,
+        show=lambda: shown.append(True), raise_=lambda: None))
+    monkeypatch.setattr(writing_dock, '_current_writing_card_id', 77)
+    monkeypatch.setattr(writing_dock, '_current_writing_relpath', 'writing/synthetic.md')
+    monkeypatch.setattr(writing_dock, '_writing_profile', 'TestProfile', raising=False)
+    monkeypatch.setattr(writing_dock, '_active_profile', lambda: 'TestProfile')
+    monkeypatch.setattr(writing_dock, '_writing_session_baseline_words', 12)
+    def unexpected(*args, **kwargs):
+        raise AssertionError('Reopening the live editor must not reload its text from storage')
+    monkeypatch.setattr(writing_dock, 'ensure_writing_file', unexpected)
+    writing_dock.show_writing_in_dock(77, 'Title', 'writing/synthetic.md')
+    assert shown == [True]
+    assert writing_dock._writing_session_baseline_words == 12
+
+
+def test_profile_reset_stops_pending_saves_clears_identity_and_unpins(monkeypatch):
+    from types import SimpleNamespace
+    events = []
+    monkeypatch.setattr(writing_dock, '_writing_dock', SimpleNamespace(
+        hide=lambda: events.append('hide'), deleteLater=lambda: events.append('delete')))
+    monkeypatch.setattr(writing_dock, 'mw', SimpleNamespace(removeDockWidget=lambda d: None))
+    monkeypatch.setattr(writing_dock, '_writing_profile', 'TestProfile')
+    monkeypatch.setattr(writing_dock, '_active_profile', lambda: 'TestProfile')
+    monkeypatch.setattr(writing_dock, '_current_writing_card_id', 77)
+    monkeypatch.setattr(writing_dock, '_current_writing_relpath', 'writing/test.md')
+    monkeypatch.setattr(writing_dock, '_writing_keep_open', True)
+    monkeypatch.setattr(writing_dock, '_flush_editor_state', lambda: events.append('save'))
+    for name in ('_autosave_timer', '_state_save_timer'):
+        monkeypatch.setattr(writing_dock, name, SimpleNamespace(stop=lambda: events.append('stop')))
+    writing_dock.reset_for_profile_switch()
+    assert events == ['save', 'stop', 'stop', 'hide', 'delete']
+    assert writing_dock._writing_dock is None
+    assert writing_dock._current_writing_card_id is None
+    assert writing_dock._current_writing_relpath == ''
+    assert not writing_dock._writing_keep_open
+    assert writing_dock._autosave_timer is writing_dock._state_save_timer is None
+
+
+def test_late_autosave_after_profile_switch_never_writes_old_text(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(writing_dock, '_writing_dock', SimpleNamespace(
+        _editor=SimpleNamespace(toPlainText=lambda: 'private old draft')))
+    monkeypatch.setattr(writing_dock, '_writing_profile', 'OldProfile')
+    monkeypatch.setattr(writing_dock, '_active_profile', lambda: 'NewProfile')
+    monkeypatch.setattr(writing_dock, '_current_writing_relpath', 'writing/test.md')
+    writes = []
+    monkeypatch.setattr(writing_dock, 'write_writing_text', lambda *a, **kw: writes.append(a))
+    writing_dock._autosave_from_editor()
+    assert writes == []
+
+
+def test_pinned_writing_is_not_replaced_by_another_writing_review(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(writing_dock, '_writing_keep_open', True)
+    monkeypatch.setattr(writing_dock, 'mw', SimpleNamespace(col=SimpleNamespace(
+        get_note=lambda nid: {'Title': 'Different writing', 'Markdown_File': 'writing/other.md'},
+        models=SimpleNamespace(get=lambda mid: {'name': 'Incremento Writing'}))))
+    class Note(dict):
+        mid = 1
+    writing_dock.mw.col.get_note = lambda nid: Note(Title='Different writing', Markdown_File='writing/other.md')
+    opened = []
+    monkeypatch.setattr(writing_dock, 'show_writing_in_dock', lambda *args: opened.append(args))
+    writing_dock.on_writing_question_shown(SimpleNamespace(id=22, nid=22))
+    assert opened == []
