@@ -115,6 +115,7 @@ npm --prefix frontend test
 
 ## Writing Workspace
 
+- `workspace_drag.py` installs custom title bars only on recognized Incremento docks, previews edge/corner drops without activating the overlay, and preserves live widgets across drag/drop, Escape, close, and profile reset. Use logical screen coordinates and leave editor/content mouse events alone. `pdf_reference_workspace.py` allows up to eight additional readers, reserving pending explicit-window opens; independent or deliberately moved PDF panes must never be evicted by legacy preview-slot replacement.
 - `workspace.py` owns explicit dock layouts, screen positions, and one-step session-only restore. Only recognized Incremento docks participate. Block dock signals during layout moves so reference-slot handlers cannot close another live pane or flush/retire its reader. Preserve focused reader hosts and never reopen closed panes on restore.
 - `writing_workspace.py` provides the non-modal background writing picker. Reject closed, superseded, collection-changed, and profile-changed results. Root adapters own opening/creating cards and menu registration.
 - Writing's **Keep open while studying** keeps the selected editor across reviewer changes/end; explicit close unpins it. Layout reparenting and tab visibility changes must not unpin it. Reset the editor and stop pending saves before a profile switch; never write the previous editor into the next profile. Reopening the same live card preserves unsaved text and session baseline. Keep the writing toolbar horizontally reachable at narrow widths.

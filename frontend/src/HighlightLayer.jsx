@@ -6,7 +6,7 @@
 
 import { createReaderLanguage } from './i18n.mjs';
 import { normalizePdfHighlightRects } from './pdfHighlightRects.mjs';
-import { highlightBackgroundColor } from './highlightColors.mjs';
+import { highlightBackgroundColor, highlightSolidColor } from './highlightColors.mjs';
 
 const DEFAULT_LANGUAGE = createReaderLanguage('en');
 
@@ -44,6 +44,7 @@ export default function HighlightLayer({
   renderInfo,
   deleteHighlight,
   editHighlightNote,
+  showHighlightColorPopover,
   activateHighlightResize,
   resizingHighlightId,
   beginHighlightResize,
@@ -94,6 +95,9 @@ export default function HighlightLayer({
   return (
     <>
       <style>{`
+        .incremento-pdf-color-action {
+          opacity: 0;
+        }
         .incremento-pdf-note-action {
           opacity: 0;
         }
@@ -103,6 +107,10 @@ export default function HighlightLayer({
         }
         .incremento-pdf-highlight-actions:hover .incremento-pdf-note-action,
         .incremento-pdf-note-action:focus-visible {
+          opacity: 1;
+        }
+        .incremento-pdf-highlight-actions:hover .incremento-pdf-color-action,
+        .incremento-pdf-highlight-actions:focus-within .incremento-pdf-color-action {
           opacity: 1;
         }
         .incremento-pdf-highlight-actions:hover .incremento-pdf-resize-action,
@@ -170,7 +178,7 @@ export default function HighlightLayer({
             className="incremento-pdf-highlight-actions"
             style={{
               position: 'absolute',
-              left: renderInfo.tlLeft + (r.x + r.w) * renderInfo.scale - 28,
+              left: renderInfo.tlLeft + (r.x + r.w) * renderInfo.scale - (isSnapshotHighlight(h) ? 28 : 48),
               top: r.y * renderInfo.scale - 8,
               display: 'inline-flex',
               alignItems: 'center',
@@ -178,6 +186,19 @@ export default function HighlightLayer({
               zIndex: 10,
             }}
           >
+            {!isSnapshotHighlight(h) && <button
+              type="button"
+              className="incremento-pdf-color-action"
+              aria-label={language.tr('reader_choose_annotation_color')}
+              title={language.tr('reader_choose_annotation_color')}
+              aria-haspopup="dialog"
+              onClick={event => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                showHighlightColorPopover?.(h, { clientX: rect.left + rect.width / 2, clientY: rect.bottom });
+              }}
+              style={{ width: 16, height: 16, padding: 0, borderRadius: '50%',
+                border: '1px solid #64748b', background: highlightSolidColor(h.color), cursor: 'pointer' }}
+            />}
             <button
               className="incremento-pdf-note-action"
               aria-label={language.tr(hasNote ? 'reader_edit_highlight_note' : 'reader_add_highlight_note')}

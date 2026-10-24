@@ -71,7 +71,7 @@ def test_bookshelf_reference_choice_accepts_dialog_with_a_distinct_open_mode(mon
     assert accepted == [True]
 
 
-@pytest.mark.parametrize("mode", ["preview", "beside", "main"])
+@pytest.mark.parametrize("mode", ["preview", "beside", "window", "main"])
 @pytest.mark.parametrize('stale_callback', [None, 'success', 'failure'])
 def test_bookshelf_root_opens_reference_only_after_modal_picker_exits(monkeypatch, mode, stale_callback):
     import ast
@@ -117,6 +117,8 @@ def test_bookshelf_root_opens_reference_only_after_modal_picker_exits(monkeypatc
     pending[0]['success'](([], {}))
     expected = ["modal exited", "primary replaced", "study started"] if mode == 'main' else [
         "modal exited", ((8,), {"beside": mode == 'beside', "owner": "primary"})]
+    if mode == 'window':
+        expected = ['modal exited', ((8,), {'new_window': True, 'owner': 'primary'})]
     assert calls == expected
 
 
@@ -1270,3 +1272,14 @@ def test_media_preview_path_stays_inside_anki_media_directory(tmp_path):
         )
         == ""
     )
+
+
+def test_bookshelf_new_window_choice_does_not_replace_the_main_reader(monkeypatch):
+    accepted = []
+    entry = pdf_bookshelf._BookshelfEntry('Another PDF', 8, 'PDF')
+    dialog = SimpleNamespace(_profile='A', _selected_entry=lambda: entry,
+                             accept=lambda: accepted.append(True))
+    monkeypatch.setattr(pdf_bookshelf, '_active_profile', lambda: 'A')
+    pdf_bookshelf._DocumentBookshelfDialog._accept_reference(dialog, beside=False, new_window=True)
+    assert dialog._reference_mode == 'window'
+    assert accepted == [True]

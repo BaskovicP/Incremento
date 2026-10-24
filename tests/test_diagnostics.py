@@ -7,6 +7,8 @@ import threading
 import zipfile
 from pathlib import Path
 
+import pytest
+
 import diagnostics
 
 
@@ -457,11 +459,14 @@ def test_search_and_pdf_focus_preferences_export_safe_behavior() -> None:
         assert snapshot["redacted_unknown_setting_count"] == 0
 
 
-def test_reader_toolbar_profile_preferences_redact_all_profile_names() -> None:
-    snapshot = diagnostics.sanitize_config({'pdf_controls_collapsed_by_profile': {
+@pytest.mark.parametrize('setting', [
+    'pdf_controls_collapsed_by_profile', 'epub_controls_collapsed_by_profile',
+])
+def test_reader_toolbar_profile_preferences_redact_all_profile_names(setting) -> None:
+    snapshot = diagnostics.sanitize_config({setting: {
         'Alice Private Profile': {'main': True}, 'pdf_focus_mode': {'side': False},
     }})
-    assert snapshot['settings']['pdf_controls_collapsed_by_profile']['redacted'] is True
+    assert snapshot['settings'][setting]['redacted'] is True
     assert 'Alice Private Profile' not in json.dumps(snapshot)
     assert 'pdf_focus_mode' not in json.dumps(snapshot)
 

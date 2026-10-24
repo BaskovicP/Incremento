@@ -3619,7 +3619,11 @@ def _open_pdf_quick_jump() -> None:
         showInfo(_t("root_document_open_failed", error=e))
 
 
-def _open_document_bookshelf() -> None:
+def _open_pdf_workspace_window() -> None:
+    _open_document_bookshelf(new_window=True)
+
+
+def _open_document_bookshelf(*, new_window: bool = False) -> None:
     from aqt.operations import QueryOp
 
     captured_profile = _active_profile()
@@ -3635,19 +3639,28 @@ def _open_document_bookshelf() -> None:
         if captured_profile != _active_profile():
             return
         entries, attachment_counts = snapshot
+        if new_window:
+            entries = [entry for entry in entries if entry.kind == 'PDF']
         dlg = _DocumentBookshelfDialog(
             mw,
             addon_dir=_ADDON_DIR,
             last_opened_card_id=_last_opened_document_cid,
             entries=list(entries or []),
             attachment_counts=dict(attachment_counts or {}),
+            selection_only=new_window,
         )
+        if new_window:
+            dlg.setWindowTitle(_t('workspace_open_pdf_window'))
         if not dlg.exec() or captured_profile != _active_profile():
             return
         card_id = dlg.selected_card_id
         if card_id is None:
             return
         try:
+            if new_window or dlg.reference_mode == 'window':
+                _pdf_reference_workspace_mod.open_reference(
+                    card_id, new_window=True, owner=_pdf_dock_mod._pdf_dock)
+                return
             if dlg.reference_mode in ("preview", "beside"):
                 _pdf_reference_workspace_mod.open_reference(
                     card_id, beside=dlg.reference_mode == "beside", owner=_pdf_dock_mod._pdf_dock)
@@ -7449,7 +7462,7 @@ def _build_incremento_menu() -> None:
     _activityCenterAction.setProperty("incremento_translation_key", "root_menu_activity_center")
     qconnect(_activityCenterAction.triggered, _open_activity_center)
     _menu.addAction(_activityCenterAction)
-    add_workspace_menu(_menu, _workspace_layouts, _open_writing_beside)
+    add_workspace_menu(_menu, _workspace_layouts, _open_writing_beside, open_pdf=_open_pdf_workspace_window)
     _register_shortcut_action("activity_center", _activityCenterAction)
 
     _settingsAction = QAction(_t("root_menu_settings"), mw)

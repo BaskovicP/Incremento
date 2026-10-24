@@ -39,6 +39,7 @@ def test_workspace_arranges_live_panes_and_restores_focus_without_close_signals(
         mode = PdfFocusMode(main, pdf, pdf.widget(), enabled=True)
         pdf._pdf_focus_mode = mode
         reference.setFloating(True)
+        pdf.setFloating(True)
         main.show()
         mode.present(eligible=True, title='PDF')
         app.processEvents()
@@ -49,6 +50,11 @@ def test_workspace_arranges_live_panes_and_restores_focus_without_close_signals(
             d.visibilityChanged.connect(lambda value: events.append(value))
         manager = WorkspaceLayouts(main)
         assert manager.visible_panes() == panes
+        assert manager.dock_at(writing, 'right', target=pdf)
+        app.processEvents()
+        assert not pdf.isFloating(), 'Dropping beside a focused reader must dock its previously floating host'
+        assert not mode.active and pdf.widget() is contents[0]
+        assert manager.restore()
         assert manager.beside(writing)
         app.processEvents()
         assert mode.active, 'Writing beside a focused PDF must keep the PDF in the central reading area'

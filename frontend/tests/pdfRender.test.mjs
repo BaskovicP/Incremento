@@ -7,6 +7,7 @@ import { normalizePdfPageLabels } from '../src/pdfPageLabels.mjs';
 import * as pageLabelModule from '../src/pdfPageLabels.mjs';
 import { annotatePdfTextStyles } from '../src/pdfTextSelection.mjs';
 import { loadPdfContents } from '../src/pdfContents.mjs';
+import { pdfCanvasPlan } from '../src/pdfRenderBudget.mjs';
 
 test('rendering keeps PDF spaces, narrow letters, and compressed OCR spans selectable', async () => {
   const source = readFileSync(new URL('../src/usePdfRender.js', import.meta.url), 'utf8');
@@ -82,6 +83,7 @@ function loader() {
     filenameRef: { current: 'sample.pdf' },
     cardIdRef: { current: 55 },
     loadSequenceRef: { current: 0 }, loadingTaskRef: { current: null },
+    pageCacheRef: {current: new Set()},
     renderSequenceRef: { current: 0 }, busyRef: { current: false },
     setTotalPages: () => {}, renderPage: page => rendered.push(page), setError: error => { if (error) errors.push(error); },
     setPageLabels: value => labels.push(value),
@@ -220,7 +222,7 @@ function deferred() {
 }
 
 // Run the real hook; only React lifecycle, DOM and PDF.js are boundaries.
-function renderHarness() {
+function renderHarness({pixelRatio = 2, width = 600, height = 920} = {}) {
   const source = readFileSync(new URL('../src/usePdfRender.js', import.meta.url), 'utf8')
     .replace(/^import .*;\n/gm, '').replace('export function usePdfRender', 'function usePdfRender');
   const slots = [], effects = [], renders = [], commands = [], textPages = [];
@@ -238,11 +240,11 @@ function renderHarness() {
     useCallback: callback => callback, useEffect: callback => effects.push(callback),
     resolvePdfAnnotationLink: async annotation => annotation,
     normalizePdfPageLabels, pdfPageLabelsMessage: pageLabelModule.pdfPageLabelsMessage,
-    annotatePdfTextStyles, loadPdfContents,
+    annotatePdfTextStyles, loadPdfContents, pdfCanvasPlan,
     setTimeout: callback => {timers.push(callback); return timers.length;}, clearTimeout() {},
     setInterval() {}, clearInterval() {},
     ResizeObserver: class { constructor(callback) { resize = callback; } observe() {} disconnect() {} },
-    window: {innerHeight: 920, devicePixelRatio: 2, location: {href: 'http://localhost/'},
+    window: {innerHeight: height, devicePixelRatio: pixelRatio, location: {href: 'http://localhost/'},
       pycmd: command => commands.push(command), pdfjsLib: {
         GlobalWorkerOptions: {},
         TextLayer: class {
@@ -260,14 +262,16 @@ function renderHarness() {
   for (const ref of [api.canvasARef, api.canvasBRef]) {
     ref.current = {style: {}, dataset: {}, getContext: () => ({canvas: ref.current})};
   }
-  api.containerRef.current = {offsetWidth: 600, style: {}};
+  api.containerRef.current = {offsetWidth: width, style: {}};
   api.textLayerRef.current = {style: {setProperty() {}}, addEventListener() {}, removeEventListener() {}};
   const cleanups = effects.map(effect => effect()).filter(Boolean);
-  function document(id, {delayedPage = false} = {}) {
-    const pages = [];
-    const doc = {numPages: 20, getPageLabels: async () => null, getOutline: async () => [],
+  function document(id, {delayedPage = false, numPages = 20} = {}) {
+    const pages = [], pageCache = new Map();
+    const doc = {numPages, getPageLabels: async () => null, getOutline: async () => [],
       getPage: number => {
+        if (pageCache.has(number)) return Promise.resolve(pageCache.get(number));
         const page = {pageNumber: number, streamTextContent: () => `${id}:${number}`,
+          cleaned: 0, cleanup() {this.cleaned++; return true;},
           getTextContent: async () => ({items: []}), getAnnotations: async () => [],
           getViewport: ({scale}) => ({width: 600 * scale, height: 800 * scale, scale}),
           render: options => {
@@ -278,6 +282,7 @@ function renderHarness() {
             return job;
           }};
         const ready = deferred(); pages.push({number, ready, page});
+        pageCache.set(number, page);
         return delayedPage ? ready.promise : Promise.resolve(page);
       }};
     documents.push(doc);
@@ -294,6 +299,7 @@ test('rapid page and zoom requests render only the latest pending destination at
   await setImmediate();
   h.api.nav(1); h.api.nav(1); h.api.adjustZoom(1); h.api.adjustZoom(1);
   assert.equal(h.renders.length, 1, 'never render concurrently into a canvas');
+  assert.equal(h.renders[0].cancelled, true, 'obsolete image decoding must be cancelled promptly');
   h.renders[0].resolve(); await setImmediate();
   assert.deepEqual(h.renders.map(job => job.number), [1, 3]);
   assert.equal(h.api.pageRef.current, 3, 'obsolete completion must not rewind the requested page');
@@ -358,4 +364,57 @@ test('obsolete page loading is discarded and unmount prevents queued rendering',
   h.renders[0].resolve(); await setImmediate();
   assert.equal(h.renders.length, 1);
   assert.deepEqual(h.textPages, []);
+});
+
+test('large textbook navigation retains at most three decoded pages and can revisit evicted pages', async () => {
+  const h = renderHarness(); const {pages} = h.document('textbook', {numPages: 1747});
+  h.api.startViewer(7, 'textbook.pdf', 1, 1);
+  for (let number = 1; number <= 12; number++) {
+    await setImmediate();
+    const job = h.renders.at(-1);
+    assert.equal(job.number, number);
+    job.resolve(); await setImmediate();
+    assert.ok(pages.filter(({page}) => !page.cleaned).length <= 3,
+      'decoded images and operator lists must not grow with every page visited');
+    assert.equal(pages.at(-1).page.cleaned, 0, 'keep the displayed page ready for zoom and selection');
+    if (number < 12) h.api.nav(1);
+  }
+  assert.ok(pages[0].page.cleaned > 0);
+  h.api.nav(-11); await setImmediate();
+  h.renders.at(-1).resolve(); await setImmediate();
+  assert.equal(h.state().page, 1, 'cleanup must not destroy the document or prevent back navigation');
+  assert.equal(h.state().error, '');
+});
+
+test('superseded and failed pages release decoded resources after their renders settle', async () => {
+  const h = renderHarness(); const {pages} = h.document('textbook');
+  h.api.startViewer(7, 'textbook.pdf', 1, 1); await setImmediate();
+  h.api.nav(1);
+  assert.equal(pages[0].page.cleaned, 0, 'do not clean resources used by an active renderer');
+  h.renders[0].reject(new Error('RenderingCancelledException')); await setImmediate();
+  assert.equal(pages[0].page.cleaned, 1);
+  h.renders[1].reject(new Error('image decode failed')); await setImmediate();
+  assert.equal(pages[1].page.cleaned, 1);
+  assert.equal(h.state().error, 'reader_render_error');
+});
+
+test('high zoom and display density keep the page geometry while bounding canvas memory', async () => {
+  const h = renderHarness({pixelRatio: 3, width: 2400, height: 1800});
+  h.document('illustrated'); h.api.startViewer(7, 'illustrated.pdf', 1, 4);
+  await setImmediate();
+  const first = h.renders[0];
+  const canvas = first.canvasContext.canvas;
+  assert.equal(first.viewport.width, 5040, 'preserve CSS geometry for highlights and selection');
+  assert.equal(first.viewport.height, 6720);
+  assert.ok(canvas.width * canvas.height <= 8_000_000, 'cap each rendering surface at eight million pixels');
+  assert.ok(canvas.width <= 8192 && canvas.height <= 8192);
+  assert.ok(first.transform[0] < 1, 'reduce backing resolution, not the reader zoom');
+  assert.equal(canvas.style.width, '5040px');
+  first.resolve(); await setImmediate();
+  h.api.nav(1); await setImmediate();
+  const second = h.renders[1];
+  assert.ok(canvas.width > 0, 'keep the previous page visible until the replacement is ready');
+  second.resolve(); await setImmediate();
+  assert.equal(canvas.width * canvas.height, 0, 'release the hidden canvas after the page swap');
+  assert.equal(h.state().page, 2);
 });

@@ -32802,9 +32802,41 @@
     },
     {
       "component": "addon",
+      "key": "workspace_close",
+      "form": "",
+      "source": "Close window",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_columns",
       "form": "",
       "source": "Side by side",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_drag_hint",
+      "form": "",
+      "source": "Drag this title bar to a screen edge for a half, a corner for a quarter, or another pane’s edge to dock beside it. Escape cancels.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_drag_title",
+      "form": "",
+      "source": "Move pane",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_float",
+      "form": "",
+      "source": "Float / dock window",
       "tokens": [],
       "markup": []
     },
@@ -32894,6 +32926,32 @@
       "form": "",
       "source": "Open beside",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_open_new_window",
+      "form": "",
+      "source": "Open in new window",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_open_pdf_window",
+      "form": "",
+      "source": "Open PDF window…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_pdf_window_limit",
+      "form": "",
+      "source": "Up to {count} PDF windows can be open at once. Close one before opening another.",
+      "tokens": [
+        "{count}"
+      ],
       "markup": []
     },
     {

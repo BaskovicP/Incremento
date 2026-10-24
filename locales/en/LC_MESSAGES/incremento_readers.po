@@ -3953,3 +3953,24 @@ msgstr "Dark"
 #. Reader toolbar controls
 msgid "reader_pdf_appearance_night"
 msgstr "Night"
+
+msgid "workspace_drag_title"
+msgstr "Move pane"
+
+msgid "workspace_drag_hint"
+msgstr "Drag this title bar to a screen edge for a half, a corner for a quarter, or another pane’s edge to dock beside it. Escape cancels."
+
+msgid "workspace_float"
+msgstr "Float / dock window"
+
+msgid "workspace_close"
+msgstr "Close window"
+
+msgid "workspace_open_pdf_window"
+msgstr "Open PDF window…"
+
+msgid "workspace_open_new_window"
+msgstr "Open in new window"
+
+msgid "workspace_pdf_window_limit"
+msgstr "Up to {count} PDF windows can be open at once. Close one before opening another."

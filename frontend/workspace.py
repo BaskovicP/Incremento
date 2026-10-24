@@ -41,12 +41,22 @@ class WorkspaceLayouts:
     def __init__(self, main):
         self.main = main
         self._previous = None
+        self._drag = None
+
+    def enable_dragging(self):
+        if self._drag is None:
+            from .workspace_drag import WorkspaceDrag
+            self._drag = WorkspaceDrag(self)
+
+    @staticmethod
+    def is_workspace_pane(dock):
+        name = dock.objectName()
+        return name in _PANE_NAMES or name.startswith(('incremento_pdf_reference_', 'incremento_epub_reference_'))
 
     def visible_panes(self):
         panes = []
         for dock in self.main.findChildren(QDockWidget):
-            name = dock.objectName()
-            if name not in _PANE_NAMES and not name.startswith(('incremento_pdf_reference_', 'incremento_epub_reference_')):
+            if not self.is_workspace_pane(dock):
                 continue
             mode = _focus(dock)
             if dock.isVisible() or (mode is not None and mode.active):
@@ -116,10 +126,46 @@ class WorkspaceLayouts:
                 self.main.resizeDocks(panes, [max(1, size // len(panes))] * len(panes), orientation)
         return True
 
-    def snap(self, dock, placement):
+    def dock_at(self, dock, placement, *, target=None):
+        if placement not in ('left', 'right', 'top', 'bottom') or dock not in self.visible_panes():
+            return False
+        panes = self.visible_panes()
+        if target is not None and (target not in panes or target is dock):
+            return False
+        self._remember(panes)
+        with ExitStack() as stack:
+            for pane in panes:
+                stack.enter_context(QSignalBlocker(pane))
+            self._leave_focus([dock] + ([target] if target is not None else []))
+            area = {'left': Qt.DockWidgetArea.LeftDockWidgetArea, 'right': Qt.DockWidgetArea.RightDockWidgetArea,
+                    'top': Qt.DockWidgetArea.TopDockWidgetArea, 'bottom': Qt.DockWidgetArea.BottomDockWidgetArea}[placement]
+            if target is None:
+                self.main.removeDockWidget(dock)
+                self.main.addDockWidget(area, dock)
+                dock.setFloating(False)
+            else:
+                dock.setFloating(False)
+                target.setFloating(False)
+                target.show()
+                orientation = Qt.Orientation.Horizontal if placement in ('left', 'right') else Qt.Orientation.Vertical
+                if placement in ('right', 'bottom'):
+                    self.main.splitDockWidget(target, dock, orientation)
+                else:
+                    # Qt inserts after the first dock. Insert the dropped pane
+                    # into the target's area, then split the target after it.
+                    target_area = self.main.dockWidgetArea(target)
+                    self.main.removeDockWidget(dock)
+                    self.main.addDockWidget(target_area, dock)
+                    self.main.splitDockWidget(target, dock, orientation)
+                    self.main.splitDockWidget(dock, target, orientation)
+                self.main.resizeDocks([dock, target], [1, 1], orientation)
+            dock.show()
+        return True
+
+    def snap(self, dock, placement, *, screen=None):
         if dock not in self.visible_panes():
             return False
-        screen = dock.screen() if dock.isFloating() else self.main.screen()
+        screen = screen or (dock.screen() if dock.isFloating() else self.main.screen())
         if screen is None:
             return False
         rectangle = snap_rectangle(screen.availableGeometry(), placement)
@@ -163,11 +209,14 @@ class WorkspaceLayouts:
         return True
 
     def reset(self):
+        if self._drag is not None:
+            self._drag.cancel(restore=False)
         self._previous = None
 
 
-def add_workspace_menu(parent, manager, open_writing):
+def add_workspace_menu(parent, manager, open_writing, open_pdf=None):
     """Rebuild window targets when shown, so closed windows cannot remain actionable."""
+    manager.enable_dragging()
     menu = parent.addMenu(t('workspace_title'))
     menu.menuAction().setProperty('incremento_translation_key', 'workspace_title')
 
@@ -189,6 +238,8 @@ def add_workspace_menu(parent, manager, open_writing):
 
     def rebuild():
         menu.clear()
+        if open_pdf is not None:
+            action(menu, 'workspace_open_pdf_window', open_pdf)
         action(menu, 'workspace_write_beside', open_writing)
         menu.addSeparator()
         panes = manager.visible_panes()

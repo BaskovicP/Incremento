@@ -43,7 +43,7 @@ def test_a_changed_note_type_is_not_opened_as_writing():
 
 def test_workspace_menu_and_profile_teardown_are_registered():
     source = (ROOT / '__init__.py').read_text()
-    assert 'add_workspace_menu(_menu, _workspace_layouts, _open_writing_beside)' in source
+    assert 'add_workspace_menu(_menu, _workspace_layouts, _open_writing_beside, open_pdf=_open_pdf_workspace_window)' in source
     assert 'gui_hooks.profile_will_close.append(_reset_writing_workspace)' in source
     nodes = {node.name: ast.get_source_segment(source, node) for node in ast.parse(source).body
              if isinstance(node, ast.FunctionDef)}

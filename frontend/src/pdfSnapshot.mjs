@@ -1,3 +1,23 @@
+/** Crop from backing pixels, which can be less dense than the current display. */
+export function cropPdfSnapshot(canvas, rect, createCanvas) {
+  const size = canvas.getBoundingClientRect();
+  if (![canvas.width, canvas.height, size.width, size.height, rect.w, rect.h]
+    .every(value => Number.isFinite(value) && value > 0)
+    || ![rect.x, rect.y].every(Number.isFinite)) return null;
+  const scaleX = canvas.width / size.width, scaleY = canvas.height / size.height;
+  const left = Math.max(0, Math.min(canvas.width, Math.round(rect.x * scaleX)));
+  const top = Math.max(0, Math.min(canvas.height, Math.round(rect.y * scaleY)));
+  const right = Math.max(left, Math.min(canvas.width, Math.round((rect.x + rect.w) * scaleX)));
+  const bottom = Math.max(top, Math.min(canvas.height, Math.round((rect.y + rect.h) * scaleY)));
+  if (right === left || bottom === top) return null;
+  const output = createCanvas();
+  output.width = right - left;
+  output.height = bottom - top;
+  output.getContext('2d').drawImage(canvas, left, top, output.width, output.height,
+    0, 0, output.width, output.height);
+  return output;
+}
+
 /** Encode outside the synchronous pointer handler; never deliver a stale capture. */
 export function encodePdfSnapshot(canvas, isCurrent, Reader = globalThis.FileReader) {
   return new Promise((resolve, reject) => {

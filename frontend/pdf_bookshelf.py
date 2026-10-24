@@ -1782,6 +1782,8 @@ class _DocumentBookshelfDialog(QDialog):
             menu.exec(self._list.viewport().mapToGlobal(position))
             return
         if entry.kind == _KIND_PDF:
+            window_action = menu.addAction(t('workspace_open_new_window'))
+            qconnect(window_action.triggered, lambda checked=False: self._accept_reference(beside=False, new_window=True))
             for key, beside in (("reader_reference_preview", False), ("reader_reference_pin", True)):
                 action = menu.addAction(t(key))
                 qconnect(action.triggered, lambda checked=False, pin=beside: self._accept_reference(beside=pin))
@@ -2005,12 +2007,12 @@ class _DocumentBookshelfDialog(QDialog):
         self._thumbnail_cache[(entry.kind, entry.card_id)] = icon
         item.setIcon(icon)
 
-    def _accept_reference(self, *, beside: bool) -> None:
+    def _accept_reference(self, *, beside: bool, new_window: bool = False) -> None:
         entry = self._selected_entry()
         if (entry is None or entry.kind != _KIND_PDF
                 or str(_active_profile() or "") != self._profile):
             return
-        self._reference_mode = "beside" if beside else "preview"
+        self._reference_mode = "window" if new_window else "beside" if beside else "preview"
         self.accept()
 
     @property

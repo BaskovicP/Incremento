@@ -1,6 +1,36 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { encodePdfSnapshot, paintPdfSnapshotPreview } from '../src/pdfSnapshot.mjs';
+import { cropPdfSnapshot, encodePdfSnapshot, paintPdfSnapshotPreview } from '../src/pdfSnapshot.mjs';
+
+test('snapshot crops use actual backing pixels when high zoom lowers canvas density', () => {
+  const drawn = [];
+  const canvas = {width: 1000, height: 1500,
+    getBoundingClientRect: () => ({width: 2000, height: 3000})};
+  const result = cropPdfSnapshot(canvas, {x: 200, y: 400, w: 600, h: 800},
+    () => ({getContext: () => ({drawImage: (...args) => drawn.push(args)})}));
+  assert.equal(result.width, 300);
+  assert.equal(result.height, 400);
+  assert.deepEqual(drawn, [[canvas, 100, 200, 300, 400, 0, 0, 300, 400]]);
+});
+
+test('snapshot crops preserve high density and include the selected bottom-right edge', () => {
+  const drawn = [];
+  const canvas = {width: 1200, height: 1600,
+    getBoundingClientRect: () => ({width: 600, height: 800})};
+  const result = cropPdfSnapshot(canvas, {x: 500, y: 700, w: 100, h: 100},
+    () => ({getContext: () => ({drawImage: (...args) => drawn.push(args)})}));
+  assert.equal(result.width, 200);
+  assert.equal(result.height, 200);
+  assert.deepEqual(drawn, [[canvas, 1000, 1400, 200, 200, 0, 0, 200, 200]]);
+});
+
+test('snapshot crops ignore empty or unavailable page surfaces', () => {
+  const makeCanvas = () => assert.fail('do not allocate an empty capture');
+  for (const size of [{width: 0, height: 800}, {width: 600, height: 0}]) {
+    assert.equal(cropPdfSnapshot({...size, getBoundingClientRect: () => size},
+      {x: 0, y: 0, w: 100, h: 100}, makeCanvas), null);
+  }
+});
 
 test('snapshot PNG encoding is asynchronous and keeps the bridge image format', async () => {
   let finish;

@@ -3915,3 +3915,24 @@ msgstr "深色"
 #. Reader toolbar controls
 msgid "reader_pdf_appearance_night"
 msgstr "夜间"
+
+msgid "workspace_drag_title"
+msgstr "移动窗格"
+
+msgid "workspace_drag_hint"
+msgstr "将标题栏拖到屏幕边缘以占据半屏，拖到角落以占据四分之一屏，或拖到另一窗格的边缘以停靠。按 Escape 取消。"
+
+msgid "workspace_float"
+msgstr "浮动／停靠窗口"
+
+msgid "workspace_close"
+msgstr "关闭窗口"
+
+msgid "workspace_open_pdf_window"
+msgstr "打开 PDF 窗口…"
+
+msgid "workspace_open_new_window"
+msgstr "在新窗口中打开"
+
+msgid "workspace_pdf_window_limit"
+msgstr "最多可同时打开 {count} 个 PDF 窗口。请先关闭一个窗口再打开新的窗口。"

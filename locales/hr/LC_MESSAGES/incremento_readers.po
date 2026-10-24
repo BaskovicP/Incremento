@@ -3991,3 +3991,24 @@ msgstr "Tamno"
 #. Reader toolbar controls
 msgid "reader_pdf_appearance_night"
 msgstr "Noćno"
+
+msgid "workspace_drag_title"
+msgstr "Premjesti panel"
+
+msgid "workspace_drag_hint"
+msgstr "Povuci naslovnu traku do ruba zaslona za polovicu, do kuta za četvrtinu ili do ruba drugog panela za spajanje. Escape odustaje."
+
+msgid "workspace_float"
+msgstr "Odvoji / usidri prozor"
+
+msgid "workspace_close"
+msgstr "Zatvori prozor"
+
+msgid "workspace_open_pdf_window"
+msgstr "Otvori PDF prozor…"
+
+msgid "workspace_open_new_window"
+msgstr "Otvori u novom prozoru"
+
+msgid "workspace_pdf_window_limit"
+msgstr "Istodobno može biti otvoreno do {count} PDF prozora. Zatvori jedan prije otvaranja novog."

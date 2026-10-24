@@ -291,3 +291,50 @@ def test_side_context_copy_preserves_clicked_scroll_and_its_own_printed_label(wo
     data = json.loads(reader_anchor_command_from_html(copied[0][0]).split(':', 1)[1])
     assert data['page'] == 2 and data['scroll_ratio'] == .7
     assert 'v' in copied[0][1]
+
+
+def test_independent_pdf_requests_both_open_and_survive_later_previews(workspace, monkeypatch):
+    module = workspace.module
+    opened = []
+    class Window:
+        def __init__(self, snapshot, **options):
+            self.independent = options.get('independent', False)
+            self.beside = options['beside']
+            self.card_id = snapshot['card_id']
+            self.closed = False
+            opened.append(self)
+        def isFloating(self): return not self.beside
+        def show(self): pass
+        def close(self):
+            self.closed = True
+            module._windows.remove(self)
+    monkeypatch.setattr(module, 'ReferenceWindow', Window)
+    module.open_reference(7, new_window=True)
+    module.open_reference(8, new_window=True)
+    # Reverse completion order must not discard either explicit window.
+    workspace.pending[1].options['success'](({'card_id': 8}, 10))
+    workspace.pending[0].options['success'](({'card_id': 7}, 10))
+    module.open_reference(9)
+    workspace.pending[2].options['success'](({'card_id': 9}, 10))
+    module.open_reference(10)
+    workspace.pending[3].options['success'](({'card_id': 10}, 10))
+    assert [(w.card_id, w.closed) for w in opened] == [(8, False), (7, False), (9, True), (10, False)]
+    module.reset_for_profile_switch()
+    assert module._windows == []
+
+
+def test_pending_pdf_windows_are_bounded_and_profile_close_cancels_all(workspace, monkeypatch):
+    module = workspace.module
+    messages, opened = [], []
+    monkeypatch.setattr(module, 'tooltip', messages.append)
+    monkeypatch.setattr(module, 'ReferenceWindow', lambda *a, **kw: opened.append(kw))
+    for cid in range(20):
+        module.open_reference(cid + 1, new_window=True)
+    assert len(workspace.pending) == 8
+    assert messages
+    module.reset_for_profile_switch()
+    for pending in workspace.pending:
+        pending.options['success'](({'card_id': 7}, 10))
+    assert opened == []
+    module.open_reference(7, new_window=True)
+    assert len(workspace.pending) == 9, 'Closing the profile releases pending reservations'

@@ -33,6 +33,7 @@ function registerBridge(pending = null, focus = null) {
     setShowHighlightDeleteButtons: (value) => { state.showDeleteX = value; },
     setLinkPreviewZoom: (value) => {state.previewZoom = value;},
     setPageLinksDocument: update => {state.pageLinksDocument = update(state.pageLinksDocument);},
+    setHighlightColorPopover: value => {state.colorPopover = value;},
     startViewer: (...args) => state.starts.push(args),
     clampScrollRatio: (value) => value,
     snapshotMode: {setActive: value => {state.snapshotActive = value;}},
@@ -184,4 +185,11 @@ test('starting another PDF exits snapshot selection and clears an unfinished dra
   scope.window.incrementoPdfStart(17, 'fixture.pdf', 1, 1);
   assert.equal(state.snapshotActive, false);
   assert.equal(scope.snapStartRef.current, null);
+});
+
+test('starting another PDF dismisses the previous annotation color palette', () => {
+  const {scope, state} = registerBridge();
+  state.colorPopover = {id: 'saved', page: 1, cardId: 42};
+  scope.window.incrementoPdfStart(43, 'next.pdf', 1, 1);
+  assert.equal(state.colorPopover, null);
 });

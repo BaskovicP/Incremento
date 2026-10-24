@@ -13,6 +13,13 @@ for (const [, specifier] of code.matchAll(/require\("([^"]+)"\)/g)) {
   if (specifier === 'react' || specifier.endsWith('.jsx') || specifier === './usePdfRender.js') continue;
   imports[specifier] = await import(specifier.startsWith('.') ? new URL(specifier, sourceUrl).href : specifier);
 }
+const highlightUrl = new URL('../src/HighlightLayer.jsx', import.meta.url);
+const highlightCode = (await transformWithEsbuild(readFileSync(highlightUrl, 'utf8'), highlightUrl.pathname, {
+  loader: 'jsx', jsx: 'automatic',
+})).code.replace(/from (["'])([^"']+)\1/g, (_match, _quote, specifier) => (
+  `from ${JSON.stringify(specifier.startsWith('.') ? new URL(specifier, highlightUrl).href : import.meta.resolve(specifier))}`
+));
+const { isResizableTextHighlight } = await import(`data:text/javascript;base64,${Buffer.from(highlightCode).toString('base64')}`);
 
 // Keep actual JSX, translations, and state transitions. Only React's lifecycle
 // and PDF.js/DOM effects are replaced so the panel can be used without Anki.
@@ -32,11 +39,14 @@ function viewer(props = {}, startup = {}) {
   for (const key of ['canvasARef', 'canvasBRef', 'containerRef', 'textLayerRef', 'pdfDocRef',
     'activeCvsRef', 'cardIdRef', 'pageRef', 'lastScaleRef']) renderState[key] = { current: null };
   renderState.cardIdRef.current = 42;
+  renderState.pageRef.current = 1;
+  renderState.containerRef.current = { getBoundingClientRect: () => ({ left: 0, top: 0 }) };
   const HighlightLayer = () => null;
   const PdfLinkPreview = () => null;
   const PdfPageLinks = () => null;
   const module = { exports: {} };
   const dom = {innerWidth: 1200, innerHeight: 900, _incPdfPending: {controlsCollapsed: false}, ...startup,
+    getSelection: () => ({ isCollapsed: true }),
     setTimeout: callback => callback(), pycmd: command => commands.push(command)};
   vm.runInNewContext(code, {
     module, exports: module.exports,
@@ -46,7 +56,7 @@ function viewer(props = {}, startup = {}) {
       react: { useState, useRef: initial => useState({ current: initial })[0],
         useEffect: run => effects.push(run), useCallback: callback => callback },
       './usePdfRender.js': { usePdfRender: () => renderState },
-      './HighlightLayer.jsx': { __esModule: true, default: HighlightLayer },
+      './HighlightLayer.jsx': { __esModule: true, default: HighlightLayer, isResizableTextHighlight },
       './PdfSelectionLayer.jsx': { __esModule: true, default: () => null },
       './PdfSnapshotLayer.jsx': { __esModule: true, default: () => null, PdfSnapshotButton: () => null },
       './PdfLinkPreview.jsx': { __esModule: true, default: PdfLinkPreview },
@@ -67,6 +77,11 @@ function viewer(props = {}, startup = {}) {
     node.props.children === text || node.props.title === text
   ));
   return { render, layer, button, commands, renderState,
+    bridge: () => {
+      dom._incPdfPending = null;
+      effects.findLast(run => run.toString().includes('window.incrementoPdfStart ='))();
+      return dom;
+    },
     openFind: () => {
       dom._incPdfPending = null;
       effects.find(run => run.toString().includes('window.incrementoPdfStart ='))();
@@ -75,6 +90,69 @@ function viewer(props = {}, startup = {}) {
     pageLinks: nodes => nodes.filter(node => node.type === PdfPageLinks), elements,
     preview: nodes => nodes.find(node => node.type === PdfLinkPreview) };
 }
+
+// Contract: a plain annotation click exposes a small in-page palette. Recoloring
+// updates only that annotation, keeps its metadata, and cannot target another page.
+for (const readingOnly of [false, true]) {
+  test(`clicking a saved PDF annotation offers quick colors and preserves its metadata (${readingOnly ? 'side' : 'main'})`, () => {
+    const ui = viewer({ readingOnly });
+    ui.render();
+    const original = { id: 'saved', page: 1, color: 'yellow', text: 'Passage', note: 'Keep note',
+      linked_note_id: 9, rects: [{ x: 10, y: 20, w: 100, h: 20 }] };
+    ui.bridge().incrementoReceivePdfHighlights([original]);
+    ui.render().find(node => node.props?.id === 'pdf-canvas-wrapper').props.onClick({ clientX: 30, clientY: 25 });
+    const popup = ui.render().find(node => node.props?.role === 'dialog'
+      && node.props['aria-label'] === 'Choose annotation color');
+    assert.ok(popup, 'clicking the annotation must open its color palette');
+    const colors = ui.elements(popup).filter(node => node.type === 'button' && node.props['aria-pressed'] !== undefined);
+    assert.equal(colors.length, 8);
+    assert.equal(ui.button(ui.elements(popup), 'Highlight yellow').props['aria-pressed'], true);
+    ui.button(ui.elements(popup), 'Highlight blue').props.onClick();
+    assert.deepEqual(JSON.parse(ui.commands.at(-1).split(':').slice(1).join(':')), {
+      cardId: 42, highlight: { ...original, color: 'blue' },
+    });
+    assert.equal(original.color, 'yellow');
+    assert.equal(ui.render().some(node => node.props?.role === 'dialog'), false);
+  });
+}
+
+test('the annotation palette supports imported markup and custom colors through the existing picker', () => {
+  const ui = viewer();
+  ui.render();
+  const original = { id: 'native', page: 1, color: 'yellow', text: 'Passage', note: 'Note',
+    pdf_annotation: { kind: 'Underline', name: 'stable', color: [1, 1, 0], opacity: 0.5 },
+    rects: [{ x: 10, y: 20, w: 100, h: 20 }] };
+  ui.bridge().incrementoReceivePdfHighlights([original]);
+  ui.render().find(node => node.props?.id === 'pdf-canvas-wrapper').props.onClick({ clientX: 30, clientY: 25 });
+  const popup = ui.render().find(node => node.props?.role === 'dialog');
+  assert.ok(popup);
+  ui.button(ui.elements(popup), 'More colors…').props.onClick();
+  assert.equal(ui.commands.at(-1), 'incremento_pdf_hl_color:{"cardId":42,"currentColor":"yellow"}');
+  ui.render();
+  ui.bridge().incrementoPickPdfHighlightColor('#123456');
+  const update = JSON.parse(ui.commands.at(-1).split(':').slice(1).join(':')).highlight;
+  assert.deepEqual(update, { ...original, color: '#123456',
+    pdf_annotation: { ...original.pdf_annotation, color: [18 / 255, 52 / 255, 86 / 255] } });
+});
+
+test('annotation color controls disappear on page changes, deletion, and hidden controls', () => {
+  for (const action of ['page', 'delete', 'hide']) {
+    const ui = viewer();
+    ui.render();
+    ui.bridge().incrementoReceivePdfHighlights([{ id: 'saved', page: 1, color: 'yellow',
+      rects: [{ x: 10, y: 20, w: 100, h: 20 }] }]);
+    ui.render().find(node => node.props?.id === 'pdf-canvas-wrapper').props.onClick({ clientX: 30, clientY: 25 });
+    assert.ok(ui.render().some(node => node.props?.role === 'dialog'));
+    if (action === 'page') ui.renderState.page = ui.renderState.pageRef.current = 2;
+    if (action === 'delete') ui.bridge().incrementoReceivePdfHighlights([]);
+    if (action === 'hide') {
+      ui.button(ui.render(), 'Show highlights list').props.onClick();
+      ui.button(ui.render(), 'Hide highlight controls').props.onClick();
+    }
+    assert.equal(ui.render().some(node => node.props?.role === 'dialog'), false, action);
+    assert.deepEqual(ui.commands, []);
+  }
+});
 
 test('compact PDF keeps daily actions visible and opens secondary tools without changing the saved view', () => {
   const ui = viewer({}, {_incPdfPending: {controlsCollapsed: true}});

@@ -48,6 +48,12 @@
     "reason": "Integer-only percentage or positional counter; no language-dependent words."
   },
   {
+    "file": "frontend/epub_dock.py",
+    "sink": "setText",
+    "text": "f\"☆ {t('reader_bookmark')}\"",
+    "reason": "Fixed bookmark icon prefix wrapped around an already-localized reader action label."
+  },
+  {
     "file": "frontend/extract_card_dialog.py",
     "sink": "QLabel",
     "text": "f\"{fname}:\"",

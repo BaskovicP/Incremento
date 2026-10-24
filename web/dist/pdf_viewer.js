@@ -7046,6 +7046,31 @@
       }
     };
   }
+  function cropPdfSnapshot(canvas, rect, createCanvas) {
+    const size = canvas.getBoundingClientRect();
+    if (![canvas.width, canvas.height, size.width, size.height, rect.w, rect.h].every((value) => Number.isFinite(value) && value > 0) || ![rect.x, rect.y].every(Number.isFinite)) return null;
+    const scaleX = canvas.width / size.width, scaleY = canvas.height / size.height;
+    const left = Math.max(0, Math.min(canvas.width, Math.round(rect.x * scaleX)));
+    const top = Math.max(0, Math.min(canvas.height, Math.round(rect.y * scaleY)));
+    const right = Math.max(left, Math.min(canvas.width, Math.round((rect.x + rect.w) * scaleX)));
+    const bottom = Math.max(top, Math.min(canvas.height, Math.round((rect.y + rect.h) * scaleY)));
+    if (right === left || bottom === top) return null;
+    const output = createCanvas();
+    output.width = right - left;
+    output.height = bottom - top;
+    output.getContext("2d").drawImage(
+      canvas,
+      left,
+      top,
+      output.width,
+      output.height,
+      0,
+      0,
+      output.width,
+      output.height
+    );
+    return output;
+  }
   function encodePdfSnapshot(canvas, isCurrent, Reader = globalThis.FileReader) {
     return new Promise((resolve, reject) => {
       canvas.toBlob((blob) => {
@@ -7097,158 +7122,22 @@
     }
   };
   var reactExports = requireReact();
-  function referenceActionLocation(requested, rendered) {
-    if (!rendered || rendered.page !== requested.page || rendered.zoom !== requested.zoom || rendered.generation !== requested.generation) return null;
-    return { page: rendered.page, zoom: rendered.zoom };
-  }
-  function referenceSelectionText(selection, layer) {
-    if (!layer || !selection || selection.isCollapsed || !selection.rangeCount || !layer.contains(selection.getRangeAt(0).commonAncestorContainer)) return "";
-    return selection.toString().slice(0, 6e3).trim();
-  }
-  function referenceRenderPlan(base, width, zoom, pixelRatio) {
-    if (![base.width, base.height, width, zoom].every((value) => Number.isFinite(value) && value > 0)) {
+  function pdfCanvasPlan(viewport, pixelRatio) {
+    const { width, height } = viewport;
+    if (![width, height].every((value) => Number.isFinite(value) && value > 0)) {
       throw new RangeError("Invalid PDF page geometry");
     }
-    const scale = Math.min(
-      Math.min(width / base.width, 2) * Math.min(4, zoom),
-      16384 / base.width,
-      16384 / base.height
-    );
-    const w = base.width * scale, h = base.height * scale;
+    const density = Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1;
     const pixels = Math.min(
-      Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1,
-      2,
-      8192 / w,
-      8192 / h,
-      Math.sqrt((8e6 - 32768) / (w * h))
+      density,
+      8192 / width,
+      8192 / height,
+      Math.sqrt((8e6 - 32768) / (width * height))
     );
     return {
-      scale,
       pixels,
-      canvasWidth: Math.max(1, Math.ceil(w * pixels)),
-      canvasHeight: Math.max(1, Math.ceil(h * pixels))
-    };
-  }
-  function referenceRestoreRatio({ page, renderedPage, ratio, initial = null }) {
-    const candidate = initial !== null ? initial : page === renderedPage ? ratio : 0;
-    return Number.isFinite(candidate) ? Math.max(0, Math.min(1, candidate)) : 0;
-  }
-  function referenceScrollSnapshot(current, rendered, previous) {
-    if (current.width !== rendered.width || current.height !== rendered.height) return previous;
-    return current.extent > 0 ? Math.max(0, Math.min(1, current.top / current.extent)) : 0;
-  }
-  function referenceExcerptItemIndex(items, excerpt) {
-    const normalize = (value) => String(value || "").normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase();
-    const needle = normalize(excerpt).slice(0, 320);
-    if (!needle) return -1;
-    let text = "";
-    const ends = [];
-    for (const item of items.slice(0, 2e4)) {
-      text += normalize(item.str) + " ";
-      ends.push(text.length);
-      if (text.length > 25e4) break;
-    }
-    const found = text.indexOf(needle);
-    return found < 0 ? -1 : ends.findIndex((end) => end > found);
-  }
-  function createReferenceReader(onChange = () => {
-  }) {
-    let doc = null, task = null, generation = 0, searchGeneration = 0, closed = false;
-    let page = 1, pages = 0, zoom = 1;
-    const history = [];
-    const state = () => ({ page, pages, zoom, generation, canBack: history.length > 0 });
-    const notify = () => onChange(state());
-    const navigate = (target, remember = true) => {
-      if (closed || !Number.isInteger(target) || target < 1 || target > pages) return false;
-      ++searchGeneration;
-      if (target !== page && remember) {
-        history.push(page);
-        if (history.length > 50) history.shift();
-      }
-      page = target;
-      notify();
-      return true;
-    };
-    return {
-      state,
-      document: () => doc,
-      navigate,
-      back() {
-        if (history.length) navigate(history.pop(), false);
-      },
-      setZoom(value) {
-        if (!closed && doc && Number.isFinite(value)) {
-          zoom = Math.max(0.25, Math.min(4, value));
-          notify();
-        }
-      },
-      async load(lib, url, startPage = 1, maxPage = 1e6) {
-        var _a, _b, _c, _d;
-        const token = ++generation;
-        ++searchGeneration;
-        closed = false;
-        doc = null;
-        pages = 0;
-        history.length = 0;
-        page = Number.isInteger(startPage) ? Math.max(1, startPage) : 1;
-        zoom = 1;
-        notify();
-        try {
-          (_b = (_a = task == null ? void 0 : task.destroy()) == null ? void 0 : _a.catch) == null ? void 0 : _b.call(_a, () => {
-          });
-        } catch (_) {
-        }
-        task = lib.getDocument({ url, isEvalSupported: false });
-        try {
-          const loaded = await task.promise;
-          if (closed || token !== generation) {
-            (_d = (_c = loaded.destroy()) == null ? void 0 : _c.catch) == null ? void 0 : _d.call(_c, () => {
-            });
-            return;
-          }
-          doc = loaded;
-          pages = Math.max(1, Math.min(loaded.numPages, maxPage));
-          page = Math.max(1, Math.min(Number.isInteger(startPage) ? startPage : 1, pages));
-          notify();
-        } catch (error) {
-          if (!closed && token === generation) throw error;
-        }
-      },
-      async find(raw) {
-        const query = String(raw || "").trim().toLocaleLowerCase().slice(0, 200);
-        if (!doc || !query || closed) return null;
-        const token = ++searchGeneration, document2 = doc, start = page;
-        for (let offset = 1; offset <= pages; offset++) {
-          const target = (start - 1 + offset) % pages + 1;
-          const pdfPage = await document2.getPage(target);
-          if (closed || token !== searchGeneration || doc !== document2) return void 0;
-          const content = await pdfPage.getTextContent();
-          if (closed || token !== searchGeneration || doc !== document2) return void 0;
-          let text = "";
-          for (const item of content.items.slice(0, 2e4)) {
-            text += String(item.str || "").slice(0, 25e4 - text.length) + " ";
-            if (text.length >= 25e4) break;
-          }
-          if (text.toLocaleLowerCase().includes(query)) {
-            navigate(target);
-            return target;
-          }
-        }
-        return null;
-      },
-      close() {
-        var _a, _b;
-        closed = true;
-        ++generation;
-        ++searchGeneration;
-        try {
-          (_b = (_a = task == null ? void 0 : task.destroy()) == null ? void 0 : _a.catch) == null ? void 0 : _b.call(_a, () => {
-          });
-        } catch (_) {
-        }
-        task = null;
-        doc = null;
-      }
+      canvasWidth: Math.max(1, Math.ceil(width * pixels)),
+      canvasHeight: Math.max(1, Math.ceil(height * pixels))
     };
   }
   const MAX_EXTERNAL_URL_CHARS = 4096;
@@ -7600,6 +7489,7 @@
   const ZOOM_MAX = 4;
   const POLL_MS = 100;
   const POLL_MAX = 20;
+  const PAGE_CACHE_SIZE = 3;
   function resolveWorkerSrc(rawWorkerSrc) {
     const fallback = DEFAULT_WORKER_SRC;
     const candidate = String(rawWorkerSrc || fallback).trim();
@@ -7612,7 +7502,7 @@
       return fallback;
     }
   }
-  function usePdfRender({ boundedCanvas = false } = {}) {
+  function usePdfRender() {
     const [page, setPage] = reactExports.useState(1);
     const [totalPages, setTotalPages] = reactExports.useState(0);
     const [pageLabels, setPageLabels] = reactExports.useState(null);
@@ -7640,6 +7530,7 @@
     const renderSequenceRef = reactExports.useRef(0);
     const loadSequenceRef = reactExports.useRef(0);
     const loadingTaskRef = reactExports.useRef(null);
+    const pageCacheRef = reactExports.useRef(/* @__PURE__ */ new Set());
     const pendingRenderRef = reactExports.useRef(null);
     const renderTaskRef = reactExports.useRef(null);
     const workerPollRef = reactExports.useRef(null);
@@ -7661,6 +7552,7 @@
       ++loadSequenceRef.current;
       retireRender();
       clearInterval(workerPollRef.current);
+      pageCacheRef.current.clear();
       pdfDocRef.current = null;
       try {
         (_b = (_a = loadingTaskRef.current) == null ? void 0 : _a.destroy()) == null ? void 0 : _b.catch(() => {
@@ -7728,7 +7620,7 @@
       }
     }, []);
     const renderPage = reactExports.useCallback((num) => {
-      var _a;
+      var _a, _b;
       const doc = pdfDocRef.current;
       if (!doc) return;
       const sequence = ++renderSequenceRef.current;
@@ -7744,7 +7636,13 @@
         textLayerRef.current._cancelTextLayer();
         textLayerRef.current._cancelTextLayer = null;
       }
-      if (busyRef.current) return;
+      if (busyRef.current) {
+        try {
+          (_b = renderTaskRef.current) == null ? void 0 : _b.cancel();
+        } catch (_) {
+        }
+        return;
+      }
       busyRef.current = true;
       const drain = async () => {
         var _a2;
@@ -7754,11 +7652,12 @@
             pendingRenderRef.current = null;
             const current = () => request.sequence === renderSequenceRef.current && request.doc === pdfDocRef.current;
             let failure = "reader_page_error";
+            let pg, backCvs, displayed = false;
             try {
-              const pg = await request.doc.getPage(request.num);
+              pg = await request.doc.getPage(request.num);
               if (!current()) continue;
               const backId = activeCvsRef.current === "a" ? "b" : "a";
-              const backCvs = backId === "a" ? canvasARef.current : canvasBRef.current;
+              backCvs = backId === "a" ? canvasARef.current : canvasBRef.current;
               const frontCvs = backId === "a" ? canvasBRef.current : canvasARef.current;
               if (!backCvs) continue;
               const colW = ((_a2 = containerRef.current) == null ? void 0 : _a2.offsetWidth) || 800;
@@ -7767,13 +7666,11 @@
               const base = pg.getViewport({ scale: 1 });
               let scale = Math.min(colW / base.width, maxH / base.height) * request.zoom;
               if (!scale || scale <= 0) scale = 1;
-              let viewport = pg.getViewport({ scale });
+              const viewport = pg.getViewport({ scale });
               const dpr = window.devicePixelRatio || 1;
-              const plan = boundedCanvas ? referenceRenderPlan(viewport, viewport.width, 1, dpr) : null;
-              if (plan && plan.scale !== 1) viewport = pg.getViewport({ scale: scale * plan.scale });
-              const pixels = (plan == null ? void 0 : plan.pixels) ?? dpr;
-              backCvs.width = (plan == null ? void 0 : plan.canvasWidth) ?? viewport.width * pixels;
-              backCvs.height = (plan == null ? void 0 : plan.canvasHeight) ?? viewport.height * pixels;
+              const { pixels, canvasWidth, canvasHeight } = pdfCanvasPlan(viewport, dpr);
+              backCvs.width = canvasWidth;
+              backCvs.height = canvasHeight;
               backCvs.style.width = viewport.width + "px";
               backCvs.style.height = viewport.height + "px";
               failure = "reader_render_error";
@@ -7787,8 +7684,23 @@
               backCvs.dataset.pdfCard = String(request.cardId);
               backCvs.dataset.pdfPage = String(request.num);
               backCvs.style.display = "block";
-              if (frontCvs) frontCvs.style.display = "none";
+              if (frontCvs) {
+                frontCvs.style.display = "none";
+                frontCvs.width = frontCvs.height = 0;
+              }
               activeCvsRef.current = backId;
+              displayed = true;
+              const cache = pageCacheRef.current;
+              cache.delete(pg);
+              cache.add(pg);
+              while (cache.size > PAGE_CACHE_SIZE) {
+                const oldest = cache.values().next().value;
+                cache.delete(oldest);
+                try {
+                  oldest.cleanup();
+                } catch (_) {
+                }
+              }
               setError("");
               setPage(request.num);
               if (containerRef.current) containerRef.current.style.height = viewport.height + "px";
@@ -7798,6 +7710,13 @@
               if (current()) setError(failure);
             } finally {
               renderTaskRef.current = null;
+              if (pg && !pageCacheRef.current.has(pg)) {
+                try {
+                  pg.cleanup();
+                } catch (_) {
+                }
+              }
+              if (backCvs && !displayed) backCvs.width = backCvs.height = 0;
             }
           }
         } finally {
@@ -7823,6 +7742,7 @@
         });
       } catch (_) {
       }
+      pageCacheRef.current.clear();
       const lib = window.pdfjsLib;
       lib.GlobalWorkerOptions.workerSrc = resolveWorkerSrc(window._pdfWorkerSrc);
       window._pdfWorkerSrc = null;
@@ -9455,6 +9375,7 @@
     renderInfo,
     deleteHighlight,
     editHighlightNote,
+    showHighlightColorPopover,
     activateHighlightResize,
     resizingHighlightId,
     beginHighlightResize,
@@ -9514,6 +9435,9 @@
     );
     return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `
+        .incremento-pdf-color-action {
+          opacity: 0;
+        }
         .incremento-pdf-note-action {
           opacity: 0;
         }
@@ -9523,6 +9447,10 @@
         }
         .incremento-pdf-highlight-actions:hover .incremento-pdf-note-action,
         .incremento-pdf-note-action:focus-visible {
+          opacity: 1;
+        }
+        .incremento-pdf-highlight-actions:hover .incremento-pdf-color-action,
+        .incremento-pdf-highlight-actions:focus-within .incremento-pdf-color-action {
           opacity: 1;
         }
         .incremento-pdf-highlight-actions:hover .incremento-pdf-resize-action,
@@ -9585,7 +9513,7 @@
             className: "incremento-pdf-highlight-actions",
             style: {
               position: "absolute",
-              left: renderInfo.tlLeft + (r.x + r.w) * renderInfo.scale - 28,
+              left: renderInfo.tlLeft + (r.x + r.w) * renderInfo.scale - (isSnapshotHighlight(h) ? 28 : 48),
               top: r.y * renderInfo.scale - 8,
               display: "inline-flex",
               alignItems: "center",
@@ -9593,6 +9521,29 @@
               zIndex: 10
             },
             children: [
+              !isSnapshotHighlight(h) && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  className: "incremento-pdf-color-action",
+                  "aria-label": language.tr("reader_choose_annotation_color"),
+                  title: language.tr("reader_choose_annotation_color"),
+                  "aria-haspopup": "dialog",
+                  onClick: (event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    showHighlightColorPopover == null ? void 0 : showHighlightColorPopover(h, { clientX: rect.left + rect.width / 2, clientY: rect.bottom });
+                  },
+                  style: {
+                    width: 16,
+                    height: 16,
+                    padding: 0,
+                    borderRadius: "50%",
+                    border: "1px solid #64748b",
+                    background: highlightSolidColor(h.color),
+                    cursor: "pointer"
+                  }
+                }
+              ),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "button",
                 {
@@ -11611,7 +11562,7 @@
       nav: rawNav,
       adjustZoom,
       setReadProgress: rawSetReadProgress
-    } = usePdfRender({ boundedCanvas: readingOnly });
+    } = usePdfRender();
     const pageLinksState = usePdfPageLinks({
       cardId: pageLinksDocument.cardId,
       page,
@@ -11635,6 +11586,8 @@
     const [hlColor, setHlColor] = reactExports.useState("yellow");
     const [autoHighlight, setAutoHighlight] = reactExports.useState(false);
     const [resizingHighlightId, setResizingHighlightId] = reactExports.useState(null);
+    const [highlightColorPopover, setHighlightColorPopover] = reactExports.useState(null);
+    const highlightColorPopoverRef = reactExports.useRef(null);
     const resizeHighlightRef = reactExports.useRef(null);
     const highlightRangeCacheRef = reactExports.useRef(/* @__PURE__ */ new Map());
     const scrollToTopOnPageChangeRef = reactExports.useRef(true);
@@ -12245,21 +12198,12 @@
       const ch = cy2 - cy;
       if (cw < 5 || ch < 5) return;
       makeSnapshotHighlight({ x: cx, y: cy, w: cw, h: ch });
-      const dpr = window.devicePixelRatio || 1;
-      const tmp = document.createElement("canvas");
-      tmp.width = Math.round(cw * dpr);
-      tmp.height = Math.round(ch * dpr);
-      tmp.getContext("2d").drawImage(
+      const tmp = cropPdfSnapshot(
         cvs,
-        Math.round(cx * dpr),
-        Math.round(cy * dpr),
-        Math.round(cw * dpr),
-        Math.round(ch * dpr),
-        0,
-        0,
-        Math.round(cw * dpr),
-        Math.round(ch * dpr)
+        { x: cx, y: cy, w: cw, h: ch },
+        () => document.createElement("canvas")
       );
+      if (!tmp) return;
       const cardId = cardIdRef.current;
       const page2 = pageRef.current;
       const generation = contentsGenerationRef.current;
@@ -12317,6 +12261,20 @@
       resizeHighlightRef.current = null;
       setResizingHighlightId(null);
     }, []);
+    const showHighlightColorPopover = reactExports.useCallback((highlight, point) => {
+      if (!showHighlightControls || !highlight || highlight.color === "snapshot") {
+        setHighlightColorPopover(null);
+        return;
+      }
+      hideHighlightNote();
+      setHighlightColorPopover({
+        id: highlight.id,
+        page: pageRef.current,
+        cardId: cardIdRef.current,
+        x: Number(point.clientX),
+        y: Number(point.clientY)
+      });
+    }, [cardIdRef, hideHighlightNote, pageRef, showHighlightControls]);
     const activateHighlightAtClientPoint = reactExports.useCallback((point) => {
       if (!showHighlightControls) return false;
       const wrapper = containerRef.current;
@@ -12328,10 +12286,11 @@
         Number(point == null ? void 0 : point.clientX),
         Number(point == null ? void 0 : point.clientY)
       );
+      showHighlightColorPopover(highlight, point);
       if (isResizableTextHighlight(highlight)) return activateHighlightResize(highlight);
       deactivateHighlightResize();
       return false;
-    }, [activateHighlightResize, containerRef, deactivateHighlightResize, pageHighlights, renderInfo, showHighlightControls]);
+    }, [activateHighlightResize, containerRef, deactivateHighlightResize, pageHighlights, renderInfo, showHighlightControls, showHighlightColorPopover]);
     const activateHighlightFromPageClick = reactExports.useCallback((event) => {
       var _a, _b, _c;
       if (snapshotMode.getSnapshot() || (event == null ? void 0 : event.defaultPrevented)) return;
@@ -12339,11 +12298,45 @@
       if (interactive) return;
       const selection = (_c = window.getSelection) == null ? void 0 : _c.call(window);
       if (selection && !selection.isCollapsed) {
+        setHighlightColorPopover(null);
         deactivateHighlightResize();
         return;
       }
       activateHighlightAtClientPoint(event);
     }, [activateHighlightAtClientPoint, deactivateHighlightResize, snapshotMode]);
+    const colorPopoverHighlight = showHighlightControls && (highlightColorPopover == null ? void 0 : highlightColorPopover.page) === page && (highlightColorPopover == null ? void 0 : highlightColorPopover.cardId) === cardIdRef.current ? pageHighlights.find((h) => h.id === highlightColorPopover.id && h.color !== "snapshot") : null;
+    reactExports.useEffect(() => {
+      var _a;
+      if (!colorPopoverHighlight) return void 0;
+      const dismiss = () => setHighlightColorPopover(null);
+      const outside = (event) => {
+        var _a2;
+        if (!((_a2 = highlightColorPopoverRef.current) == null ? void 0 : _a2.contains(event.target))) dismiss();
+      };
+      const onKey = (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          dismiss();
+        }
+      };
+      const scrollX = window.scrollX;
+      const scrollY = window.scrollY;
+      const onScroll = (event) => {
+        if (event.target !== document || window.scrollX !== scrollX || window.scrollY !== scrollY) dismiss();
+      };
+      const popup = highlightColorPopoverRef.current;
+      (_a = (popup == null ? void 0 : popup.querySelector('button[aria-pressed="true"]')) || (popup == null ? void 0 : popup.querySelector("button"))) == null ? void 0 : _a.focus({ preventScroll: true });
+      document.addEventListener("pointerdown", outside, true);
+      document.addEventListener("keydown", onKey);
+      window.addEventListener("scroll", onScroll, true);
+      window.addEventListener("resize", dismiss);
+      return () => {
+        document.removeEventListener("pointerdown", outside, true);
+        document.removeEventListener("keydown", onKey);
+        window.removeEventListener("scroll", onScroll, true);
+        window.removeEventListener("resize", dismiss);
+      };
+    }, [colorPopoverHighlight, highlightColorPopover]);
     reactExports.useEffect(() => {
       if (!resizingHighlightId) return void 0;
       const dismissHighlightResizeOutside = (event) => {
@@ -12394,6 +12387,7 @@
     const beginHighlightResize = reactExports.useCallback((highlight, endpoint, event) => {
       var _a, _b, _c, _d;
       if (!activateHighlightResize(highlight)) return;
+      setHighlightColorPopover(null);
       const session = resizeHighlightRef.current;
       if (!session || endpoint !== "start" && endpoint !== "end") return;
       (_a = event == null ? void 0 : event.preventDefault) == null ? void 0 : _a.call(event);
@@ -12448,6 +12442,7 @@
       }
       resizeHighlightRef.current = null;
       setResizingHighlightId(null);
+      setHighlightColorPopover(null);
       highlightRangeCacheRef.current.clear();
     }, [page]);
     const recolorHighlight = reactExports.useCallback((id, value) => {
@@ -12799,6 +12794,7 @@
         resizeHighlightRef.current = null;
         highlightRangeCacheRef.current.clear();
         setResizingHighlightId(null);
+        setHighlightColorPopover(null);
         setNativeHighlightsVisible(window._pdfNativeHighlightsVisible === true);
         window._pdfNativeHighlightsVisible = null;
         window._incPdfHighlights = null;
@@ -14333,6 +14329,7 @@
                     onClick: () => {
                       setShowHighlightControls((value) => !value);
                       deactivateHighlightResize();
+                      setHighlightColorPopover(null);
                       hideHighlightNote();
                       setFocusedHighlightId(null);
                       setShowHighlightsPanel(false);
@@ -14503,7 +14500,78 @@
               children: tr(error)
             }
           ),
-          showHighlightControls && hoveredHighlightNote && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          colorPopoverHighlight && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              ref: highlightColorPopoverRef,
+              className: "incremento-pdf-highlight-color-popover",
+              role: "dialog",
+              "aria-label": tr("reader_choose_annotation_color"),
+              style: {
+                position: "fixed",
+                zIndex: 130,
+                left: Math.max(8, Math.min(highlightColorPopover.x - 124, window.innerWidth - 256)),
+                top: Math.max(8, Math.min(highlightColorPopover.y + 16, window.innerHeight - 116)),
+                width: 248,
+                maxWidth: "calc(100vw - 16px)",
+                boxSizing: "border-box",
+                padding: 10,
+                borderRadius: 10,
+                background: "#1f2937",
+                color: "#f9fafb",
+                border: "1px solid #64748b",
+                boxShadow: "0 4px 16px rgba(0,0,0,0.35)"
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `.incremento-pdf-highlight-color-popover button:focus-visible {
+            outline: 2px solid #fff; outline-offset: 2px;
+          }` }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, marginBottom: 8 }, children: tr("reader_choose_annotation_color") }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 4 }, children: Object.keys(HL_COLORS).map((color) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    title: tr("reader_highlight_color", { color: tr(`reader_color_${color}`) }),
+                    "aria-label": tr("reader_highlight_color", { color: tr(`reader_color_${color}`) }),
+                    "aria-pressed": highlightSolidColor(colorPopoverHighlight.color) === highlightSolidColor(color),
+                    onClick: () => {
+                      recolorHighlight(colorPopoverHighlight.id, color);
+                      deactivateHighlightResize();
+                      setHighlightColorPopover(null);
+                    },
+                    style: {
+                      width: 24,
+                      height: 24,
+                      minWidth: 24,
+                      padding: 0,
+                      background: highlightSolidColor(color),
+                      border: "1px solid rgba(255,255,255,0.6)",
+                      borderRadius: "50%",
+                      color: "#111827",
+                      cursor: "pointer"
+                    },
+                    children: highlightSolidColor(colorPopoverHighlight.color) === highlightSolidColor(color) ? "✓" : ""
+                  },
+                  color
+                )) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => {
+                  openHighlightColorPicker(colorPopoverHighlight);
+                  deactivateHighlightResize();
+                  setHighlightColorPopover(null);
+                }, style: {
+                  marginTop: 8,
+                  padding: "2px 6px",
+                  background: "transparent",
+                  border: "1px solid #94a3b8",
+                  borderRadius: 4,
+                  color: "inherit",
+                  cursor: "pointer",
+                  fontSize: 12
+                }, children: tr("reader_more_colors") })
+              ]
+            }
+          ),
+          showHighlightControls && !colorPopoverHighlight && hoveredHighlightNote && /* @__PURE__ */ jsxRuntimeExports.jsx(
             "div",
             {
               style: {
@@ -14709,6 +14777,7 @@
                     renderInfo,
                     deleteHighlight,
                     editHighlightNote,
+                    showHighlightColorPopover,
                     activateHighlightResize,
                     resizingHighlightId,
                     beginHighlightResize,
@@ -14756,6 +14825,160 @@
         ]
       }
     );
+  }
+  function referenceActionLocation(requested, rendered) {
+    if (!rendered || rendered.page !== requested.page || rendered.zoom !== requested.zoom || rendered.generation !== requested.generation) return null;
+    return { page: rendered.page, zoom: rendered.zoom };
+  }
+  function referenceSelectionText(selection, layer) {
+    if (!layer || !selection || selection.isCollapsed || !selection.rangeCount || !layer.contains(selection.getRangeAt(0).commonAncestorContainer)) return "";
+    return selection.toString().slice(0, 6e3).trim();
+  }
+  function referenceRenderPlan(base, width, zoom, pixelRatio) {
+    if (![base.width, base.height, width, zoom].every((value) => Number.isFinite(value) && value > 0)) {
+      throw new RangeError("Invalid PDF page geometry");
+    }
+    const scale = Math.min(
+      Math.min(width / base.width, 2) * Math.min(4, zoom),
+      16384 / base.width,
+      16384 / base.height
+    );
+    const w = base.width * scale, h = base.height * scale;
+    const pixels = Math.min(
+      Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1,
+      2,
+      8192 / w,
+      8192 / h,
+      Math.sqrt((8e6 - 32768) / (w * h))
+    );
+    return {
+      scale,
+      pixels,
+      canvasWidth: Math.max(1, Math.ceil(w * pixels)),
+      canvasHeight: Math.max(1, Math.ceil(h * pixels))
+    };
+  }
+  function referenceRestoreRatio({ page, renderedPage, ratio, initial = null }) {
+    const candidate = initial !== null ? initial : page === renderedPage ? ratio : 0;
+    return Number.isFinite(candidate) ? Math.max(0, Math.min(1, candidate)) : 0;
+  }
+  function referenceScrollSnapshot(current, rendered, previous) {
+    if (current.width !== rendered.width || current.height !== rendered.height) return previous;
+    return current.extent > 0 ? Math.max(0, Math.min(1, current.top / current.extent)) : 0;
+  }
+  function referenceExcerptItemIndex(items, excerpt) {
+    const normalize = (value) => String(value || "").normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+    const needle = normalize(excerpt).slice(0, 320);
+    if (!needle) return -1;
+    let text = "";
+    const ends = [];
+    for (const item of items.slice(0, 2e4)) {
+      text += normalize(item.str) + " ";
+      ends.push(text.length);
+      if (text.length > 25e4) break;
+    }
+    const found = text.indexOf(needle);
+    return found < 0 ? -1 : ends.findIndex((end) => end > found);
+  }
+  function createReferenceReader(onChange = () => {
+  }) {
+    let doc = null, task = null, generation = 0, searchGeneration = 0, closed = false;
+    let page = 1, pages = 0, zoom = 1;
+    const history = [];
+    const state = () => ({ page, pages, zoom, generation, canBack: history.length > 0 });
+    const notify = () => onChange(state());
+    const navigate = (target, remember = true) => {
+      if (closed || !Number.isInteger(target) || target < 1 || target > pages) return false;
+      ++searchGeneration;
+      if (target !== page && remember) {
+        history.push(page);
+        if (history.length > 50) history.shift();
+      }
+      page = target;
+      notify();
+      return true;
+    };
+    return {
+      state,
+      document: () => doc,
+      navigate,
+      back() {
+        if (history.length) navigate(history.pop(), false);
+      },
+      setZoom(value) {
+        if (!closed && doc && Number.isFinite(value)) {
+          zoom = Math.max(0.25, Math.min(4, value));
+          notify();
+        }
+      },
+      async load(lib, url, startPage = 1, maxPage = 1e6) {
+        var _a, _b, _c, _d;
+        const token = ++generation;
+        ++searchGeneration;
+        closed = false;
+        doc = null;
+        pages = 0;
+        history.length = 0;
+        page = Number.isInteger(startPage) ? Math.max(1, startPage) : 1;
+        zoom = 1;
+        notify();
+        try {
+          (_b = (_a = task == null ? void 0 : task.destroy()) == null ? void 0 : _a.catch) == null ? void 0 : _b.call(_a, () => {
+          });
+        } catch (_) {
+        }
+        task = lib.getDocument({ url, isEvalSupported: false });
+        try {
+          const loaded = await task.promise;
+          if (closed || token !== generation) {
+            (_d = (_c = loaded.destroy()) == null ? void 0 : _c.catch) == null ? void 0 : _d.call(_c, () => {
+            });
+            return;
+          }
+          doc = loaded;
+          pages = Math.max(1, Math.min(loaded.numPages, maxPage));
+          page = Math.max(1, Math.min(Number.isInteger(startPage) ? startPage : 1, pages));
+          notify();
+        } catch (error) {
+          if (!closed && token === generation) throw error;
+        }
+      },
+      async find(raw) {
+        const query = String(raw || "").trim().toLocaleLowerCase().slice(0, 200);
+        if (!doc || !query || closed) return null;
+        const token = ++searchGeneration, document2 = doc, start = page;
+        for (let offset = 1; offset <= pages; offset++) {
+          const target = (start - 1 + offset) % pages + 1;
+          const pdfPage = await document2.getPage(target);
+          if (closed || token !== searchGeneration || doc !== document2) return void 0;
+          const content = await pdfPage.getTextContent();
+          if (closed || token !== searchGeneration || doc !== document2) return void 0;
+          let text = "";
+          for (const item of content.items.slice(0, 2e4)) {
+            text += String(item.str || "").slice(0, 25e4 - text.length) + " ";
+            if (text.length >= 25e4) break;
+          }
+          if (text.toLocaleLowerCase().includes(query)) {
+            navigate(target);
+            return target;
+          }
+        }
+        return null;
+      },
+      close() {
+        var _a, _b;
+        closed = true;
+        ++generation;
+        ++searchGeneration;
+        try {
+          (_b = (_a = task == null ? void 0 : task.destroy()) == null ? void 0 : _a.catch) == null ? void 0 : _b.call(_a, () => {
+          });
+        } catch (_) {
+        }
+        task = null;
+        doc = null;
+      }
+    };
   }
   function ReferencePdfViewer() {
     const [config, setConfig] = reactExports.useState(null);

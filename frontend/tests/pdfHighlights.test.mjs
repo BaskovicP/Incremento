@@ -334,6 +334,19 @@ test('resize controls are offered only for editable text highlights', () => {
   assert.deepEqual(activated, ['text']);
 });
 
+test('annotation color action opens its palette even with delete hidden and excludes snapshots', () => {
+  const opened = [];
+  const nodes = render([
+    { id: 'text', color: 'yellow', rects: [{ x: 10, y: 20, w: 100, h: 20 }] },
+    { id: 'snapshot', color: 'snapshot', rects: [{ x: 10, y: 50, w: 100, h: 20 }] },
+  ], { showHighlightDeleteButtons: false,
+    showHighlightColorPopover: (highlight, point) => opened.push([highlight.id, point]) });
+  const actions = nodes.filter(node => node.props?.['aria-label'] === 'Choose annotation color');
+  assert.equal(actions.length, 1);
+  actions[0].props.onClick({ currentTarget: { getBoundingClientRect: () => ({ left: 20, width: 16, bottom: 30 }) } });
+  assert.deepEqual(opened, [['text', { clientX: 28, clientY: 30 }]]);
+});
+
 test('finishing a saved PDF highlight drag updates it in place and keeps its pins until dismissal', () => {
   const source = readFileSync(new URL('../src/PdfViewer.jsx', import.meta.url), 'utf8');
   assert.match(source, /const caret = stablePdfEndpointCaret\(/);

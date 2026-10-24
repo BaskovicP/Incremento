@@ -1,4 +1,4 @@
-import {referenceRenderPlan} from './referencePdfReader.mjs';
+import {pdfCanvasPlan} from './pdfRenderBudget.mjs';
 /**
  * usePdfRender — custom hook encapsulating the PDF.js rendering pipeline.
  *
@@ -21,6 +21,7 @@ const ZOOM_MIN  = 0.25;
 const ZOOM_MAX  = 4.0;
 const POLL_MS   = 100;
 const POLL_MAX  = 20;
+const PAGE_CACHE_SIZE = 3;
 
 function resolveWorkerSrc(rawWorkerSrc) {
   const fallback = DEFAULT_WORKER_SRC;
@@ -35,7 +36,7 @@ function resolveWorkerSrc(rawWorkerSrc) {
   }
 }
 
-export function usePdfRender({boundedCanvas = false} = {}) {
+export function usePdfRender() {
   const [page,       setPage]       = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [pageLabels, setPageLabels] = useState(null);
@@ -64,6 +65,7 @@ export function usePdfRender({boundedCanvas = false} = {}) {
   const renderSequenceRef  = useRef(0);
   const loadSequenceRef    = useRef(0);
   const loadingTaskRef     = useRef(null);
+  const pageCacheRef       = useRef(new Set());
 
   const pendingRenderRef   = useRef(null);
   const renderTaskRef      = useRef(null);
@@ -85,6 +87,7 @@ export function usePdfRender({boundedCanvas = false} = {}) {
     ++loadSequenceRef.current;
     retireRender();
     clearInterval(workerPollRef.current);
+    pageCacheRef.current.clear();
     pdfDocRef.current = null;
     try { loadingTaskRef.current?.destroy()?.catch(() => {}); } catch (_) {}
   }, [retireRender]);
@@ -161,7 +164,10 @@ export function usePdfRender({boundedCanvas = false} = {}) {
       textLayerRef.current._cancelTextLayer();
       textLayerRef.current._cancelTextLayer = null;
     }
-    if (busyRef.current) return;
+    if (busyRef.current) {
+      try { renderTaskRef.current?.cancel(); } catch (_) {}
+      return;
+    }
     busyRef.current = true;
 
     // One owner drains the slot, including across document switches. Never
@@ -174,11 +180,12 @@ export function usePdfRender({boundedCanvas = false} = {}) {
           const current = () => request.sequence === renderSequenceRef.current
             && request.doc === pdfDocRef.current;
           let failure = 'reader_page_error';
+          let pg, backCvs, displayed = false;
           try {
-            const pg = await request.doc.getPage(request.num);
+            pg = await request.doc.getPage(request.num);
             if (!current()) continue;
             const backId = activeCvsRef.current === 'a' ? 'b' : 'a';
-            const backCvs = backId === 'a' ? canvasARef.current : canvasBRef.current;
+            backCvs = backId === 'a' ? canvasARef.current : canvasBRef.current;
             const frontCvs = backId === 'a' ? canvasBRef.current : canvasARef.current;
             if (!backCvs) continue;
             const colW = containerRef.current?.offsetWidth || 800;
@@ -187,13 +194,11 @@ export function usePdfRender({boundedCanvas = false} = {}) {
             const base = pg.getViewport({scale: 1});
             let scale = Math.min(colW / base.width, maxH / base.height) * request.zoom;
             if (!scale || scale <= 0) scale = 1;
-            let viewport = pg.getViewport({scale});
+            const viewport = pg.getViewport({scale});
             const dpr = window.devicePixelRatio || 1;
-            const plan = boundedCanvas ? referenceRenderPlan(viewport, viewport.width, 1, dpr) : null;
-            if (plan && plan.scale !== 1) viewport = pg.getViewport({scale: scale * plan.scale});
-            const pixels = plan?.pixels ?? dpr;
-            backCvs.width = plan?.canvasWidth ?? viewport.width * pixels;
-            backCvs.height = plan?.canvasHeight ?? viewport.height * pixels;
+            const {pixels, canvasWidth, canvasHeight} = pdfCanvasPlan(viewport, dpr);
+            backCvs.width = canvasWidth;
+            backCvs.height = canvasHeight;
             backCvs.style.width = viewport.width + 'px';
             backCvs.style.height = viewport.height + 'px';
             failure = 'reader_render_error';
@@ -204,8 +209,22 @@ export function usePdfRender({boundedCanvas = false} = {}) {
             backCvs.dataset.pdfCard = String(request.cardId);
             backCvs.dataset.pdfPage = String(request.num);
             backCvs.style.display = 'block';
-            if (frontCvs) frontCvs.style.display = 'none';
+            if (frontCvs) {
+              frontCvs.style.display = 'none';
+              frontCvs.width = frontCvs.height = 0;
+            }
             activeCvsRef.current = backId;
+            displayed = true;
+            // Keep a small working set for Back/zoom. PDF.js otherwise retains
+            // decoded page images and operator lists for the whole reading run.
+            const cache = pageCacheRef.current;
+            cache.delete(pg);
+            cache.add(pg);
+            while (cache.size > PAGE_CACHE_SIZE) {
+              const oldest = cache.values().next().value;
+              cache.delete(oldest);
+              try { oldest.cleanup(); } catch (_) {}
+            }
             setError('');
             setPage(request.num);
             if (containerRef.current) containerRef.current.style.height = viewport.height + 'px';
@@ -215,6 +234,11 @@ export function usePdfRender({boundedCanvas = false} = {}) {
             if (current()) setError(failure);
           } finally {
             renderTaskRef.current = null;
+            if (pg && !pageCacheRef.current.has(pg)) {
+              try { pg.cleanup(); } catch (_) {}
+            }
+            // Cancellation must settle before releasing the back buffer.
+            if (backCvs && !displayed) backCvs.width = backCvs.height = 0;
           }
         }
       } finally {
@@ -237,6 +261,7 @@ export function usePdfRender({boundedCanvas = false} = {}) {
     setError('');
     pdfDocRef.current = null;
     try { loadingTaskRef.current?.destroy()?.catch(() => {}); } catch (_) {}
+    pageCacheRef.current.clear();
     const lib = window.pdfjsLib;
     lib.GlobalWorkerOptions.workerSrc = resolveWorkerSrc(window._pdfWorkerSrc);
     window._pdfWorkerSrc = null;

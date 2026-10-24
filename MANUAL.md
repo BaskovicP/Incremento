@@ -588,7 +588,9 @@ PDF and EPUB readers start with a compact toolbar: Contents, Search, page naviga
 
 **Show controls** and **Minimize controls** are remembered after reopening PDFs and restarting Anki. The main reader and the side reader remember their choices separately for each profile. Until you make a choice, the reader starts with compact controls at every window size. Search, page jumps, and opening a tool panel keep your saved view unchanged. **PDF focus** also remembers whether it was on or off, so PDFs reopen in your last chosen mode. Closing a PDF does not reset that choice.
 
-If you turn pages, zoom, or resize while a PDF page is still drawing, the reader retains your latest request and displays that view next. Intermediate requests are skipped, and switching documents discards unfinished work from the previous document. PDF sharpness and zoom limits are unchanged.
+If you turn pages, zoom, or resize while a PDF page is still drawing, the reader cancels obsolete drawing work and displays your latest request next. Intermediate requests are skipped, and switching documents discards unfinished work from the previous document.
+
+For large, image-heavy PDFs, the main and side readers retain drawing resources for only the three most recently displayed pages and release the hidden canvas after each page swap. Each page canvas is limited to eight million pixels. Ordinary views keep the display's pixel density; very large views or high zoom reduce rendering resolution while preserving page size, selection, highlight positions, and snapshot crop coordinates. Zoom still ranges from 25% to 400%. Revisiting an older page redraws it as needed. Document parsing, source-file bytes, and shared resources still depend on the PDF's size and contents.
 
 The page indicator shows both the printed-page label and the running PDF position when the PDF supplies page-label metadata, for example **Printed 551 · PDF 579 / 1453**. Roman numerals and appendix labels are preserved. The PDF position counts every page, including covers and front matter. When printed labels are unavailable, the indicator shows only **PDF 579 / 1453**; it does not guess from an offset or scan the page image. Click the indicator to jump by **PDF page**. Saved reading positions, highlights, bookmarks, and links continue to use that running PDF number.
 
@@ -687,7 +689,7 @@ You can highlight text in the current color with:
 - `Ctrl+H` or `Alt+H` on Windows/Linux
 
 Highlights are saved per PDF and reappear whenever you reopen the card.
-To change a saved highlight’s color, open **Highlights** and use its **Choose annotation color** action. Choose a color and confirm with **OK**; the text, note, and linked card remain attached. This action also works when delete buttons are hidden.
+To change a saved PDF annotation’s color, click it on the page to open a small color palette. Choose one of the eight quick colors to apply it immediately, or **More colors…** for the full palette and custom hex colors. The annotation’s color dot also opens this popup, including from the keyboard. Press **Escape**, click elsewhere, or scroll to dismiss it. This works in both the main reader and the side reading pane, including when delete buttons are hidden; snapshots keep their dedicated blue outline. The text, note, and linked card remain attached. You can also open **Highlights** and use **Choose annotation color**, then confirm with **OK**.
 As soon as you select text, the blue selection shows a line-and-dot handle at
 each endpoint. Drag either handle before creating the highlight to adjust its
 start or end; copy, extraction, and highlight actions use the adjusted text. The
@@ -926,6 +928,18 @@ Features:
 Writing settings let you define default wrap mode, focus mode, preview visibility, current-line highlighting, bookmark restore, automatic backups, the default progress scope, and the word-count mode.
 
 If a writing card does not yet have a file path, Incremento generates one automatically the first time the card is opened.
+
+### Multiple PDF windows and dragging
+
+Choose **Incremento → Workspace → Open PDF window…**, then select a PDF. Repeat to open more PDFs, or right-click a PDF in **Document Bookshelf** and choose **Open in new window**. You can open different PDFs or several views of the same PDF. Each window keeps its own page and scroll position; highlights, notes, bookmarks, and explicit read markers are shared. These additional readers keep the reading tools without changing the main review card. Up to **eight additional PDF readers** can stay open, including temporary preview panes; close one when the limit is reached. Opening a new window never silently closes an existing independent window.
+
+Drag an Incremento pane by its **title bar**. A blue placement outline appears when a drop is available:
+
+- At a screen edge, release to use that half of the screen. Corners use a quarter.
+- Near the edge of a docked pane, release to split beside, above, or below it inside Anki.
+- Near an Anki window edge, release to dock there. At other positions the window stays floating.
+
+**Escape** cancels the drag and restores its starting layout. **Workspace → Restore previous layout** reverses a completed move. Screen snapping uses the screen under the pointer and respects its available area and the pane's minimum size. Dragging a PDF preview makes it an independent window, so later previews cannot replace it. Double-click a title bar or use its float/dock button to detach or dock a pane; use the close button to close it. Text selection inside the reader continues to work normally. Focus mode keeps its reader in Anki's central area; turn off focus mode or use the Workspace positioning commands to move that main reader.
 
 ### Writing beside a document and arranging windows
 

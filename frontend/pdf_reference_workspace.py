@@ -29,6 +29,8 @@ _ADDON_DIR = str(Path(__file__).resolve().parent.parent)
 _windows = []
 _request = 0
 _slot_requests = {False: 0, True: 0}
+_MAX_WINDOWS = 8
+_pending_windows = set()
 
 
 class _ReferencePage(QWebEnginePage):
@@ -100,12 +102,13 @@ def create_reference_view(parent, snapshot, state, handler, *, page_y=None, exce
 
 
 class ReferenceWindow(QDockWidget):
-    def __init__(self, snapshot, *, profile, page, scroll_ratio, max_page, beside, owner, excerpt='', page_y=None):
+    def __init__(self, snapshot, *, profile, page, scroll_ratio, max_page, beside, owner, excerpt='', page_y=None, independent=False):
         super().__init__(snapshot["title"], mw)
         self.state = PdfReaderState(profile, snapshot["card_id"], snapshot["filename"],
                                     page=min(max(1, page), max_page), scroll_ratio=scroll_ratio,
                                     max_page=max_page)
         self.owner = owner
+        self.independent = independent
         self._source_path = snapshot['path']
         self._snapshot = dict(snapshot)
         try:
@@ -135,13 +138,18 @@ class ReferenceWindow(QDockWidget):
         self.topLevelChanged.connect(lambda floating: self._claim_slot())
         self.reader.service._annotation_queue.retain(self._annotation_key)
 
+    def keep_window(self):
+        """A deliberately moved reader is no longer a replaceable preview."""
+        self.independent = True
+
     def _claim_slot(self):
-        if self.state.closed:
+        if self.state.closed or getattr(self, "independent", False):
             return
         beside = not self.isFloating()
         _slot_requests[beside] += 1
         for window in list(_windows):
-            if window is not self and window.isFloating() == self.isFloating():
+            if (window is not self and not getattr(window, "independent", False)
+                    and window.isFloating() == self.isFloating()):
                 window.close()
 
     def pin(self):
@@ -378,6 +386,7 @@ class ReferenceWindow(QDockWidget):
 def reset_for_profile_switch():
     global _request
     _request += 1
+    _pending_windows.clear()
     for window in list(_windows):
         window.close()
 
@@ -402,14 +411,21 @@ def refresh_reference_readers(profile, card_id, kind):
 
 
 def open_reference(card_id, page=1, *, scroll_ratio=0, beside=False, owner=None, is_current=lambda: True,
-                   excerpt='', page_y=None):
+                   excerpt='', page_y=None, new_window=False):
     """Resolve under serialized read-only collection access, then create Qt UI."""
     beside = bool(beside)
-    _slot_requests[beside] += 1
+    if new_window and len(_windows) + len(_pending_windows) >= _MAX_WINDOWS:
+        tooltip(t('workspace_pdf_window_limit', count=_MAX_WINDOWS))
+        return
+    token = object()
+    if new_window:
+        _pending_windows.add(token)
+    else:
+        _slot_requests[beside] += 1
     request, generation, profile = _slot_requests[beside], _request, get_active_profile()
     def request_current():
         return (profile == get_active_profile() and generation == _request
-                and request == _slot_requests[beside])
+                and (new_window or request == _slot_requests[beside]))
     if type(page) is not int or page < 1:
         page = 1
     if type(scroll_ratio) not in (float, int) or not 0 <= scroll_ratio <= 1:
@@ -424,19 +440,30 @@ def open_reference(card_id, page=1, *, scroll_ratio=0, beside=False, owner=None,
                                            count_current_page=False, persist_usage=False)
         return snapshot, _maximum_reference_page(status)
     def ready(result):
-        if not request_current() or not is_current():
+        if new_window and token not in _pending_windows:
+            return
+        _pending_windows.discard(token)
+        if not request_current() or not is_current() or result is None:
             return
         snapshot, maximum = result
-        # One floating preview plus one pinned reference keeps WebEngine memory bounded.
-        for old in list(_windows):
-            if old.isFloating() == (not beside):
-                old.close()
+        # Explicit windows coexist. Only legacy, unplaced previews are replaced.
+        if not new_window:
+            for old in list(_windows):
+                if not getattr(old, 'independent', False) and old.isFloating() == (not beside):
+                    old.close()
+        if len(_windows) + len(_pending_windows) >= _MAX_WINDOWS:
+            tooltip(t('workspace_pdf_window_limit', count=_MAX_WINDOWS))
+            return
         window = ReferenceWindow(snapshot, profile=profile, page=page, scroll_ratio=scroll_ratio,
                                  max_page=maximum, beside=beside, owner=owner,
-                                 excerpt=str(excerpt or '')[:320], page_y=page_y)
+                                 excerpt=str(excerpt or '')[:320], page_y=page_y, independent=new_window)
         _windows.append(window)
         window.show()
     def failed(error):
+        _pending_windows.discard(token)
         if request_current() and is_current():
             tooltip(t("reader_reference_unavailable"))
-    QueryOp(parent=mw, op=load, success=ready).failure(failed).run_in_background()
+    try:
+        QueryOp(parent=mw, op=load, success=ready).failure(failed).run_in_background()
+    except Exception as error:
+        failed(error)

@@ -1,5 +1,5 @@
 import {pdfReaderGroups} from './sharedPdfReader.mjs';
-import { createPdfSnapshotMode, encodePdfSnapshot, paintPdfSnapshotPreview } from './pdfSnapshot.mjs';
+import { createPdfSnapshotMode, cropPdfSnapshot, encodePdfSnapshot, paintPdfSnapshotPreview } from './pdfSnapshot.mjs';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePdfRender } from './usePdfRender.js';
 import HighlightLayer, { isResizableTextHighlight } from './HighlightLayer.jsx';
@@ -430,7 +430,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     canvasARef, canvasBRef, containerRef, textLayerRef,
     pdfDocRef, busyRef, activeCvsRef, cardIdRef, pageRef, lastScaleRef,
     startViewer, nav: rawNav, adjustZoom, setReadProgress: rawSetReadProgress,
-  } = usePdfRender({boundedCanvas: readingOnly});
+  } = usePdfRender();
   const pageLinksState = usePdfPageLinks({cardId: pageLinksDocument.cardId, page,
     generation: pageLinksDocument.generation,
     enabled: !!pdfDocRef.current && !error && renderInfo.cardId === pageLinksDocument.cardId && renderInfo.page === page,
@@ -452,6 +452,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
   const [hlColor,       setHlColor]       = useState('yellow');
   const [autoHighlight, setAutoHighlight] = useState(false);
   const [resizingHighlightId, setResizingHighlightId] = useState(null);
+  const [highlightColorPopover, setHighlightColorPopover] = useState(null);
+  const highlightColorPopoverRef = useRef(null);
   const resizeHighlightRef = useRef(null);
   const highlightRangeCacheRef = useRef(new Map());
   const scrollToTopOnPageChangeRef = useRef(true);
@@ -1146,17 +1148,9 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
 
     makeSnapshotHighlight({ x: cx, y: cy, w: cw, h: ch });
 
-    const dpr = window.devicePixelRatio || 1;
-    const tmp = document.createElement('canvas');
-    tmp.width  = Math.round(cw * dpr);
-    tmp.height = Math.round(ch * dpr);
-    tmp.getContext('2d').drawImage(
-      cvs,
-      Math.round(cx * dpr), Math.round(cy * dpr),
-      Math.round(cw * dpr), Math.round(ch * dpr),
-      0, 0,
-      Math.round(cw * dpr), Math.round(ch * dpr)
-    );
+    const tmp = cropPdfSnapshot(cvs, {x: cx, y: cy, w: cw, h: ch},
+      () => document.createElement('canvas'));
+    if (!tmp) return;
     const cardId = cardIdRef.current;
     const page = pageRef.current;
     const generation = contentsGenerationRef.current;
@@ -1219,6 +1213,16 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     setResizingHighlightId(null);
   }, []);
 
+  const showHighlightColorPopover = useCallback((highlight, point) => {
+    if (!showHighlightControls || !highlight || highlight.color === 'snapshot') {
+      setHighlightColorPopover(null);
+      return;
+    }
+    hideHighlightNote();
+    setHighlightColorPopover({ id: highlight.id, page: pageRef.current, cardId: cardIdRef.current,
+      x: Number(point.clientX), y: Number(point.clientY) });
+  }, [cardIdRef, hideHighlightNote, pageRef, showHighlightControls]);
+
   const activateHighlightAtClientPoint = useCallback((point) => {
     if (!showHighlightControls) return false;
     const wrapper = containerRef.current;
@@ -1230,10 +1234,11 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       Number(point?.clientX),
       Number(point?.clientY),
     );
+    showHighlightColorPopover(highlight, point);
     if (isResizableTextHighlight(highlight)) return activateHighlightResize(highlight);
     deactivateHighlightResize();
     return false;
-  }, [activateHighlightResize, containerRef, deactivateHighlightResize, pageHighlights, renderInfo, showHighlightControls]);
+  }, [activateHighlightResize, containerRef, deactivateHighlightResize, pageHighlights, renderInfo, showHighlightControls, showHighlightColorPopover]);
 
   const activateHighlightFromPageClick = useCallback((event) => {
     if (snapshotMode.getSnapshot() || event?.defaultPrevented) return;
@@ -1241,11 +1246,50 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     if (interactive) return;
     const selection = window.getSelection?.();
     if (selection && !selection.isCollapsed) {
+      setHighlightColorPopover(null);
       deactivateHighlightResize();
       return;
     }
     activateHighlightAtClientPoint(event);
   }, [activateHighlightAtClientPoint, deactivateHighlightResize, snapshotMode]);
+
+  const colorPopoverHighlight = showHighlightControls
+    && highlightColorPopover?.page === page
+    && highlightColorPopover?.cardId === cardIdRef.current
+    ? pageHighlights.find(h => h.id === highlightColorPopover.id && h.color !== 'snapshot') : null;
+
+  useEffect(() => {
+    if (!colorPopoverHighlight) return undefined;
+    const dismiss = () => setHighlightColorPopover(null);
+    const outside = event => {
+      if (!highlightColorPopoverRef.current?.contains(event.target)) dismiss();
+    };
+    const onKey = event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        dismiss();
+      }
+    };
+    // Keyboard focus can queue a scroll event before the palette opens. Ignore
+    // that delayed notification unless the viewport has actually moved since.
+    const scrollX = window.scrollX;
+    const scrollY = window.scrollY;
+    const onScroll = event => {
+      if (event.target !== document || window.scrollX !== scrollX || window.scrollY !== scrollY) dismiss();
+    };
+    const popup = highlightColorPopoverRef.current;
+    (popup?.querySelector('button[aria-pressed="true"]') || popup?.querySelector('button'))?.focus({ preventScroll: true });
+    document.addEventListener('pointerdown', outside, true);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', dismiss);
+    return () => {
+      document.removeEventListener('pointerdown', outside, true);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', dismiss);
+    };
+  }, [colorPopoverHighlight, highlightColorPopover]);
 
   useEffect(() => {
     if (!resizingHighlightId) return undefined;
@@ -1301,6 +1345,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     // Prefer the exact saved range, but reconstruct it when PDF.js has replaced
     // the text spans after a zoom or render change.
     if (!activateHighlightResize(highlight)) return;
+    setHighlightColorPopover(null);
     const session = resizeHighlightRef.current;
     if (!session || (endpoint !== 'start' && endpoint !== 'end')) return;
     event?.preventDefault?.();
@@ -1361,6 +1406,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     }
     resizeHighlightRef.current = null;
     setResizingHighlightId(null);
+    setHighlightColorPopover(null);
     highlightRangeCacheRef.current.clear();
   }, [page]);
 
@@ -1768,6 +1814,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       resizeHighlightRef.current = null;
       highlightRangeCacheRef.current.clear();
       setResizingHighlightId(null);
+      setHighlightColorPopover(null);
       setNativeHighlightsVisible(window._pdfNativeHighlightsVisible === true);
       window._pdfNativeHighlightsVisible = null;
       window._incPdfHighlights = null;
@@ -3115,6 +3162,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
             onClick={() => {
               setShowHighlightControls(value => !value);
               deactivateHighlightResize();
+              setHighlightColorPopover(null);
               hideHighlightNote();
               setFocusedHighlightId(null);
               setShowHighlightsPanel(false);
@@ -3294,7 +3342,52 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
         </div>
       )}
 
-      {showHighlightControls && hoveredHighlightNote && (
+      {colorPopoverHighlight && (
+        <div
+          ref={highlightColorPopoverRef}
+          className="incremento-pdf-highlight-color-popover"
+          role="dialog"
+          aria-label={tr('reader_choose_annotation_color')}
+          style={{ position: 'fixed', zIndex: 130,
+            left: Math.max(8, Math.min(highlightColorPopover.x - 124, window.innerWidth - 256)),
+            top: Math.max(8, Math.min(highlightColorPopover.y + 16, window.innerHeight - 116)),
+            width: 248, maxWidth: 'calc(100vw - 16px)', boxSizing: 'border-box',
+            padding: 10, borderRadius: 10, background: '#1f2937', color: '#f9fafb',
+            border: '1px solid #64748b', boxShadow: '0 4px 16px rgba(0,0,0,0.35)' }}
+        >
+          <style>{`.incremento-pdf-highlight-color-popover button:focus-visible {
+            outline: 2px solid #fff; outline-offset: 2px;
+          }`}</style>
+          <div style={{ fontSize: 12, marginBottom: 8 }}>{tr('reader_choose_annotation_color')}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {Object.keys(HL_COLORS).map(color => (
+              <button key={color} type="button"
+                title={tr('reader_highlight_color', { color: tr(`reader_color_${color}`) })}
+                aria-label={tr('reader_highlight_color', { color: tr(`reader_color_${color}`) })}
+                aria-pressed={highlightSolidColor(colorPopoverHighlight.color) === highlightSolidColor(color)}
+                onClick={() => {
+                  recolorHighlight(colorPopoverHighlight.id, color);
+                  deactivateHighlightResize();
+                  setHighlightColorPopover(null);
+                }}
+                style={{ width: 24, height: 24, minWidth: 24, padding: 0,
+                  background: highlightSolidColor(color), border: '1px solid rgba(255,255,255,0.6)',
+                  borderRadius: '50%', color: '#111827', cursor: 'pointer' }}
+              >{highlightSolidColor(colorPopoverHighlight.color) === highlightSolidColor(color) ? '✓' : ''}</button>
+            ))}
+          </div>
+          <button type="button" onClick={() => {
+            openHighlightColorPicker(colorPopoverHighlight);
+            deactivateHighlightResize();
+            setHighlightColorPopover(null);
+          }} style={{ marginTop: 8, padding: '2px 6px', background: 'transparent',
+            border: '1px solid #94a3b8', borderRadius: 4, color: 'inherit', cursor: 'pointer', fontSize: 12 }}>
+            {tr('reader_more_colors')}
+          </button>
+        </div>
+      )}
+
+      {showHighlightControls && !colorPopoverHighlight && hoveredHighlightNote && (
         <div
           style={{
             position: 'fixed',
@@ -3464,6 +3557,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
           renderInfo={renderInfo}
           deleteHighlight={deleteHighlight}
           editHighlightNote={editHighlightNote}
+          showHighlightColorPopover={showHighlightColorPopover}
           activateHighlightResize={activateHighlightResize}
           resizingHighlightId={resizingHighlightId}
           beginHighlightResize={beginHighlightResize}
