@@ -50,33 +50,38 @@ const DEFAULT_LIMIT_STATUS = {
 };
 
 const TOOLBAR_GROUP_STYLE = {
-  display: 'inline-flex',
+  display: 'grid',
   alignItems: 'center',
-  gap: 10,
-  padding: '6px 8px',
+  gridTemplateColumns: '110px minmax(0, 1fr)',
+  gap: 12,
+  padding: '9px 12px',
   flexWrap: 'wrap',
+  width: '100%',
+  boxSizing: 'border-box',
   minWidth: 0,
-  borderTop: '1px solid rgba(138,138,138,0.24)',
+  border: '1px solid #3b3b3e',
+  borderRadius: 8,
+  background: '#252527',
 };
 
 const TOOLBAR_LABEL_STYLE = {
-  fontSize: 10,
-  fontWeight: 700,
-  letterSpacing: '0.02em',
-  color: 'rgba(200,200,200,0.72)',
+  fontSize: 11,
+  fontWeight: 600,
+  color: '#a7a7af',
 };
 
 const TOOLBAR_STACK_STYLE = {
   display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'flex-start',
-  gap: 5,
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: 8,
 };
 
 const TOOLBAR_SEPARATOR_STYLE = {
   width: 1,
-  alignSelf: 'stretch',
-  background: 'linear-gradient(180deg, rgba(255,255,255,0.02), rgba(140,140,140,0.35), rgba(255,255,255,0.02))',
+  height: 24,
+  alignSelf: 'center',
+  background: '#454548',
 };
 
 const PDF_APPEARANCE_SELECT_STYLE = {
@@ -2017,7 +2022,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       }}
     >
       <style>{`
-        #pdf-controls { max-height: min(50vh, 360px); overflow-y: auto; }
+        #pdf-controls { container-type: inline-size; max-height: min(50vh, 360px); overflow-y: auto; }
         #pdf-controls div, #pdf-controls span { min-width: 0; flex-wrap: wrap; }
         #pdf-controls button, #pdf-controls select { max-width: 100%; min-height: 28px; }
         #pdf-controls .reader-control-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 0; }
@@ -2031,6 +2036,16 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
         #pdf-controls .reader-progress-track { display: block; height: 4px; width: 100%; background: #444; border-radius: 3px; }
         #pdf-controls .reader-progress-track > span { display: block; height: 100%; background: #6bc694; border-radius: 3px; }
         #pdf-controls .reader-options { padding: 10px 0; }
+        #pdf-controls .reader-expanded-rows { display: flex; flex-direction: column; gap: 6px; }
+        #pdf-controls .reader-expanded-heading { color: #c7c7cd; font-size: 11px; font-weight: 600; line-height: 14px; }
+        #pdf-controls .reader-expanded-group button, #pdf-controls .reader-expanded-group select { box-sizing: border-box; min-height: 28px; }
+        #pdf-controls .reader-expanded-group button { height: 30px; font-size: 12px; }
+        #pdf-controls .reader-expanded-body { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
+        @container (max-width: 1050px) {
+          #pdf-controls .reader-expanded-group { grid-template-columns: minmax(0, 1fr) !important; gap: 8px !important; }
+        }
+        #pdf-controls .reader-expanded-group button[aria-pressed='true'] { border-color: #70a9dc; }
+
 
         .incremento-pdf-reading-only #pdf-controls div,
         .incremento-pdf-reading-only #pdf-controls span { min-width: 0; flex-wrap: wrap; }
@@ -2343,16 +2358,17 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
             </div>
 
         {/* ── Row 1: Reader status and navigation ── */}
-        <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-          {controlVisibility.navigation && <div style={TOOLBAR_GROUP_STYLE}>
+        <div className="reader-expanded-rows" style={{marginBottom: 6}}>
+          {controlVisibility.navigation && <div className="reader-expanded-group" role="group" aria-label={tr('reader_navigation')} style={TOOLBAR_GROUP_STYLE}>
+            <span className="reader-expanded-heading">{tr('reader_navigation')}</span>
+            <div className="reader-expanded-body">
             <div style={TOOLBAR_STACK_STYLE}>
-              <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_navigate')}</span>
-              <button type="button" onClick={openFind}>{tr('reader_search')}</button>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <button type="button" disabled={!contentsReady} onClick={openContents}
                   title={tr('reader_contents_hint')} aria-haspopup="dialog">
                   {tr('reader_contents')}
                 </button>
+                <button type="button" onClick={openFind}>{tr('reader_search')}</button>
                 <button
                   aria-label={tr("reader_previous_pdf_page")}
                   onClick={() => limitAwareNav(-1)}
@@ -2465,18 +2481,20 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                 ))}
               </select>
             </div>
+            </div>
           </div>}
 
-          {controlVisibility.reading && <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12 }}>
+          {controlVisibility.reading && <div className="reader-expanded-group" role="group" aria-label={tr('reader_reading')} style={TOOLBAR_GROUP_STYLE}>
+            <span className="reader-expanded-heading">{tr('reader_reading')}</span>
+            <div className="reader-expanded-body">
             <div style={TOOLBAR_STACK_STYLE}>
-              <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_reading')}</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <button
                   title={readPage > 0 ? tr("reader_read_to_page", { page: readPage }) : tr("reader_mark_read_to_here")}
                   style={{
                     background:  readPage > 0 && page <= readPage ? 'rgba(34,197,94,0.3)' : 'transparent',
                     border:      '1px solid rgba(34,197,94,0.6)', borderRadius: 8,
-                    color:       readPage > 0 && page <= readPage ? 'rgb(22,163,74)' : 'inherit',
+                    color:       readPage > 0 && page <= readPage ? '#9ce7b7' : 'inherit',
                     cursor:      'pointer', padding: '4px 10px', fontSize: 12,
                     fontWeight:  readPage > 0 && page <= readPage ? 'bold' : 'normal',
                   }}
@@ -2493,9 +2511,9 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                     justifyContent: 'center',
                     minWidth: 34,
                     minHeight: 30,
-                    padding: 0,
-                    fontSize: 16,
-                    fontWeight: 800,
+                    padding: '4px 10px',
+                    fontSize: 12,
+                    fontWeight: 400,
                     borderRadius: 8,
                     cursor: 'pointer',
                     background: showReadMarker ? 'rgba(14,165,233,0.22)' : 'rgba(255,255,255,0.03)',
@@ -2591,16 +2609,18 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                 ))}
               </span>
             </span>
+            </div>
           </div>}
         </div>
 
             </>}
         {/* ── Row 4: Tools + card management ── */}
-        <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div className="reader-expanded-rows">
           {hasPdfCard && (controlsCollapsed ? compactPanel === 'annotation' : controlVisibility.annotation) && (
-            <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12, flexWrap: 'wrap' }}>
+            <div className="reader-expanded-group" role="group" aria-label={tr('reader_annotation_capture')} style={TOOLBAR_GROUP_STYLE}>
+              <span className="reader-expanded-heading">{tr('reader_annotation_capture')}</span>
+            <div className="reader-expanded-body">
               <div style={TOOLBAR_STACK_STYLE}>
-                <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_annotate')}</span>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '2px 4px' }}>
                     {Object.keys(HL_COLORS).map(c => (
@@ -2617,7 +2637,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                         style={{
                           background:  HL_SOLID[c],
                           border:      hlColor === c ? '2px solid white' : '2px solid transparent',
-                          width: 22, height: 22,
+                          width: 22, height: 22, minHeight: 22,
                           borderRadius: 6, padding: 0, cursor: 'pointer',
                           boxShadow: hlColor === c ? '0 0 0 2px rgba(255,255,255,0.12)' : 'none',
                         }}
@@ -2658,8 +2678,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
               <span style={TOOLBAR_SEPARATOR_STYLE} />
               <div style={TOOLBAR_STACK_STYLE}>
                 <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_capture')}</span>
-                <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => window.incrementoHandleExtractShortcut?.(0)}>{tr('reader_extract')}</button>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => window.incrementoHandleExtractShortcut?.(0)}>{tr('reader_extract')}</button>
                   <PdfSnapshotButton mode={snapshotMode} tr={tr} onToggle={() => {
                     paintPdfSnapshotPreview(snapPreviewRef.current, null);
                     snapStartRef.current = null;
@@ -2668,7 +2688,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                     title={tr("reader_show_highlights")}
                     style={{
                       background: showHighlightsPanel ? 'rgba(56,189,248,0.2)' : 'transparent',
-                      border: '1px solid rgba(56,189,248,0.55)',
+                      border: showHighlightsPanel ? '1px solid rgba(56,189,248,0.55)' : '1px solid #555',
                       borderRadius: 8,
                       color: showHighlightsPanel ? 'rgb(56,189,248)' : 'inherit',
                       cursor: 'pointer',
@@ -2693,7 +2713,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                     title={tr("reader_show_bookmarks")}
                     style={{
                       background: showBookmarksPanel ? 'rgba(250,204,21,0.18)' : 'transparent',
-                      border: '1px solid rgba(250,204,21,0.55)',
+                      border: showBookmarksPanel ? '1px solid rgba(250,204,21,0.55)' : '1px solid #555',
                       borderRadius: 8,
                       color: showBookmarksPanel ? 'rgb(234,179,8)' : 'inherit',
                       cursor: 'pointer',
@@ -2711,13 +2731,15 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                 </span>
               </div>
             </div>
+            </div>
           )}
 
-          {!readingOnly && (controlsCollapsed ? compactPanel === 'review' : controlVisibility.review) && <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12, flexWrap: 'wrap' }}>
+          {!readingOnly && (controlsCollapsed ? compactPanel === 'review' : controlVisibility.review) && <div className="reader-expanded-group" role="group" aria-label={tr('reader_review_cards')} style={TOOLBAR_GROUP_STYLE}>
+            <span className="reader-expanded-heading">{tr('reader_review_cards')}</span>
+            <div className="reader-expanded-body">
             {hasPdfCard && (
               <>
                 <div style={TOOLBAR_STACK_STYLE}>
-                  <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_review')}</span>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <button onClick={() => window.pycmd(`incremento_pdf_due_review:${cardIdRef.current}:${pageRef.current}`)}>
                       &#x1F9E0; {tr('reader_review_due')}
@@ -2799,6 +2821,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                 </button>
               </div>
             )}
+            </div>
           </div>}
         </div>
 

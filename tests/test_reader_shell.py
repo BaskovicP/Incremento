@@ -85,8 +85,10 @@ PDF_COMPACT_REFERENCE = (
 )
 
 PDF_EXPANDED_ROW_REFERENCE = (
-    ("navigation", "reading"),
-    ("annotation", "review"),
+    ("navigation",),
+    ("reading",),
+    ("annotation",),
+    ("review",),
 )
 
 PDF_ACTION_TEXT_REFERENCE = {

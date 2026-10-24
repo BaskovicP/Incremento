@@ -112,8 +112,10 @@ _PDF_CLONE_COMPACT_ACTION_IDS = (
 )
 
 _PDF_CLONE_EXPANDED_GROUP_ROWS = (
-    ("navigation", "reading"),
-    ("annotation", "review"),
+    ("navigation",),
+    ("reading",),
+    ("annotation",),
+    ("review",),
 )
 
 # User-visible labels are part of the PDF reference, including the symbols that
@@ -225,7 +227,7 @@ def reader_toolbar_compact_action_ids(reader_kind: str) -> tuple[str, ...]:
 
 
 def reader_toolbar_expanded_group_rows(reader_kind: str) -> tuple[tuple[str, ...], ...]:
-    """Return the PDF reference's two expanded toolbar rows."""
+    """Return the PDF reference's four aligned expanded toolbar rows."""
     reader_toolbar_clone_spec(reader_kind)
     return _PDF_CLONE_EXPANDED_GROUP_ROWS
 

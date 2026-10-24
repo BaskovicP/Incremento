@@ -3747,24 +3747,22 @@ def _make_epub_group(parent, title: str, *widgets: QWidget) -> QWidget:
 
 
 def _make_epub_toolbar_stack(parent, title: str, *widgets: QWidget) -> QWidget:
-    """Create one labelled action stack matching the PDF toolbar."""
+    """Keep related actions inline, with a quiet optional subgroup label."""
     stack = QWidget(parent)
     stack.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
-    column = QVBoxLayout(stack)
-    column.setContentsMargins(0, 0, 0, 0)
-    column.setSpacing(4)
-    label = QLabel(title, stack)
-    label.setStyleSheet(
-        "color: rgba(200,200,200,0.72); font-size: 10px; font-weight: 700;"
-        " letter-spacing: 0.02em;"
-    )
-    column.addWidget(label)
+    row = QHBoxLayout(stack)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(8)
+    if title:
+        label = QLabel(title, stack)
+        label.setStyleSheet("color: #a7a7af; font-size: 11px; font-weight: 600;")
+        row.addWidget(label)
     actions = QWidget(stack)
-    actions.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+    actions.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
     actions_row = _FlowLayout(actions, margin=0, h_spacing=6, v_spacing=6)
     for widget in widgets:
         actions_row.addWidget(widget)
-    column.addWidget(actions)
+    row.addWidget(actions)
     return stack
 
 
@@ -3793,22 +3791,31 @@ def _make_epub_progress_meter(
     return meter
 
 
-def _make_epub_compound_group(parent, *stacks: QWidget) -> QWidget:
-    """Keep labelled stacks together while allowing them to wrap in narrow docks."""
+def _make_epub_compound_group(parent, title: str, *stacks: QWidget) -> QWidget:
+    """Give each tool family a full-width, named row with wrapping actions."""
     frame = QFrame(parent)
     frame.setObjectName("incremento_epub_toolbar_group")
+    frame.setAccessibleName(title)
     frame.setFrameShape(QFrame.Shape.NoFrame)
-    frame.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
+    frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     frame.setStyleSheet(
         "QFrame#incremento_epub_toolbar_group {"
-        " background: transparent;"
-        " border: none; border-top: 1px solid rgba(138,138,138,0.24);"
+        " background: #252527; border: 1px solid #3b3b3e; border-radius: 8px;"
         " }"
     )
-    row = _FlowLayout(frame, h_spacing=10, v_spacing=10)
-    row.setContentsMargins(8, 6, 8, 6)
+    outer = _FlowLayout(frame, h_spacing=12, v_spacing=8)
+    outer.setContentsMargins(12, 9, 12, 9)
+    heading = QLabel(title, frame)
+    heading.setStyleSheet("color: #c7c7cd; font-size: 11px; font-weight: 600;")
+    heading.setFixedSize(110, 30)
+    heading.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+    heading.setWordWrap(True)
+    outer.addWidget(heading)
+    actions = QWidget(frame)
+    row = _FlowLayout(actions, h_spacing=14, v_spacing=8)
     for stack in stacks:
         row.addWidget(stack)
+    outer.addWidget(actions)
     return frame
 
 
@@ -4312,7 +4319,6 @@ def _build_epub_dock() -> None:
     dock._focus_btn.clicked.connect(lambda checked: dock._epub_focus_mode.request_enabled(checked))
     dock._reference_btn.clicked.connect(_choose_epub_reference)
     dock._appearance_combo = _make_epub_appearance_combo(controls_expanded)
-    control_actions.addWidget(dock._appearance_combo)
     control_actions.addWidget(dock._focus_btn)
     control_actions.addWidget(dock._reference_btn)
     control_actions.addWidget(dock._customize_controls_btn)
@@ -4330,7 +4336,7 @@ def _build_epub_dock() -> None:
     dock._search_btn.clicked.connect(open_current_document_find)
     navigate_stack = _make_epub_toolbar_stack(
         groups_host,
-        t("reader_navigate"),
+        "",
         dock._contents_btn,
         dock._search_btn,
         dock._prev_btn,
@@ -4344,9 +4350,12 @@ def _build_epub_dock() -> None:
         dock._text_scale_lbl,
         dock._text_larger_btn,
     )
+    appearance_stack = _make_epub_toolbar_stack(
+        groups_host, t("reader_epub_appearance"), dock._appearance_combo,
+    )
     reading_stack = _make_epub_toolbar_stack(
         groups_host,
-        t("reader_reading"),
+        "",
         dock._read_to_here_btn,
         dock._read_marker_btn,
         dock._links_btn,
@@ -4361,7 +4370,7 @@ def _build_epub_dock() -> None:
     )
     annotate_stack = _make_epub_toolbar_stack(
         groups_host,
-        t("reader_annotate"),
+        "",
         *dock._highlight_color_buttons.values(),
         dock._more_colors_btn,
         dock._highlight_extract_cb,
@@ -4377,7 +4386,7 @@ def _build_epub_dock() -> None:
     )
     review_stack = _make_epub_toolbar_stack(
         groups_host,
-        t("reader_review"),
+        "",
         dock._due_review_btn,
         dock._all_review_btn,
         dock._limit_btn,
@@ -4396,28 +4405,23 @@ def _build_epub_dock() -> None:
         dock._finished_btn,
     )
     control_groups = {
-        "navigation": _make_epub_compound_group(groups_host, navigate_stack, zoom_stack),
-        "reading": _make_epub_compound_group(groups_host, reading_stack, progress_meter),
-        "annotation": _make_epub_compound_group(groups_host, annotate_stack, capture_stack),
-        "review": _make_epub_compound_group(groups_host, review_stack, cards_stack, status_stack),
+        "navigation": _make_epub_compound_group(groups_host, t("reader_navigation"), navigate_stack, zoom_stack, appearance_stack),
+        "reading": _make_epub_compound_group(groups_host, t("reader_reading"), reading_stack, progress_meter),
+        "annotation": _make_epub_compound_group(groups_host, t("reader_annotation_capture"), annotate_stack, capture_stack),
+        "review": _make_epub_compound_group(groups_host, t("reader_review_cards"), review_stack, cards_stack, status_stack),
     }
     if tuple(control_groups) != tuple(group_id for group_id, _label, _sections in toolbar_spec):
         raise RuntimeError("EPUB toolbar groups no longer match the PDF reference contract.")
     control_group_rows = []
     for row_group_ids in toolbar_rows:
         row_host = QWidget(groups_host)
-        row_flow = _FlowLayout(
-            row_host,
-            margin=0,
-            h_spacing=12,
-            v_spacing=6,
-            center_lines=True,
-        )
-        row_host.setLayout(row_flow)
+        row_layout = QVBoxLayout(row_host)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(6)
         for group_id in row_group_ids:
-            row_flow.addWidget(control_groups[group_id])
+            row_layout.addWidget(control_groups[group_id])
         groups_layout.addWidget(row_host)
-        control_group_rows.append(row_flow)
+        control_group_rows.append(row_layout)
     expanded_layout.addWidget(groups_host)
 
     dock._limit_status_widget = QFrame(controls_expanded)

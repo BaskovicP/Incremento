@@ -286,7 +286,9 @@ def test_real_epub_dock_can_be_narrowed_with_expanded_or_hidden_controls(scale, 
             wait_for(lambda: dock.width() == 1400)
             if action in ('expanded', 'find'):
                 for group in dock._control_groups.values():
-                    row = group.layout()
+                    # The section heading has its own gutter; inspect the
+                    # wrapping action clusters inside the section body.
+                    row = group.layout().itemAt(1).widget().layout()
                     assert len({row.itemAt(i).widget().y() for i in range(row.count())}) == 1, (
                         'Labelled sections should return to one row when there is enough width'
                     )

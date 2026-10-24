@@ -58,6 +58,24 @@ def test_pdf_essential_controls_and_drawers_fit_narrow_and_wide_readers(tmp_path
             # A control below the fold must remain reachable through toolbar scrolling.
             controls.get_by_role('button', name='Finished reading', exact=False).scroll_into_view_if_needed()
             assert controls.get_by_role('button', name='Finished reading', exact=False).is_visible()
+            for width in (1663, 900, 350):
+                page.set_viewport_size({'width': width, 'height': 900})
+                sections = controls.locator('.reader-expanded-group')
+                assert sections.count() == 4, 'Expanded tools have four named, aligned sections'
+                boxes = [section.bounding_box() for section in sections.all()]
+                assert all(abs(box['x'] - boxes[0]['x']) < 1 and abs(box['width'] - boxes[0]['width']) < 1 for box in boxes)
+                assert all(a['y'] + a['height'] <= b['y'] for a, b in zip(boxes, boxes[1:])), 'Sections keep a predictable vertical order'
+                if width == 1663:
+                    search = controls.get_by_role('button', name='Search', exact=True).bounding_box()
+                    contents = controls.get_by_role('button', name='Contents', exact=True).bounding_box()
+                    assert abs(search['y'] - contents['y']) < 1, 'Search must share the navigation button row'
+                    extract = controls.get_by_role('button', name='Extract', exact=True).bounding_box()
+                    snapshot = controls.get_by_role('button', name='Snapshot', exact=False).bounding_box()
+                    assert abs(extract['y'] - snapshot['y']) < 1, 'Extract must share the capture button row'
+                    assert controls.bounding_box()['height'] < 360, 'Full controls should fit at the screenshot width'
+                assert controls.locator('button, input, select').evaluate_all("""nodes=>nodes.filter(el=>el.getClientRects().length).every(el=>{
+                    const r=el.getBoundingClientRect();return r.left>=-1 && r.right<=innerWidth+1;
+                })"""), 'Expanded controls must fit the current pane width'
             browser.close()
     ''')
     result = subprocess.run([runtime[0], '-I', '-c', script, str(_runtime_dir()/'packages'), runtime[1], str(scale)],

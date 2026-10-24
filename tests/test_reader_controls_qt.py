@@ -98,6 +98,15 @@ def test_epub_compact_drawers_and_saved_choice_survive_reopening(tmp_path, scale
         assert writes == [], 'Transient drawers and Find must not save a new control view'
         dock._show_controls_btn.click(); app.processEvents()
         assert dock._controls_expanded.isVisible() and dock._controls_compact.isHidden()
+        dock.resize(1663, 900)
+        for _ in range(20):
+            app.processEvents()
+        groups = list(dock._control_groups.values())
+        boxes = [group.rect().translated(group.mapTo(dock._controls_host, QPoint(0, 0))) for group in groups]
+        assert all(box.x() == boxes[0].x() and box.width() == boxes[0].width() for box in boxes)
+        assert all(a.bottom() < b.top() for a, b in zip(boxes, boxes[1:])), 'Expanded sections remain in four aligned rows'
+        assert boxes[0].width() >= dock._controls_scroll.viewport().width() - 20, 'Sections use the available width'
+        assert dock._controls_scroll.verticalScrollBar().maximum() == 0, 'All controls fit in a wide reader'
         assert config['epub_controls_collapsed_by_profile']['A']['main'] is False
         dock.close(); reader._epub_dock = None
         reader._build_epub_dock()

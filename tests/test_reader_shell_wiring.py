@@ -124,11 +124,11 @@ def test_epub_reader_uses_pdf_style_bottom_customizable_controls():
     assert "reader_toolbar_expanded_group_rows(\"epub\")" in build_source
     assert "_make_epub_compound_group(" in build_source
     assert "_make_epub_toolbar_stack(" in build_source
-    assert 't("reader_navigate")' in build_source
+    assert 't("reader_navigation")' in build_source
     assert 't("reader_zoom")' in build_source
     assert 't("reader_reading")' in build_source
     assert "_make_epub_progress_meter(" in build_source
-    for label_id in ("reader_annotate", "reader_capture", "reader_review", "reader_cards", "reader_status"):
+    for label_id in ("reader_annotation_capture", "reader_capture", "reader_review_cards", "reader_cards", "reader_status"):
         assert f't("{label_id}")' in build_source
     for control_name in (
         "_location_btn",
@@ -162,7 +162,8 @@ def test_epub_pdf_clone_allows_subgroup_wrapping_and_scopes_group_styling():
 
     # Expanded controls must wrap at narrow widths without requiring Minimize.
     assert "actions_row = _FlowLayout(actions" in stack_source
-    assert "row = _FlowLayout(frame" in group_source
+    assert "outer = _FlowLayout(frame" in group_source
+    assert "row = _FlowLayout(actions" in group_source
     assert 'frame.setObjectName("incremento_epub_toolbar_group")' in group_source
     assert "QFrame#incremento_epub_toolbar_group" in group_source
     assert '"QFrame {"' not in group_source
@@ -182,13 +183,14 @@ def test_epub_buttons_use_the_pdf_default_geometry_and_colors():
     assert '" font-size: 13px;"' in button_source
 
 
-def test_epub_pdf_clone_centers_each_wrapped_reference_row():
+def test_epub_expanded_sections_use_full_width_rows():
     source = (ROOT / "frontend" / "epub_dock.py").read_text(encoding="utf-8")
     build_start = source.index("def _build_epub_dock()")
     build_end = source.index("\ndef _current_epub_section_title()", build_start)
     build_source = source[build_start:build_end]
 
-    assert "center_lines=True" in build_source
+    assert "row_layout = QVBoxLayout(row_host)" in build_source
+    assert "row_layout.addWidget(control_groups[group_id])" in build_source
 
 
 def test_epub_pdf_clone_uses_reference_text_instead_of_platform_icons():
