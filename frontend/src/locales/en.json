@@ -207,5 +207,9 @@
   "reader_destination_confirm": "Link to this spot",
   "reader_destination_marker": "Destination",
   "reader_destination_saving": "Checking destination…",
-  "reader_cancel": "Cancel"
+  "reader_cancel": "Cancel",
+  "reader_more": "More",
+  "reader_marked_read": "Marked read {percent}%",
+  "reader_read_sections": "Sections 1–{count}",
+  "reader_exact_read_marker": "Exact read marker"
 }

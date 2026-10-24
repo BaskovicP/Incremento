@@ -31,6 +31,7 @@ from aqt.qt import (
     QLabel,
     QLineEdit,
     QPixmap,
+    QProgressBar,
     QPoint,
     QPushButton,
     QRect,
@@ -101,12 +102,12 @@ except ImportError:
 try:
     from ..backend.paths import get_active_profile as _active_profile
     from ..backend.content_safety import external_plain_text_to_anki_html
-    from ..backend.config_service import load_addon_config, save_addon_config
+    from ..backend.config_service import load_addon_config, save_addon_config, configured_epub_controls_collapsed
     from ..backend.anki_compat import show_reviewer_question
 except ImportError:
     from paths import get_active_profile as _active_profile
     from content_safety import external_plain_text_to_anki_html  # type: ignore
-    from config_service import load_addon_config, save_addon_config  # type: ignore
+    from config_service import load_addon_config, save_addon_config, configured_epub_controls_collapsed  # type: ignore
     from anki_compat import show_reviewer_question  # type: ignore
 
 try:
@@ -3699,6 +3700,7 @@ def _make_epub_chip(parent, text: str) -> QLabel:
 def _make_epub_toggle(parent, text: str, *, checked: bool = False) -> QCheckBox:
     toggle = QCheckBox(text, parent)
     toggle.setChecked(bool(checked))
+    toggle.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
     toggle.setCursor(Qt.CursorShape.PointingHandCursor)
     toggle.setStyleSheet(
         "QCheckBox {"
@@ -3754,7 +3756,7 @@ def _make_epub_toolbar_stack(parent, title: str, *widgets: QWidget) -> QWidget:
     label = QLabel(title, stack)
     label.setStyleSheet(
         "color: rgba(200,200,200,0.72); font-size: 10px; font-weight: 700;"
-        " letter-spacing: 0.08em; text-transform: uppercase;"
+        " letter-spacing: 0.02em;"
     )
     column.addWidget(label)
     actions = QWidget(stack)
@@ -3799,14 +3801,12 @@ def _make_epub_compound_group(parent, *stacks: QWidget) -> QWidget:
     frame.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred)
     frame.setStyleSheet(
         "QFrame#incremento_epub_toolbar_group {"
-        " background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
-        " stop:0 rgba(44,44,44,0.96), stop:1 rgba(28,28,28,0.96));"
-        " border: 1px solid rgba(138,138,138,0.26);"
-        " border-radius: 14px;"
+        " background: transparent;"
+        " border: none; border-top: 1px solid rgba(138,138,138,0.24);"
         " }"
     )
     row = _FlowLayout(frame, h_spacing=10, v_spacing=10)
-    row.setContentsMargins(12, 9, 12, 9)
+    row.setContentsMargins(8, 6, 8, 6)
     for stack in stacks:
         row.addWidget(stack)
     return frame
@@ -3833,7 +3833,7 @@ def _epub_read_progress_state(
         "read_count": read_count,
         "percent": percent,
         "filled_segments": filled,
-        "range_text": f"s.1–{read_count}" if read_count else "",
+        "range_text": t("reader_read_sections", count=read_count) if read_count else "",
     }
 
 
@@ -3868,10 +3868,12 @@ def _apply_epub_control_visibility(value: object) -> None:
     visibility = _normalize_epub_control_visibility(value)
     _epub_dock._epub_control_visibility = visibility
     groups = getattr(_epub_dock, "_control_groups", {})
+    collapsed = getattr(_epub_dock, "_controls_collapsed", False)
+    panel = getattr(_epub_dock, "_compact_panel", None)
     for group_id, visible in visibility.items():
         group = groups.get(group_id) if isinstance(groups, dict) else None
         if group is not None:
-            group.setVisible(visible)
+            group.setVisible(panel == group_id if collapsed else visible)
     group_layout = getattr(_epub_dock, "_control_groups_layout", None)
     invalidate = getattr(group_layout, "invalidate", None)
     if callable(invalidate):
@@ -3883,14 +3885,70 @@ def _apply_epub_control_visibility(value: object) -> None:
     _refresh_epub_dock_minimum_width()
 
 
-def _set_epub_controls_collapsed(collapsed: bool) -> None:
+def save_epub_controls_collapsed(collapsed: bool, *, profile: str) -> bool:
+    if type(collapsed) is not bool or not profile or profile != _active_profile():
+        return False
+    try:
+        cfg = load_addon_config(mw.addonManager, _ADDON_PKG)
+        cfg.setdefault('epub_controls_collapsed_by_profile', {}).setdefault(profile, {})['main'] = collapsed
+        save_addon_config(mw.addonManager, _ADDON_PKG, cfg)
+    except Exception:
+        return False
+    return True
+
+
+def _set_epub_controls_collapsed(collapsed: bool, *, remember: bool = True) -> None:
     if _epub_dock is None:
         return
     is_collapsed = bool(collapsed)
     _epub_dock._controls_collapsed = is_collapsed
+    _epub_dock._compact_panel = None
     _epub_dock._controls_expanded.setVisible(not is_collapsed)
     _epub_dock._controls_compact.setVisible(is_collapsed)
+    if hasattr(_epub_dock, '_expanded_control_actions'):
+        _epub_dock._expanded_control_actions.setVisible(not is_collapsed)
+        _epub_dock._compact_options.setVisible(False)
+        for button in _epub_dock._compact_drawer_buttons.values():
+            button.setChecked(False)
+        _apply_epub_control_visibility(_epub_dock._epub_control_visibility)
+    if remember:
+        save_epub_controls_collapsed(is_collapsed, profile=getattr(_epub_dock, '_controls_profile', ''))
     _refresh_epub_dock_minimum_width()
+
+
+def _toggle_epub_compact_panel(panel: str) -> None:
+    dock = _epub_dock
+    if dock is None or not dock._controls_collapsed:
+        return
+    dock._compact_panel = None if dock._compact_panel == panel else panel
+    dock._controls_expanded.setVisible(dock._compact_panel in ('annotation', 'review'))
+    dock._compact_options.setVisible(dock._compact_panel == 'more')
+    for name, button in dock._compact_drawer_buttons.items():
+        button.setChecked(dock._compact_panel == name)
+    _apply_epub_control_visibility(dock._epub_control_visibility)
+
+
+def _make_epub_action_proxy(parent, original: QToolButton) -> QToolButton:
+    """Use the same action path in compact and expanded controls."""
+    proxy = _make_epub_button(parent, original.text(), original.toolTip(), checkable=original.isCheckable())
+    proxy.setAccessibleName(original.accessibleName() or original.text())
+    proxy.clicked.connect(lambda _checked=False: original.click())
+    proxy.setEnabled(original.isEnabled())
+    proxy.setChecked(original.isChecked())
+    original._compact_proxies = [*getattr(original, '_compact_proxies', []), proxy]
+    return proxy
+
+
+def _sync_epub_compact_action_states() -> None:
+    for name in ('_read_to_here_btn', '_extract_btn', '_bookmark_add_btn', '_all_review_btn',
+                 '_text_smaller_btn', '_text_larger_btn', '_read_marker_btn', '_limit_btn', '_cover_btn'):
+        original = getattr(_epub_dock, name, None)
+        for proxy in getattr(original, '_compact_proxies', ()):
+            proxy.blockSignals(True)
+            proxy.setEnabled(original.isEnabled())
+            proxy.setChecked(original.isChecked())
+            proxy.setToolTip(original.toolTip())
+            proxy.blockSignals(False)
 
 
 def _show_epub_control_chooser() -> None:
@@ -3974,6 +4032,7 @@ def _build_epub_dock() -> None:
     dock = QDockWidget("EPUB", mw)
     dock.setObjectName("incremento_epub_dock")
     dock.setMinimumWidth(300)
+    dock._controls_profile = _active_profile()
 
     container = QWidget(dock)
     layout = QVBoxLayout(container)
@@ -4115,7 +4174,7 @@ def _build_epub_dock() -> None:
     )
     dock._read_marker_btn = _make_epub_button(
         dock,
-        _EPUB_TOOLBAR_TEXT["exact_read_marker"],
+        t("reader_exact_read_marker"),
         t("reader_epub_exact_marker_tooltip"),
         checkable=True,
         accent=(
@@ -4134,7 +4193,7 @@ def _build_epub_dock() -> None:
             " border-color: rgba(34,197,94,0.70); color: #86efac; }"
         ),
     )
-    dock._read_range_chip = _make_epub_chip(dock, "s.1–1")
+    dock._read_range_chip = _make_epub_chip(dock, "")
     dock._bookmarks_btn = _make_epub_button(
         dock,
         _EPUB_TOOLBAR_TEXT["bookmarks"].format(count=0),
@@ -4244,7 +4303,8 @@ def _build_epub_dock() -> None:
     expanded_layout.setContentsMargins(0, 0, 0, 0)
     expanded_layout.setSpacing(4)
     control_actions_host = QWidget(controls_expanded)
-    control_actions = _FlowLayout(control_actions_host, margin=0, h_spacing=6, v_spacing=4, center_lines=True)
+    dock._expanded_control_actions = control_actions_host
+    control_actions = _FlowLayout(control_actions_host, margin=0, h_spacing=6, v_spacing=4)
     dock._focus_btn = _make_epub_button(controls_expanded, t('reader_epub_focus_mode'),
                                        t('reader_epub_focus_mode_hint'), checkable=True)
     dock._reference_btn = _make_epub_button(controls_expanded, t('reader_epub_reference'),
@@ -4266,10 +4326,13 @@ def _build_epub_dock() -> None:
     groups_layout.setContentsMargins(0, 0, 0, 0)
     groups_layout.setSpacing(6)
 
+    dock._search_btn = _make_epub_button(groups_host, t('reader_search'), t('reader_epub_search_accessible'))
+    dock._search_btn.clicked.connect(open_current_document_find)
     navigate_stack = _make_epub_toolbar_stack(
         groups_host,
         t("reader_navigate"),
         dock._contents_btn,
+        dock._search_btn,
         dock._prev_btn,
         dock._location_btn,
         dock._next_btn,
@@ -4306,6 +4369,7 @@ def _build_epub_dock() -> None:
     capture_stack = _make_epub_toolbar_stack(
         groups_host,
         t("reader_capture"),
+        dock._extract_btn,
         dock._snapshot_btn,
         dock._highlights_btn,
         dock._bookmark_add_btn,
@@ -4368,11 +4432,15 @@ def _build_epub_dock() -> None:
     dock._limit_status_lbl.setStyleSheet("color: #f6c86b; font-size: 12px;")
     limit_status_layout.addWidget(dock._limit_status_lbl, 1)
     dock._limit_status_widget.setVisible(False)
-    groups_layout.insertWidget(1, dock._limit_status_widget)
+    controls_layout.addWidget(dock._limit_status_widget)
 
     controls_compact = QWidget(controls_host)
-    compact_layout = _FlowLayout(controls_compact, margin=0, h_spacing=6, v_spacing=4)
-    controls_compact.setLayout(compact_layout)
+    compact_column = QVBoxLayout(controls_compact)
+    compact_column.setContentsMargins(0, 0, 0, 0)
+    compact_column.setSpacing(6)
+    compact_navigation = QWidget(controls_compact)
+    compact_layout = _FlowLayout(compact_navigation, margin=0, h_spacing=6, v_spacing=4)
+    compact_column.addWidget(compact_navigation)
     dock._compact_contents_btn = _make_epub_button(controls_compact, t("reader_contents"), t("reader_contents_hint"))
     dock._compact_prev_btn = _make_epub_button(
         controls_compact,
@@ -4426,32 +4494,81 @@ def _build_epub_dock() -> None:
     dock._compact_links_btn.setAccessibleName(t("reader_epub_links_accessible"))
     dock._compact_jump_back_btn.setAccessibleName(t("reader_epub_jump_back_accessible"))
     controls_host.setAccessibleName(t("reader_epub_controls_accessible"))
-    for widget in (
-        dock._compact_contents_btn,
-        dock._compact_prev_btn,
-        dock._compact_location_btn,
-        dock._compact_next_btn,
-        dock._compact_scale_lbl,
-        dock._compact_links_btn,
-        dock._compact_jump_back_btn,
-        dock._compact_page_links_btn,
-        dock._show_controls_btn,
-        dock._compact_customize_controls_btn,
-    ):
+    dock._compact_search_btn = _make_epub_button(controls_compact, t('reader_search'), t('reader_epub_search_accessible'))
+    dock._compact_search_btn.clicked.connect(open_current_document_find)
+    dock._compact_smaller_btn = _make_epub_action_proxy(controls_compact, dock._text_smaller_btn)
+    dock._compact_larger_btn = _make_epub_action_proxy(controls_compact, dock._text_larger_btn)
+    for widget in (dock._compact_contents_btn, dock._compact_search_btn, dock._compact_prev_btn,
+                   dock._compact_location_btn, dock._compact_next_btn, dock._compact_smaller_btn,
+                   dock._compact_scale_lbl, dock._compact_larger_btn):
         compact_layout.addWidget(widget)
 
-    dock._compact_focus_btn = _make_epub_button(controls_compact, t('reader_epub_focus_mode'),
+    compact_actions = QWidget(controls_compact)
+    actions_flow = _FlowLayout(compact_actions, margin=0, h_spacing=6, v_spacing=4)
+    compact_column.addWidget(compact_actions)
+    dock._compact_read_btn = _make_epub_action_proxy(compact_actions, dock._read_to_here_btn)
+    dock._compact_read_btn.setStyleSheet(dock._read_to_here_btn.styleSheet()
+        + 'QToolButton { background: #17452e; border-color: #328059; color: #9ce7b7; }')
+    dock._compact_extract_btn = _make_epub_action_proxy(compact_actions, dock._extract_btn)
+    dock._compact_bookmark_btn = _make_epub_action_proxy(compact_actions, dock._bookmark_add_btn)
+    dock._compact_bookmark_btn.setText(f"☆ {t('reader_bookmark')}")
+    dock._compact_review_btn = _make_epub_action_proxy(compact_actions, dock._all_review_btn)
+    dock._compact_review_btn.setText(t('reader_review_all'))
+    dock._compact_annotate_btn = _make_epub_button(compact_actions, t('reader_annotate'), t('reader_annotation_capture'), checkable=True)
+    dock._compact_review_options_btn = _make_epub_button(compact_actions, '▾', t('reader_review_cards'), checkable=True)
+    dock._compact_review_options_btn.setAccessibleName(t('reader_review_cards'))
+    dock._compact_more_btn = _make_epub_button(compact_actions, t('reader_more'), t('reader_choose_controls'), checkable=True)
+    dock._compact_drawer_buttons = {'annotation': dock._compact_annotate_btn,
+        'review': dock._compact_review_options_btn, 'more': dock._compact_more_btn}
+    for name, button in dock._compact_drawer_buttons.items():
+        button.clicked.connect(lambda _checked=False, panel=name: _toggle_epub_compact_panel(panel))
+    for widget in (dock._compact_read_btn, dock._compact_extract_btn, dock._compact_bookmark_btn,
+                   dock._compact_annotate_btn, dock._compact_review_btn, dock._compact_review_options_btn,
+                   dock._compact_more_btn, dock._show_controls_btn):
+        actions_flow.addWidget(widget)
+
+    compact_status = QWidget(controls_compact)
+    status_flow = _FlowLayout(compact_status, margin=0, h_spacing=6, v_spacing=4)
+    compact_column.addWidget(compact_status)
+    for widget in (dock._compact_links_btn, dock._compact_jump_back_btn, dock._compact_page_links_btn):
+        status_flow.addWidget(widget)
+    progress = QWidget(compact_status)
+    progress_column = QVBoxLayout(progress)
+    progress_column.setContentsMargins(8, 0, 4, 0)
+    progress_column.setSpacing(4)
+    dock._compact_progress_lbl = QLabel(t('reader_marked_read', percent=0), progress)
+    dock._compact_progress_lbl.setStyleSheet('color: #c8c8cf; font-size: 12px;')
+    dock._compact_progress = QProgressBar(progress)
+    dock._compact_progress.setRange(0, 100)
+    dock._compact_progress.setValue(0)
+    dock._compact_progress.setTextVisible(False)
+    dock._compact_progress.setFixedHeight(4)
+    dock._compact_progress.setMinimumWidth(140)
+    dock._compact_progress.setAccessibleName(t('reader_read_progress'))
+    dock._compact_progress.setStyleSheet('QProgressBar { border: none; border-radius: 2px; background: #444; }'
+        'QProgressBar::chunk { background: #6bc694; border-radius: 2px; }')
+    progress_column.addWidget(dock._compact_progress_lbl)
+    progress_column.addWidget(dock._compact_progress)
+    status_flow.addWidget(progress)
+
+    dock._compact_options = QWidget(controls_compact)
+    options_flow = _FlowLayout(dock._compact_options, margin=0, h_spacing=6, v_spacing=6)
+    compact_column.addWidget(dock._compact_options)
+    dock._compact_focus_btn = _make_epub_button(dock._compact_options, t('reader_epub_focus_mode'),
                                                t('reader_epub_focus_mode_hint'), checkable=True)
-    dock._compact_reference_btn = _make_epub_button(controls_compact, t('reader_epub_reference'),
+    dock._compact_reference_btn = _make_epub_button(dock._compact_options, t('reader_epub_reference'),
                                                    t('reader_epub_reference_hint'))
     dock._compact_focus_btn.clicked.connect(lambda checked: dock._epub_focus_mode.request_enabled(checked))
     dock._compact_reference_btn.clicked.connect(_choose_epub_reference)
-    dock._compact_appearance_combo = _make_epub_appearance_combo(controls_compact)
-    compact_layout.addWidget(dock._compact_appearance_combo)
-    compact_layout.addWidget(dock._compact_focus_btn)
-    compact_layout.addWidget(dock._compact_reference_btn)
-    controls_layout.addWidget(controls_expanded)
+    dock._compact_appearance_combo = _make_epub_appearance_combo(dock._compact_options)
+    for widget in (dock._compact_appearance_combo, dock._compact_focus_btn, dock._compact_reference_btn,
+                   dock._compact_customize_controls_btn):
+        options_flow.addWidget(widget)
+    for original in (dock._read_marker_btn, dock._limit_btn, dock._cover_btn):
+        options_flow.addWidget(_make_epub_action_proxy(dock._compact_options, original))
+    dock._compact_options.setVisible(False)
     controls_layout.addWidget(controls_compact)
+    controls_layout.addWidget(controls_expanded)
     dock._markdown_edit_btn = QPushButton(t('imports_markdown_edit_button'), controls_host)
     dock._markdown_edit_btn.setAccessibleName(t('imports_markdown_edit_button'))
     dock._markdown_edit_btn.clicked.connect(edit_current_markdown_document)
@@ -4462,6 +4579,7 @@ def _build_epub_dock() -> None:
     dock._controls_expanded = controls_expanded
     dock._controls_compact = controls_compact
     dock._controls_collapsed = False
+    dock._compact_panel = None
     dock._control_groups = control_groups
     dock._control_groups_layout = groups_layout
     dock._control_group_rows = tuple(control_group_rows)
@@ -4491,7 +4609,7 @@ def _build_epub_dock() -> None:
     dock._find_bar = find_bar
     dock._find_input.setAccessibleName(t("reader_epub_search_accessible"))
     QShortcut(QKeySequence("Escape"), find_bar).activated.connect(_close_epub_find_bar)
-    groups_layout.insertWidget(1, find_bar)
+    controls_layout.insertWidget(1, find_bar)
 
     profile = QWebEngineProfile(dock)
     interceptor = _EpubRequestInterceptor(profile)
@@ -4665,7 +4783,8 @@ def _build_epub_dock() -> None:
         _epub_shortcuts_registered = True
 
     _epub_dock = dock
-    _apply_epub_control_visibility(dock._epub_control_visibility)
+    saved_collapsed = configured_epub_controls_collapsed(_config(), dock._controls_profile)
+    _set_epub_controls_collapsed(saved_collapsed if saved_collapsed is not None else True, remember=False)
     _sync_epub_link_back_buttons()
     _sync_epub_find_bar()
 
@@ -5480,6 +5599,11 @@ def _update_epub_progress_controls(section_count: int) -> None:
         section_count=section_count,
     )
     percent = int(state["percent"])
+    if hasattr(_epub_dock, '_compact_progress'):
+        _epub_dock._compact_progress.setValue(percent)
+        _epub_dock._compact_progress_lbl.setText(t('reader_marked_read', percent=percent))
+        _epub_dock._compact_read_btn.setChecked(
+            bool(section_count > 0 and _current_epub_section_index <= _current_epub_read_section_index))
     filled = int(state["filled_segments"])
     range_text = str(state["range_text"])
     _epub_dock._progress_percent_lbl.setText(
@@ -5633,6 +5757,7 @@ def _update_title_and_buttons() -> None:
     )
     _epub_dock._highlights_btn.blockSignals(False)
     _update_epub_progress_controls(count)
+    _sync_epub_compact_action_states()
     _update_epub_limit_status_control()
     _refresh_epub_bookmarks_panel()
     _sync_epub_link_back_buttons()

@@ -13228,7 +13228,7 @@
       "component": "addon",
       "key": "reader_exact_read_marker",
       "form": "",
-      "source": "↦",
+      "source": "Exact read marker",
       "tokens": [],
       "markup": []
     },
@@ -13651,6 +13651,16 @@
       "form": "",
       "source": "Mark pages as read up to here without placing an exact marker",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_marked_read",
+      "form": "",
+      "source": "Marked read {percent}%",
+      "tokens": [
+        "{percent}"
+      ],
       "markup": []
     },
     {
@@ -16152,6 +16162,30 @@
     },
     {
       "component": "addon",
+      "key": "reader_pdf_appearance_dark",
+      "form": "",
+      "source": "Dark",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_appearance_night",
+      "form": "",
+      "source": "Night",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_pdf_appearance_original",
+      "form": "",
+      "source": "Original",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_pdf_attached_review_failed",
       "form": "",
       "source": "Could not open attached PDF card review:\n{error}",
@@ -18149,6 +18183,16 @@
       "source": "p.1–{page}",
       "tokens": [
         "{page}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_read_sections",
+      "form": "",
+      "source": "Sections 1–{count}",
+      "tokens": [
+        "{count}"
       ],
       "markup": []
     },
@@ -37432,6 +37476,14 @@
     },
     {
       "component": "reader",
+      "key": "reader_exact_read_marker",
+      "form": "",
+      "source": "Exact read marker",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_extract",
       "form": "",
       "source": "Extract",
@@ -37739,6 +37791,16 @@
     },
     {
       "component": "reader",
+      "key": "reader_marked_read",
+      "form": "",
+      "source": "Marked read {percent}%",
+      "tokens": [
+        "{percent}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_minimize_controls",
       "form": "",
       "source": "Minimize reader controls to give the PDF more room",
@@ -37750,6 +37812,14 @@
       "key": "reader_minimize_controls_label",
       "form": "",
       "source": "Minimize controls",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_more",
+      "form": "",
+      "source": "More",
       "tokens": [],
       "markup": []
     },
@@ -38329,6 +38399,16 @@
       "source": "p.1–{page}",
       "tokens": [
         "{page}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_read_sections",
+      "form": "",
+      "source": "Sections 1–{count}",
+      "tokens": [
+        "{count}"
       ],
       "markup": []
     },

@@ -38,7 +38,7 @@ _PDF_CLONE_TOOLBAR_SPEC = (
         "navigation",
         "Navigation",
         (
-            ("navigate", "Navigate", ("contents", "previous_page", "page_location", "next_page")),
+            ("navigate", "Navigate", ("contents", "search", "previous_page", "page_location", "next_page")),
             ("zoom", "Zoom", ("zoom_out", "zoom_percent", "zoom_in")),
         ),
     ),
@@ -84,7 +84,7 @@ _PDF_CLONE_TOOLBAR_SPEC = (
             (
                 "capture",
                 "Capture",
-                ("snapshot", "highlights", "bookmark", "bookmarks"),
+                ("extract", "snapshot", "highlights", "bookmark", "bookmarks"),
             ),
         ),
     ),
@@ -104,16 +104,11 @@ _PDF_CLONE_TOOLBAR_SPEC = (
 )
 
 _PDF_CLONE_COMPACT_ACTION_IDS = (
-    "contents",
-    "previous_page",
-    "page_location",
-    "next_page",
-    "zoom_percent",
-    "clickable_links",
-    "jump_back",
-    "page_links",
-    "show_controls",
-    "customize",
+    "contents", "search", "previous_page", "page_location", "next_page",
+    "zoom_out", "zoom_percent", "zoom_in",
+    "read_to_here", "extract", "bookmark", "annotate", "review_all", "review_options",
+    "more", "show_controls",
+    "clickable_links", "jump_back", "page_links", "progress_percent",
 )
 
 _PDF_CLONE_EXPANDED_GROUP_ROWS = (
@@ -133,7 +128,7 @@ _PDF_CLONE_ACTION_TEXT = {
     "zoom_percent": "{percent}%",
     "zoom_in": "+",
     "read_to_here": "✓ Read to here",
-    "exact_read_marker": "↦",
+    "exact_read_marker": "Exact read marker",
     "clickable_links": "Links {state}",
     "jump_back": "↩ Jump Back",
     "page_links": "Page links",

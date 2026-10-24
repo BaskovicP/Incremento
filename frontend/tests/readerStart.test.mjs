@@ -40,7 +40,7 @@ function registerBridge(pending = null, focus = null) {
     DEFAULT_LIMIT_STATUS: {},
   };
   for (const name of [
-    'setLinkBackHistory', 'setHighlights', 'setNativeHighlightsVisible', 'setBookmarks',
+    'setCompactPanel', 'setLinkBackHistory', 'setHighlights', 'setNativeHighlightsVisible', 'setBookmarks',
     'setSearchHits', 'setActiveSearchHitIndex', 'setReadAnchor',
     'setFindStartPage',
     'setActiveHighlightId', 'suppressScrollPersistence', 'setLimitStatus',

@@ -106,6 +106,11 @@ def configured_pdf_controls_collapsed(
     return preferences.get(profile, {}).get('side' if reading_only else 'main')
 
 
+def configured_epub_controls_collapsed(config: Mapping[str, Any] | None, profile: str) -> bool | None:
+    preferences = normalize_pdf_controls_preferences((config or {}).get('epub_controls_collapsed_by_profile'))
+    return preferences.get(profile, {}).get('main')
+
+
 def _number(value: Any, default, minimum, maximum, cast):
     try:
         resolved = float(value)
@@ -359,6 +364,8 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     config["pdf_default_appearance"] = configured_pdf_default_appearance(config)
     config['pdf_controls_collapsed_by_profile'] = normalize_pdf_controls_preferences(
         config.get('pdf_controls_collapsed_by_profile'))
+    config['epub_controls_collapsed_by_profile'] = normalize_pdf_controls_preferences(
+        config.get('epub_controls_collapsed_by_profile'))
     preview_zooms = config.get("pdf_link_preview_zoom_by_profile")
     config["pdf_link_preview_zoom_by_profile"] = {
         profile: normalize_pdf_link_preview_zoom(value)

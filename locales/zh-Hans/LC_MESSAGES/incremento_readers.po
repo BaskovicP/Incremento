@@ -64,7 +64,7 @@ msgstr "EPUB"
 
 #. Reader display label: ↦
 msgid "reader_exact_read_marker"
-msgstr "↦"
+msgstr "精确阅读标记"
 
 #. Reader display label: Extract
 msgid "reader_extract"
@@ -3895,3 +3895,23 @@ msgstr "显示前 {count} 张写作卡片。请使用“快速打开内容”查
 
 msgid "workspace_load_failed"
 msgstr "无法加载写作卡片。请关闭此窗口后重试。"
+
+#. Reader toolbar controls
+msgid "reader_marked_read"
+msgstr "已标记读完 {percent}%"
+
+#. Reader toolbar controls
+msgid "reader_read_sections"
+msgstr "第 1–{count} 节"
+
+#. Reader toolbar controls
+msgid "reader_pdf_appearance_original"
+msgstr "原始"
+
+#. Reader toolbar controls
+msgid "reader_pdf_appearance_dark"
+msgstr "深色"
+
+#. Reader toolbar controls
+msgid "reader_pdf_appearance_night"
+msgstr "夜间"

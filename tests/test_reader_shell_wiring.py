@@ -230,7 +230,7 @@ def test_epub_has_no_unlaid_search_button_over_the_native_close_control():
 
     assert "dock._find_btn" not in build_source
     assert "layout.addWidget(find_bar)" not in build_source
-    assert "groups_layout.insertWidget(1, find_bar)" in build_source
+    assert "controls_layout.insertWidget(1, find_bar)" in build_source  # Find remains visible in compact mode.
     assert "legacy_controls_host.setVisible(False)" in build_source
 
 

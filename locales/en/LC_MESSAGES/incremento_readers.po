@@ -64,7 +64,7 @@ msgstr "EPUB"
 
 #. Reader display label: ↦
 msgid "reader_exact_read_marker"
-msgstr "↦"
+msgstr "Exact read marker"
 
 #. Reader display label: Extract
 msgid "reader_extract"
@@ -3933,3 +3933,23 @@ msgstr "Showing the first {count} writing cards. Use Quick Open Content to find 
 
 msgid "workspace_load_failed"
 msgstr "Writing cards could not be loaded. Close this window and try again."
+
+#. Reader toolbar controls
+msgid "reader_marked_read"
+msgstr "Marked read {percent}%"
+
+#. Reader toolbar controls
+msgid "reader_read_sections"
+msgstr "Sections 1–{count}"
+
+#. Reader toolbar controls
+msgid "reader_pdf_appearance_original"
+msgstr "Original"
+
+#. Reader toolbar controls
+msgid "reader_pdf_appearance_dark"
+msgstr "Dark"
+
+#. Reader toolbar controls
+msgid "reader_pdf_appearance_night"
+msgstr "Night"

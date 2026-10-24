@@ -36,7 +36,7 @@ function viewer(props = {}, startup = {}) {
   const PdfLinkPreview = () => null;
   const PdfPageLinks = () => null;
   const module = { exports: {} };
-  const dom = {innerWidth: 1200, innerHeight: 900, ...startup,
+  const dom = {innerWidth: 1200, innerHeight: 900, _incPdfPending: {controlsCollapsed: false}, ...startup,
     setTimeout: callback => callback(), pycmd: command => commands.push(command)};
   vm.runInNewContext(code, {
     module, exports: module.exports,
@@ -48,6 +48,7 @@ function viewer(props = {}, startup = {}) {
       './usePdfRender.js': { usePdfRender: () => renderState },
       './HighlightLayer.jsx': { __esModule: true, default: HighlightLayer },
       './PdfSelectionLayer.jsx': { __esModule: true, default: () => null },
+      './PdfSnapshotLayer.jsx': { __esModule: true, default: () => null, PdfSnapshotButton: () => null },
       './PdfLinkPreview.jsx': { __esModule: true, default: PdfLinkPreview },
       './PdfPageLinks.jsx': { __esModule: true, default: PdfPageLinks, usePdfPageLinks: () => ({}) },
     })[specifier],
@@ -67,12 +68,38 @@ function viewer(props = {}, startup = {}) {
   ));
   return { render, layer, button, commands, renderState,
     openFind: () => {
+      dom._incPdfPending = null;
       effects.find(run => run.toString().includes('window.incrementoPdfStart ='))();
       dom.incrementoPdfOpenFind();
     },
     pageLinks: nodes => nodes.filter(node => node.type === PdfPageLinks), elements,
     preview: nodes => nodes.find(node => node.type === PdfLinkPreview) };
 }
+
+test('compact PDF keeps daily actions visible and opens secondary tools without changing the saved view', () => {
+  const ui = viewer({}, {_incPdfPending: {controlsCollapsed: true}});
+  const labels = nodes => nodes.filter(node => node.type === 'button').map(node => node.props['aria-label']);
+  assert.ok(labels(ui.render()).includes('Extract'));
+  assert.ok(labels(ui.render()).includes('Read to here'));
+  assert.ok(labels(ui.render()).includes('Review All'));
+  ui.button(ui.render(), 'Annotate').props.onClick();
+  assert.ok(ui.button(ui.render(), 'Show highlights list'));
+  assert.ok(ui.button(ui.render(), 'Show controls'));
+  ui.button(ui.render(), 'Annotate').props.onClick();
+  assert.equal(ui.button(ui.render(), 'Show highlights list'), undefined);
+  ui.button(ui.render(), 'More').props.onClick();
+  assert.ok(ui.button(ui.render(), 'Customize controls'));
+  assert.deepEqual(ui.commands, [], 'Opening drawers must not change stored compact/expanded preference');
+});
+
+test('Find in compact PDF is visible without expanding or overwriting the saved preference', () => {
+  const ui = viewer({}, {_incPdfPending: {controlsCollapsed: true}});
+  ui.render();
+  ui.openFind();
+  assert.ok(ui.render().some(node => node.type === 'input' && node.props.placeholder === 'Search this PDF'));
+  assert.ok(ui.button(ui.render(), 'Show controls'));
+  assert.deepEqual(ui.commands, []);
+});
 
 test('Find opens visibly from a minimized side reader even when the Reading group was hidden', () => {
   const ui = viewer({readingOnly: true});
@@ -82,7 +109,7 @@ test('Find opens visibly from a minimized side reader even when the Reading grou
   ui.elements(reading).find(node => node.type === 'input').props.onChange({target: {checked: false}});
   ui.button(ui.render(), 'Minimize controls').props.onClick();
   ui.openFind();
-  assert.ok(ui.button(ui.render(), 'Minimize controls'), 'Find must expand the controls');
+  assert.ok(ui.button(ui.render(), 'Show controls'), 'Find must retain the compact presentation');
   assert.ok(ui.render().find(node => node.type === 'input' && node.props.placeholder === 'Search this PDF'),
     'Find must restore the Reading group and display the search field');
 });
@@ -114,11 +141,11 @@ for (const readingOnly of [false, true]) {
   });
 }
 
-test('a reader with no saved controls preference uses its initial window size', () => {
-  const compact = viewer({}, {innerWidth: 600, innerHeight: 500});
+test('a reader with no saved controls preference starts compact at every window size', () => {
+  const compact = viewer({}, {innerWidth: 600, innerHeight: 500, _incPdfPending: null});
   assert.ok(compact.button(compact.render(), 'Show controls'));
-  const expanded = viewer();
-  assert.ok(expanded.button(expanded.render(), 'Minimize controls'));
+  const wide = viewer({}, {_incPdfPending: null});
+  assert.ok(wide.button(wide.render(), 'Show controls'));
   assert.deepEqual(compact.commands, []);
 });
 

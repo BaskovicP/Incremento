@@ -11,7 +11,7 @@ PDF_TOOLBAR_REFERENCE = (
         "navigation",
         "Navigation",
         (
-            ("navigate", "Navigate", ("contents", "previous_page", "page_location", "next_page")),
+            ("navigate", "Navigate", ("contents", "search", "previous_page", "page_location", "next_page")),
             ("zoom", "Zoom", ("zoom_out", "zoom_percent", "zoom_in")),
         ),
     ),
@@ -57,7 +57,7 @@ PDF_TOOLBAR_REFERENCE = (
             (
                 "capture",
                 "Capture",
-                ("snapshot", "highlights", "bookmark", "bookmarks"),
+                ("extract", "snapshot", "highlights", "bookmark", "bookmarks"),
             ),
         ),
     ),
@@ -77,16 +77,11 @@ PDF_TOOLBAR_REFERENCE = (
 )
 
 PDF_COMPACT_REFERENCE = (
-    "contents",
-    "previous_page",
-    "page_location",
-    "next_page",
-    "zoom_percent",
-    "clickable_links",
-    "jump_back",
-    "page_links",
-    "show_controls",
-    "customize",
+    "contents", "search", "previous_page", "page_location", "next_page",
+    "zoom_out", "zoom_percent", "zoom_in",
+    "read_to_here", "extract", "bookmark", "annotate", "review_all", "review_options",
+    "more", "show_controls",
+    "clickable_links", "jump_back", "page_links", "progress_percent",
 )
 
 PDF_EXPANDED_ROW_REFERENCE = (
@@ -103,7 +98,7 @@ PDF_ACTION_TEXT_REFERENCE = {
     "zoom_percent": "{percent}%",
     "zoom_in": "+",
     "read_to_here": "✓ Read to here",
-    "exact_read_marker": "↦",
+    "exact_read_marker": "Exact read marker",
     "clickable_links": "Links {state}",
     "jump_back": "↩ Jump Back",
     "page_links": "Page links",

@@ -205,5 +205,9 @@
   "reader_destination_confirm": "链接到此处",
   "reader_destination_marker": "目标位置",
   "reader_destination_saving": "正在检查目标位置…",
-  "reader_cancel": "取消"
+  "reader_cancel": "取消",
+  "reader_more": "更多",
+  "reader_marked_read": "已标记读完 {percent}%",
+  "reader_read_sections": "第 1–{count} 节",
+  "reader_exact_read_marker": "精确阅读标记"
 }

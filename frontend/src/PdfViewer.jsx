@@ -30,7 +30,7 @@ import {
 } from './pdfAppearance.mjs';
 
 const CONTROLS_HEIGHT = 250;
-const COLLAPSED_CONTROLS_HEIGHT = 58;
+const COLLAPSED_CONTROLS_HEIGHT = 138;
 
 const DEFAULT_LIMIT_STATUS = {
   enabled: false,
@@ -53,18 +53,16 @@ const TOOLBAR_GROUP_STYLE = {
   display: 'inline-flex',
   alignItems: 'center',
   gap: 10,
-  padding: '10px 12px',
-  borderRadius: 14,
-  background: 'linear-gradient(180deg, rgba(44,44,44,0.96), rgba(28,28,28,0.96))',
-  border: '1px solid rgba(138,138,138,0.26)',
-  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 8px 18px rgba(0,0,0,0.16)',
+  padding: '6px 8px',
+  flexWrap: 'wrap',
+  minWidth: 0,
+  borderTop: '1px solid rgba(138,138,138,0.24)',
 };
 
 const TOOLBAR_LABEL_STYLE = {
   fontSize: 10,
   fontWeight: 700,
-  letterSpacing: '0.08em',
-  textTransform: 'uppercase',
+  letterSpacing: '0.02em',
   color: 'rgba(200,200,200,0.72)',
 };
 
@@ -508,10 +506,12 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
   const [controlsCollapsed, setControlsCollapsed] = useState(() => (
     typeof window._incPdfPending?.controlsCollapsed === 'boolean'
       ? window._incPdfPending.controlsCollapsed
-      : window.innerHeight < 760 || window.innerWidth < 900
+      : true
   ));
+  const [compactPanel, setCompactPanel] = useState(null);
   const applyControlsCollapsed = useCallback(collapsed => {
     setControlsCollapsed(collapsed);
+    setCompactPanel(null);
     const cardId = Number(cardIdRef.current || 0);
     if (cardId > 0) window.pycmd('incremento_pdf_controls:' + JSON.stringify({cardId, collapsed}));
   }, [cardIdRef]);
@@ -578,7 +578,6 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
   }, []);
 
   const openFind = useCallback(() => {
-    applyControlsCollapsed(false);
     setControlVisibility(current => ({...current, reading: true}));
     setShowControlChooser(false);
     setFindOpen(true);
@@ -588,7 +587,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
         findInputRef.current.select();
       }
     }, 0);
-  }, [applyControlsCollapsed]);
+  }, []);
 
   const suppressScrollPersistence = useCallback((ms = 500) => {
     suppressScrollPersistUntilRef.current = Date.now() + Math.max(0, Number(ms) || 0);
@@ -1755,7 +1754,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       document.documentElement.lang = nextLanguage.locale;
       setAppearanceMode(normalizePdfAppearanceMode(startAppearanceMode));
       setPdfFocusState(window._incPdfFocusState);
-      if (typeof startControlsCollapsed === 'boolean') setControlsCollapsed(startControlsCollapsed);
+      setControlsCollapsed(typeof startControlsCollapsed === 'boolean' ? startControlsCollapsed : true);
+      setCompactPanel(null);
       setShowHighlightDeleteButtons(startShowHighlightDeleteButtons !== false);
       setLinkPreviewZoom(normalizePdfLinkPreviewZoom(startLinkPreviewZoom));
       setLinkBackHistory([]);
@@ -2017,7 +2017,21 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       }}
     >
       <style>{`
-        .incremento-pdf-reading-only #pdf-controls { max-height: 50vh; overflow-y: auto; }
+        #pdf-controls { max-height: min(50vh, 360px); overflow-y: auto; }
+        #pdf-controls div, #pdf-controls span { min-width: 0; flex-wrap: wrap; }
+        #pdf-controls button, #pdf-controls select { max-width: 100%; min-height: 28px; }
+        #pdf-controls .reader-control-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 4px 0; }
+        #pdf-controls .reader-control-cluster { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+        #pdf-controls .reader-zoom { margin-left: auto; }
+        #pdf-controls .reader-primary-actions { border-bottom: 1px solid #454545; padding-bottom: 8px; }
+        #pdf-controls .reader-mark-read { background: #17452e; border: 1px solid #328059; color: #9ce7b7; }
+        #pdf-controls .reader-status-row { justify-content: space-between; font-size: 12px; }
+        #pdf-controls .reader-status-row button { background: transparent; border-color: transparent; }
+        #pdf-controls .reader-progress { display: flex; flex-direction: column; gap: 4px; min-width: 140px; color: #c8c8cf; }
+        #pdf-controls .reader-progress-track { display: block; height: 4px; width: 100%; background: #444; border-radius: 3px; }
+        #pdf-controls .reader-progress-track > span { display: block; height: 100%; background: #6bc694; border-radius: 3px; }
+        #pdf-controls .reader-options { padding: 10px 0; }
+
         .incremento-pdf-reading-only #pdf-controls div,
         .incremento-pdf-reading-only #pdf-controls span { min-width: 0; flex-wrap: wrap; }
         #pdf-controls button:focus-visible,
@@ -2071,111 +2085,235 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
         }}
       >
 
-        {controlsCollapsed ? (
-          <div
-            style={{
-              minHeight: COLLAPSED_CONTROLS_HEIGHT - 12,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 10,
-              flexWrap: 'wrap',
-            }}
-          >
-            <button type="button" disabled={!contentsReady} onClick={openContents}
-              title={tr('reader_contents_hint')} aria-haspopup="dialog">
-              {tr('reader_contents')}
-            </button>
-            <button
-              aria-label={tr("reader_previous_pdf_page")}
-              onClick={() => limitAwareNav(-1)}
-              title={tr("reader_previous_page")}
+        {controlsCollapsed && (
+          <div className="reader-essential-controls">
+            <div className="reader-control-row reader-navigation">
+              <button type="button" disabled={!contentsReady} onClick={openContents}
+                title={tr('reader_contents_hint')} aria-haspopup="dialog">{tr('reader_contents')}</button>
+              <button type="button" onClick={openFind}>{tr('reader_search')}</button>
+              <span className="reader-control-cluster">
+                <button aria-label={tr('reader_previous_pdf_page')} onClick={() => limitAwareNav(-1)}>← {tr('reader_prev_short')}</button>
+                {pageJumpEditing ? (
+                  <label className="reader-control-cluster">{tr('reader_pdf_page')}
+                    <input ref={pageJumpInputRef} aria-label={tr('reader_pdf_page_number')} type="number"
+                      min="1" max={totalPages || undefined} value={pageJumpValue}
+                      onChange={event => setPageJumpValue(event.target.value)} onBlur={commitPageJump}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter') { event.preventDefault(); commitPageJump(); }
+                        else if (event.key === 'Escape') { event.preventDefault(); cancelPageJump(); }
+                      }} style={{width: 64, minWidth: 0}} />
+                    <span>/ {totalPages}</span>
+                  </label>
+                ) : <button type="button" onClick={openPageJump} title={pageLocationTitle}>{pageLocationText}</button>}
+                <button aria-label={tr('reader_next_pdf_page')} onClick={() => limitAwareNav(1)}>{tr('reader_next_short')} →</button>
+              </span>
+              <span className="reader-control-cluster reader-zoom">
+                <button aria-label={tr('reader_zoom_out')} onClick={() => adjustZoom(-1)}>−</button>
+                <span>{Math.round(zoom * 100)}%</span>
+                <button aria-label={tr('reader_zoom_in')} onClick={() => adjustZoom(1)}>+</button>
+              </span>
+            </div>
+            <div className="reader-control-row reader-primary-actions">
+              <button type="button" className="reader-mark-read" aria-label={tr('reader_read_to_here')}
+                aria-pressed={readPage > 0 && page <= readPage} onClick={limitAwareMarkRead}>✓ {tr('reader_read_to_here')}</button>
+              <button type="button" aria-label={tr('reader_extract')} onMouseDown={event => event.preventDefault()}
+                onClick={() => window.incrementoHandleExtractShortcut?.(0)}>{tr('reader_extract')}</button>
+              <button type="button" aria-label={tr('reader_bookmark')} title={tr('reader_bookmark_current')} onClick={addBookmark}>☆ {tr('reader_bookmark')}</button>
+              <button type="button" aria-expanded={compactPanel === 'annotation'} aria-controls="pdf-secondary-controls"
+                onClick={() => setCompactPanel(value => value === 'annotation' ? null : 'annotation')}>{tr('reader_annotate')}</button>
+              {!readingOnly && <>
+                <button type="button" aria-label={tr('reader_review_all')} title={tr('reader_review_all_tooltip')}
+                  onClick={() => window.pycmd(`incremento_pdf_review_all:${cardIdRef.current}:${pageRef.current}`)}>{tr('reader_review_all')}</button>
+                <button type="button" aria-label={tr('reader_review_cards')} aria-expanded={compactPanel === 'review'}
+                  aria-controls="pdf-secondary-controls" onClick={() => setCompactPanel(value => value === 'review' ? null : 'review')}>▾</button>
+              </>}
+              <button type="button" aria-expanded={compactPanel === 'more'} aria-controls="pdf-secondary-controls"
+                onClick={() => setCompactPanel(value => value === 'more' ? null : 'more')}>{tr('reader_more')}</button>
+              <button type="button" onClick={() => applyControlsCollapsed(false)} aria-expanded="false">{tr('reader_show_controls')}</button>
+            </div>
+            <div className="reader-control-row reader-status-row">
+              <span className="reader-control-cluster">
+                <button type="button" aria-pressed={clickableLinks} onClick={() => setClickableLinks(value => !value)}
+                  title={clickableLinks ? tr('reader_links_disable') : tr('reader_links_enable')}>
+                  {tr('reader_links_state', {state: clickableLinks ? tr('reader_on') : tr('reader_off')})}
+                </button>
+                <button type="button" disabled={!linkBackHistory.length} onClick={jumpBackFromPdfLink}
+                  title={linkBackHistory.length ? tr('reader_jump_back_page', {page: linkBackHistory.at(-1).page}) : tr('reader_jump_back_hint')}>
+                  ↩ {tr('reader_jump_back')}
+                </button>
+                <PdfPageLinks linksState={pageLinksState} tr={tr} />
+              </span>
+              <span className="reader-progress" title={tr('reader_read_progress_pages', {read: readPage, total: totalPages})}>
+                <span>{tr('reader_marked_read', {percent: progressPct})}</span>
+                <span className="reader-progress-track" role="progressbar" aria-label={tr('reader_read_progress')}
+                  aria-valuemin="0" aria-valuemax="100" aria-valuenow={progressPct}><span style={{width: `${progressPct}%`}} /></span>
+              </span>
+            </div>
+          </div>
+        )}
+        {findOpen && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+            <span style={{ color: '#d4d4d8', fontWeight: 600 }}>{tr('reader_find')}</span>
+            <input
+              ref={findInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder={tr("reader_search_pdf")}
+              style={{
+                width: 260,
+                height: 32,
+                padding: '0 10px',
+                borderRadius: 8,
+                border: '1px solid rgba(180,180,180,0.35)',
+                background: 'rgba(255,255,255,0.08)',
+                color: '#f5f5f5',
+              }}
+            />
+            <span
+              role="status"
+              aria-live="polite"
+              style={{ minWidth: 64, textAlign: 'center', color: '#a1a1aa', fontSize: 12 }}
             >
-              &#8592; {tr('reader_prev_short')}
-            </button>
-            <button
-              type="button"
-              onClick={() => { applyControlsCollapsed(false); openPageJump(); }}
-              title={pageLocationTitle}
-              style={{ minWidth: 132, fontWeight: 700 }}
-            >
-              {pageLocationText}
-            </button>
-            <button
-              aria-label={tr("reader_next_pdf_page")}
-              onClick={() => limitAwareNav(1)}
-              title={tr("reader_next_page")}
-            >
-              {tr('reader_next_short')} &#8594;
-            </button>
-            <span style={{ color: '#d4d4d8', fontWeight: 700, minWidth: 48, textAlign: 'center' }}>
-              {Math.round(zoom * 100)}%
+              {searchQuery ? (searchHits.length ? tr('reader_search_position', { current: Math.max(0, activeSearchHitIndex + 1), total: searchHits.length }) : tr('reader_zero_results')) : ''}
             </span>
-            <select
-              aria-label={tr("reader_pdf_appearance")}
-              title={tr("reader_pdf_appearance_hint")}
-              value={appearanceMode}
-              onChange={(event) => applyAppearanceMode(event.target.value)}
-              style={{
-                ...PDF_APPEARANCE_SELECT_STYLE,
-                height: 30,
-                borderRadius: 6,
-              }}
-            >
-              {PDF_APPEARANCE_MODES.map((mode) => (
-                <option key={mode} value={mode} style={PDF_APPEARANCE_OPTION_STYLE}>
-                  {tr(`reader_pdf_appearance_${mode}`)}
-                </option>
-              ))}
-            </select>
             <button
               type="button"
-              aria-pressed={clickableLinks}
-              title={clickableLinks ? tr("reader_links_disable") : tr("reader_links_enable")}
-              onClick={() => setClickableLinks(value => !value)}
-              style={{
-                border: clickableLinks ? '1px solid rgba(96,165,250,0.78)' : '1px solid rgba(180,180,180,0.35)',
-                background: clickableLinks ? 'rgba(59,130,246,0.20)' : 'rgba(255,255,255,0.04)',
-                color: clickableLinks ? 'rgb(147,197,253)' : 'inherit',
-                fontWeight: clickableLinks ? 700 : 400,
-              }}
+              disabled={!searchHits.length}
+              onClick={() => window.pycmd('incremento_pdf_find_nav:' + JSON.stringify({ direction: -1 }))}
             >
-              {tr('reader_links_state', { state: clickableLinks ? tr('reader_on') : tr('reader_off') })}
+              {tr('reader_prev_short')}
             </button>
             <button
               type="button"
-              disabled={linkBackHistory.length === 0}
-              onClick={jumpBackFromPdfLink}
-              title={linkBackHistory.length > 0 ? tr("reader_jump_back_page", { page: linkBackHistory.at(-1).page }) : tr("reader_jump_back_hint")}
-              style={{
-                opacity: linkBackHistory.length > 0 ? 1 : 0.48,
-                cursor: linkBackHistory.length > 0 ? 'pointer' : 'default',
-              }}
+              disabled={!searchHits.length}
+              onClick={() => window.pycmd('incremento_pdf_find_nav:' + JSON.stringify({ direction: 1 }))}
             >
-              ↩ {tr('reader_jump_back')}
+              {tr('reader_next_short')}
             </button>
-            <PdfPageLinks linksState={pageLinksState} tr={tr} />
-            {focusButton}
-              {referenceControls?.({ready: !error && renderInfo.cardId === cardIdRef.current && renderInfo.page === page && renderInfo.textReady === true && !busyRef.current})}
+            {findStartPage !== null && (
+              <button
+                type="button"
+                disabled={Number(page) === Number(findStartPage)}
+                onClick={returnToFindStartPage}
+              >
+                {tr('reader_return_to_search_page', { page: findStartPage })}
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => applyControlsCollapsed(false)}
-              aria-expanded="false"
-              style={{
-                border: '1px solid rgba(96,165,250,0.65)',
-                color: 'rgb(147,197,253)',
-                background: 'rgba(59,130,246,0.14)',
-                fontWeight: 700,
+              onClick={() => {
+                setFindOpen(false);
+                setSearchQuery('');
+                setFindStartPage(null);
               }}
             >
-              {tr('reader_show_controls')}
+              {tr('reader_close')}
             </button>
-            <button type="button" onClick={() => setShowControlChooser(true)} title={tr("reader_choose_controls")}>
-              {tr('reader_customize')}
+            <button
+              type="button"
+              onClick={() => window.pycmd('incremento_pdf_open_find_dialog')}
+            >
+              {tr('reader_all')}
             </button>
           </div>
-        ) : (
-          <>
+        )}
+
+        {/* ── Row 3: Daily reading limit ── */}
+        {limitEnabled && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '4px 10px',
+                borderRadius: 999,
+                background: limitReached ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.12)',
+                border: limitReached ? '1px solid rgba(245,158,11,0.45)' : '1px solid rgba(34,197,94,0.35)',
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+              title={tr("reader_daily_limit")}
+            >
+              <span>{tr('reader_today_pages', { used: limitUsed, total: limitTotal })}</span>
+              <span style={{ opacity: 0.72 }}>•</span>
+              <span>{tr('reader_remaining', { count: Math.max(0, limitRemaining) })}</span>
+              <span style={{ opacity: 0.72 }}>•</span>
+              <span>{tr(`reader_limit_${limitStatus?.enforcement_mode || 'warning'}`)}</span>
+              {overrideEnabled && (
+                <>
+                  <span style={{ opacity: 0.72 }}>•</span>
+                  <span style={{ color: 'rgb(96,165,250)' }}>{tr('reader_override_active')}</span>
+                </>
+              )}
+            </span>
+            {allowedMaxPage != null && (
+              <span style={{ fontSize: 11, color: '#c8c8c8' }}>
+                {tr('reader_stop_point', { page: allowedMaxPage })}
+              </span>
+            )}
+          </div>
+        )}
+
+        {limitNotice && (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              marginBottom: 6,
+              padding: '6px 10px',
+              borderRadius: 8,
+              background:
+                limitNotice.kind === 'warning'
+                  ? 'rgba(245,158,11,0.16)'
+                  : limitNotice.kind === 'info'
+                    ? 'rgba(59,130,246,0.15)'
+                    : 'rgba(239,68,68,0.14)',
+              border:
+                limitNotice.kind === 'warning'
+                  ? '1px solid rgba(245,158,11,0.40)'
+                  : limitNotice.kind === 'info'
+                    ? '1px solid rgba(59,130,246,0.40)'
+                    : '1px solid rgba(239,68,68,0.40)',
+              fontSize: 12,
+            }}
+          >
+            <span>{limitNotice.text}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {limitNotice.kind === 'soft_lock' && !overrideEnabled && (
+                <button onClick={requestLimitOverride}>
+                  {tr('reader_override_today')}
+                </button>
+              )}
+              <button onClick={clearLimitNotice}>
+                {tr('reader_dismiss')}
+              </button>
+            </span>
+          </div>
+        )}
+
+        {(!controlsCollapsed || compactPanel) && (
+          <div id="pdf-secondary-controls">
+            {controlsCollapsed && compactPanel === 'more' && <div className="reader-control-row reader-options">
+              <select aria-label={tr("reader_pdf_appearance")} value={appearanceMode}
+                onChange={(event) => applyAppearanceMode(event.target.value)} style={PDF_APPEARANCE_SELECT_STYLE}>
+                {PDF_APPEARANCE_MODES.map(mode => <option key={mode} value={mode} style={PDF_APPEARANCE_OPTION_STYLE}>{tr(`reader_pdf_appearance_${mode}`)}</option>)}
+              </select>
+              {focusButton}
+              {referenceControls?.({ready: !error && renderInfo.cardId === cardIdRef.current && renderInfo.page === page && renderInfo.textReady === true && !busyRef.current})}
+              <button type="button" onClick={() => setShowControlChooser(true)}>{tr('reader_customize_controls')}</button>
+              <button type="button" onClick={limitAwareMarkReadAnchor} title={tr('reader_place_exact_marker')}>{tr('reader_exact_read_marker')}</button>
+              {!readingOnly && <>
+                <button type="button" onClick={() => window.pycmd(`incremento_pdf_limit_settings:${cardIdRef.current}`)}>{tr('reader_reading_limit')}</button>
+                <button type="button" onClick={() => window.pycmd(`incremento_pdf_regenerate_cover:${cardIdRef.current}`)}>{tr('reader_regenerate_cover')}</button>
+              </>}
+            </div>}
+            {!controlsCollapsed && <>
             <div style={{ display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
               {focusButton}
               {referenceControls?.({ready: !error && renderInfo.cardId === cardIdRef.current && renderInfo.page === page && renderInfo.textReady === true && !busyRef.current})}
@@ -2209,6 +2347,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
           {controlVisibility.navigation && <div style={TOOLBAR_GROUP_STYLE}>
             <div style={TOOLBAR_STACK_STYLE}>
               <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_navigate')}</span>
+              <button type="button" onClick={openFind}>{tr('reader_search')}</button>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                 <button type="button" disabled={!contentsReady} onClick={openContents}
                   title={tr('reader_contents_hint')} aria-haspopup="dialog">
@@ -2352,8 +2491,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                     display: 'inline-flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    width: 34,
-                    height: 30,
+                    minWidth: 34,
+                    minHeight: 30,
                     padding: 0,
                     fontSize: 16,
                     fontWeight: 800,
@@ -2366,7 +2505,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                   }}
                   onClick={limitAwareMarkReadAnchor}
                 >
-                  ↦
+                  {tr('reader_exact_read_marker')}
                 </button>
                 <button
                   type="button"
@@ -2455,155 +2594,10 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
           </div>}
         </div>
 
-        {controlVisibility.reading && findOpen && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-            <span style={{ color: '#d4d4d8', fontWeight: 600 }}>{tr('reader_find')}</span>
-            <input
-              ref={findInputRef}
-              type="text"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={tr("reader_search_pdf")}
-              style={{
-                width: 260,
-                height: 32,
-                padding: '0 10px',
-                borderRadius: 8,
-                border: '1px solid rgba(180,180,180,0.35)',
-                background: 'rgba(255,255,255,0.08)',
-                color: '#f5f5f5',
-              }}
-            />
-            <span
-              role="status"
-              aria-live="polite"
-              style={{ minWidth: 64, textAlign: 'center', color: '#a1a1aa', fontSize: 12 }}
-            >
-              {searchQuery ? (searchHits.length ? tr('reader_search_position', { current: Math.max(0, activeSearchHitIndex + 1), total: searchHits.length }) : tr('reader_zero_results')) : ''}
-            </span>
-            <button
-              type="button"
-              disabled={!searchHits.length}
-              onClick={() => window.pycmd('incremento_pdf_find_nav:' + JSON.stringify({ direction: -1 }))}
-            >
-              {tr('reader_prev_short')}
-            </button>
-            <button
-              type="button"
-              disabled={!searchHits.length}
-              onClick={() => window.pycmd('incremento_pdf_find_nav:' + JSON.stringify({ direction: 1 }))}
-            >
-              {tr('reader_next_short')}
-            </button>
-            {findStartPage !== null && (
-              <button
-                type="button"
-                disabled={Number(page) === Number(findStartPage)}
-                onClick={returnToFindStartPage}
-              >
-                {tr('reader_return_to_search_page', { page: findStartPage })}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => {
-                setFindOpen(false);
-                setSearchQuery('');
-                setFindStartPage(null);
-              }}
-            >
-              {tr('reader_close')}
-            </button>
-            <button
-              type="button"
-              onClick={() => window.pycmd('incremento_pdf_open_find_dialog')}
-            >
-              {tr('reader_all')}
-            </button>
-          </div>
-        )}
-
-        {/* ── Row 3: Daily reading limit ── */}
-        {controlVisibility.reading && limitEnabled && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '4px 10px',
-                borderRadius: 999,
-                background: limitReached ? 'rgba(245,158,11,0.18)' : 'rgba(34,197,94,0.12)',
-                border: limitReached ? '1px solid rgba(245,158,11,0.45)' : '1px solid rgba(34,197,94,0.35)',
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-              title={tr("reader_daily_limit")}
-            >
-              <span>{tr('reader_today_pages', { used: limitUsed, total: limitTotal })}</span>
-              <span style={{ opacity: 0.72 }}>•</span>
-              <span>{tr('reader_remaining', { count: Math.max(0, limitRemaining) })}</span>
-              <span style={{ opacity: 0.72 }}>•</span>
-              <span>{tr(`reader_limit_${limitStatus?.enforcement_mode || 'warning'}`)}</span>
-              {overrideEnabled && (
-                <>
-                  <span style={{ opacity: 0.72 }}>•</span>
-                  <span style={{ color: 'rgb(96,165,250)' }}>{tr('reader_override_active')}</span>
-                </>
-              )}
-            </span>
-            {allowedMaxPage != null && (
-              <span style={{ fontSize: 11, color: '#c8c8c8' }}>
-                {tr('reader_stop_point', { page: allowedMaxPage })}
-              </span>
-            )}
-          </div>
-        )}
-
-        {controlVisibility.reading && limitNotice && (
-          <div
-            role="status"
-            aria-live="polite"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 8,
-              marginBottom: 6,
-              padding: '6px 10px',
-              borderRadius: 8,
-              background:
-                limitNotice.kind === 'warning'
-                  ? 'rgba(245,158,11,0.16)'
-                  : limitNotice.kind === 'info'
-                    ? 'rgba(59,130,246,0.15)'
-                    : 'rgba(239,68,68,0.14)',
-              border:
-                limitNotice.kind === 'warning'
-                  ? '1px solid rgba(245,158,11,0.40)'
-                  : limitNotice.kind === 'info'
-                    ? '1px solid rgba(59,130,246,0.40)'
-                    : '1px solid rgba(239,68,68,0.40)',
-              fontSize: 12,
-            }}
-          >
-            <span>{limitNotice.text}</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              {limitNotice.kind === 'soft_lock' && !overrideEnabled && (
-                <button onClick={requestLimitOverride}>
-                  {tr('reader_override_today')}
-                </button>
-              )}
-              <button onClick={clearLimitNotice}>
-                {tr('reader_dismiss')}
-              </button>
-            </span>
-          </div>
-        )}
-
+            </>}
         {/* ── Row 4: Tools + card management ── */}
         <div style={{ display: 'flex', alignItems: 'stretch', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
-          {hasPdfCard && controlVisibility.annotation && (
+          {hasPdfCard && (controlsCollapsed ? compactPanel === 'annotation' : controlVisibility.annotation) && (
             <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12, flexWrap: 'wrap' }}>
               <div style={TOOLBAR_STACK_STYLE}>
                 <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_annotate')}</span>
@@ -2664,6 +2658,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
               <span style={TOOLBAR_SEPARATOR_STYLE} />
               <div style={TOOLBAR_STACK_STYLE}>
                 <span style={TOOLBAR_LABEL_STYLE}>{tr('reader_capture')}</span>
+                <button type="button" onMouseDown={event => event.preventDefault()} onClick={() => window.incrementoHandleExtractShortcut?.(0)}>{tr('reader_extract')}</button>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <PdfSnapshotButton mode={snapshotMode} tr={tr} onToggle={() => {
                     paintPdfSnapshotPreview(snapPreviewRef.current, null);
@@ -2718,7 +2713,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
             </div>
           )}
 
-          {!readingOnly && controlVisibility.review && <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12, flexWrap: 'wrap' }}>
+          {!readingOnly && (controlsCollapsed ? compactPanel === 'review' : controlVisibility.review) && <div style={{ ...TOOLBAR_GROUP_STYLE, padding: '10px 14px', gap: 12, flexWrap: 'wrap' }}>
             {hasPdfCard && (
               <>
                 <div style={TOOLBAR_STACK_STYLE}>
@@ -2807,7 +2802,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
           </div>}
         </div>
 
-          </>
+          </div>
         )}
 
       </div>
@@ -2890,7 +2885,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       )}
 
       {/* Bookmarks panel */}
-      {hasPdfCard && controlVisibility.annotation && showBookmarksPanel && (
+      {hasPdfCard && (controlsCollapsed || controlVisibility.annotation) && showBookmarksPanel && (
         <div
           style={{
             position: 'fixed',
@@ -2972,7 +2967,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       )}
 
       {/* Highlights panel */}
-      {hasPdfCard && controlVisibility.annotation && showHighlightsPanel && (
+      {hasPdfCard && (controlsCollapsed || controlVisibility.annotation) && showHighlightsPanel && (
         <div
           style={{
             position: 'fixed',

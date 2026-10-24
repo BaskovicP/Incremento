@@ -7135,8 +7135,9 @@ def openSettingsFunction() -> None:
         return
 
     # Toolbar visibility is saved directly by each reader, independently of Settings.
-    cfg['pdf_controls_collapsed_by_profile'] = copy.deepcopy(
-        _load_addon_config(mw.addonManager, __name__).get('pdf_controls_collapsed_by_profile', {}))
+    latest_reader_config = _load_addon_config(mw.addonManager, __name__)
+    for reader_preference in ('pdf_controls_collapsed_by_profile', 'epub_controls_collapsed_by_profile'):
+        cfg[reader_preference] = copy.deepcopy(latest_reader_config.get(reader_preference, {}))
     cfg["ui_language"] = dlg.ui_language
     cfg["shortcuts"] = dlg.shortcuts_map
     cfg["extract_notetype"] = dlg.extract_notetype_name

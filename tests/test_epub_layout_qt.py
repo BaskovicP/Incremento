@@ -186,7 +186,9 @@ def test_real_epub_dock_can_be_narrowed_with_expanded_or_hidden_controls(scale, 
         main = QMainWindow()
         main.resize(1800, 1200)
         main.setCentralWidget(QLabel('Synthetic study area'))
-        main.addonManager = types.SimpleNamespace(getConfig=lambda _: {})
+        reader._active_profile = lambda: 'LayoutTest'
+        main.addonManager = types.SimpleNamespace(getConfig=lambda _: {
+            'epub_controls_collapsed_by_profile': {'LayoutTest': {'main': False}}})
         reader.mw = main
         reader.QWebEngineProfile = Profile
         reader._EpubRequestInterceptor = QObject
@@ -219,7 +221,7 @@ def test_real_epub_dock_can_be_narrowed_with_expanded_or_hidden_controls(scale, 
             QTimer.singleShot(0, accept)
             dock._customize_controls_btn.click()
 
-        # Expanded controls are now resizable by default; a wide minimum on
+        # Explicitly expanded controls remain resizable; a wide minimum on
         # startup was the bug, rather than a state to restore after customization.
         wait_for(lambda: dock.minimumSizeHint().width() <= 350)
         for _ in range(2):

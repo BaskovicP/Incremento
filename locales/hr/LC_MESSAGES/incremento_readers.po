@@ -64,7 +64,7 @@ msgstr "EPUB"
 
 #. Reader display label: ↦
 msgid "reader_exact_read_marker"
-msgstr "↦"
+msgstr "Točna oznaka čitanja"
 
 #. Reader display label: Extract
 msgid "reader_extract"
@@ -3971,3 +3971,23 @@ msgstr "Prikazano je prvih {count} kartica za pisanje. Ostale pronađi pomoću B
 
 msgid "workspace_load_failed"
 msgstr "Kartice za pisanje nije moguće učitati. Zatvori ovaj prozor i pokušaj ponovno."
+
+#. Reader toolbar controls
+msgid "reader_marked_read"
+msgstr "Označeno pročitano {percent}%"
+
+#. Reader toolbar controls
+msgid "reader_read_sections"
+msgstr "Odjeljci 1–{count}"
+
+#. Reader toolbar controls
+msgid "reader_pdf_appearance_original"
+msgstr "Izvorno"
+
+#. Reader toolbar controls
+msgid "reader_pdf_appearance_dark"
+msgstr "Tamno"
+
+#. Reader toolbar controls
+msgid "reader_pdf_appearance_night"
+msgstr "Noćno"

@@ -12,6 +12,22 @@ import aqt
 import epub_dock
 
 
+def test_epub_control_preference_saves_only_to_captured_active_profile(monkeypatch):
+    config = {'epub_controls_collapsed_by_profile': {'B': {'main': False}},
+              'pdf_controls_collapsed_by_profile': {'A': {'main': False}}, 'future': 7}
+    saved = []
+    monkeypatch.setattr(epub_dock, '_active_profile', lambda: 'A')
+    monkeypatch.setattr(epub_dock, 'load_addon_config', lambda *args: config)
+    monkeypatch.setattr(epub_dock, 'save_addon_config', lambda *args: saved.append(args[-1]))
+    assert epub_dock.save_epub_controls_collapsed(True, profile='A') is True
+    assert saved[-1]['epub_controls_collapsed_by_profile'] == {'A': {'main': True}, 'B': {'main': False}}
+    assert saved[-1]['pdf_controls_collapsed_by_profile'] == {'A': {'main': False}}
+    assert saved[-1]['future'] == 7
+    assert epub_dock.save_epub_controls_collapsed(False, profile='B') is False
+    assert epub_dock.save_epub_controls_collapsed('false', profile='A') is False
+    assert len(saved) == 1
+
+
 @pytest.mark.parametrize('model', ['Incremento Writing', 'Basic'])
 def test_markdown_editor_is_unavailable_for_non_document_notes_even_with_matching_metadata(monkeypatch, model):
     class Note(dict):
@@ -121,7 +137,7 @@ def test_epub_read_progress_state_uses_saved_section_and_ten_segments():
         "read_count": 5,
         "percent": 63,
         "filled_segments": 6,
-        "range_text": "s.1–5",
+        "range_text": "Sections 1–5",
     }
 
 

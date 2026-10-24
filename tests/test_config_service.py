@@ -2,6 +2,20 @@ import config_service
 import pytest
 
 
+def test_epub_control_preferences_are_profile_scoped_and_independent_of_pdf():
+    raw = {'epub_controls_collapsed_by_profile': {
+        'A': {'main': False}, 'B': {'main': True}, 'bad': {'main': 'false'}},
+        'pdf_controls_collapsed_by_profile': {'A': {'main': True, 'side': False}}}
+    config = config_service.normalize_config(raw)
+    assert config['epub_controls_collapsed_by_profile'] == {'A': {'main': False}, 'B': {'main': True}}
+    assert config_service.configured_epub_controls_collapsed(config, 'A') is False
+    assert config_service.configured_epub_controls_collapsed(config, 'B') is True
+    assert config_service.configured_epub_controls_collapsed(config, 'missing') is None
+    assert config_service.configured_pdf_controls_collapsed(config, 'A') is True
+    assert config_service.configured_pdf_controls_collapsed(config, 'A', reading_only=True) is False
+    assert raw['epub_controls_collapsed_by_profile']['bad'] == {'main': 'false'}
+
+
 def test_pdf_control_visibility_remembers_each_reader_and_profile_without_mutating_input():
     from copy import deepcopy
     raw = {'pdf_controls_collapsed_by_profile': {

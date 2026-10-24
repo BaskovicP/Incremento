@@ -500,6 +500,7 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
     def open_dialog(shortcuts, **kwargs):
         # A background side pane can change its own controls while Settings is open.
         saved['pdf_controls_collapsed_by_profile'] = {'A': {'main': False, 'side': True}}
+        saved['epub_controls_collapsed_by_profile'] = {'A': {'main': False}}
         assert kwargs["current_companion_browser"] == "chrome"
         assert kwargs["current_web_search_engine"] == "google"
         assert kwargs["current_search_remember_logins"] is False
@@ -532,7 +533,8 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
     exec(compile(ast.Module(body=[helper, function], type_ignores=[]), str(path), "exec"), namespace)
     namespace["openSettingsFunction"]()
 
-    assert saved == {**original, 'pdf_controls_collapsed_by_profile': {'A': {'main': False, 'side': True}}}
+    assert saved == {**original, 'pdf_controls_collapsed_by_profile': {'A': {'main': False, 'side': True}},
+                     'epub_controls_collapsed_by_profile': {'A': {'main': False}}}
     if accepted and not save_fails:
         stored = manager.writeConfig.call_args.args[1]
         assert stored["companion_browser"] == "firefox"
@@ -542,6 +544,7 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         assert stored["epub_focus_mode"] is False
         namespace['_epub_dock_mod'].apply_epub_focus_preference.assert_called_once_with(stored)
         assert stored['pdf_controls_collapsed_by_profile'] == {'A': {'main': False, 'side': True}}
+        assert stored['epub_controls_collapsed_by_profile'] == {'A': {'main': False}}
         namespace['_pdf_dock_mod'].apply_pdf_focus_preference.assert_called_once_with(stored)
         namespace["_selection_search_mod"].configure_search.assert_called_once_with(stored)
         namespace["_configure_companion_browser"].assert_called_once_with(stored)
