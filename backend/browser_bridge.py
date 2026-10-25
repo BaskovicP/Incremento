@@ -809,16 +809,16 @@ def _make_temp_pdf_path() -> str:
     return temp_path
 
 
-def _extract_pdf_pages_text_off_main(pdf_path: str) -> list[str]:
+def _extract_pdf_pages_text_off_main(pdf_path: str) -> list[str] | None:
     try:
         from .pdf_manager import extract_pdf_pages_text
     except ImportError:
         from pdf_manager import extract_pdf_pages_text  # type: ignore
 
     try:
-        return extract_pdf_pages_text(pdf_path, allow_qt=False)
+        return extract_pdf_pages_text(pdf_path, allow_qt=False, require_success=True)
     except Exception:
-        return []
+        return None
 
 
 def _prepare_pdf_item_off_main(normalized: dict) -> None:
@@ -849,7 +849,9 @@ def _prepare_pdf_item_off_main(normalized: dict) -> None:
 
         normalized[_PREPARED_PDF_PATH_KEY] = temp_pdf_path
         page_texts = _extract_pdf_pages_text_off_main(temp_pdf_path)
-        if page_texts:
+        # Empty text is a completed result. None keeps the existing Qt fallback
+        # when neither background extraction backend could read the document.
+        if page_texts is not None:
             normalized[_PREPARED_PDF_PAGE_TEXTS_KEY] = page_texts
     except Exception:
         try:

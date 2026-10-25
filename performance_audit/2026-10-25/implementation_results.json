@@ -1,0 +1,1083 @@
+{
+  "date": "2026-10-25",
+  "baseline_commit": "6125c2ca3f4e21cdd52a861c765d3916bb838d28",
+  "scope": "First implementation batch; component measurements are not end-to-end UI latency.",
+  "source_sha256": {
+    "backend/answer_schedule.py": "0de6336d1d7872ba130b552d2153788d97094b0bbf50dc36c31d330993f81f9a",
+    "backend/browser_bridge.py": "f749ad8bc6006c91543014dbb44b25c4e3fa2cee62bc1353e3adbf3fc0c6461e",
+    "backend/db.py": "60bacb2cc1ce37851f598e5adfbba8014f8dabf107661b68fcc87a232a040e31",
+    "backend/pdf_manager.py": "4bb0de1a2feff7e59e9dffccd836df7ccfc96faaa0ab17962d97c2c14d593302",
+    "backend/statistics.py": "a09728e968b6e8c4a8969bef360a529a69c52337c15c23760e692685ae768960",
+    "backend/review_time_tracker.py": "a35d2b124c2af8320182c949fa919c8e94aa549936a008bbcc80e09a2e510e0a",
+    "chrome_extensions/incremento_companion/src/bookmarks/bookmarkModel.js": "b4d682ed6f6b835cfb944ff0b2871f9171fb02101893db98c9d59320bfd28a3b"
+  },
+  "changes": [
+    {
+      "id": "F03",
+      "status": "implemented",
+      "scope": "Combined aggregate and joint attribution writes for free-review events.",
+      "remaining": "Synchronous durable writes remain; do not disable durability to optimize them.",
+      "before": [
+        {
+          "tags_per_populated_group": 1,
+          "atomic_file_writes_per_cycle": 4,
+          "fixture_bytes": 604,
+          "median_ms": 3.8,
+          "samples_ms": [
+            4.775,
+            4.097,
+            3.8,
+            3.723,
+            3.714
+          ]
+        },
+        {
+          "tags_per_populated_group": 128,
+          "atomic_file_writes_per_cycle": 4,
+          "fixture_bytes": 19120,
+          "median_ms": 26.139,
+          "samples_ms": [
+            26.094,
+            26.163,
+            25.842,
+            26.139,
+            26.236
+          ]
+        },
+        {
+          "tags_per_populated_group": 512,
+          "atomic_file_writes_per_cycle": 4,
+          "fixture_bytes": 79024,
+          "median_ms": 97.005,
+          "samples_ms": [
+            98.06,
+            95.179,
+            97.005,
+            94.29,
+            97.594
+          ]
+        }
+      ],
+      "after": [
+        {
+          "tags_per_populated_group": 1,
+          "atomic_file_writes_per_cycle": 2,
+          "combined_event_api": true,
+          "fixture_bytes": 604,
+          "median_ms": 2.476,
+          "samples_ms": [
+            2.699,
+            2.451,
+            2.483,
+            2.442,
+            2.476
+          ]
+        },
+        {
+          "tags_per_populated_group": 128,
+          "atomic_file_writes_per_cycle": 2,
+          "combined_event_api": true,
+          "fixture_bytes": 19120,
+          "median_ms": 15.197,
+          "samples_ms": [
+            15.672,
+            15.424,
+            15.197,
+            15.065,
+            15.013
+          ]
+        },
+        {
+          "tags_per_populated_group": 512,
+          "atomic_file_writes_per_cycle": 2,
+          "combined_event_api": true,
+          "fixture_bytes": 79024,
+          "median_ms": 55.818,
+          "samples_ms": [
+            54.841,
+            56.55,
+            54.433,
+            56.098,
+            55.818
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F05",
+      "status": "implemented",
+      "schema_version": 19,
+      "scope": "Stable indexed lookup identities for optional PDF/EPUB/OCR FTS mirrors.",
+      "remaining": "Fresh insertion overhead is measured in fts_tradeoffs.json; profile real upgrade sizes.",
+      "before": {
+        "available": true,
+        "replace_existing": [
+          {
+            "pages": 500,
+            "fts_delete_plan": [
+              [
+                3,
+                0,
+                215,
+                "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:"
+              ]
+            ],
+            "median_ms": 22.995,
+            "samples_ms": [
+              22.393,
+              22.999,
+              22.995
+            ]
+          },
+          {
+            "pages": 1000,
+            "fts_delete_plan": [
+              [
+                3,
+                0,
+                215,
+                "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:"
+              ]
+            ],
+            "median_ms": 66.589,
+            "samples_ms": [
+              66.458,
+              66.589,
+              67.657
+            ]
+          },
+          {
+            "pages": 2000,
+            "fts_delete_plan": [
+              [
+                3,
+                0,
+                215,
+                "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:"
+              ]
+            ],
+            "median_ms": 230.204,
+            "samples_ms": [
+              230.204,
+              231.557,
+              227.867
+            ]
+          },
+          {
+            "pages": 4000,
+            "fts_delete_plan": [
+              [
+                3,
+                0,
+                215,
+                "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:"
+              ]
+            ],
+            "median_ms": 814.01,
+            "samples_ms": [
+              814.01,
+              818.701,
+              804.722
+            ]
+          }
+        ]
+      },
+      "after": {
+        "available": true,
+        "replace_existing": [
+          {
+            "pages": 500,
+            "indexed_fts_key_lookup": true,
+            "fts_delete_plan": [
+              [
+                3,
+                0,
+                46,
+                "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:="
+              ],
+              [
+                6,
+                0,
+                0,
+                "SCALAR SUBQUERY 1"
+              ],
+              [
+                10,
+                6,
+                39,
+                "SEARCH pdf_text_fts_keys USING COVERING INDEX sqlite_autoindex_pdf_text_fts_keys_1 (card_id=? AND page=?)"
+              ]
+            ],
+            "median_ms": 18.411,
+            "samples_ms": [
+              18.411,
+              19.07,
+              18.148
+            ]
+          },
+          {
+            "pages": 1000,
+            "indexed_fts_key_lookup": true,
+            "fts_delete_plan": [
+              [
+                3,
+                0,
+                46,
+                "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:="
+              ],
+              [
+                6,
+                0,
+                0,
+                "SCALAR SUBQUERY 1"
+              ],
+              [
+                10,
+                6,
+                39,
+                "SEARCH pdf_text_fts_keys USING COVERING INDEX sqlite_autoindex_pdf_text_fts_keys_1 (card_id=? AND page=?)"
+              ]
+            ],
+            "median_ms": 35.998,
+            "samples_ms": [
+              35.998,
+              34.078,
+              38.585
+            ]
+          },
+          {
+            "pages": 2000,
+            "indexed_fts_key_lookup": true,
+            "fts_delete_plan": [
+              [
+                3,
+                0,
+                46,
+                "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:="
+              ],
+              [
+                6,
+                0,
+                0,
+                "SCALAR SUBQUERY 1"
+              ],
+              [
+                10,
+                6,
+                39,
+                "SEARCH pdf_text_fts_keys USING COVERING INDEX sqlite_autoindex_pdf_text_fts_keys_1 (card_id=? AND page=?)"
+              ]
+            ],
+            "median_ms": 74.015,
+            "samples_ms": [
+              82.933,
+              74.015,
+              71.309
+            ]
+          },
+          {
+            "pages": 4000,
+            "indexed_fts_key_lookup": true,
+            "fts_delete_plan": [
+              [
+                3,
+                0,
+                46,
+                "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:="
+              ],
+              [
+                6,
+                0,
+                0,
+                "SCALAR SUBQUERY 1"
+              ],
+              [
+                10,
+                6,
+                39,
+                "SEARCH pdf_text_fts_keys USING COVERING INDEX sqlite_autoindex_pdf_text_fts_keys_1 (card_id=? AND page=?)"
+              ]
+            ],
+            "median_ms": 126.463,
+            "samples_ms": [
+              128.705,
+              126.463,
+              125.526
+            ]
+          }
+        ]
+      },
+      "tradeoffs": {
+        "scope": "Compare schema 18/19 fresh PDF indexing, size, and one-time migration cost.\n\nUses isolated temporary SQLite files with Incremento's WAL/NORMAL settings.\nSource indexes and text are synthetic. No live profiles or Anki are accessed.",
+        "environment": {
+          "python": "3.14.5",
+          "sqlite": "3.53.2",
+          "machine": "arm64"
+        },
+        "source_sha256": {
+          "backend/db.py": "60bacb2cc1ce37851f598e5adfbba8014f8dabf107661b68fcc87a232a040e31",
+          "backend/db_schema.py": "bceed638c39119deebb8934dc117c7db881c3668aadcfac91d4df6b6a09b55bb"
+        },
+        "results": [
+          {
+            "schema": 18,
+            "pages": 1000,
+            "fresh_insert_median_ms": 10.257,
+            "fresh_insert_samples_ms": [
+              10.257,
+              9.229,
+              11.273,
+              10.11,
+              11.58
+            ],
+            "database_allocated_bytes_before_migration": [
+              696320,
+              696320,
+              696320,
+              696320,
+              696320
+            ],
+            "upgrade_to_19_samples_ms": [
+              3.121,
+              3.693,
+              3.098,
+              3.547,
+              2.888
+            ],
+            "upgrade_to_19_median_ms": 3.121
+          },
+          {
+            "schema": 19,
+            "pages": 1000,
+            "fresh_insert_median_ms": 17.622,
+            "fresh_insert_samples_ms": [
+              17.622,
+              18.084,
+              18.962,
+              17.504,
+              17.578
+            ],
+            "database_allocated_bytes_before_migration": [
+              753664,
+              753664,
+              753664,
+              753664,
+              753664
+            ],
+            "upgrade_to_19_samples_ms": [],
+            "upgrade_to_19_median_ms": null
+          },
+          {
+            "schema": 18,
+            "pages": 4000,
+            "fresh_insert_median_ms": 45.926,
+            "fresh_insert_samples_ms": [
+              40.899,
+              43.131,
+              45.926,
+              47.169,
+              46.5
+            ],
+            "database_allocated_bytes_before_migration": [
+              1089536,
+              1089536,
+              1089536,
+              1089536,
+              1089536
+            ],
+            "upgrade_to_19_samples_ms": [
+              10.716,
+              11.061,
+              11.335,
+              10.399,
+              10.523
+            ],
+            "upgrade_to_19_median_ms": 10.716
+          },
+          {
+            "schema": 19,
+            "pages": 4000,
+            "fresh_insert_median_ms": 115.464,
+            "fresh_insert_samples_ms": [
+              115.464,
+              110.622,
+              119.536,
+              115.382,
+              149.794
+            ],
+            "database_allocated_bytes_before_migration": [
+              1224704,
+              1224704,
+              1224704,
+              1224704,
+              1224704
+            ],
+            "upgrade_to_19_samples_ms": [],
+            "upgrade_to_19_median_ms": null
+          }
+        ],
+        "delete_document_with_unrelated_corpus": [
+          {
+            "schema": 18,
+            "unrelated_pages": 0,
+            "deleted_document_pages": 50,
+            "median_ms": 0.276,
+            "samples_ms": [
+              0.38,
+              0.219,
+              0.245,
+              0.276,
+              0.297
+            ]
+          },
+          {
+            "schema": 19,
+            "unrelated_pages": 0,
+            "deleted_document_pages": 50,
+            "median_ms": 0.145,
+            "samples_ms": [
+              0.166,
+              0.138,
+              0.145,
+              0.146,
+              0.137
+            ]
+          },
+          {
+            "schema": 18,
+            "unrelated_pages": 2000,
+            "deleted_document_pages": 50,
+            "median_ms": 8.331,
+            "samples_ms": [
+              8.83,
+              8.331,
+              8.929,
+              7.759,
+              7.976
+            ]
+          },
+          {
+            "schema": 19,
+            "unrelated_pages": 2000,
+            "deleted_document_pages": 50,
+            "median_ms": 0.164,
+            "samples_ms": [
+              0.377,
+              0.158,
+              0.155,
+              0.164,
+              0.218
+            ]
+          },
+          {
+            "schema": 18,
+            "unrelated_pages": 8000,
+            "deleted_document_pages": 50,
+            "median_ms": 25.719,
+            "samples_ms": [
+              25.638,
+              25.719,
+              25.837,
+              26.067,
+              25.621
+            ]
+          },
+          {
+            "schema": 19,
+            "unrelated_pages": 8000,
+            "deleted_document_pages": 50,
+            "median_ms": 0.184,
+            "samples_ms": [
+              0.347,
+              0.186,
+              0.176,
+              0.184,
+              0.173
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "F06",
+      "status": "partial",
+      "scope": "Linear iterative parent validation; existing persisted row and timestamp behavior retained.",
+      "remaining": "Define timestamp semantics before implementing changed-row persistence and batched multi-node edits.",
+      "before": [
+        {
+          "shape": "star",
+          "nodes": 1000,
+          "median_ms": 2.384,
+          "samples_ms": [
+            2.536,
+            2.374,
+            2.384
+          ]
+        },
+        {
+          "shape": "star",
+          "nodes": 2000,
+          "median_ms": 4.853,
+          "samples_ms": [
+            4.82,
+            4.853,
+            5.068
+          ]
+        },
+        {
+          "shape": "star",
+          "nodes": 4000,
+          "median_ms": 10.866,
+          "samples_ms": [
+            10.866,
+            11.327,
+            10.414
+          ]
+        },
+        {
+          "shape": "chain",
+          "nodes": 1000,
+          "median_ms": 19.917,
+          "samples_ms": [
+            20.581,
+            19.917,
+            19.579
+          ]
+        },
+        {
+          "shape": "chain",
+          "nodes": 2000,
+          "median_ms": 78.097,
+          "samples_ms": [
+            73.649,
+            78.097,
+            78.422
+          ]
+        },
+        {
+          "shape": "chain",
+          "nodes": 4000,
+          "median_ms": 275.577,
+          "samples_ms": [
+            310.955,
+            268.526,
+            275.577
+          ]
+        }
+      ],
+      "after": [
+        {
+          "shape": "star",
+          "nodes": 1000,
+          "median_ms": 2.512,
+          "samples_ms": [
+            2.512,
+            2.458,
+            2.666
+          ]
+        },
+        {
+          "shape": "star",
+          "nodes": 2000,
+          "median_ms": 5.124,
+          "samples_ms": [
+            5.255,
+            4.801,
+            5.124
+          ]
+        },
+        {
+          "shape": "star",
+          "nodes": 4000,
+          "median_ms": 10.267,
+          "samples_ms": [
+            10.267,
+            10.555,
+            9.928
+          ]
+        },
+        {
+          "shape": "chain",
+          "nodes": 1000,
+          "median_ms": 2.8,
+          "samples_ms": [
+            2.866,
+            2.8,
+            2.781
+          ]
+        },
+        {
+          "shape": "chain",
+          "nodes": 2000,
+          "median_ms": 5.394,
+          "samples_ms": [
+            5.391,
+            5.394,
+            5.471
+          ]
+        },
+        {
+          "shape": "chain",
+          "nodes": 4000,
+          "median_ms": 11.108,
+          "samples_ms": [
+            11.247,
+            11.108,
+            10.692
+          ]
+        }
+      ]
+    },
+    {
+      "id": "F08",
+      "status": "partial",
+      "scope": "Pass completed empty extraction to note creation for PDF bytes and direct downloads; preserve unavailable-backend fallback.",
+      "remaining": "Move webpage rendering, cover generation, managed copying/indexing and Qt-only fallback work off the UI path with lifecycle coverage.",
+      "comparison": {
+        "baseline_commit": "6125c2ca3f4e21cdd52a861c765d3916bb838d28",
+        "environment": {
+          "python": "3.14.5",
+          "machine": "arm64",
+          "pymupdf": "1.28.2",
+          "poppler_available": true
+        },
+        "scope": "Measure completed empty-PDF preparation without Anki or a GUI.\n\nUses real PyMuPDF/Poppler extraction and synthetic PDFs in a temporary folder.\nThe manager's prepared-text decision is compiled verbatim from its AST. Note\ncreation, cover rendering, storage, and actual Qt extraction are excluded; the\nQt fallback is an empty boundary fake. This is not end-to-end import latency.",
+        "source_sha256": {
+          "before": {
+            "backend/pdf_manager.py": "c3d22229e86c4cd7135f6629a90ffb6d7d61e73e38fcbd24dece729a2763fabe",
+            "backend/browser_bridge.py": "2665c3185b2cca1b27a4bb52823d6f811a298e2ea726a7065d72b3ec6e64f41f"
+          },
+          "after": {
+            "backend/pdf_manager.py": "4bb0de1a2feff7e59e9dffccd836df7ccfc96faaa0ab17962d97c2c14d593302",
+            "backend/browser_bridge.py": "f749ad8bc6006c91543014dbb44b25c4e3fa2cee62bc1353e3adbf3fc0c6461e"
+          }
+        },
+        "results": [
+          {
+            "version": "before",
+            "pages": 1,
+            "bytes": 518,
+            "median_ms": 23.901,
+            "samples_ms": [
+              46.416,
+              23.901,
+              25.877,
+              22.943,
+              23.872
+            ],
+            "extraction_passes_per_import": [
+              2,
+              2,
+              2,
+              2,
+              2
+            ],
+            "allow_qt_passes_per_import": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          {
+            "version": "after",
+            "pages": 1,
+            "bytes": 518,
+            "median_ms": 11.419,
+            "samples_ms": [
+              11.843,
+              11.853,
+              10.79,
+              11.419,
+              10.787
+            ],
+            "extraction_passes_per_import": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "allow_qt_passes_per_import": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "version": "before",
+            "pages": 100,
+            "bytes": 16760,
+            "median_ms": 32.178,
+            "samples_ms": [
+              31.016,
+              33.303,
+              33.201,
+              32.178,
+              31.98
+            ],
+            "extraction_passes_per_import": [
+              2,
+              2,
+              2,
+              2,
+              2
+            ],
+            "allow_qt_passes_per_import": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          {
+            "version": "after",
+            "pages": 100,
+            "bytes": 16760,
+            "median_ms": 15.77,
+            "samples_ms": [
+              16.358,
+              15.829,
+              15.114,
+              14.667,
+              15.77
+            ],
+            "extraction_passes_per_import": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "allow_qt_passes_per_import": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          {
+            "version": "before",
+            "pages": 500,
+            "bytes": 83168,
+            "median_ms": 65.749,
+            "samples_ms": [
+              66.151,
+              65.749,
+              64.31,
+              64.283,
+              66.209
+            ],
+            "extraction_passes_per_import": [
+              2,
+              2,
+              2,
+              2,
+              2
+            ],
+            "allow_qt_passes_per_import": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          {
+            "version": "after",
+            "pages": 500,
+            "bytes": 83168,
+            "median_ms": 31.623,
+            "samples_ms": [
+              33.909,
+              33.121,
+              31.623,
+              30.724,
+              29.373
+            ],
+            "extraction_passes_per_import": [
+              1,
+              1,
+              1,
+              1,
+              1
+            ],
+            "allow_qt_passes_per_import": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "F09",
+      "status": "partial",
+      "scope": "Bookmark model construction with one private accumulator and at most one caller-map clone.",
+      "remaining": "Folder subtree indexes and deferred DOM mounting require separate rendering measurements.",
+      "before": {
+        "environment": {
+          "node": "v25.6.0",
+          "platform": "darwin",
+          "architecture": "arm64"
+        },
+        "source_sha256": "321170af6e73305ee3d48b64e7eb58b4f469c33add6b9afbc4df4fba420dc075",
+        "scope": "Pure source functions and synthetic nodes; no extension UI latency measured",
+        "results": [
+          {
+            "id_style": "numeric",
+            "bookmarks": 1000,
+            "median_ms": 1.167,
+            "samples_ms": [
+              2.306,
+              1.167,
+              0.904
+            ]
+          },
+          {
+            "id_style": "numeric",
+            "bookmarks": 2500,
+            "median_ms": 2.562,
+            "samples_ms": [
+              2.562,
+              2.379,
+              4.006
+            ]
+          },
+          {
+            "id_style": "numeric",
+            "bookmarks": 5000,
+            "median_ms": 8.346,
+            "samples_ms": [
+              8.38,
+              8.346,
+              6.212
+            ]
+          },
+          {
+            "id_style": "opaque",
+            "bookmarks": 1000,
+            "median_ms": 37.697,
+            "samples_ms": [
+              42.743,
+              37.697,
+              28.054
+            ]
+          },
+          {
+            "id_style": "opaque",
+            "bookmarks": 2500,
+            "median_ms": 424.327,
+            "samples_ms": [
+              424.327,
+              429.679,
+              423.151
+            ]
+          },
+          {
+            "id_style": "opaque",
+            "bookmarks": 5000,
+            "median_ms": 2065.372,
+            "samples_ms": [
+              2073.526,
+              2065.372,
+              2047.9
+            ]
+          }
+        ]
+      },
+      "after": {
+        "environment": {
+          "node": "v25.6.0",
+          "platform": "darwin",
+          "architecture": "arm64"
+        },
+        "source_sha256": "b4d682ed6f6b835cfb944ff0b2871f9171fb02101893db98c9d59320bfd28a3b",
+        "scope": "Pure source functions and synthetic nodes; no extension UI latency measured",
+        "results": [
+          {
+            "id_style": "numeric",
+            "bookmarks": 1000,
+            "median_ms": 1.01,
+            "samples_ms": [
+              1.636,
+              0.882,
+              1.01
+            ]
+          },
+          {
+            "id_style": "numeric",
+            "bookmarks": 2500,
+            "median_ms": 1.843,
+            "samples_ms": [
+              1.701,
+              1.843,
+              1.982
+            ]
+          },
+          {
+            "id_style": "numeric",
+            "bookmarks": 5000,
+            "median_ms": 3.374,
+            "samples_ms": [
+              3.374,
+              3.002,
+              3.486
+            ]
+          },
+          {
+            "id_style": "opaque",
+            "bookmarks": 1000,
+            "median_ms": 1.612,
+            "samples_ms": [
+              2.829,
+              1.612,
+              0.792
+            ]
+          },
+          {
+            "id_style": "opaque",
+            "bookmarks": 2500,
+            "median_ms": 1.814,
+            "samples_ms": [
+              2.37,
+              1.814,
+              1.553
+            ]
+          },
+          {
+            "id_style": "opaque",
+            "bookmarks": 5000,
+            "median_ms": 3.709,
+            "samples_ms": [
+              3.898,
+              3.372,
+              3.709
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "F11",
+      "status": "implemented",
+      "scope": "Use linked Undo IDs and membership instead of repeated global set differences.",
+      "remaining": "SQL boundary was excluded from the benchmark.",
+      "before": [
+        {
+          "tracked_cards": 1000,
+          "case": "Undo one answer then clear Redo without a revlog delta",
+          "revlog_lookup": "boundary fake; SQL cost excluded",
+          "median_ms": 18.891,
+          "samples_ms": [
+            19.277,
+            18.891,
+            18.294
+          ]
+        },
+        {
+          "tracked_cards": 2000,
+          "case": "Undo one answer then clear Redo without a revlog delta",
+          "revlog_lookup": "boundary fake; SQL cost excluded",
+          "median_ms": 79.081,
+          "samples_ms": [
+            79.123,
+            77.812,
+            79.081
+          ]
+        },
+        {
+          "tracked_cards": 4000,
+          "case": "Undo one answer then clear Redo without a revlog delta",
+          "revlog_lookup": "boundary fake; SQL cost excluded",
+          "median_ms": 310.515,
+          "samples_ms": [
+            310.515,
+            315.01,
+            303.909
+          ]
+        }
+      ],
+      "after": [
+        {
+          "tracked_cards": 1000,
+          "case": "Undo one answer then clear Redo without a revlog delta",
+          "revlog_lookup": "boundary fake; SQL cost excluded",
+          "median_ms": 0.536,
+          "samples_ms": [
+            0.534,
+            0.537,
+            0.536
+          ]
+        },
+        {
+          "tracked_cards": 2000,
+          "case": "Undo one answer then clear Redo without a revlog delta",
+          "revlog_lookup": "boundary fake; SQL cost excluded",
+          "median_ms": 1.086,
+          "samples_ms": [
+            1.077,
+            1.086,
+            1.307
+          ]
+        },
+        {
+          "tracked_cards": 4000,
+          "case": "Undo one answer then clear Redo without a revlog delta",
+          "revlog_lookup": "boundary fake; SQL cost excluded",
+          "median_ms": 2.959,
+          "samples_ms": [
+            2.959,
+            2.848,
+            2.98
+          ]
+        }
+      ]
+    }
+  ],
+  "next_priority_ids": [
+    "F01",
+    "F02",
+    "F04",
+    "F07",
+    "F10"
+  ],
+  "untouched_finding_ids": [
+    "F01",
+    "F02",
+    "F04",
+    "F07",
+    "F10",
+    "F12",
+    "F13",
+    "F14",
+    "F15",
+    "F16",
+    "F17",
+    "F18",
+    "F19",
+    "F20",
+    "F21",
+    "F22",
+    "F23",
+    "F24"
+  ],
+  "checks_file": "implementation_checks.json",
+  "original_audit_files_preserved": [
+    "findings.json",
+    "file_inventory.json",
+    "measurements.json",
+    "bookmark_measurements.json",
+    "checks.json"
+  ],
+  "release_checks_file": "release_checks.json",
+  "release_validation_passed": true
+}

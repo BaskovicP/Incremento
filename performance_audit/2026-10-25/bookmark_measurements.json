@@ -1,0 +1,71 @@
+{
+  "environment": {
+    "node": "v25.6.0",
+    "platform": "darwin",
+    "architecture": "arm64"
+  },
+  "source_sha256": "321170af6e73305ee3d48b64e7eb58b4f469c33add6b9afbc4df4fba420dc075",
+  "scope": "Pure source functions and synthetic nodes; no extension UI latency measured",
+  "results": [
+    {
+      "id_style": "numeric",
+      "bookmarks": 1000,
+      "median_ms": 1.204,
+      "samples_ms": [
+        2.427,
+        1.204,
+        0.997
+      ]
+    },
+    {
+      "id_style": "numeric",
+      "bookmarks": 2500,
+      "median_ms": 2.762,
+      "samples_ms": [
+        2.762,
+        2.315,
+        2.818
+      ]
+    },
+    {
+      "id_style": "numeric",
+      "bookmarks": 5000,
+      "median_ms": 6.499,
+      "samples_ms": [
+        8.159,
+        6.399,
+        6.499
+      ]
+    },
+    {
+      "id_style": "opaque",
+      "bookmarks": 1000,
+      "median_ms": 41.777,
+      "samples_ms": [
+        47.611,
+        41.777,
+        30.847
+      ]
+    },
+    {
+      "id_style": "opaque",
+      "bookmarks": 2500,
+      "median_ms": 428.28,
+      "samples_ms": [
+        434.634,
+        409.928,
+        428.28
+      ]
+    },
+    {
+      "id_style": "opaque",
+      "bookmarks": 5000,
+      "median_ms": 2061.89,
+      "samples_ms": [
+        2093.941,
+        2061.89,
+        2041.888
+      ]
+    }
+  ]
+}

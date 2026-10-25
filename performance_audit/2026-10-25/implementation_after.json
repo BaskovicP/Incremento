@@ -1,0 +1,470 @@
+{
+  "environment": {
+    "python": "3.14.5",
+    "platform": "Darwin",
+    "machine": "arm64",
+    "sqlite": "3.53.2"
+  },
+  "scope": "Synthetic local inputs; medians of three samples unless a measurement lists five; no live Anki or GUI latency measured",
+  "source_sha256": {
+    "backend/db.py": "60bacb2cc1ce37851f598e5adfbba8014f8dabf107661b68fcc87a232a040e31",
+    "backend/statistics.py": "a09728e968b6e8c4a8969bef360a529a69c52337c15c23760e692685ae768960",
+    "backend/config_service.py": "17e2650bc60894fcf4ad92c20b843a8bf6df44fa1ea12252944261902a4a764a",
+    "backend/priority_manager.py": "d1dfd3365181d6dbc2cb21cba2e35ed62210cadff49e4a2735db0a5fda72d704",
+    "backend/db_connection.py": "55941bff0dddb50dedf916d85396f3ee33317ea062b7410443890d73d5fa27aa",
+    "frontend/pdf_bookshelf.py": "baa4b2694ea3c2b746235fb8afbf03109eafd4d2761e7d9a6e07e4c0dded51fd",
+    "frontend/database_entries_dialog.py": "3377246b79cbe23a069ed8fc4ea1413304309bb80d3a990eba89ff6f13c0edfb",
+    "backend/epub_manager.py": "60cb136a3c0aaae26be3bcee0e81aaed5501c243261adc75a4c88e028f1150ea",
+    "backend/answer_schedule.py": "0de6336d1d7872ba130b552d2153788d97094b0bbf50dc36c31d330993f81f9a"
+  },
+  "tree_structure": [
+    {
+      "shape": "star",
+      "nodes": 1000,
+      "median_ms": 2.512,
+      "samples_ms": [
+        2.512,
+        2.458,
+        2.666
+      ]
+    },
+    {
+      "shape": "star",
+      "nodes": 2000,
+      "median_ms": 5.124,
+      "samples_ms": [
+        5.255,
+        4.801,
+        5.124
+      ]
+    },
+    {
+      "shape": "star",
+      "nodes": 4000,
+      "median_ms": 10.267,
+      "samples_ms": [
+        10.267,
+        10.555,
+        9.928
+      ]
+    },
+    {
+      "shape": "chain",
+      "nodes": 1000,
+      "median_ms": 2.8,
+      "samples_ms": [
+        2.866,
+        2.8,
+        2.781
+      ]
+    },
+    {
+      "shape": "chain",
+      "nodes": 2000,
+      "median_ms": 5.394,
+      "samples_ms": [
+        5.391,
+        5.394,
+        5.471
+      ]
+    },
+    {
+      "shape": "chain",
+      "nodes": 4000,
+      "median_ms": 11.108,
+      "samples_ms": [
+        11.247,
+        11.108,
+        10.692
+      ]
+    }
+  ],
+  "priority_reads": {
+    "rows": 4000,
+    "public_helper": {
+      "median_ms": 143.455,
+      "samples_ms": [
+        145.206,
+        143.455,
+        141.152
+      ]
+    },
+    "same_connection_per_row": {
+      "median_ms": 5.987,
+      "samples_ms": [
+        5.997,
+        5.738,
+        5.987
+      ]
+    },
+    "batched_900": {
+      "median_ms": 1.184,
+      "samples_ms": [
+        1.239,
+        1.184,
+        1.168
+      ]
+    }
+  },
+  "statistics": [
+    {
+      "tags_per_populated_group": 1,
+      "atomic_file_writes_per_cycle": 2,
+      "combined_event_api": true,
+      "fixture_bytes": 604,
+      "median_ms": 2.476,
+      "samples_ms": [
+        2.699,
+        2.451,
+        2.483,
+        2.442,
+        2.476
+      ]
+    },
+    {
+      "tags_per_populated_group": 128,
+      "atomic_file_writes_per_cycle": 2,
+      "combined_event_api": true,
+      "fixture_bytes": 19120,
+      "median_ms": 15.197,
+      "samples_ms": [
+        15.672,
+        15.424,
+        15.197,
+        15.065,
+        15.013
+      ]
+    },
+    {
+      "tags_per_populated_group": 512,
+      "atomic_file_writes_per_cycle": 2,
+      "combined_event_api": true,
+      "fixture_bytes": 79024,
+      "median_ms": 55.818,
+      "samples_ms": [
+        54.841,
+        56.55,
+        54.433,
+        56.098,
+        55.818
+      ]
+    }
+  ],
+  "search": {
+    "pages": 12000,
+    "page_chars": 1380,
+    "fts5_active": true,
+    "search": [
+      {
+        "requested_results": 120,
+        "candidate_limit": 3000,
+        "median_ms": 164.645,
+        "samples_ms": [
+          163.736,
+          171.321,
+          164.645
+        ]
+      },
+      {
+        "requested_results": 1200,
+        "candidate_limit": 30000,
+        "median_ms": 516.456,
+        "samples_ms": [
+          481.765,
+          518.206,
+          516.456
+        ]
+      }
+    ],
+    "highlight_like_plan": [
+      [
+        5,
+        0,
+        223,
+        "SCAN pdf_highlights USING INDEX idx_pdf_highlights_card_page"
+      ]
+    ]
+  },
+  "fts_replacement": {
+    "available": true,
+    "replace_existing": [
+      {
+        "pages": 500,
+        "indexed_fts_key_lookup": true,
+        "fts_delete_plan": [
+          [
+            3,
+            0,
+            46,
+            "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:="
+          ],
+          [
+            6,
+            0,
+            0,
+            "SCALAR SUBQUERY 1"
+          ],
+          [
+            10,
+            6,
+            39,
+            "SEARCH pdf_text_fts_keys USING COVERING INDEX sqlite_autoindex_pdf_text_fts_keys_1 (card_id=? AND page=?)"
+          ]
+        ],
+        "median_ms": 18.411,
+        "samples_ms": [
+          18.411,
+          19.07,
+          18.148
+        ]
+      },
+      {
+        "pages": 1000,
+        "indexed_fts_key_lookup": true,
+        "fts_delete_plan": [
+          [
+            3,
+            0,
+            46,
+            "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:="
+          ],
+          [
+            6,
+            0,
+            0,
+            "SCALAR SUBQUERY 1"
+          ],
+          [
+            10,
+            6,
+            39,
+            "SEARCH pdf_text_fts_keys USING COVERING INDEX sqlite_autoindex_pdf_text_fts_keys_1 (card_id=? AND page=?)"
+          ]
+        ],
+        "median_ms": 35.998,
+        "samples_ms": [
+          35.998,
+          34.078,
+          38.585
+        ]
+      },
+      {
+        "pages": 2000,
+        "indexed_fts_key_lookup": true,
+        "fts_delete_plan": [
+          [
+            3,
+            0,
+            46,
+            "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:="
+          ],
+          [
+            6,
+            0,
+            0,
+            "SCALAR SUBQUERY 1"
+          ],
+          [
+            10,
+            6,
+            39,
+            "SEARCH pdf_text_fts_keys USING COVERING INDEX sqlite_autoindex_pdf_text_fts_keys_1 (card_id=? AND page=?)"
+          ]
+        ],
+        "median_ms": 74.015,
+        "samples_ms": [
+          82.933,
+          74.015,
+          71.309
+        ]
+      },
+      {
+        "pages": 4000,
+        "indexed_fts_key_lookup": true,
+        "fts_delete_plan": [
+          [
+            3,
+            0,
+            46,
+            "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:="
+          ],
+          [
+            6,
+            0,
+            0,
+            "SCALAR SUBQUERY 1"
+          ],
+          [
+            10,
+            6,
+            39,
+            "SEARCH pdf_text_fts_keys USING COVERING INDEX sqlite_autoindex_pdf_text_fts_keys_1 (card_id=? AND page=?)"
+          ]
+        ],
+        "median_ms": 126.463,
+        "samples_ms": [
+          128.705,
+          126.463,
+          125.526
+        ]
+      }
+    ]
+  },
+  "database_text_offsets": [
+    {
+      "chars": 128000,
+      "matches": 2000,
+      "median_ms": 43.846,
+      "samples_ms": [
+        43.846,
+        42.818,
+        44.92
+      ]
+    },
+    {
+      "chars": 256000,
+      "matches": 4000,
+      "median_ms": 172.793,
+      "samples_ms": [
+        166.983,
+        172.793,
+        174.422
+      ]
+    },
+    {
+      "chars": 512000,
+      "matches": 8000,
+      "median_ms": 651.624,
+      "samples_ms": [
+        651.873,
+        651.624,
+        605.188
+      ]
+    }
+  ],
+  "bookshelf_duplicates": [
+    {
+      "documents_with_same_normalized_origin": 200,
+      "stored_peer_references": 39800,
+      "median_ms": 6.386,
+      "samples_ms": [
+        6.565,
+        6.382,
+        6.386
+      ]
+    },
+    {
+      "documents_with_same_normalized_origin": 400,
+      "stored_peer_references": 159600,
+      "median_ms": 20.52,
+      "samples_ms": [
+        20.52,
+        21.537,
+        20.029
+      ]
+    },
+    {
+      "documents_with_same_normalized_origin": 800,
+      "stored_peer_references": 639200,
+      "median_ms": 71.218,
+      "samples_ms": [
+        70.484,
+        73.897,
+        71.218
+      ]
+    }
+  ],
+  "config": [
+    {
+      "presets": 1,
+      "median_ms": 1.637,
+      "samples_ms": [
+        1.597,
+        1.701,
+        1.637
+      ],
+      "normalizations_per_sample": 50
+    },
+    {
+      "presets": 25,
+      "median_ms": 5.241,
+      "samples_ms": [
+        5.057,
+        5.241,
+        5.247
+      ],
+      "normalizations_per_sample": 50
+    },
+    {
+      "presets": 100,
+      "median_ms": 15.83,
+      "samples_ms": [
+        15.83,
+        19.483,
+        14.447
+      ],
+      "normalizations_per_sample": 50
+    }
+  ],
+  "undo_tracker": [
+    {
+      "tracked_cards": 1000,
+      "case": "Undo one answer then clear Redo without a revlog delta",
+      "revlog_lookup": "boundary fake; SQL cost excluded",
+      "median_ms": 0.536,
+      "samples_ms": [
+        0.534,
+        0.537,
+        0.536
+      ]
+    },
+    {
+      "tracked_cards": 2000,
+      "case": "Undo one answer then clear Redo without a revlog delta",
+      "revlog_lookup": "boundary fake; SQL cost excluded",
+      "median_ms": 1.086,
+      "samples_ms": [
+        1.077,
+        1.086,
+        1.307
+      ]
+    },
+    {
+      "tracked_cards": 4000,
+      "case": "Undo one answer then clear Redo without a revlog delta",
+      "revlog_lookup": "boundary fake; SQL cost excluded",
+      "median_ms": 2.959,
+      "samples_ms": [
+        2.959,
+        2.848,
+        2.98
+      ]
+    }
+  ],
+  "epub_metadata": [
+    {
+      "sections": 50,
+      "bytes": 1001980,
+      "median_ms": 0.755,
+      "samples_ms": [
+        0.726,
+        0.755,
+        0.923,
+        0.782,
+        0.715
+      ]
+    },
+    {
+      "sections": 200,
+      "bytes": 10007930,
+      "median_ms": 7.475,
+      "samples_ms": [
+        8.148,
+        7.441,
+        7.253,
+        7.515,
+        7.475
+      ]
+    }
+  ]
+}

@@ -7378,6 +7378,8 @@ def openAboutFunction() -> None:
         f"<ul>{points}</ul>"
         f"<p><b>{_html_escape(_t('root_about_disclaimer_label'))}</b> {_html_escape(_t('root_about_disclaimer'))}</p>"
         f"<p><b>{_html_escape(_t('root_about_license_label'))}</b> {_html_escape(_t('root_about_license'))}</p>"
+        f"<p><b>🙏 {_html_escape(_t('root_about_credits_label'))}</b></p>"
+        f"<p>{_html_escape(_t('root_about_credits', name='Ameen Shokoya'))} 🧪 💡</p>"
     )
 
 

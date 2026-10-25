@@ -832,7 +832,9 @@ def set_pdf_daily_limit_override(
 # ---------------------------------------------------------------------------
 
 
-def extract_pdf_pages_text(pdf_path: str, *, allow_qt: bool = True) -> list[str]:
+def extract_pdf_pages_text(
+    pdf_path: str, *, allow_qt: bool = True, require_success: bool = False,
+) -> list[str]:
     """Extract per-page text from a PDF.
 
     Extraction order:
@@ -840,13 +842,18 @@ def extract_pdf_pages_text(pdf_path: str, *, allow_qt: bool = True) -> list[str]
          mode 3) and is safe to call from background threads.
       2. Qt QPdfDocument — fast for regular PDFs; skips invisible text.
       3. pdftotext (poppler) — last resort external binary.
+
+    With require_success, distinguish a completed empty result from unavailable
+    extraction backends so background callers can retain the Qt fallback.
     """
+    completed = False
     # 1. PyMuPDF — best at reading Tesseract OCR output
     try:
         import fitz
         doc = fitz.open(pdf_path)
         pages = [doc.load_page(i).get_text("text").strip() for i in range(len(doc))]
         doc.close()
+        completed = bool(pages)
         if any(pages):
             return pages
     except Exception:
@@ -862,6 +869,7 @@ def extract_pdf_pages_text(pdf_path: str, *, allow_qt: bool = True) -> list[str]
                 for i in range(doc.pageCount()):
                     sel = doc.getAllText(i)
                     pages.append(sel.text().strip() if sel.isValid() else "")
+                completed = True
                 if any(pages):
                     return pages
         except Exception:
@@ -886,6 +894,7 @@ def extract_pdf_pages_text(pdf_path: str, *, allow_qt: bool = True) -> list[str]
                 text=True,
             )
             if proc.returncode == 0:
+                completed = True
                 parts = [p.strip() for p in (proc.stdout or "").split("\f")]
                 while parts and not parts[-1]:
                     parts.pop()
@@ -894,6 +903,8 @@ def extract_pdf_pages_text(pdf_path: str, *, allow_qt: bool = True) -> list[str]
         except Exception:
             pass
 
+    if require_success and not completed:
+        raise RuntimeError("PDF text extraction unavailable.")
     return []
 
 

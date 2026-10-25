@@ -2041,7 +2041,7 @@ class TestConnectionSwitching:
         conn = db.get_connection(addon_dir, "TestProfile")
 
         assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 18
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 19
         migrations = conn.execute(
             "SELECT version, name FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -2064,6 +2064,7 @@ class TestConnectionSwitching:
             (16, "document_link_positions"),
             (17, "highlight_document_indexes"),
             (18, "epub_connections"),
+            (19, "search_fts_keys"),
         ]
 
     def test_worker_thread_gets_a_distinct_connection(self):
@@ -3163,6 +3164,32 @@ class TestKnowledgeTree:
 
     def teardown_method(self):
         _reset_db_module()
+
+    @pytest.mark.parametrize("shape", ["chain", "balanced", "star"])
+    @pytest.mark.parametrize("reverse_order", [False, True])
+    def test_parent_validation_reads_shared_ancestors_only_once(self, shape, reverse_order):
+        class Parents(dict):
+            lookups = 0
+
+            def get(self, key, default=None):
+                self.lookups += 1
+                return super().get(key, default)
+
+        rows = {1: None, **{
+            cid: cid - 1 if shape == "chain" else cid // 2 if shape == "balanced" else 1
+            for cid in range(2, 4001)
+        }}
+        parents = Parents(dict(reversed(list(rows.items()))) if reverse_order else rows)
+
+        db._validate_knowledge_tree_parents(parents)
+
+        assert parents.lookups <= len(parents) * 2
+
+    def test_parent_validation_rejects_a_cycle_after_a_shared_completed_branch(self):
+        parents = {1: None, 2: 1, 3: 2, 4: 3, 5: 6, 6: 7, 7: 5}
+
+        with pytest.raises(ValueError, match="cycle"):
+            db._validate_knowledge_tree_parents(parents)
 
     def test_set_and_get_knowledge_tree_nodes(self):
         db.set_knowledge_tree_structure(

@@ -1,0 +1,42 @@
+{
+  "audit_date": "2026-10-25",
+  "python": {
+    "command": ".venv/bin/python -m pytest -o addopts= tests/test_db.py tests/test_statistics.py tests/test_search_repository.py tests/test_knowledge_tree.py tests/test_pdf_bookshelf.py tests/test_database_entries_dialog.py tests/test_epub_dock.py tests/test_learn_dialog.py -q",
+    "passed": 517,
+    "failed": 10,
+    "seconds": 13.4,
+    "failure_scope": "Ten browser integration cases in tests/test_epub_dock.py could not launch the optional Chromium process under the execution permissions; macOS sandbox parameter initialization failed. These are not demonstrated product assertion defects.",
+    "failed_test_families": [
+      "test_saved_highlight_menu_renders_all_three_svg_icons_in_local_chapter",
+      "test_cross_paragraph_highlight_preserves_layout_and_edits_as_one_highlight",
+      "test_epub_pin_pickup_preserves_endpoint_and_drag_tracks_pointer",
+      "test_epub_start_pin_at_text_node_boundary_anchors_to_first_selected_line"
+    ]
+  },
+  "frontend_node": {
+    "command": "npm --prefix frontend test",
+    "passed": 247,
+    "failed": 0
+  },
+  "extension_node": {
+    "command": "npm --prefix chrome_extensions/incremento_companion test",
+    "passed": 228,
+    "failed": 0
+  },
+  "benchmarks": {
+    "python": "completed with assertions",
+    "javascript": "completed with assertions"
+  },
+  "audit_artifact_checks": {
+    "ruff": "passed",
+    "node_syntax": "passed",
+    "local_links_and_evidence_symbols": "validated"
+  },
+  "not_run": [
+    "Full Python suite",
+    "Native live-Anki UI profiling",
+    "Release packaging",
+    "Source rebuilds"
+  ],
+  "browser_probe": "An agent-created hidden tab was closed after browser policy rejected local-file navigation; no DOM timing result is claimed."
+}

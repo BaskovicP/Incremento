@@ -732,6 +732,70 @@ def _migration_18_epub_connections(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_19_search_fts_keys(conn: sqlite3.Connection) -> None:
+    """Give optional FTS mirrors indexed, VACUUM-stable row identities.
+
+    FTS identifier columns are UNINDEXED. Deleting by those columns scans the
+    entire mirror for each source row. Small ordinary lookup tables resolve the
+    composite source key to an explicit integer primary key instead. Keeping
+    these identities separate also avoids depending on implicit source rowids.
+    """
+    conn.execute("BEGIN IMMEDIATE")
+    for prefix, key_columns, text_columns in (
+        ("pdf_text", ("card_id", "page"), ("text",)),
+        ("epub_text", ("card_id", "section_index"), ("title", "text")),
+        ("note_ocr", ("note_id", "card_id", "image_name"), ("text",)),
+    ):
+        source, mirror, lookup = f"{prefix}_index", f"{prefix}_fts", f"{prefix}_fts_keys"
+        if conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (mirror,),
+        ).fetchone() is None:
+            # Migration 3 deliberately leaves these absent without FTS5.
+            continue
+        keys = ", ".join(key_columns)
+        columns = ", ".join((*key_columns, *text_columns))
+        definitions = ", ".join(
+            f"{key} {'TEXT' if key == 'image_name' else 'INTEGER'} NOT NULL"
+            for key in key_columns
+        )
+        conn.execute(
+            f"CREATE TABLE {lookup} (id INTEGER PRIMARY KEY, {definitions}, UNIQUE ({keys}))"
+        )
+        conn.execute(f"INSERT INTO {lookup} ({keys}) SELECT {keys} FROM {source} ORDER BY rowid")
+        conn.execute(f"DELETE FROM {mirror}")
+        source_columns = ", ".join(f"s.{column}" for column in (*key_columns, *text_columns))
+        conn.execute(
+            f"INSERT INTO {mirror} (rowid, {columns}) "
+            f"SELECT k.id, {source_columns} FROM {source} s JOIN {lookup} k USING ({keys})"
+        )
+
+        old_key = " AND ".join(f"{key} = old.{key}" for key in key_columns)
+        new_key = " AND ".join(f"{key} = new.{key}" for key in key_columns)
+        new_keys = ", ".join(f"new.{key}" for key in key_columns)
+        new_values = ", ".join(f"new.{column}" for column in (*key_columns, *text_columns))
+        # Let FTS allocate new rowids; replacements reuse the lookup identity.
+        # Capture the FTS rowid before the lookup changes last_insert_rowid().
+        # WHERE NOT EXISTS also avoids inheriting a source OR REPLACE policy
+        # for an already-present lookup key.
+        insert_body = f"""
+            INSERT INTO {mirror} (rowid, {columns})
+                VALUES ((SELECT id FROM {lookup} WHERE {new_key}), {new_values});
+            INSERT INTO {lookup} (id, {keys}) SELECT last_insert_rowid(), {new_keys}
+                WHERE NOT EXISTS (SELECT 1 FROM {lookup} WHERE {new_key});
+        """
+        delete_body = f"""
+            DELETE FROM {mirror} WHERE rowid = (SELECT id FROM {lookup} WHERE {old_key});
+            DELETE FROM {lookup} WHERE {old_key};
+        """
+        for suffix, event, body in (
+            ("ai", "INSERT", insert_body),
+            ("ad", "DELETE", delete_body),
+            ("au", "UPDATE", delete_body + insert_body),
+        ):
+            conn.execute(f"DROP TRIGGER IF EXISTS {mirror}_{suffix}")
+            conn.execute(f"CREATE TRIGGER {mirror}_{suffix} AFTER {event} ON {source} BEGIN {body} END")
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
@@ -750,6 +814,7 @@ _SCHEMA_MIGRATIONS = (
     (16, "document_link_positions", _migration_16_document_link_positions),
     (17, "highlight_document_indexes", _migration_17_highlight_document_indexes),
     (18, "epub_connections", _migration_18_epub_connections),
+    (19, "search_fts_keys", _migration_19_search_fts_keys),
 )
 
 
@@ -4858,6 +4923,19 @@ def get_knowledge_tree_node(addon_dir: str, profile: str, card_id: int) -> dict 
     }
 
 
+def _validate_knowledge_tree_parents(parent_map: dict[int, int | None]) -> None:
+    completed: set[int] = set()
+    for card_id in parent_map:
+        seen_chain: set[int] = set()
+        current = card_id
+        while current is not None and current not in completed:
+            if current in seen_chain:
+                raise ValueError("Knowledge-tree structure contains a cycle.")
+            seen_chain.add(current)
+            current = parent_map.get(current)
+        completed.update(seen_chain)
+
+
 def set_knowledge_tree_structure(
     addon_dir: str,
     profile: str,
@@ -4894,14 +4972,7 @@ def set_knowledge_tree_structure(
             )
 
     parent_map = {card_id: parent_card_id for card_id, parent_card_id, _, _ in normalized_rows}
-    for card_id in valid_ids:
-        seen_chain: set[int] = set()
-        current = card_id
-        while current is not None:
-            if current in seen_chain:
-                raise ValueError("Knowledge-tree structure contains a cycle.")
-            seen_chain.add(current)
-            current = parent_map.get(current)
+    _validate_knowledge_tree_parents(parent_map)
 
     existing = {
         row["card_id"]: row

@@ -1193,22 +1193,9 @@ def _increment_map(block: dict, group: str, key: str | None, amount) -> None:
     target[key] = target.get(key, 0) + amount
 
 
-def record_tag_breakdown(
-    addon_dir: str,
-    profile: str,
-    *,
-    study_kind: str,
-    tag: str | None,
-    include_count: bool,
-    seconds: float,
-    day_end_time: str = "04:00",
-) -> dict:
-    """Record one Topic/Item contribution without changing legacy aggregates.
-
-    This joint attribution powers pie charts where each slice must belong to
-    exactly one semantic card kind and one tag. Existing count/time blocks stay
-    unchanged so session-owned statistics cannot be double-counted.
-    """
+def _tag_breakdown_contribution(
+    study_kind: str, tag: str | None, seconds: float,
+) -> tuple[str, str, float]:
     kind = str(study_kind or "").strip().casefold()
     if kind not in _TAG_BREAKDOWN_KINDS:
         raise ValueError("study_kind must be 'topics' or 'items'")
@@ -1222,34 +1209,57 @@ def record_tag_breakdown(
     if not math.isfinite(clean_seconds):
         clean_seconds = 0.0
     clean_seconds = max(0.0, min(_MAX_STAT_VALUE, clean_seconds))
+    return kind, clean_tag, clean_seconds
+
+
+def _apply_tag_breakdown_delta(
+    stats: dict,
+    logical_date: str,
+    contribution: tuple[str, str, float],
+    include_count: bool,
+) -> dict:
+    kind, clean_tag, clean_seconds = contribution
+    raw_value = stats.get("tag_breakdown")
+    raw: dict = raw_value if isinstance(raw_value, dict) else {}
+    daily_value = raw.get("daily")
+    daily_raw: dict = daily_value if isinstance(daily_value, dict) else {}
+    if daily_raw.get("date") == logical_date:
+        daily = _normalize_tag_breakdown_block(daily_raw)
+    else:
+        daily = _empty_tag_breakdown()
+    lifetime = _normalize_tag_breakdown_block(raw.get("lifetime"))
+
+    for block in (daily, lifetime):
+        if include_count:
+            counts = block["counts"][kind]
+            counts[clean_tag] = counts.get(clean_tag, 0) + 1
+        if clean_seconds > 0:
+            time_values = block["seconds"][kind]
+            time_values[clean_tag] = time_values.get(clean_tag, 0.0) + clean_seconds
+
+    stats["tag_breakdown"] = {
+        "daily": {"date": logical_date, **daily},
+        "lifetime": lifetime,
+    }
+    return stats
+
+
+def record_tag_breakdown(
+    addon_dir: str,
+    profile: str,
+    *,
+    study_kind: str,
+    tag: str | None,
+    include_count: bool,
+    seconds: float,
+    day_end_time: str = "04:00",
+) -> dict:
+    """Record joint attribution while leaving session-owned aggregates alone."""
+    contribution = _tag_breakdown_contribution(study_kind, tag, seconds)
     logical_date = _effective_date(day_end_time)
 
     def apply_delta(stats: dict) -> dict:
-        raw_value = stats.get("tag_breakdown")
-        raw: dict = raw_value if isinstance(raw_value, dict) else {}
-        daily_value = raw.get("daily")
-        daily_raw: dict = daily_value if isinstance(daily_value, dict) else {}
-        if daily_raw.get("date") == logical_date:
-            daily = _normalize_tag_breakdown_block(daily_raw)
-        else:
-            daily = _empty_tag_breakdown()
-        lifetime = _normalize_tag_breakdown_block(raw.get("lifetime"))
-
-        for block in (daily, lifetime):
-            if include_count:
-                counts = block["counts"][kind]
-                counts[clean_tag] = counts.get(clean_tag, 0) + 1
-            if clean_seconds > 0:
-                time_values = block["seconds"][kind]
-                time_values[clean_tag] = (
-                    time_values.get(clean_tag, 0.0) + clean_seconds
-                )
-
-        stats["tag_breakdown"] = {
-            "daily": {"date": logical_date, **daily},
-            "lifetime": lifetime,
-        }
-        return stats
+        return _apply_tag_breakdown_delta(stats, logical_date, contribution, include_count)
 
     return mutate_stats(addon_dir, profile, apply_delta)
 
@@ -1262,8 +1272,13 @@ def _record_persistent_delta(
     result,
     include_count: bool,
     seconds: float,
+    study_kind: str | None = None,
 ) -> dict:
     logical_date = _effective_date(day_end_time)
+    contribution = (
+        _tag_breakdown_contribution(study_kind, result.tag, seconds)
+        if study_kind is not None else None
+    )
 
     def apply_delta(stats: dict) -> dict:
         daily_raw = stats.get("daily") if isinstance(stats.get("daily"), dict) else {}
@@ -1297,6 +1312,8 @@ def _record_persistent_delta(
             "daily": {"date": logical_date, "seconds": daily_time},
             "lifetime": lifetime_time,
         }
+        if contribution is not None:
+            _apply_tag_breakdown_delta(stats, logical_date, contribution, include_count)
         return stats
 
     return mutate_stats(addon_dir, profile, apply_delta)
@@ -1457,7 +1474,8 @@ class StatsManager:
             f"Unknown scope: {scope!r}. Must be 'session', 'daily', or 'lifetime'."
         )
 
-    def record(self, result, scheduled_scope: str) -> None:
+    def record(self, result, scheduled_scope: str, *, study_kind: str | None = None) -> None:
+        """Persist an answer, optionally including joint attribution in the same write."""
         if result.card is None:
             return
 
@@ -1476,6 +1494,7 @@ class StatsManager:
             result=result,
             include_count=True,
             seconds=seconds,
+            study_kind=study_kind,
         )
         self._load_persisted_state(persisted)
 
@@ -1497,8 +1516,8 @@ class StatsManager:
         self.daily_time = _normalize_time_block(daily_time_raw.get("seconds"))
         self.lifetime_time = _normalize_time_block(time_raw.get("lifetime"))
 
-    def record_time_only(self, result, seconds: float) -> None:
-        """Record time without incrementing card/mode/tag counts."""
+    def record_time_only(self, result, seconds: float, *, study_kind: str | None = None) -> None:
+        """Record time without counts; study_kind adds joint attribution atomically."""
         if result.card is None:
             return
         seconds = max(0.0, float(seconds or 0.0))
@@ -1512,6 +1531,7 @@ class StatsManager:
             result=result,
             include_count=False,
             seconds=seconds,
+            study_kind=study_kind,
         )
         self._load_persisted_state(persisted)
 

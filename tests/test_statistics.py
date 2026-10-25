@@ -619,6 +619,73 @@ class TestRecordTimeOnly:
 
 
 class TestTopicItemTagBreakdown:
+    @pytest.mark.parametrize("card_type,study_kind,tag,seconds", [
+        ("topics", "topics", "history", 12.5),
+        ("epub", "items", "reading", 8.0),
+        ("pdf", "topics", None, 4.0),
+        ("items", "items", "__no_tags__", 0.0),
+    ])
+    def test_combined_review_events_preserve_separate_aggregate_and_breakdown_results(
+        self, tmp_path, monkeypatch, card_type, study_kind, tag, seconds,
+    ):
+        monkeypatch.setattr(_mod, "_effective_date", lambda _day_end="04:00": "2026-10-25")
+        result = SimpleNamespace(card=7, card_type=card_type, tag=tag, mode="random", review_seconds=0.0)
+        legacy = StatsManager(str(tmp_path), "legacy")
+        combined = StatsManager(str(tmp_path), "combined")
+
+        legacy.record_time_only(result, seconds)
+        record_tag_breakdown(str(tmp_path), "legacy", study_kind=study_kind, tag=tag,
+                             include_count=False, seconds=seconds)
+        legacy.record(result, "daily")
+        record_tag_breakdown(str(tmp_path), "legacy", study_kind=study_kind, tag=tag,
+                             include_count=True, seconds=0.0)
+
+        combined.record_time_only(result, seconds, study_kind=study_kind)
+        combined.record(result, "daily", study_kind=study_kind)
+
+        assert load_stats(str(tmp_path), "combined") == load_stats(str(tmp_path), "legacy")
+        assert combined.session_time == legacy.session_time
+        assert combined.daily == legacy.daily
+        assert combined.lifetime == legacy.lifetime
+        for query in (
+            "SELECT scope,date,data FROM stats ORDER BY scope",
+            "SELECT logical_date,counts_json,seconds_json FROM stats_daily_history ORDER BY logical_date",
+        ):
+            assert _mod.get_connection(str(tmp_path), "combined").execute(query).fetchall() == (
+                _mod.get_connection(str(tmp_path), "legacy").execute(query).fetchall()
+            )
+
+    def test_failed_combined_event_keeps_totals_and_breakdown_at_the_same_revision(
+        self, tmp_path, monkeypatch,
+    ):
+        manager = StatsManager(str(tmp_path), "Synthetic")
+        result = SimpleNamespace(
+            card=7, card_type="topics", tag="history", mode="random", review_seconds=12.0,
+        )
+        manager.record(result, "daily", study_kind="topics")
+        before = load_stats(str(tmp_path), "Synthetic")
+        connection = _mod.get_connection(str(tmp_path), "Synthetic")
+        mirror = connection.execute("SELECT scope,date,data FROM stats ORDER BY scope").fetchall()
+        replace = _mod.os.replace
+
+        def fail_replace(*_args):
+            raise OSError("synthetic atomic replace failure")
+
+        monkeypatch.setattr(_mod.os, "replace", fail_replace)
+        with pytest.raises(OSError, match="atomic replace failure"):
+            manager.record(result, "daily", study_kind="topics")
+        assert load_stats(str(tmp_path), "Synthetic") == before
+        assert connection.execute("SELECT scope,date,data FROM stats ORDER BY scope").fetchall() == mirror
+        assert list((tmp_path / "user_files" / "Synthetic").glob("*.tmp")) == []
+
+        monkeypatch.setattr(_mod.os, "replace", replace)
+        manager.record(result, "daily", study_kind="topics")
+        after = load_stats(str(tmp_path), "Synthetic")
+        assert after["lifetime"]["type"] == {"topics": 2}
+        assert after["tag_breakdown"]["lifetime"]["counts"]["topics"] == {"history": 2}
+        assert after["time"]["lifetime"]["type"] == {"topics": 24.0}
+        assert after["tag_breakdown"]["lifetime"]["seconds"]["topics"] == {"history": 24.0}
+
     def test_records_daily_and_lifetime_time_and_card_counts_by_kind_and_tag(
         self, tmp_path, monkeypatch
     ):

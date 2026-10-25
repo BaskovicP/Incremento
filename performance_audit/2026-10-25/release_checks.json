@@ -1,0 +1,113 @@
+{
+  "date": "2026-10-25",
+  "command": ".venv/bin/python scripts/package_addon.py --release --clean-staging --name incremento-addon-20261025-performance.ankiaddon",
+  "exit_code": 0,
+  "python_tests": {
+    "passed": 4012,
+    "failed": 0,
+    "warnings": 62,
+    "seconds": 191.79
+  },
+  "viewer_tests": {
+    "passed": 247,
+    "failed": 0
+  },
+  "extension_tests": {
+    "passed": 230,
+    "failed": 0
+  },
+  "mutation_smoke": {
+    "killed": 4,
+    "survived": 0
+  },
+  "deterministic_repair_evaluation": {
+    "failed": 0,
+    "passed": 7,
+    "results": [
+      {
+        "case_id": "absolute-path-rejection",
+        "evidence": "Report appears to contain local absolute path; replace it with a non-sensitive placeholder.",
+        "outcome": "rejected",
+        "passed": true
+      },
+      {
+        "case_id": "credential-rejection",
+        "evidence": "Report appears to contain credential-like text; replace it with a non-sensitive placeholder.",
+        "outcome": "rejected",
+        "passed": true
+      },
+      {
+        "case_id": "email-rejection",
+        "evidence": "Report appears to contain email-like text; replace it with a non-sensitive placeholder.",
+        "outcome": "rejected",
+        "passed": true
+      },
+      {
+        "case_id": "naked-credential-rejection",
+        "evidence": "Report appears to contain credential-like text; replace it with a non-sensitive placeholder.",
+        "outcome": "rejected",
+        "passed": true
+      },
+      {
+        "case_id": "path-traversal-protection",
+        "evidence": "observed=True",
+        "outcome": "protected",
+        "passed": true
+      },
+      {
+        "case_id": "prompt-injection-framing",
+        "evidence": "required escaped marker present",
+        "outcome": "accepted",
+        "passed": true
+      },
+      {
+        "case_id": "url-rejection",
+        "evidence": "Report appears to contain URL; replace it with a non-sensitive placeholder.",
+        "outcome": "rejected",
+        "passed": true
+      }
+    ],
+    "schema_version": 1,
+    "skipped": 0
+  },
+  "dependency_vulnerabilities": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "pip_check": "No broken requirements found",
+  "other_passed_gates": [
+    "translation catalogs and compiled assets",
+    "UI translation coverage",
+    "translation spreadsheet catalogs",
+    "PDF viewer build",
+    "extension build",
+    "Python compilation",
+    "Ruff",
+    "configured mypy",
+    "JavaScript ESLint",
+    "archive validation",
+    "archive/source byte equality"
+  ],
+  "artifact": {
+    "path": "dist/incremento-addon-20261025-performance.ankiaddon",
+    "sha256": "7449291b071331a1a72df4aabf7043606489580cd7120407cc190b1cd62f9d0b",
+    "bytes": 3344460,
+    "source_files_verified": 272,
+    "manifest": {
+      "package": "incremento",
+      "name": "Incremento",
+      "human_version": "2026.10.25.224930",
+      "min_point_version": 241100
+    },
+    "runtime_user_data_included": false,
+    "local_meta_included": false,
+    "temporary_staging_removed": true
+  },
+  "github_account": "BaskovicP",
+  "commit_email": "pbaskovi@gmail.com",
+  "note": "Earlier restricted browser/Qt/local-socket failures were resolved by the release run with required test permissions."
+}

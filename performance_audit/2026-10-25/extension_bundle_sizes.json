@@ -1,0 +1,110 @@
+{
+  "scope": "Static uncompressed entry graph at the report completion snapshot; excludes dynamic imports",
+  "entries": [
+    {
+      "entry": "content.js",
+      "static_bytes": 1000932,
+      "files": [
+        {
+          "path": "chrome_extensions/incremento_companion/dist/content.js",
+          "bytes": 50823,
+          "sha256": "6b9b93e1f4ff6da8a110154b3dd330fdfad7015374c75e10e66b661f5611a3bb"
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/dist/assets/extension-shared.js",
+          "bytes": 807193,
+          "sha256": "18c1e0eb7e931a1232a842d1904ba470443cde19e604e017aea7b89f151308b1"
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/dist/assets/extension-vendor.js",
+          "bytes": 142916,
+          "sha256": "901d6eeb41086fd07accdae7e184e88a419ff785379fea09c6fd320fb3e56810"
+        }
+      ]
+    },
+    {
+      "entry": "background.js",
+      "static_bytes": 986365,
+      "files": [
+        {
+          "path": "chrome_extensions/incremento_companion/dist/background.js",
+          "bytes": 36256,
+          "sha256": "468443476366491d295fbb52596262bc6ee8d97eaf27b0d59ad0e7ae3ec6af62"
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/dist/assets/extension-shared.js",
+          "bytes": 807193,
+          "sha256": "18c1e0eb7e931a1232a842d1904ba470443cde19e604e017aea7b89f151308b1"
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/dist/assets/extension-vendor.js",
+          "bytes": 142916,
+          "sha256": "901d6eeb41086fd07accdae7e184e88a419ff785379fea09c6fd320fb3e56810"
+        }
+      ]
+    },
+    {
+      "entry": "popup.js",
+      "static_bytes": 983501,
+      "files": [
+        {
+          "path": "chrome_extensions/incremento_companion/dist/popup.js",
+          "bytes": 33392,
+          "sha256": "c7c5a99dad2c689ac75038f997192485a14df08280ebe896f99d49495377be47"
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/dist/assets/extension-vendor.js",
+          "bytes": 142916,
+          "sha256": "901d6eeb41086fd07accdae7e184e88a419ff785379fea09c6fd320fb3e56810"
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/dist/assets/extension-shared.js",
+          "bytes": 807193,
+          "sha256": "18c1e0eb7e931a1232a842d1904ba470443cde19e604e017aea7b89f151308b1"
+        }
+      ]
+    },
+    {
+      "entry": "bookmarks.js",
+      "static_bytes": 962200,
+      "files": [
+        {
+          "path": "chrome_extensions/incremento_companion/dist/bookmarks.js",
+          "bytes": 12091,
+          "sha256": "997f9e15f96e853dd62e20259162a858153f7020e5a86ee3b0d45ccd1f22fb46"
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/dist/assets/extension-vendor.js",
+          "bytes": 142916,
+          "sha256": "901d6eeb41086fd07accdae7e184e88a419ff785379fea09c6fd320fb3e56810"
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/dist/assets/extension-shared.js",
+          "bytes": 807193,
+          "sha256": "18c1e0eb7e931a1232a842d1904ba470443cde19e604e017aea7b89f151308b1"
+        }
+      ]
+    },
+    {
+      "entry": "offscreen.js",
+      "static_bytes": 950502,
+      "files": [
+        {
+          "path": "chrome_extensions/incremento_companion/dist/offscreen.js",
+          "bytes": 393,
+          "sha256": "efa3da0e985fb7f6789a8d3df182e11e89bbfc99db8749b31a126b5617886df5"
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/dist/assets/extension-shared.js",
+          "bytes": 807193,
+          "sha256": "18c1e0eb7e931a1232a842d1904ba470443cde19e604e017aea7b89f151308b1"
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/dist/assets/extension-vendor.js",
+          "bytes": 142916,
+          "sha256": "901d6eeb41086fd07accdae7e184e88a419ff785379fea09c6fd320fb3e56810"
+        }
+      ]
+    }
+  ]
+}

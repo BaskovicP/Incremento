@@ -1,0 +1,415 @@
+{
+  "environment": {
+    "python": "3.14.5",
+    "platform": "Darwin",
+    "machine": "arm64",
+    "sqlite": "3.53.2"
+  },
+  "scope": "Synthetic local inputs; medians of three samples unless a measurement lists five; no live Anki or GUI latency measured",
+  "source_sha256": {
+    "backend/db.py": "42c98a2e7430bff45f1bed67418da1a467f78240a14a6a29e7e4f2ffdef74c4e",
+    "backend/statistics.py": "dcec256c0770423a7ef84f91c09f0e96eef5d79ed21634b1c786fc398c8c5fd6",
+    "backend/config_service.py": "17e2650bc60894fcf4ad92c20b843a8bf6df44fa1ea12252944261902a4a764a",
+    "backend/priority_manager.py": "d1dfd3365181d6dbc2cb21cba2e35ed62210cadff49e4a2735db0a5fda72d704",
+    "backend/db_connection.py": "55941bff0dddb50dedf916d85396f3ee33317ea062b7410443890d73d5fa27aa",
+    "frontend/pdf_bookshelf.py": "baa4b2694ea3c2b746235fb8afbf03109eafd4d2761e7d9a6e07e4c0dded51fd",
+    "frontend/database_entries_dialog.py": "3377246b79cbe23a069ed8fc4ea1413304309bb80d3a990eba89ff6f13c0edfb",
+    "backend/epub_manager.py": "60cb136a3c0aaae26be3bcee0e81aaed5501c243261adc75a4c88e028f1150ea",
+    "backend/answer_schedule.py": "ae8bb1a8630d021c44050917502f7f2f03c6c47d35d3c336c3d94cf65470b251"
+  },
+  "tree_structure": [
+    {
+      "shape": "star",
+      "nodes": 1000,
+      "median_ms": 2.44,
+      "samples_ms": [
+        2.425,
+        2.44,
+        2.464
+      ]
+    },
+    {
+      "shape": "star",
+      "nodes": 2000,
+      "median_ms": 5.068,
+      "samples_ms": [
+        5.081,
+        5.068,
+        4.903
+      ]
+    },
+    {
+      "shape": "star",
+      "nodes": 4000,
+      "median_ms": 11.167,
+      "samples_ms": [
+        10.171,
+        11.167,
+        11.537
+      ]
+    },
+    {
+      "shape": "chain",
+      "nodes": 1000,
+      "median_ms": 19.88,
+      "samples_ms": [
+        20.327,
+        18.033,
+        19.88
+      ]
+    },
+    {
+      "shape": "chain",
+      "nodes": 2000,
+      "median_ms": 75.832,
+      "samples_ms": [
+        81.019,
+        75.832,
+        71.077
+      ]
+    },
+    {
+      "shape": "chain",
+      "nodes": 4000,
+      "median_ms": 273.804,
+      "samples_ms": [
+        271.468,
+        274.946,
+        273.804
+      ]
+    }
+  ],
+  "priority_reads": {
+    "rows": 4000,
+    "public_helper": {
+      "median_ms": 139.593,
+      "samples_ms": [
+        139.593,
+        145.613,
+        139.22
+      ]
+    },
+    "same_connection_per_row": {
+      "median_ms": 6.78,
+      "samples_ms": [
+        6.78,
+        6.803,
+        6.532
+      ]
+    },
+    "batched_900": {
+      "median_ms": 1.3,
+      "samples_ms": [
+        1.3,
+        1.334,
+        1.275
+      ]
+    }
+  },
+  "statistics": [
+    {
+      "tags_per_populated_group": 1,
+      "atomic_file_writes_per_cycle": 4,
+      "fixture_bytes": 604,
+      "median_ms": 3.675,
+      "samples_ms": [
+        3.855,
+        3.464,
+        3.675,
+        3.74,
+        3.469
+      ]
+    },
+    {
+      "tags_per_populated_group": 128,
+      "atomic_file_writes_per_cycle": 4,
+      "fixture_bytes": 19120,
+      "median_ms": 26.515,
+      "samples_ms": [
+        27.224,
+        25.804,
+        30.854,
+        26.515,
+        26.258
+      ]
+    },
+    {
+      "tags_per_populated_group": 512,
+      "atomic_file_writes_per_cycle": 4,
+      "fixture_bytes": 79024,
+      "median_ms": 99.331,
+      "samples_ms": [
+        96.902,
+        100.87,
+        95.914,
+        100.649,
+        99.331
+      ]
+    }
+  ],
+  "search": {
+    "pages": 12000,
+    "page_chars": 1380,
+    "fts5_active": true,
+    "search": [
+      {
+        "requested_results": 120,
+        "candidate_limit": 3000,
+        "median_ms": 158.881,
+        "samples_ms": [
+          205.897,
+          147.75,
+          158.881
+        ]
+      },
+      {
+        "requested_results": 1200,
+        "candidate_limit": 30000,
+        "median_ms": 505.815,
+        "samples_ms": [
+          521.301,
+          505.815,
+          496.067
+        ]
+      }
+    ],
+    "highlight_like_plan": [
+      [
+        5,
+        0,
+        223,
+        "SCAN pdf_highlights USING INDEX idx_pdf_highlights_card_page"
+      ]
+    ]
+  },
+  "fts_replacement": {
+    "available": true,
+    "replace_existing": [
+      {
+        "pages": 500,
+        "fts_delete_plan": [
+          [
+            3,
+            0,
+            215,
+            "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:"
+          ]
+        ],
+        "median_ms": 22.909,
+        "samples_ms": [
+          23.972,
+          22.909,
+          22.692
+        ]
+      },
+      {
+        "pages": 1000,
+        "fts_delete_plan": [
+          [
+            3,
+            0,
+            215,
+            "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:"
+          ]
+        ],
+        "median_ms": 69.585,
+        "samples_ms": [
+          68.604,
+          69.585,
+          74.455
+        ]
+      },
+      {
+        "pages": 2000,
+        "fts_delete_plan": [
+          [
+            3,
+            0,
+            215,
+            "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:"
+          ]
+        ],
+        "median_ms": 244.314,
+        "samples_ms": [
+          236.82,
+          244.314,
+          275.139
+        ]
+      },
+      {
+        "pages": 4000,
+        "fts_delete_plan": [
+          [
+            3,
+            0,
+            215,
+            "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:"
+          ]
+        ],
+        "median_ms": 825.158,
+        "samples_ms": [
+          825.158,
+          966.25,
+          820.059
+        ]
+      }
+    ]
+  },
+  "database_text_offsets": [
+    {
+      "chars": 128000,
+      "matches": 2000,
+      "median_ms": 46.537,
+      "samples_ms": [
+        48.587,
+        46.537,
+        45.862
+      ]
+    },
+    {
+      "chars": 256000,
+      "matches": 4000,
+      "median_ms": 165.883,
+      "samples_ms": [
+        170.984,
+        164.516,
+        165.883
+      ]
+    },
+    {
+      "chars": 512000,
+      "matches": 8000,
+      "median_ms": 629.371,
+      "samples_ms": [
+        645.719,
+        622.628,
+        629.371
+      ]
+    }
+  ],
+  "bookshelf_duplicates": [
+    {
+      "documents_with_same_normalized_origin": 200,
+      "stored_peer_references": 39800,
+      "median_ms": 6.435,
+      "samples_ms": [
+        6.435,
+        6.379,
+        6.923
+      ]
+    },
+    {
+      "documents_with_same_normalized_origin": 400,
+      "stored_peer_references": 159600,
+      "median_ms": 21.373,
+      "samples_ms": [
+        21.781,
+        21.231,
+        21.373
+      ]
+    },
+    {
+      "documents_with_same_normalized_origin": 800,
+      "stored_peer_references": 639200,
+      "median_ms": 70.421,
+      "samples_ms": [
+        67.514,
+        70.719,
+        70.421
+      ]
+    }
+  ],
+  "config": [
+    {
+      "presets": 1,
+      "median_ms": 1.64,
+      "samples_ms": [
+        1.673,
+        1.64,
+        1.63
+      ],
+      "normalizations_per_sample": 50
+    },
+    {
+      "presets": 25,
+      "median_ms": 4.609,
+      "samples_ms": [
+        4.774,
+        4.578,
+        4.609
+      ],
+      "normalizations_per_sample": 50
+    },
+    {
+      "presets": 100,
+      "median_ms": 14.199,
+      "samples_ms": [
+        13.663,
+        19.726,
+        14.199
+      ],
+      "normalizations_per_sample": 50
+    }
+  ],
+  "undo_tracker": [
+    {
+      "tracked_cards": 1000,
+      "case": "Undo one answer then clear Redo without a revlog delta",
+      "revlog_lookup": "boundary fake; SQL cost excluded",
+      "median_ms": 18.31,
+      "samples_ms": [
+        18.31,
+        17.678,
+        18.901
+      ]
+    },
+    {
+      "tracked_cards": 2000,
+      "case": "Undo one answer then clear Redo without a revlog delta",
+      "revlog_lookup": "boundary fake; SQL cost excluded",
+      "median_ms": 77.482,
+      "samples_ms": [
+        77.482,
+        78.437,
+        74.768
+      ]
+    },
+    {
+      "tracked_cards": 4000,
+      "case": "Undo one answer then clear Redo without a revlog delta",
+      "revlog_lookup": "boundary fake; SQL cost excluded",
+      "median_ms": 310.529,
+      "samples_ms": [
+        304.445,
+        310.529,
+        318.68
+      ]
+    }
+  ],
+  "epub_metadata": [
+    {
+      "sections": 50,
+      "bytes": 1001980,
+      "median_ms": 0.777,
+      "samples_ms": [
+        1.045,
+        0.777,
+        0.758,
+        0.729,
+        0.788
+      ]
+    },
+    {
+      "sections": 200,
+      "bytes": 10007930,
+      "median_ms": 6.766,
+      "samples_ms": [
+        8.703,
+        6.781,
+        6.481,
+        6.147,
+        6.766
+      ]
+    }
+  ]
+}

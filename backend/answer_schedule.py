@@ -226,12 +226,11 @@ class ReviewRevlogTracker:
         # real final Redo is distinguishable because its missing revlog is
         # already present again in this callback.
         if not allow_direct and not can_redo and self._undone:
-            restored_undone = {
-                revlog_id
+            restored_undone = any(
+                revlog_id in existing and revlog_id not in tracked.existing
                 for tracked in self._cards.values()
-                for revlog_id in (set(existing) - set(tracked.existing))
-                if revlog_id in tracked.linked and revlog_id in self._undone
-            }
+                for revlog_id in (tracked.linked & self._undone)
+            )
             if not restored_undone:
                 stale = set(self._undone)
                 self._undone.clear()

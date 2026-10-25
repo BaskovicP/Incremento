@@ -555,6 +555,14 @@ msgstr "Incremento 已更新批准的卡片格式。接下来将打开 Anki 同�
 msgid "root_about_author"
 msgstr "作者："
 
+#. Composition-root note formats and About UI: Credits:
+msgid "root_about_credits_label"
+msgstr "鸣谢："
+
+#. Composition-root note formats and About UI: Special thanks to {name} for significant contributions to Incremento through testing, thoughtful feedback, and valuable suggestions.
+msgid "root_about_credits"
+msgstr "特别感谢 {name} 通过测试、细致的反馈和宝贵的建议，为 Incremento 作出重要贡献。"
+
 #. Composition-root note formats and About UI: Incremento is an Anki add-on for incremental reading and study workflows. It keeps long-form material and review cards in one place inside Anki.
 msgid "root_about_intro"
 msgstr "Incremento 是用于渐进阅读和学习的 Anki 插件。它将长篇资料和复习卡片集中保存在 Anki 中。"

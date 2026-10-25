@@ -6,6 +6,157 @@ import db_schema
 from db_schema import DatabaseSchemaTooNewError, initialize_schema
 
 
+_SEARCH_INDEX_CASES = [
+    ("pdf_text", ("card_id", "page"), [(7, 1, "alpha"), (7, 2, "beta")]),
+    ("epub_text", ("card_id", "section_index"),
+     [(7, 1, "First", "alpha"), (7, 2, "Second", "beta")]),
+    ("note_ocr", ("note_id", "card_id", "image_name"),
+     [(70, 7, "first.png", "alpha"), (70, 7, "second.png", "beta")]),
+]
+
+
+@pytest.mark.parametrize("prefix,keys,rows", _SEARCH_INDEX_CASES)
+def test_search_fts_upgrade_preserves_text_and_uses_stable_lookup_ids(prefix, keys, rows):
+    import db
+
+    with sqlite3.connect(":memory:") as conn:
+        previous = tuple(m for m in db._SCHEMA_MIGRATIONS if m[0] <= 18)
+        initialize_schema(conn, bootstrap=db._create_tables, migrations=previous)
+        placeholders = ",".join("?" for _ in rows[0])
+        conn.executemany(f"INSERT INTO {prefix}_index VALUES ({placeholders})", rows)
+        # Older mirrors assigned unrelated rowids; an upgrade must rebuild them.
+        conn.execute(f"UPDATE {prefix}_fts SET rowid=rowid+1000")
+        conn.commit()
+
+        for _ in range(2):
+            assert initialize_schema(conn, bootstrap=db._create_tables,
+                                     migrations=db._SCHEMA_MIGRATIONS) == 19
+
+        order = ",".join(keys)
+        assert conn.execute(f"SELECT * FROM {prefix}_index ORDER BY {order}").fetchall() == rows
+        assert conn.execute(f"SELECT * FROM {prefix}_fts ORDER BY {order}").fetchall() == rows
+        assert conn.execute(
+            f"SELECT f.rowid FROM {prefix}_fts f JOIN {prefix}_fts_keys k "
+            f"USING ({order}) WHERE f.rowid != k.id"
+        ).fetchall() == []
+        assert conn.execute("SELECT name FROM schema_migrations WHERE version=19").fetchone() == (
+            "search_fts_keys",
+        )
+
+
+@pytest.mark.parametrize("prefix,keys,rows", _SEARCH_INDEX_CASES)
+def test_search_fts_mirrors_key_edits_replacements_vacuum_and_rollback(prefix, keys, rows):
+    import db
+
+    with sqlite3.connect(":memory:") as conn:
+        initialize_schema(conn, bootstrap=db._create_tables, migrations=db._SCHEMA_MIGRATIONS)
+        placeholders = ",".join("?" for _ in rows[0])
+        columns = ",".join(row[1] for row in conn.execute(f"PRAGMA table_info({prefix}_index)"))
+        cursor = conn.execute(
+            f"INSERT INTO {prefix}_index(rowid,{columns}) VALUES (9000,{placeholders})", rows[0],
+        )
+        assert cursor.lastrowid == 9000
+        conn.executemany(f"INSERT INTO {prefix}_index VALUES ({placeholders})", rows[1:])
+        conn.commit()
+        last_key = keys[-1]
+        new_key = "renamed.png" if prefix == "note_ocr" else 3
+        predicate = " AND ".join(f"{key}=?" for key in keys)
+        original_key = rows[0][:len(keys)]
+        conn.execute(f"UPDATE {prefix}_index SET {last_key}=?, text='gamma' WHERE {predicate}",
+                     (new_key, *original_key))
+        updated = list(rows[0])
+        updated[len(keys) - 1] = new_key
+        updated[-1] = "delta"
+        conn.execute(f"INSERT OR REPLACE INTO {prefix}_index VALUES ({placeholders})", updated)
+        # An ignored duplicate must keep the existing mirror intact.
+        conn.execute(f"INSERT OR IGNORE INTO {prefix}_index VALUES ({placeholders})", updated)
+        conn.commit()
+        conn.execute("VACUUM")
+
+        order = ",".join(keys)
+        expected = conn.execute(f"SELECT * FROM {prefix}_index ORDER BY {order}").fetchall()
+        assert conn.execute(f"SELECT * FROM {prefix}_fts ORDER BY {order}").fetchall() == expected
+        assert conn.execute(f"SELECT text FROM {prefix}_fts WHERE {prefix}_fts MATCH 'gamma'").fetchall() == []
+        assert conn.execute(f"SELECT text FROM {prefix}_fts WHERE {prefix}_fts MATCH 'delta'").fetchall() == [("delta",)]
+
+        conn.execute(f"DELETE FROM {prefix}_index WHERE {predicate}", rows[1][:len(keys)])
+        assert conn.execute(f"SELECT text FROM {prefix}_fts WHERE text='beta'").fetchall() == []
+        conn.rollback()
+        assert conn.execute(f"SELECT * FROM {prefix}_fts ORDER BY {order}").fetchall() == expected
+        conn.execute(f"DELETE FROM {prefix}_index")
+        assert conn.execute(f"SELECT count(*) FROM {prefix}_fts").fetchone() == (0,)
+        assert conn.execute(f"SELECT count(*) FROM {prefix}_fts_keys").fetchone() == (0,)
+
+
+@pytest.mark.parametrize("prefix,keys,rows", _SEARCH_INDEX_CASES)
+def test_search_fts_single_row_delete_has_a_fixed_work_budget(prefix, keys, rows):
+    import db
+
+    with sqlite3.connect(":memory:") as conn:
+        initialize_schema(conn, bootstrap=db._create_tables, migrations=db._SCHEMA_MIGRATIONS)
+        seeded = []
+        for index in range(2000):
+            row = list(rows[0])
+            row[0] += index
+            seeded.append(row)
+        conn.executemany(f"INSERT INTO {prefix}_index VALUES ({','.join('?' for _ in rows[0])})", seeded)
+        conn.commit()
+        remaining_steps = 2000
+
+        def budget():
+            nonlocal remaining_steps
+            remaining_steps -= 1
+            return remaining_steps <= 0
+
+        conn.set_progress_handler(budget, 1)
+        try:
+            # Other documents must not be scanned to remove one indexed row.
+            conn.execute(f"DELETE FROM {prefix}_index WHERE {keys[0]}=?", (rows[0][0],))
+        finally:
+            conn.set_progress_handler(None, 0)
+        assert conn.execute(f"SELECT count(*) FROM {prefix}_fts").fetchone() == (1999,)
+
+
+def test_search_fts_key_migration_rolls_back_mirrors_triggers_and_ledger():
+    import db
+
+    with sqlite3.connect(":memory:") as conn:
+        previous = tuple(m for m in db._SCHEMA_MIGRATIONS if m[0] <= 18)
+        initialize_schema(conn, bootstrap=db._create_tables, migrations=previous)
+        conn.execute("INSERT INTO pdf_text_index VALUES (7,1,'alpha')")
+        conn.commit()
+        before = conn.execute("SELECT name,sql FROM sqlite_master WHERE type='trigger' ORDER BY name").fetchall()
+        before_rows = conn.execute("SELECT rowid,* FROM pdf_text_fts").fetchall()
+
+        def fail(connection):
+            db._migration_19_search_fts_keys(connection)
+            raise RuntimeError("search migration interrupted")
+
+        with pytest.raises(RuntimeError, match="interrupted"):
+            initialize_schema(conn, bootstrap=db._create_tables,
+                              migrations=previous + ((19, "search_fts_keys", fail),))
+        assert conn.execute("PRAGMA user_version").fetchone() == (18,)
+        assert conn.execute("SELECT max(version) FROM schema_migrations").fetchone() == (18,)
+        assert conn.execute("SELECT name,sql FROM sqlite_master WHERE type='trigger' ORDER BY name").fetchall() == before
+        assert conn.execute("SELECT rowid,* FROM pdf_text_fts").fetchall() == before_rows
+        assert conn.execute("SELECT name FROM sqlite_master WHERE name LIKE '%_fts_keys'").fetchall() == []
+
+
+def test_search_fts_key_migration_keeps_the_plain_table_fallback_without_fts():
+    import db
+
+    with sqlite3.connect(":memory:") as conn:
+        previous = tuple((v, name, (lambda _conn: None) if v == 3 else migration)
+                         for v, name, migration in db._SCHEMA_MIGRATIONS if v <= 18)
+        initialize_schema(conn, bootstrap=db._create_tables, migrations=previous)
+        conn.execute("INSERT INTO pdf_text_index VALUES (7,1,'alpha')")
+        conn.commit()
+        assert initialize_schema(conn, bootstrap=db._create_tables,
+                                 migrations=db._SCHEMA_MIGRATIONS) == 19
+        assert conn.execute("SELECT text FROM pdf_text_index WHERE text LIKE '%alpha%'").fetchall() == [("alpha",)]
+        assert conn.execute("SELECT name FROM sqlite_master WHERE name LIKE '%_fts%'").fetchall() == []
+
+
 def test_highlight_document_indexes_upgrade_existing_rows_and_are_reused():
     import db
 
@@ -17,7 +168,7 @@ def test_highlight_document_indexes_upgrade_existing_rows_and_are_reused():
             conn.execute(f"INSERT INTO {table}(id, card_id, text) VALUES('same', 8, 'other')")
         conn.commit()
         for _ in range(2):
-            assert initialize_schema(conn, bootstrap=db._create_tables, migrations=db._SCHEMA_MIGRATIONS) == 18
+            assert initialize_schema(conn, bootstrap=db._create_tables, migrations=db._SCHEMA_MIGRATIONS) == 19
         for table in ("pdf_highlights", "epub_highlights"):
             assert conn.execute(f"SELECT text FROM {table} WHERE card_id=7").fetchall() == [("kept",)]
             plan = conn.execute(f"EXPLAIN QUERY PLAN SELECT * FROM {table} WHERE card_id=7").fetchall()
@@ -200,7 +351,7 @@ def test_statistics_history_schema_rejects_invalid_rows(tmp_path):
     db.close_connection()
     conn = db.get_connection(str(tmp_path), "TestProfile")
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 18
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 19
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 "INSERT INTO reading_page_history "

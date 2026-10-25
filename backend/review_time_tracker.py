@@ -150,14 +150,15 @@ def _record_review_time(card_id: int, seconds: float) -> None:
         day_end = cfg.day_end_time
         if not _current_deck_is_incremento_session():
             sm = StatsManager(_ADDON_DIR, _active_profile(), day_end_time=day_end)
-            sm.record_time_only(result, seconds)
+            sm.record_time_only(result, seconds, study_kind=result.study_kind)
             _add_runtime_time(result.card_type, result.tag, seconds)
-        _record_breakdown(
-            result,
-            include_count=False,
-            seconds=seconds,
-            day_end=day_end,
-        )
+        else:
+            _record_breakdown(
+                result,
+                include_count=False,
+                seconds=seconds,
+                day_end=day_end,
+            )
     except Exception:
         pass
 
@@ -238,13 +239,14 @@ def on_reviewer_card_answered(_reviewer, card, _ease: int) -> None:
         day_end = cfg.day_end_time
         if not _current_deck_is_incremento_session():
             sm = StatsManager(_ADDON_DIR, _active_profile(), day_end_time=day_end)
-            sm.record(result, "daily")
-        _record_breakdown(
-            result,
-            include_count=True,
-            seconds=0.0,
-            day_end=day_end,
-        )
+            sm.record(result, "daily", study_kind=result.study_kind)
+        else:
+            _record_breakdown(
+                result,
+                include_count=True,
+                seconds=0.0,
+                day_end=day_end,
+            )
     except Exception:
         pass
 

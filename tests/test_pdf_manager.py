@@ -451,7 +451,8 @@ class TestAddPdfCard:
             enforcement_mode="soft_lock",
         )
 
-    def test_uses_precomputed_page_texts_when_supplied(self):
+    @pytest.mark.parametrize("page_texts", [["ready text"], []])
+    def test_uses_precomputed_page_texts_when_supplied(self, tmp_path, page_texts):
         col = MagicMock()
         note = MagicMock()
         note.id = 999
@@ -467,20 +468,20 @@ class TestAddPdfCard:
              patch("pdf_manager.extract_pdf_pages_text") as extract_mock, \
              patch("pdf_manager.replace_pdf_text_index") as index_mock:
             result = pdf_manager.add_pdf_card(
-                "/tmp/incremento-test",
+                str(tmp_path),
                 col,
                 "/tmp/source.pdf",
                 "Guide",
-                precomputed_page_texts=["ready text"],
+                precomputed_page_texts=page_texts,
             )
 
         assert result == 12345
         extract_mock.assert_not_called()
         index_mock.assert_called_once_with(
-            "/tmp/incremento-test",
+            str(tmp_path),
             pdf_manager._paths.get_active_profile(),
             12345,
-            ["ready text"],
+            page_texts,
         )
 
 
@@ -549,6 +550,34 @@ class TestExtractPdfPagesTextFitz:
 
 
 class TestExtractPdfPagesTextQtFallback:
+    @pytest.mark.parametrize("completed", [False, True])
+    def test_required_background_extraction_distinguishes_empty_from_unavailable(self, completed):
+        fitz = MagicMock()
+        document = fitz.open.return_value
+        document.__len__.return_value = 2
+        document.load_page.return_value.get_text.return_value = ""
+        with patch.dict(sys.modules, {"fitz": fitz if completed else None}), \
+             patch("shutil.which", return_value=None), \
+             patch("os.path.isfile", return_value=False):
+            if completed:
+                assert pdf_manager.extract_pdf_pages_text(
+                    "/fake/scan.pdf", allow_qt=False, require_success=True,
+                ) == []
+            else:
+                with pytest.raises(RuntimeError, match="unavailable"):
+                    pdf_manager.extract_pdf_pages_text(
+                        "/fake/scan.pdf", allow_qt=False, require_success=True,
+                    )
+
+    def test_successful_empty_poppler_output_completes_background_extraction(self):
+        with patch.dict(sys.modules, {"fitz": None}), \
+             patch("shutil.which", return_value="/synthetic/pdftotext"), \
+             patch("os.path.isfile", return_value=True), \
+             patch("subprocess.run", return_value=MagicMock(returncode=0, stdout="\f\f")):
+            assert pdf_manager.extract_pdf_pages_text(
+                "/fake/scan.pdf", allow_qt=False, require_success=True,
+            ) == []
+
     def test_qt_fallback_when_fitz_missing(self):
         """Without fitz, QPdfDocument path is tried."""
         mock_doc_instance = MagicMock()

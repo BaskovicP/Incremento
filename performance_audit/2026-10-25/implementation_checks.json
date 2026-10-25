@@ -1,0 +1,235 @@
+{
+  "date": "2026-10-25",
+  "focused_python": {
+    "command": ".venv/bin/python -m pytest -o addopts= tests/test_db_schema.py tests/test_db.py tests/test_search_repository.py tests/test_search_indexer.py tests/test_statistics.py tests/test_session.py tests/test_knowledge_tree.py tests/test_knowledge_tree_postpone.py tests/test_session_selection.py tests/test_browser_bridge.py tests/test_pdf_manager.py tests/test_video_web.py tests/test_answer_schedule.py tests/test_topic_scheduler.py tests/test_custom_schedule.py tests/test_topic_scheduler_anki_integration.py tests/test_pdf_search_safety.py tests/test_operation_journal.py tests/test_reconciliation.py tests/test_epub_connections.py -q",
+    "exit_code": 0,
+    "passed": 861,
+    "seconds": 6.23,
+    "stage": "final implementation"
+  },
+  "broad_python": {
+    "command": ".venv/bin/python -m pytest -o addopts= tests/ -q",
+    "exit_code": 1,
+    "passed": 3970,
+    "failed": 37,
+    "warnings": 25,
+    "seconds": 150.87,
+    "stage": "before final FTS insertion refinement; final focused run covers refinement",
+    "failure_families": {
+      "chromium_launch": 19,
+      "qt_macos_startup_abort": 16,
+      "local_socket_permission": 2
+    },
+    "failures": [
+      {
+        "test": "test_browser_session_cookies_and_local_storage_survive_restart_and_stay_isolated[web-reader]",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_browser_session_cookies_and_local_storage_survive_restart_and_stay_isolated[search-popup]",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_web_reader_profile_reset_destroys_owned_page_before_profile",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_search_preferences_apply_to_navigation_and_profile_lifecycle",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_saved_highlight_menu_renders_all_three_svg_icons_in_local_chapter[.xhtml-application/xhtml+xml]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_saved_highlight_menu_renders_all_three_svg_icons_in_local_chapter[.html-text/html]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_cross_paragraph_highlight_preserves_layout_and_edits_as_one_highlight[.html]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_cross_paragraph_highlight_preserves_layout_and_edits_as_one_highlight[.xhtml]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_epub_pin_pickup_preserves_endpoint_and_drag_tracks_pointer[start-selection]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_epub_pin_pickup_preserves_endpoint_and_drag_tracks_pointer[start-highlight]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_epub_pin_pickup_preserves_endpoint_and_drag_tracks_pointer[end-selection]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_epub_pin_pickup_preserves_endpoint_and_drag_tracks_pointer[end-highlight]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_epub_start_pin_at_text_node_boundary_anchors_to_first_selected_line[selection]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_epub_start_pin_at_text_node_boundary_anchors_to_first_selected_line[highlight]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_cross_paragraph_highlight_paints_without_reflow_in_qt_application_world[.html]",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_cross_paragraph_highlight_paints_without_reflow_in_qt_application_world[.xhtml]",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_reference_navigation_highlights_and_close_preserve_main_reader",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_xhtml_namespaces_cannot_bypass_epub_script_policy[<x:script xmlns:x=\"http://www.w3.org/1999/xhtml\">window.__epubProbe=1</x:script>]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_xhtml_namespaces_cannot_bypass_epub_script_policy[<s:svg xmlns:s=\"http://www.w3.org/2000/svg\"><s:script>window.__epubProbe=1</s:script></s:svg>]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_pdf_annotation_palette_recolors_and_dismisses_without_losing_metadata[main]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_pdf_annotation_palette_recolors_and_dismisses_without_losing_metadata[side]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_pdf_essential_controls_and_drawers_fit_narrow_and_wide_readers[1]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_pdf_essential_controls_and_drawers_fit_narrow_and_wide_readers[1.5]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_pdf_focus_keeps_the_live_webengine_document_and_selection",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_large_pdf_keeps_rendering_bounded_and_snapshot_crops_correct[main]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_large_pdf_keeps_rendering_bounded_and_snapshot_crops_correct[side]",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_pdf_extract_preview_allows_typing_below_it_without_creating_more_buttons",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_opening_older_previews_preserves_content_and_adds_one_typing_line_including_shadow_fields",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_real_popup_is_nonmodal_isolated_and_disposed_on_profile_close",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_encoded_search_requests_and_result_links_remain_usable",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_browser_pdf_includes_javascript_content_links_and_screen_or_article_layout",
+        "family": "chromium_launch"
+      },
+      {
+        "test": "test_native_dialog_resumes_after_authenticated_browser_response_without_another_click[chrome]",
+        "family": "local_socket_permission"
+      },
+      {
+        "test": "test_native_dialog_resumes_after_authenticated_browser_response_without_another_click[firefox]",
+        "family": "local_socket_permission"
+      },
+      {
+        "test": "test_real_renderer_keeps_styles_images_and_large_html_without_browser_network[False-print]",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_real_renderer_keeps_styles_images_and_large_html_without_browser_network[False-website]",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_real_renderer_keeps_styles_images_and_large_html_without_browser_network[True-print]",
+        "family": "qt_macos_startup_abort"
+      },
+      {
+        "test": "test_real_renderer_keeps_styles_images_and_large_html_without_browser_network[True-website]",
+        "family": "qt_macos_startup_abort"
+      }
+    ],
+    "status": "historical restricted run; superseded by successful full release verification"
+  },
+  "extension_tests": {
+    "command": "npm --prefix chrome_extensions/incremento_companion test",
+    "exit_code": 0,
+    "passed": 230
+  },
+  "checks": [
+    {
+      "command": "npm --prefix frontend run lint",
+      "exit_code": 0
+    },
+    {
+      "command": ".venv/bin/ruff check .",
+      "exit_code": 0
+    },
+    {
+      "command": ".venv/bin/mypy",
+      "exit_code": 0,
+      "checked_source_files": 7
+    },
+    {
+      "command": ".venv/bin/python -m compileall -q __init__.py backend frontend scripts",
+      "exit_code": 0
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    },
+    {
+      "command": "npm --prefix frontend run build:extension",
+      "exit_code": 0,
+      "repeated_output_identical_files": 8,
+      "warning": "Existing chunks over 500 kB; tracked by audit F20"
+    },
+    {
+      "command": "node --check chrome_extensions/incremento_companion/dist/background.js",
+      "exit_code": 0
+    },
+    {
+      "command": "node --check chrome_extensions/incremento_companion/dist/content.js",
+      "exit_code": 0
+    },
+    {
+      "command": "node --check chrome_extensions/incremento_companion/dist/offscreen.js",
+      "exit_code": 0
+    },
+    {
+      "command": "node --check chrome_extensions/incremento_companion/dist/popup.js",
+      "exit_code": 0
+    },
+    {
+      "command": "node --check chrome_extensions/incremento_companion/dist/bookmarks.js",
+      "exit_code": 0
+    }
+  ],
+  "limits": [
+    "Supported Anki Python 3.12/3.13 validation remains delegated to CI.",
+    "Synthetic component measurements do not measure live-profile UI performance."
+  ],
+  "release_checks_file": "release_checks.json",
+  "latest_release_passed": true
+}

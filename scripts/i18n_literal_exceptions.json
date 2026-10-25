@@ -8,7 +8,7 @@
   {
     "file": "__init__.py",
     "sink": "showInfo",
-    "text": "f\"<h2>Incremento</h2>\"\n        f\"<p><b>{_html_escape(_t('root_about_author'))}</b> Paulo Baskovic</p>\"\n        f\"<p>{_html_escape(_t('root_about_intro'))}</p>\"\n        f\"<p><b>{_html_escape(_t('root_about_general_info'))}</b></p>\"\n        f\"<ul>{points}</ul>\"\n        f\"<p><b>{_html_escape(_t('root_about_disclaimer_label'))}</b> {_html_escape(_t('root_about_disclaimer'))}</p>\"\n        f\"<p><b>{_html_escape(_t('root_about_license_label'))}</b> {_html_escape(_t('root_about_license'))}</p>\"",
+    "text": "f\"<h2>Incremento</h2>\"\n        f\"<p><b>{_html_escape(_t('root_about_author'))}</b> Paulo Baskovic</p>\"\n        f\"<p>{_html_escape(_t('root_about_intro'))}</p>\"\n        f\"<p><b>{_html_escape(_t('root_about_general_info'))}</b></p>\"\n        f\"<ul>{points}</ul>\"\n        f\"<p><b>{_html_escape(_t('root_about_disclaimer_label'))}</b> {_html_escape(_t('root_about_disclaimer'))}</p>\"\n        f\"<p><b>{_html_escape(_t('root_about_license_label'))}</b> {_html_escape(_t('root_about_license'))}</p>\"\n        f\"<p><b>🙏 {_html_escape(_t('root_about_credits_label'))}</b></p>\"\n        f\"<p>{_html_escape(_t('root_about_credits', name='Ameen Shokoya'))} 🧪 💡</p>\"",
     "reason": "Presentation wrapper containing already-localized labels and/or user values."
   },
   {

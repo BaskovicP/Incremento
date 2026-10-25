@@ -21683,6 +21683,24 @@
     },
     {
       "component": "addon",
+      "key": "root_about_credits",
+      "form": "",
+      "source": "Special thanks to {name} for significant contributions to Incremento through testing, thoughtful feedback, and valuable suggestions.",
+      "tokens": [
+        "{name}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_about_credits_label",
+      "form": "",
+      "source": "Credits:",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "root_about_disclaimer",
       "form": "",
       "source": "By using this add-on, you accept full responsibility for any damage, data loss, or other issues that may result from its use.",

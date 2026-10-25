@@ -1,0 +1,190 @@
+{
+  "scope": "Compare schema 18/19 fresh PDF indexing, size, and one-time migration cost.\n\nUses isolated temporary SQLite files with Incremento's WAL/NORMAL settings.\nSource indexes and text are synthetic. No live profiles or Anki are accessed.",
+  "environment": {
+    "python": "3.14.5",
+    "sqlite": "3.53.2",
+    "machine": "arm64"
+  },
+  "source_sha256": {
+    "backend/db.py": "60bacb2cc1ce37851f598e5adfbba8014f8dabf107661b68fcc87a232a040e31",
+    "backend/db_schema.py": "bceed638c39119deebb8934dc117c7db881c3668aadcfac91d4df6b6a09b55bb"
+  },
+  "results": [
+    {
+      "schema": 18,
+      "pages": 1000,
+      "fresh_insert_median_ms": 10.257,
+      "fresh_insert_samples_ms": [
+        10.257,
+        9.229,
+        11.273,
+        10.11,
+        11.58
+      ],
+      "database_allocated_bytes_before_migration": [
+        696320,
+        696320,
+        696320,
+        696320,
+        696320
+      ],
+      "upgrade_to_19_samples_ms": [
+        3.121,
+        3.693,
+        3.098,
+        3.547,
+        2.888
+      ],
+      "upgrade_to_19_median_ms": 3.121
+    },
+    {
+      "schema": 19,
+      "pages": 1000,
+      "fresh_insert_median_ms": 17.622,
+      "fresh_insert_samples_ms": [
+        17.622,
+        18.084,
+        18.962,
+        17.504,
+        17.578
+      ],
+      "database_allocated_bytes_before_migration": [
+        753664,
+        753664,
+        753664,
+        753664,
+        753664
+      ],
+      "upgrade_to_19_samples_ms": [],
+      "upgrade_to_19_median_ms": null
+    },
+    {
+      "schema": 18,
+      "pages": 4000,
+      "fresh_insert_median_ms": 45.926,
+      "fresh_insert_samples_ms": [
+        40.899,
+        43.131,
+        45.926,
+        47.169,
+        46.5
+      ],
+      "database_allocated_bytes_before_migration": [
+        1089536,
+        1089536,
+        1089536,
+        1089536,
+        1089536
+      ],
+      "upgrade_to_19_samples_ms": [
+        10.716,
+        11.061,
+        11.335,
+        10.399,
+        10.523
+      ],
+      "upgrade_to_19_median_ms": 10.716
+    },
+    {
+      "schema": 19,
+      "pages": 4000,
+      "fresh_insert_median_ms": 115.464,
+      "fresh_insert_samples_ms": [
+        115.464,
+        110.622,
+        119.536,
+        115.382,
+        149.794
+      ],
+      "database_allocated_bytes_before_migration": [
+        1224704,
+        1224704,
+        1224704,
+        1224704,
+        1224704
+      ],
+      "upgrade_to_19_samples_ms": [],
+      "upgrade_to_19_median_ms": null
+    }
+  ],
+  "delete_document_with_unrelated_corpus": [
+    {
+      "schema": 18,
+      "unrelated_pages": 0,
+      "deleted_document_pages": 50,
+      "median_ms": 0.276,
+      "samples_ms": [
+        0.38,
+        0.219,
+        0.245,
+        0.276,
+        0.297
+      ]
+    },
+    {
+      "schema": 19,
+      "unrelated_pages": 0,
+      "deleted_document_pages": 50,
+      "median_ms": 0.145,
+      "samples_ms": [
+        0.166,
+        0.138,
+        0.145,
+        0.146,
+        0.137
+      ]
+    },
+    {
+      "schema": 18,
+      "unrelated_pages": 2000,
+      "deleted_document_pages": 50,
+      "median_ms": 8.331,
+      "samples_ms": [
+        8.83,
+        8.331,
+        8.929,
+        7.759,
+        7.976
+      ]
+    },
+    {
+      "schema": 19,
+      "unrelated_pages": 2000,
+      "deleted_document_pages": 50,
+      "median_ms": 0.164,
+      "samples_ms": [
+        0.377,
+        0.158,
+        0.155,
+        0.164,
+        0.218
+      ]
+    },
+    {
+      "schema": 18,
+      "unrelated_pages": 8000,
+      "deleted_document_pages": 50,
+      "median_ms": 25.719,
+      "samples_ms": [
+        25.638,
+        25.719,
+        25.837,
+        26.067,
+        25.621
+      ]
+    },
+    {
+      "schema": 19,
+      "unrelated_pages": 8000,
+      "deleted_document_pages": 50,
+      "median_ms": 0.184,
+      "samples_ms": [
+        0.347,
+        0.186,
+        0.176,
+        0.184,
+        0.173
+      ]
+    }
+  ]
+}

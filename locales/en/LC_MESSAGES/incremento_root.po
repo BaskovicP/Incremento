@@ -569,6 +569,14 @@ msgstr "Incremento updated the approved card formats. Anki Sync will open next. 
 msgid "root_about_author"
 msgstr "Author:"
 
+#. Composition-root note formats and About UI: Credits:
+msgid "root_about_credits_label"
+msgstr "Credits:"
+
+#. Composition-root note formats and About UI: Special thanks to {name} for significant contributions to Incremento through testing, thoughtful feedback, and valuable suggestions.
+msgid "root_about_credits"
+msgstr "Special thanks to {name} for significant contributions to Incremento through testing, thoughtful feedback, and valuable suggestions."
+
 #. Composition-root note formats and About UI: Incremento is an Anki add-on for incremental reading and study workflows. It keeps long-form material and review cards in one place inside Anki.
 msgid "root_about_intro"
 msgstr "Incremento is an Anki add-on for incremental reading and study workflows. It keeps long-form material and review cards in one place inside Anki."

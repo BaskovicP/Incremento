@@ -102,7 +102,7 @@ Incremento adds its own top-level **Incremento** menu to Anki's menu bar.
 | **Activity Center…** | Inspect active/recent background indexing and download work, with Cancel or Retry where supported |
 | **Getting Started…** | Reopen the first-run reading/extraction/session/backup guide |
 | **Settings** | Configure extraction, review, topic, writing, shortcut, and advanced options |
-| **About** | Show a summary of addon capabilities |
+| **About** | Show a summary of addon capabilities and contributor credits |
 | **Utils → Import SuperMemo Collection…** | Import a native SuperMemo 17/18/20 collection from its KNO file or ZIP |
 | **Add Content → Add PDF / DjVu** | Import a PDF or DjVu as a topic card |
 | **Add Content → Add EPUB** | Import one or more EPUBs as topic cards |

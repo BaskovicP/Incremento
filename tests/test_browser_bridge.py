@@ -1,4 +1,5 @@
 import base64
+import pytest
 import browser_bridge
 import db
 from pathlib import Path
@@ -412,6 +413,50 @@ def test_prepare_add_content_request_decodes_pdf_base64_off_main(monkeypatch):
         browser_bridge.cleanup_prepared_add_content_request(prepared)
 
     assert not pdf_path.exists()
+
+
+@pytest.mark.parametrize("use_browser_bytes", [True, False])
+def test_prepared_textless_pdf_keeps_completed_empty_extraction(monkeypatch, use_browser_bytes):
+    """An empty preparation is final input, not a request to extract on Qt."""
+    extractions = []
+
+    def extract(path):
+        extractions.append(path)
+        return []
+
+    def download(_url, path):
+        Path(path).write_bytes(b"%PDF-1.7\nsynthetic scan\n")
+
+    monkeypatch.setattr(browser_bridge, "_extract_pdf_pages_text_off_main", extract)
+    monkeypatch.setattr(browser_bridge, "download_pdf_from_url", download)
+    payload = {"kind": "pdf", "url": "https://example.com/scan.pdf", "title": "Scan"}
+    if use_browser_bytes:
+        payload["pdfBase64"] = base64.b64encode(b"%PDF-1.7\nsynthetic scan\n").decode("ascii")
+    prepared = browser_bridge.prepare_add_content_request_off_main(payload)
+    item = prepared["items"][0]
+    try:
+        assert item[browser_bridge._PREPARED_PDF_PAGE_TEXTS_KEY] == []
+        assert extractions == [item[browser_bridge._PREPARED_PDF_PATH_KEY]]
+        # Retrying preparation of the same immutable request must not re-extract.
+        browser_bridge._prepare_pdf_item_off_main(item)
+        assert len(extractions) == 1
+    finally:
+        browser_bridge.cleanup_prepared_add_content_request(prepared)
+
+
+def test_unavailable_background_pdf_extraction_preserves_the_qt_fallback(monkeypatch):
+    import pdf_manager
+
+    calls = []
+
+    def unavailable(_path, **kwargs):
+        calls.append(kwargs)
+        raise RuntimeError("background extraction unavailable")
+
+    monkeypatch.setattr(pdf_manager, "extract_pdf_pages_text", unavailable)
+    result = browser_bridge._extract_pdf_pages_text_off_main("/synthetic/scan.pdf")
+    assert result is None
+    assert calls == [{"allow_qt": False, "require_success": True}]
 
 
 def test_prepare_add_content_request_downloads_pdf_url_off_main(monkeypatch):

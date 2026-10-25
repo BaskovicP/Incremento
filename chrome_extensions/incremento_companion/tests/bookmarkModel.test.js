@@ -77,6 +77,41 @@ test("buildBookmarkItems indexes bookmarks with folder path and detected kind", 
   assert.equal(items["21"].folderPath, "Reference");
 });
 
+test("building opaque bookmark IDs preserves supplied state and first occurrence", () => {
+  const existingItem = Object.freeze({ id: "saved", title: "Keep edits", selected: true });
+  const initial = Object.freeze({ saved: existingItem });
+  const children = Array.from({length: 32}, (_, index) => Object.freeze({
+    id: `opaque_${index}`, title: `Bookmark ${index}`, url: `https://example.com/${index}`,
+  }));
+  const nodes = Object.freeze([Object.freeze({
+    id: "folder", title: "Research", children: Object.freeze([
+      ...children, Object.freeze({id: "opaque_0", title: "Duplicate", url: "https://example.com/other"}),
+      Object.freeze({id: "saved", title: "Overwrite", url: "https://example.com/saved"}),
+    ]),
+  })]);
+
+  const result = buildBookmarkItems(nodes, ["Parent"], initial);
+
+  assert.equal(Object.keys(result).length, 33);
+  assert.deepEqual(Object.keys(initial), ["saved"]);
+  assert.equal(result.saved, existingItem);
+  assert.equal(result.opaque_0.title, "Bookmark 0");
+  assert.equal(result.opaque_31.folderPath, "Parent / Research");
+  assert.equal(result.opaque_31.selected, false);
+  assert.equal(buildBookmarkItems([], [], initial), initial);
+  assert.equal(buildBookmarkItems([{id: "saved", url: "https://example.com"}], [], initial), initial);
+});
+
+test("building from a null-prototype seed keeps computed bookmark keys as own properties", () => {
+  const initial = Object.create(null);
+  const result = buildBookmarkItems([{id: "__proto__", title: "Own item", url: "https://example.com"}], [], initial);
+
+  assert.equal(Object.hasOwn(result, "__proto__"), true);
+  assert.equal(result.__proto__.title, "Own item");
+  assert.equal(Object.getPrototypeOf(result), Object.prototype);
+  assert.deepEqual(Object.keys(initial), []);
+});
+
 test("collectBookmarkIds returns nested bookmark ids that exist in the index", () => {
   const tree = makeTree();
   const items = buildBookmarkItems(tree);

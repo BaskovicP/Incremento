@@ -58,12 +58,11 @@ export function parsePriorityText(rawValue, fallback = DEFAULT_PRIORITY) {
 
 function registerBookmark(itemsById, node, pathParts) {
   const id = String(node.id);
-  if (itemsById[id]) {
-    return itemsById;
-  }
-  return {
-    ...itemsById,
-    [id]: {
+  Object.defineProperty(itemsById, id, {
+    enumerable: true,
+    configurable: true,
+    writable: true,
+    value: {
       id,
       title: String(node.title || "").trim() || "Untitled bookmark",
       url: String(node.url || "").trim(),
@@ -76,21 +75,31 @@ function registerBookmark(itemsById, node, pathParts) {
       importState: "",
       importError: "",
     },
-  };
+  });
 }
 
 export function buildBookmarkItems(nodes, pathParts = [], itemsById = {}) {
   let nextItems = itemsById;
-  for (const node of nodes || []) {
-    if (node.url) {
-      nextItems = registerBookmark(nextItems, node, pathParts);
-      continue;
+  let ownsItems = false;
+  function appendNodes(children, path) {
+    for (const node of children || []) {
+      if (node.url) {
+        if (nextItems[String(node.id)]) continue;
+        // Copy the caller's state once; only this traversal owns the result.
+        if (!ownsItems) {
+          nextItems = { ...itemsById };
+          ownsItems = true;
+        }
+        registerBookmark(nextItems, node, path);
+        continue;
+      }
+      const nextPath = node.id === "0"
+        ? path
+        : [...path, String(node.title || "").trim()].filter(Boolean);
+      appendNodes(node.children || [], nextPath);
     }
-    const nextPath = node.id === "0"
-      ? pathParts
-      : [...pathParts, String(node.title || "").trim()].filter(Boolean);
-    nextItems = buildBookmarkItems(node.children || [], nextPath, nextItems);
   }
+  appendNodes(nodes, pathParts);
   return nextItems;
 }
 

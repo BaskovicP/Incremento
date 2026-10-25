@@ -1,0 +1,980 @@
+{
+  "audit_date": "2026-10-25",
+  "base_commit": "6125c2ca3f4e21cdd52a861c765d3916bb838d28",
+  "scope": "Performance audit only; implementation directions are proposals, not applied fixes",
+  "findings": [
+    {
+      "id": "F01",
+      "title": "Move session dialog counts and PDF targets off the UI thread",
+      "priority": "P1",
+      "evidence_level": "Source confirmed",
+      "trigger": "Open Start Incremental Learning, edit Topic or Item filters, or change eligible card states in a large collection.",
+      "mechanism": "_refresh_counts and _refresh_tag_count synchronously call helpers that find, sort and classify full candidate lists. Each real tag row clears the classification cache. textChanged signals run these scans immediately. The dialog constructor also calls _refresh_pdf_limit_targets, which loads a Card, Note and saved page for every PDF. The separate available-mix preview already uses background operations; it does not protect these count/target paths.",
+      "cost_or_measurement": "Cost grows with candidate cards and configured tag rows; the PDF target path adds per-document backend and SQLite calls. No live dialog latency was measured.",
+      "implementation_direction": "Use a debounced, coalesced QueryOp request carrying the profile, collection, filters and one classifier. Reuse classification metadata within that request and load PDF titles/progress in batches. Show a loading state and discard closed, superseded or profile-switched results. Reuse LatestQuery where appropriate.",
+      "acceptance": "Typing a burst dispatches at most the active request and one newest pending request; UI signal handlers do no collection scan. Preserve Anki tag/subtag semantics, Basic/Advanced synchronization, branch scope and exact counts.",
+      "sources": [
+        {
+          "path": "frontend/learn_dialog.py",
+          "line": 3578,
+          "symbol": "def _refresh_counts("
+        },
+        {
+          "path": "frontend/learn_dialog.py",
+          "line": 3553,
+          "symbol": "def _refresh_tag_count("
+        },
+        {
+          "path": "frontend/learn_dialog.py",
+          "line": 2984,
+          "symbol": "def _refresh_pdf_limit_targets("
+        },
+        {
+          "path": "backend/cards.py",
+          "line": 254,
+          "symbol": "def _classified_ready_cards("
+        },
+        {
+          "path": "frontend/latest_query.py",
+          "line": 17,
+          "symbol": "class LatestQuery"
+        }
+      ],
+      "regression_files": [
+        "tests/test_learn_dialog.py",
+        "tests/test_learn_dialog_qt.py",
+        "tests/test_cards.py",
+        "tests/test_session_setup_model.py",
+        "tests/test_latest_query.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F02",
+      "title": "Reuse EPUB metadata and a reverse section path map",
+      "priority": "P1",
+      "evidence_level": "Source confirmed and helper measured",
+      "trigger": "Navigate or scroll a long EPUB, follow a local section link, or receive a WebEngine URL change.",
+      "mechanism": "_current_metadata reparses metadata.json through load_epub_metadata. That JSON includes every section body. _section_index_from_path loops over sections and calls get_epub_section_path for each candidate; that helper reparses the same JSON again. Looking up a late section therefore repeats a whole-book read/parse roughly once per preceding section. Progress/title updates also call _current_sections.",
+      "cost_or_measurement": "The original load_epub_metadata helper took a median 6.766 ms for a synthetic 10,007,930-byte, 200-section metadata file. A last-section path lookup can request about 201 parses. That multiplicative cost is established by the caller; an end-to-end lookup time is not claimed.",
+      "implementation_direction": "Keep a bounded snapshot for the active document, keyed by captured profile, filename, metadata identity and sanitizer version. Build a validated path-to-section map once. Clear it on replacement, sanitization changes, document/profile switch and close. Preserve containment checks; never cache arbitrary path acceptance.",
+      "acceptance": "Resolving any section performs a constant number of metadata reads per document generation. Progress-only events reuse the snapshot. Cover stale replacement, malformed metadata, traversal and profile-switch cases.",
+      "sources": [
+        {
+          "path": "frontend/epub_dock.py",
+          "line": 5588,
+          "symbol": "def _current_metadata("
+        },
+        {
+          "path": "frontend/epub_dock.py",
+          "line": 5884,
+          "symbol": "def _section_index_from_path("
+        },
+        {
+          "path": "backend/epub_manager.py",
+          "line": 727,
+          "symbol": "def load_epub_metadata("
+        },
+        {
+          "path": "backend/epub_manager.py",
+          "line": 931,
+          "symbol": "def get_epub_section_path("
+        }
+      ],
+      "regression_files": [
+        "tests/test_epub_dock.py",
+        "tests/test_epub_security_integration.py",
+        "tests/test_epub_manager.py",
+        "tests/test_reader_links.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F03",
+      "title": "Combine statistics updates within each review event",
+      "priority": "P1",
+      "evidence_level": "Measured production helpers",
+      "trigger": "Reveal an answer and grade a card during ordinary free study, especially with many populated tag statistics.",
+      "mechanism": "Review-time attribution calls record_time_only and then record_tag_breakdown; answer attribution calls record and then record_tag_breakdown. Each independently loads, normalizes and rewrites the entire canonical JSON, fsyncs it, replaces it and mirrors aggregates/history to SQLite. StatsManager construction also reloads the file. These hooks run synchronously.",
+      "cost_or_measurement": "A synthetic time-plus-answer cycle performed four atomic file writes. Medians were 3.675 ms with one populated tag per group, 26.515 ms with 128, and 99.331 ms with 512. This includes two callbacks, not a single measured UI pause. The largest fixture was 79,024 bytes.",
+      "implementation_direction": "Add one locked mutation per logical event that updates its legacy aggregate and joint tag breakdown together. Combine the two time writes at answer reveal and the two count writes at grading, retaining the separate event semantics. Avoid redundant normalization inside the same trusted transaction. Keep the canonical file and recovery mirror contract.",
+      "acceptance": "One durable canonical write per event, at most two for this complete free-study cycle; exact count/time/tag totals survive restart, concurrent mutations, malformed-file fallback and a failed mirror. Do not trade correctness for a delayed lossy flush.",
+      "sources": [
+        {
+          "path": "backend/review_time_tracker.py",
+          "line": 142,
+          "symbol": "def _record_review_time("
+        },
+        {
+          "path": "backend/review_time_tracker.py",
+          "line": 228,
+          "symbol": "def on_reviewer_card_answered("
+        },
+        {
+          "path": "backend/statistics.py",
+          "line": 811,
+          "symbol": "def mutate_stats("
+        },
+        {
+          "path": "backend/statistics.py",
+          "line": 675,
+          "symbol": "def _write_stats_file_atomic("
+        }
+      ],
+      "regression_files": [
+        "tests/test_statistics.py",
+        "tests/test_session.py",
+        "tests/test_stats_progress.py",
+        "tests/test_learning_statistics.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F04",
+      "title": "Stop scanning the PDF library for each reviewer source cover",
+      "priority": "P1",
+      "evidence_level": "Source confirmed",
+      "trigger": "Review an extracted card containing an inline PDF reference in a large PDF library.",
+      "mechanism": "Both question and answer hooks call _sync_reviewer_source_cover. Its payload resolver calls find_live_pdf_card_by_filename, which enumerates every PDF note and loads notes until an exact filename match is found. A missing or fuzzy match scans the whole library. The question-to-answer transition repeats that lookup for the same source.",
+      "cost_or_measurement": "Up to O(D) Note reads per hook for D PDF notes, plus source card/note reads. This is on the reviewer UI path; no live per-card timing was measured.",
+      "implementation_direction": "Resolve a verified source card identity directly when available. Otherwise use a batched, collection-generation-scoped derived filename index with exact-match precedence and the existing unique-fuzzy fallback. Reuse the resolved payload between the two sides of one card and invalidate after relevant note/document changes.",
+      "acceptance": "For an unchanged source, question/answer rendering makes no full-library scan. Verify missing files, duplicate names, exact precedence, ambiguous fuzzy matches, replacement/deletion, Undo and profile switching.",
+      "sources": [
+        {
+          "path": "__init__.py",
+          "line": 3392,
+          "symbol": "def _reviewer_pdf_source_cover_payload("
+        },
+        {
+          "path": "__init__.py",
+          "line": 3479,
+          "symbol": "gui_hooks.reviewer_did_show_question.append(_sync_reviewer_source_cover)"
+        },
+        {
+          "path": "backend/pdf_manager.py",
+          "line": 87,
+          "symbol": "def find_live_pdf_card_by_filename("
+        }
+      ],
+      "regression_files": [
+        "tests/test_reviewer_source_cover.py",
+        "tests/test_pdf_manager.py",
+        "tests/test_note_metadata.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F05",
+      "title": "Address FTS maintenance scans during document replacement",
+      "priority": "P1",
+      "evidence_level": "Measured SQL and query plan",
+      "trigger": "Reindex or replace an already indexed PDF, EPUB or OCR document while FTS5 is available.",
+      "mechanism": "The FTS tables keep card/page/section identifiers UNINDEXED. Each base-row delete or update trigger deletes matching FTS rows using those columns. SQLite must scan the virtual table for each affected base row. Replacing P pages against N indexed rows can perform work proportional to P times N. A background worker avoids direct UI work but still holds a write transaction and consumes extraction/import capacity.",
+      "cost_or_measurement": "Replacing existing 500/1,000/2,000/4,000-page synthetic PDF indexes took 22.909/69.585/244.314/825.158 ms. EXPLAIN QUERY PLAN for the trigger-style delete returned SCAN pdf_text_fts VIRTUAL TABLE INDEX 0. This fixture used very short text, so deletion overhead is visible.",
+      "implementation_direction": "Prototype stable base-row-to-FTS rowid mapping or a compatible external-content design so per-row maintenance addresses rowid directly. Rebuild mirrors in a new monotonic migration and update all insert/delete/update paths together. Preserve fallback without FTS5 and transactional migration rollback.",
+      "acceptance": "Measure replacement against a growing unrelated corpus as well as a growing document. Eliminate the per-page full virtual-table scan; preserve search results after insert, replace, delete, migration failure and FTS-unavailable startup.",
+      "sources": [
+        {
+          "path": "backend/db.py",
+          "line": 407,
+          "symbol": "def _migration_3_search_fts("
+        },
+        {
+          "path": "backend/db.py",
+          "line": 448,
+          "symbol": "CREATE TRIGGER IF NOT EXISTS pdf_text_fts_ad"
+        },
+        {
+          "path": "backend/db.py",
+          "line": 463,
+          "symbol": "CREATE TRIGGER IF NOT EXISTS epub_text_fts_ad"
+        },
+        {
+          "path": "backend/db.py",
+          "line": 478,
+          "symbol": "CREATE TRIGGER IF NOT EXISTS note_ocr_fts_ad"
+        },
+        {
+          "path": "backend/search_indexer.py",
+          "line": 52,
+          "symbol": "def index_pdf_documents("
+        }
+      ],
+      "regression_files": [
+        "tests/test_db.py",
+        "tests/test_db_schema.py",
+        "tests/test_search_indexer.py",
+        "tests/test_search_repository.py",
+        "tests/test_pdf_search_safety.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F06",
+      "title": "Make knowledge tree validation linear and persist only changed rows",
+      "priority": "P1",
+      "evidence_level": "Measured production storage API",
+      "trigger": "Save, move, insert or remove nodes in a large or deeply nested knowledge tree.",
+      "mechanism": "set_knowledge_tree_structure walks each node to the root with a new seen set, repeating shared ancestor work. It then upserts every surviving row, including unchanged nodes. Several structure helpers rebuild and save the whole tree for one change; repeated per-node operations multiply the cost.",
+      "cost_or_measurement": "A 4,000-node chain took 273.804 ms per save versus 11.167 ms for a star of the same size. Chain saves at 1,000/2,000/4,000 nodes took 19.880/75.832/273.804 ms. These are storage-API measurements; they do not imply that the current recursive UI can display a 4,000-level chain.",
+      "implementation_direction": "Validate the complete parent graph once using iterative visitation states or memoized completed chains. Compute changed/deleted rows and affected sibling ordering, then write only those rows in one transaction. Batch multi-node operations at their owning boundary. Preserve created_at and meaningful updated_at semantics.",
+      "acceptance": "Cycle, missing-parent and duplicate rejection remain identical and atomic. Validation approaches O(N+E); changing one branch does not rewrite unrelated rows. Exercise wide, balanced and deep synthetic trees plus rollback.",
+      "sources": [
+        {
+          "path": "backend/db.py",
+          "line": 4861,
+          "symbol": "def set_knowledge_tree_structure("
+        },
+        {
+          "path": "backend/db.py",
+          "line": 4896,
+          "symbol": "parent_map = {card_id:"
+        },
+        {
+          "path": "backend/knowledge_tree.py",
+          "line": 204,
+          "symbol": "def insert_knowledge_tree_node("
+        },
+        {
+          "path": "frontend/knowledge_tree_dialog.py",
+          "line": 1849,
+          "symbol": "def _persist_tree_after_drop("
+        }
+      ],
+      "regression_files": [
+        "tests/test_db.py",
+        "tests/test_knowledge_tree.py",
+        "tests/test_knowledge_tree_mind_map.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F07",
+      "title": "Bound database inspection and avoid quadratic text highlighting",
+      "priority": "P1",
+      "evidence_level": "Measured pure helper and source confirmed",
+      "trigger": "Open Incremento Database Entries for a large Browser selection, then search common text in a large result.",
+      "mechanism": "The action synchronously discovers tables, queries each matching card-reference column and fetches every returned value. _format_browser_database_entries scans the entire entries list again for each selected card. Each search keystroke builds a case-fold offset map for the entire text and creates selections for every match. text_index_to_qt_position repeatedly slices and UTF-16-encodes the whole prefix for both ends of each match; next/previous navigation rebuilds all selections too.",
+      "cost_or_measurement": "Offset conversion alone took 46.537 ms for 128,000 characters/2,000 matches, 165.883 ms for 256,000/4,000, and 629.371 ms for 512,000/8,000. This excludes case folding, SQL, formatting and Qt selection creation.",
+      "implementation_direction": "Move discovery/lookup/formatting into a captured-profile cancellable read operation, with explicit selection, row and byte budgets and paging. Group entries by card once. Precompute UTF-16 offsets once or use a stable Qt-native search strategy, debounce queries and update only the active selection on navigation.",
+      "acceptance": "No uncapped table/materialization work in the action handler; formatting is O(entries + selected cards), and offset preparation is O(text + matches). Keep Unicode expansions, emoji/surrogate pairs and overlapping-match behavior correct; display truncation/paging explicitly.",
+      "sources": [
+        {
+          "path": "backend/db.py",
+          "line": 241,
+          "symbol": "def find_card_database_entries("
+        },
+        {
+          "path": "__init__.py",
+          "line": 2018,
+          "symbol": "def _format_browser_database_entries("
+        },
+        {
+          "path": "__init__.py",
+          "line": 2105,
+          "symbol": "def _show_browser_database_entries("
+        },
+        {
+          "path": "frontend/database_entries_dialog.py",
+          "line": 82,
+          "symbol": "def text_index_to_qt_position("
+        },
+        {
+          "path": "frontend/database_entries_dialog.py",
+          "line": 175,
+          "symbol": "def _apply_highlights("
+        }
+      ],
+      "regression_files": [
+        "tests/test_database_entries_dialog.py",
+        "tests/test_db.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F08",
+      "title": "Keep empty PDF preparation from falling back to UI extraction",
+      "priority": "P1",
+      "evidence_level": "Source confirmed",
+      "trigger": "Import a scanned or otherwise textless PDF from Companion, or create a PDF from an opened webpage.",
+      "mechanism": "_prepare_pdf_item_off_main records precomputed text only when the extracted list is truthy. extract_pdf_pages_text can return an empty list for a valid scan. The main-thread add_pdf_card path sees the missing value and runs extraction again, including Qt and a possible external pdftotext invocation. Webpage-created PDFs skip this preparation route and also reach extraction during main-thread creation. File copy, cover rendering and text-index insertion remain in that synchronous creation phase.",
+      "cost_or_measurement": "The source establishes duplicate extraction after a successful empty preparation and library/file-size-dependent work on the UI thread. No scan duration was measured.",
+      "implementation_direction": "Represent preparation completion independently from whether text exists; carry an explicit empty list. Prepare text for rendered webpages before final collection creation. Move managed-file preparation and indexing work to the appropriate captured-profile workers/operations, with journaled paths and a minimal serialized Anki mutation phase.",
+      "acceptance": "A prepared empty PDF never invokes an extractor again in the UI phase. Cover direct PDF bytes, downloaded PDF, webpage render and preparation failure, with profile changes and crash-safe rollback. Preserve bridge authorization checks at collection access.",
+      "sources": [
+        {
+          "path": "backend/browser_bridge.py",
+          "line": 824,
+          "symbol": "def _prepare_pdf_item_off_main("
+        },
+        {
+          "path": "backend/browser_bridge.py",
+          "line": 852,
+          "symbol": "if page_texts:"
+        },
+        {
+          "path": "backend/browser_bridge.py",
+          "line": 1290,
+          "symbol": "def _add_content_item_on_main("
+        },
+        {
+          "path": "backend/pdf_manager.py",
+          "line": 1275,
+          "symbol": "def _create_new_pdf_card("
+        },
+        {
+          "path": "backend/pdf_manager.py",
+          "line": 835,
+          "symbol": "def extract_pdf_pages_text("
+        }
+      ],
+      "regression_files": [
+        "tests/test_browser_bridge.py",
+        "tests/test_pdf_manager.py",
+        "tests/test_operation_journal.py",
+        "tests/test_webpage_pdf_integration.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F09",
+      "title": "Build the bookmark index in one pass",
+      "priority": "P1",
+      "evidence_level": "Measured JavaScript source model",
+      "trigger": "Open Companion bookmark import with a large bookmark collection, particularly IDs that are opaque strings.",
+      "mechanism": "registerBookmark creates a new object with every previous item via object spread for every bookmark. buildBookmarkItems repeats this throughout the recursive walk. That is quadratic copying for general string keys. Folder rendering also recollects descendants, and closed details elements still mount their child tree; these are additional UI costs outside the model benchmark.",
+      "cost_or_measurement": "For 1,000/2,500/5,000 opaque IDs, buildBookmarkItems took 41.777/428.280/2,061.890 ms. Numeric-string IDs took 1.204/2.762/6.499 ms on the same Node/V8 runtime. The numeric optimization does not make the algorithm safe for other ID shapes; the fixture is illustrative, not a measurement of Firefox itself.",
+      "implementation_direction": "Populate a fresh private accumulator once during initial tree construction, preserving the public immutability contract for a supplied input map. Build node/subtree indexes once per tree and mount expanded branches or a visible window. Keep immutable targeted updates for React state after construction.",
+      "acceptance": "Initial construction approaches O(B) for numeric and opaque IDs; input maps and nodes remain unchanged, duplicate handling/folder paths stay identical, and folder selection remains stable. Measure browser rendering separately.",
+      "sources": [
+        {
+          "path": "chrome_extensions/incremento_companion/src/bookmarks/bookmarkModel.js",
+          "line": 59,
+          "symbol": "function registerBookmark("
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/src/bookmarks/bookmarkModel.js",
+          "line": 82,
+          "symbol": "export function buildBookmarkItems("
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/src/bookmarks/components/BookmarkTree.jsx",
+          "line": 47,
+          "symbol": "function FolderNode("
+        }
+      ],
+      "regression_files": [
+        "chrome_extensions/incremento_companion/tests/bookmarkModel.test.js"
+      ],
+      "dependency": "Extension source changes require build:extension and the matching generated bundles."
+    },
+    {
+      "id": "F10",
+      "title": "Debounce full writing preview and serialize saves outside typing handlers",
+      "priority": "P1",
+      "evidence_level": "Source confirmed",
+      "trigger": "Type in a long writing card or keep a large Markdown document open with preview hidden.",
+      "mechanism": "_on_editor_text_changed rebuilds the complete preview with setMarkdown and separately reads/counts the complete document on every change. Hiding the preview does not skip this work. A 180 ms autosave timer then reads/writes the whole document, checks backups, recounts words and writes supplemental state. A separate 220 ms state timer can repeat progress writes; flush also saves progress twice.",
+      "cost_or_measurement": "O(document length) preview/word processing per keystroke plus synchronous save/backup work on pauses. The existing autosave timer does not debounce the immediate preview conversion. No live typing latency was measured.",
+      "implementation_direction": "Keep caret/status updates immediate, debounce preview and word-count snapshots, and skip preview parsing while hidden. Capture immutable text/profile/card generations for an ordered background save queue; retain a safe close/profile-switch flush and visible failure handling. Persist unchanged editor state only when dirty.",
+      "acceptance": "A burst of edits causes one newest preview/count task and ordered durable replacements; hidden preview causes no Markdown rebuild. Preserve unsaved text, per-card word baselines, backup tiers, session counters and profile isolation under slow/failing saves.",
+      "sources": [
+        {
+          "path": "frontend/writing_dock.py",
+          "line": 880,
+          "symbol": "def _on_editor_text_changed("
+        },
+        {
+          "path": "frontend/writing_dock.py",
+          "line": 300,
+          "symbol": "def _refresh_markdown_preview("
+        },
+        {
+          "path": "frontend/writing_dock.py",
+          "line": 574,
+          "symbol": "def _autosave_from_editor("
+        },
+        {
+          "path": "frontend/writing_dock.py",
+          "line": 597,
+          "symbol": "def _flush_editor_state("
+        },
+        {
+          "path": "backend/writing_manager.py",
+          "line": 258,
+          "symbol": "def write_writing_text("
+        }
+      ],
+      "regression_files": [
+        "tests/test_writing_dock.py",
+        "tests/test_writing_manager.py",
+        "tests/test_writing_workspace_qt.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F11",
+      "title": "Remove repeated global set differences in Undo tracking",
+      "priority": "P2",
+      "evidence_level": "Measured Python logic with SQL boundary fake",
+      "trigger": "After many topic/custom-schedule answers in one profile session, Undo an answer and then perform an operation that clears Redo.",
+      "mechanism": "ReviewRevlogTracker.transitions computes set(existing) minus each card snapshot inside the restored_undone comprehension. The condition runs when an undone candidate exists and can_redo is false. With one tracked answer per card, it repeatedly copies almost the whole global set, yielding O(cards times tracked revlogs). Normal transition checks also query all tracked session revlogs.",
+      "cost_or_measurement": "The original tracker logic took 18.310/77.482/310.529 ms for 1,000/2,000/4,000 tracked cards in the Redo-clearing case. The benchmark fakes only the revlog lookup; SQL and UI costs are excluded.",
+      "implementation_direction": "Test only the relevant intersection of a card's linked IDs and the undone set when identifying restored candidates, or otherwise precompute differences once. Investigate reducing ordinary full-session polling only with a verified native Undo lifecycle signal. Do not arbitrarily evict history that Anki can still undo.",
+      "acceptance": "Preserve exact transitions for genuine Undo/Redo, forget/delete, sync, cleared Redo, manual topic edits, recreated rule revisions and profile resets. The specific Redo-clearing computation scales approximately linearly.",
+      "sources": [
+        {
+          "path": "backend/answer_schedule.py",
+          "line": 208,
+          "symbol": "def transitions("
+        },
+        {
+          "path": "backend/answer_schedule.py",
+          "line": 229,
+          "symbol": "restored_undone = {"
+        },
+        {
+          "path": "__init__.py",
+          "line": 7760,
+          "symbol": "gui_hooks.undo_state_did_change.append(_reconcile_topic_state_after_anki_operation)"
+        }
+      ],
+      "regression_files": [
+        "tests/test_topic_scheduler.py",
+        "tests/test_custom_schedule.py",
+        "tests/test_topic_scheduler_anki_integration.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F12",
+      "title": "Reduce search candidate amplification and repeated tokenization",
+      "priority": "P2",
+      "evidence_level": "Measured query helpers and source confirmed",
+      "trigger": "Search common terms across a large document/highlight library, or type in current-document Find.",
+      "mechanism": "Search ALL oversamples requested results by 10 to remove stale/unavailable owners; the DB layer then multiplies the limit by 25. A 120-result PDF category can therefore request 30,000 full-text candidates. Each candidate reparses the query and tokenizes its full text before Python sorting. Highlight/source excerpt search always uses a leading-wildcard lower LIKE scan. Current PDF/EPUB Find and the current-document results dialog call search synchronously on text changes.",
+      "cost_or_measurement": "With 12,000 pages of about 1,380 characters, the PDF helper took 158.881 ms for limit 120 and 505.815 ms for limit 1,200, which is the outer oversampling request. The excerpt query plan scanned the card/page index. A LIMIT bounds returned rows, not scanned rows or transferred text bytes.",
+      "implementation_direction": "Compile query terms once per request, reduce redundant text work and use incremental candidate batches with cancellation and explicit work/byte budgets. Evaluate proper text indexes for excerpts with the required fallback. Move current-document searches to debounced latest-request workers. Preserve ranking, prefix, phrase and Unicode semantics rather than just lowering caps.",
+      "acceptance": "Profile common/rare/no-hit terms and stale-owner cases; preserve result order and coverage. New typing must not wait behind obsolete ranking work. Avoid uncapped full-text materialization before cancellation checks.",
+      "sources": [
+        {
+          "path": "frontend/search_all_results.py",
+          "line": 125,
+          "symbol": "def _search_limit("
+        },
+        {
+          "path": "backend/db.py",
+          "line": 3672,
+          "symbol": "def search_pdf_text_index("
+        },
+        {
+          "path": "backend/db.py",
+          "line": 3463,
+          "symbol": "def search_text_match_score("
+        },
+        {
+          "path": "backend/search_repository.py",
+          "line": 131,
+          "symbol": "def search_excerpt_rows("
+        },
+        {
+          "path": "frontend/current_document_search_dialog.py",
+          "line": 109,
+          "symbol": "def _refresh_results("
+        },
+        {
+          "path": "frontend/pdf_dock.py",
+          "line": 2616,
+          "symbol": "def _update_pdf_search("
+        },
+        {
+          "path": "frontend/epub_dock.py",
+          "line": 4868,
+          "symbol": "def _apply_epub_find_query("
+        }
+      ],
+      "regression_files": [
+        "tests/test_search_repository.py",
+        "tests/test_search_all_results.py",
+        "tests/test_current_document_search_dialog.py",
+        "tests/test_pdf_dock.py",
+        "tests/test_epub_dock.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F13",
+      "title": "Make EPUB progress events update only position-dependent state",
+      "priority": "P2",
+      "evidence_level": "Source confirmed",
+      "trigger": "Scroll or turn pages in an EPUB containing many saved highlights and source cards.",
+      "mechanism": "_record_progress saves state, recomputes daily limits, updates the toolbar and rebuilds the sources panel. _current_section_highlights loads highlights for the whole book and filters in Python; _on_load_finished repeats the same pattern. Counts, bookmarks and HTML panel rendering are refreshed even when only the scroll ratio changed, including when the sources panel is hidden.",
+      "cost_or_measurement": "O(all book highlights) reads/allocation per progress update, plus SQL aggregates and HTML reconstruction. The bridge has a 140 ms debounce, which reduces frequency but does not reduce each update's work.",
+      "implementation_direction": "Query highlights for the active section using the existing card/section index. Cache section counts and panel data per document generation; invalidate on highlight/source/bookmark mutations. Separate position persistence from section-change and visible-panel updates.",
+      "acceptance": "A same-section scroll does not reload all highlights or rebuild hidden panels. Preserve daily-limit enforcement, unique-page counts, bookmark state and live updates shared with reference panes.",
+      "sources": [
+        {
+          "path": "frontend/epub_dock.py",
+          "line": 5837,
+          "symbol": "def _record_progress("
+        },
+        {
+          "path": "frontend/epub_dock.py",
+          "line": 5288,
+          "symbol": "def _current_section_highlights("
+        },
+        {
+          "path": "frontend/epub_dock.py",
+          "line": 5770,
+          "symbol": "def _update_sources_panel("
+        },
+        {
+          "path": "backend/epub_highlights.py",
+          "line": 11,
+          "symbol": "def load_highlights("
+        }
+      ],
+      "regression_files": [
+        "tests/test_epub_dock.py",
+        "tests/test_epub_highlights.py",
+        "tests/test_reader_controls_qt.py",
+        "tests/test_reader_links.py"
+      ],
+      "dependency": "Coordinate with F02 so metadata and panel caches share correct invalidation."
+    },
+    {
+      "id": "F14",
+      "title": "Avoid materializing every peer in large duplicate groups",
+      "priority": "P2",
+      "evidence_level": "Measured pure source logic",
+      "trigger": "Open the Document Bookshelf with many imported copies sharing the same normalized source filename.",
+      "mechanism": "_bookshelf_duplicate_matches caps title/feature buckets but not exact_origins. For an origin group of D entries it enumerates every pair, stores reciprocal sets, then builds a full peer tuple for every entry. Subsequent duplicate-entry/group consumers reuse this expanded graph rather than a compact group representation.",
+      "cost_or_measurement": "200/400/800 same-origin documents produced 39,800/159,600/639,200 stored peer references and took 6.435/21.373/70.421 ms. Memory growth is established by reference counts; peak RSS was not measured.",
+      "implementation_direction": "Represent exact-equivalence groups compactly and resolve selected peers lazily. Keep fuzzy edges separate because fuzzy similarity is not transitive; connected components alone cannot replace direct-match semantics. Reuse one computed match model within each shelf snapshot.",
+      "acceptance": "Exact duplicate storage approaches O(D) per equivalence group while direct fuzzy matches and delete-confirmation attachment counts remain correct. Include groups above existing bucket caps and titles with conflicting numeric parts.",
+      "sources": [
+        {
+          "path": "frontend/pdf_bookshelf.py",
+          "line": 555,
+          "symbol": "def _bookshelf_duplicate_matches("
+        },
+        {
+          "path": "frontend/pdf_bookshelf.py",
+          "line": 617,
+          "symbol": "for indexes in exact_origins.values():"
+        },
+        {
+          "path": "frontend/pdf_bookshelf.py",
+          "line": 725,
+          "symbol": "def _bookshelf_duplicate_groups("
+        }
+      ],
+      "regression_files": [
+        "tests/test_pdf_bookshelf.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F15",
+      "title": "Batch remaining branch and linked-media inspection paths",
+      "priority": "P2",
+      "evidence_level": "Source confirmed and shared helper measured",
+      "trigger": "Open branch subset review, simulate/apply branch postponement, change branch priorities, or inspect a large media Review All selection.",
+      "mechanism": "Subset review and postponement still synchronously load per-card metadata, priorities and topic state. build_branch_study_scope enriches the entire tree before selecting one subtree. subtree_node_infos uses list.pop(0), which repeatedly shifts a wide pending queue. Media review is already background-owned, but its full inspection still creates a Card per candidate and a Note per distinct note. Several bulk priority consumers call individual persistence helpers. The main tree snapshot already demonstrates a batched read model.",
+      "cost_or_measurement": "4,000 get_priority helper reads took 139.593 ms versus 6.780 ms using repeated queries on an already-resolved connection, or 1.300 ms for five batches of at most 900 IDs. These helper results illustrate batching overhead; they are not timings for the complete dialogs.",
+      "implementation_direction": "Extend operation-owned batch projections to the remaining consumers, limit branch study reads to required structure/metadata, and reuse one classifier and adjacency map. Use deque for breadth-first traversal. Put synchronous read previews in QueryOp and ordinary mutations in CollectionOp. Batch supplemental writes transactionally, preserving per-card errors and native Undo semantics.",
+      "acceptance": "Backend calls and SQL statements grow by bounded batches rather than per displayed field/card. Keep media attachment provenance, nested positions, due/exclusion previews, ordering, Preview mode and conflicting filtered-deck behavior identical.",
+      "sources": [
+        {
+          "path": "backend/knowledge_tree.py",
+          "line": 1768,
+          "symbol": "def build_subset_review_rows("
+        },
+        {
+          "path": "backend/knowledge_tree.py",
+          "line": 1857,
+          "symbol": "def build_branch_study_scope("
+        },
+        {
+          "path": "backend/knowledge_tree.py",
+          "line": 1567,
+          "symbol": "def subtree_priority_stats("
+        },
+        {
+          "path": "backend/knowledge_tree.py",
+          "line": 1544,
+          "symbol": "def subtree_node_infos("
+        },
+        {
+          "path": "backend/knowledge_tree_postpone.py",
+          "line": 503,
+          "symbol": "def _card_info_map("
+        },
+        {
+          "path": "frontend/knowledge_tree_postpone_dialog.py",
+          "line": 802,
+          "symbol": "def _simulate_postpone("
+        },
+        {
+          "path": "frontend/knowledge_tree_subset_dialog.py",
+          "line": 280,
+          "symbol": "def _reload_rows("
+        },
+        {
+          "path": "backend/media_review.py",
+          "line": 625,
+          "symbol": "def inspect_linked_media_review_rows("
+        }
+      ],
+      "regression_files": [
+        "tests/test_knowledge_tree.py",
+        "tests/test_knowledge_tree_postpone.py",
+        "tests/test_media_review.py",
+        "tests/test_media_review_dialog.py",
+        "tests/test_priority_manager.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F16",
+      "title": "Prevent PDF Find highlighting from observing its own writes",
+      "priority": "P2",
+      "evidence_level": "High confidence source risk requiring browser validation",
+      "trigger": "Keep a nonempty PDF Find query active while the observed text layer receives a child/text mutation after observation begins.",
+      "mechanism": "The Find effect observes childList, subtree and characterData. Its callback schedules applySearchHitStyles, which rewrites span textContent or innerHTML and therefore creates the same kinds of mutations. One external text mutation can start successive self-scheduled passes. The initial highlighting pass happens before observation, and effect cleanup/renderInfo changes can stop the cycle, so sustained idle CPU is conditional rather than established for every search.",
+      "cost_or_measurement": "Potential repeated whole-page DOM rewriting on animation frames. No native WebEngine or real-browser reproduction was completed in this environment; the browser tool blocked local-file navigation. This finding must be reproduced before claiming an observed idle CPU defect.",
+      "implementation_direction": "Observe text-layer lifecycle once, or disconnect/suppress the observer around owned writes and reconnect afterward. Make highlighting idempotent and modify only changed spans. Do not mutate PDF.js selection structure gratuitously.",
+      "acceptance": "In a real DOM regression, append text with Find active, settle rendering, and assert highlight work becomes idle with no further input. Verify match/no-match queries, progressive text, page switches, copy/selection and current-document context.",
+      "sources": [
+        {
+          "path": "frontend/src/PdfViewer.jsx",
+          "line": 297,
+          "symbol": "function clearSearchHitStyles("
+        },
+        {
+          "path": "frontend/src/PdfViewer.jsx",
+          "line": 327,
+          "symbol": "function highlightSpanText("
+        },
+        {
+          "path": "frontend/src/PdfViewer.jsx",
+          "line": 962,
+          "symbol": "const observer = new MutationObserver(() => {"
+        },
+        {
+          "path": "frontend/src/usePdfRender.js",
+          "line": 108,
+          "symbol": "const renderTextLayer = useCallback("
+        }
+      ],
+      "regression_files": [
+        "frontend/tests/pdfSelection.test.mjs",
+        "tests/test_pdf_controls_browser.py",
+        "tests/test_pdf_dock.py"
+      ],
+      "dependency": "Add a real DOM lifecycle regression, then rebuild web/dist/pdf_viewer.js after a source change."
+    },
+    {
+      "id": "F17",
+      "title": "Add cancellation and resource budgets inside PDF extraction",
+      "priority": "P2",
+      "evidence_level": "Source confirmed",
+      "trigger": "Cancel indexing while a very large/damaged PDF is being extracted, or close/switch profile during that extraction.",
+      "mechanism": "index_pdf_documents checks cancellation between files. extract_pdf_pages_text builds a list for every page in one call and its pdftotext fallback captures all output without a timeout. Superseded work can therefore occupy a worker for the rest of a large file; stale publication guards prevent wrong writes but do not reclaim extraction time or peak memory.",
+      "cost_or_measurement": "O(all page text) materialization with no within-file cancellation deadline in this extractor. The call can outlive the visible operation by a document-dependent amount; no large-file timing or RSS was measured.",
+      "implementation_direction": "Introduce cooperative checks between pages, a bounded extraction result/stream strategy, and explicit subprocess time/output budgets with termination cleanup. Consider a dedicated process for non-cooperative native work, using the existing annotation-process lifecycle as a reference, without assuming arbitrary thread parallelism is safe.",
+      "acceptance": "Cancellation stops before the next page/chunk when cooperative; timed-out children are reaped. Preserve ready/empty/error/backoff states, atomic index publication and generation guards. Never publish a partial page set as a complete index.",
+      "sources": [
+        {
+          "path": "backend/search_indexer.py",
+          "line": 52,
+          "symbol": "def index_pdf_documents("
+        },
+        {
+          "path": "backend/pdf_manager.py",
+          "line": 835,
+          "symbol": "def extract_pdf_pages_text("
+        },
+        {
+          "path": "backend/pdf_manager.py",
+          "line": 882,
+          "symbol": "proc = subprocess.run(\n                [exe, \"-layout\""
+        },
+        {
+          "path": "backend/pdf_annotation_process.py",
+          "line": 81,
+          "symbol": "def sync_pdf_annotations_in_process("
+        }
+      ],
+      "regression_files": [
+        "tests/test_search_indexer.py",
+        "tests/test_pdf_manager.py",
+        "tests/test_pdf_search_safety.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F18",
+      "title": "Bound Qt and React item creation after background reads",
+      "priority": "P2",
+      "evidence_level": "Source confirmed",
+      "trigger": "Load a large knowledge tree, subset table or PDF highlight panel after its data is ready.",
+      "mechanism": "The main knowledge-tree data query is already asynchronous, but _apply_snapshot clears and creates every QTreeWidgetItem in one UI callback. Subset review populates all table rows/cells. The PDF all-highlights panel maps every matching highlight to buttons. Efficient worker reads do not bound these final UI construction costs.",
+      "cost_or_measurement": "O(all displayed items) widget/DOM construction and retained memory in a single refresh. Live frame time and peak memory remain unmeasured.",
+      "implementation_direction": "Measure callback/commit time separately from query time. Use a model/view or paged/windowed representation for large collections, or bounded generation-aware construction batches. Preserve selection, expanded state, stable row order, accessibility and immediate cancellation of obsolete builds.",
+      "acceptance": "A background result cannot monopolize one UI callback for the entire large collection. Compare 1,000/10,000/50,000 synthetic nodes/items while testing selection restoration and stale results. Keep the existing batched tree snapshot instead of reintroducing per-card reads.",
+      "sources": [
+        {
+          "path": "frontend/knowledge_tree_dialog.py",
+          "line": 1943,
+          "symbol": "def _apply_snapshot("
+        },
+        {
+          "path": "frontend/knowledge_tree_subset_dialog.py",
+          "line": 319,
+          "symbol": "def _populate_table("
+        },
+        {
+          "path": "frontend/src/PdfViewer.jsx",
+          "line": 3209,
+          "symbol": "{highlightsForPanel.map((hl) => {"
+        }
+      ],
+      "regression_files": [
+        "tests/test_knowledge_tree.py",
+        "tests/test_knowledge_tree_mind_map.py",
+        "tests/test_accessibility_ux.py",
+        "frontend/tests/pdfHighlights.test.mjs"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F19",
+      "title": "Load bookshelf thumbnails for visible tiles with a byte budget",
+      "priority": "P2",
+      "evidence_level": "Source confirmed",
+      "trigger": "Open or repeatedly filter a bookshelf containing thousands of documents.",
+      "mechanism": "_refresh rebuilds matching tiles in batches of 40 and queues every uncached visible-result entry, including far offscreen tiles. _load_next_thumbnail decodes/renders serially and _thumbnail_cache retains QIcons without a byte/item budget for the dialog lifetime. Every keystroke restarts filter/population generations. The background render call also omits uses_collection=False, which should be checked against the installed task API before changing it.",
+      "cost_or_measurement": "For a 160 by 220 RGBA preview, raw pixels alone are about 140,800 bytes; 5,000 such previews would be about 671 MiB before Qt/container overhead. This is an illustrative size calculation, not a measured RSS value or guaranteed retained representation.",
+      "implementation_direction": "Prioritize viewport tiles with a small prefetch margin and an LRU byte budget; debounce filtering and reuse stable items where practical. Keep bounded parallel decoding only after measuring file/CPU pressure, and mark collection-free image work explicitly where supported.",
+      "acceptance": "The number of decoded/retained previews stays bounded as library size grows; fast scrolling preserves tile identity and never applies stale images. Retain stored covers, PDF-only missing-cover fallback, captions, tag filters and per-profile behavior.",
+      "sources": [
+        {
+          "path": "frontend/pdf_bookshelf.py",
+          "line": 1641,
+          "symbol": "def _refresh("
+        },
+        {
+          "path": "frontend/pdf_bookshelf.py",
+          "line": 1928,
+          "symbol": "def _load_next_thumbnail("
+        },
+        {
+          "path": "frontend/pdf_bookshelf.py",
+          "line": 2007,
+          "symbol": "self._thumbnail_cache[(entry.kind, entry.card_id)] = icon"
+        }
+      ],
+      "regression_files": [
+        "tests/test_pdf_bookshelf.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F20",
+      "title": "Split extension runtime chunks by actual consumers",
+      "priority": "P2",
+      "evidence_level": "Measured artifact sizes and static import graph",
+      "trigger": "Inject a content script, wake the background worker, or create the clipboard offscreen page.",
+      "mechanism": "The Vite manualChunks rule puts every shared module, including React hooks and the full language-pack validation catalog, into extension-shared. The shared chunk statically imports extension-vendor. Consequently even the small content and offscreen entries pull the React vendor chunk. Built-in translation-pack export is already dynamically imported and should remain so.",
+      "cost_or_measurement": "The content entry has 1,000,932 bytes of static JS dependencies, the background entry 986,365 bytes, and the 393-byte offscreen entry reaches 950,502 bytes. These are uncompressed committed file totals at the completion snapshot, not network transfer, decoded heap or startup time. Dynamically imported built-in export packs are excluded.",
+      "implementation_direction": "Separate non-React bridge/browser/i18n core from UI hooks and settings/export validation. Investigate loading custom-pack validation only when needed while preserving validation before use. Remove forced all-shared cohabitation and inspect static entry graphs after a reproducible build.",
+      "acceptance": "Content/background/offscreen paths without React UI no longer statically import React solely through the shared chunk. Cold language initialization, custom packs, Firefox adaptation, permissions and bridge behavior remain unchanged. Verify generated source/output alignment.",
+      "sources": [
+        {
+          "path": "frontend/vite.extension.config.js",
+          "line": 26,
+          "symbol": "manualChunks(id)"
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/src/shared/i18n.js",
+          "line": 6,
+          "symbol": "import { canonicalPackLocale"
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/src/shared/languagePacks.js",
+          "line": 1,
+          "symbol": "import catalog from"
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/src/shared/languagePacks.js",
+          "line": 242,
+          "symbol": "export async function builtinLanguagePack("
+        }
+      ],
+      "regression_files": [
+        "chrome_extensions/incremento_companion/tests/languagePacks.test.js",
+        "chrome_extensions/incremento_companion/tests/i18n.test.js",
+        "chrome_extensions/incremento_companion/tests/bridge.test.js"
+      ],
+      "dependency": "Run the extension tests and build:extension; do not edit committed bundles by hand."
+    },
+    {
+      "id": "F21",
+      "title": "Share media detection across heartbeat paths",
+      "priority": "P2",
+      "evidence_level": "Source confirmed",
+      "trigger": "Keep many pages or provider frames with Companion content scripts alive, especially pages containing multiple video elements.",
+      "mechanism": "The one-second interval calls sendHeartbeat and sendWebMediaHeartbeat separately; both call currentTrackedMedia, which queries and sorts video elements. timeupdate/play/pause events repeat the same pair. Dedupe happens after media detection. A separate 750 ms interval polls the URL. visibilitychange flushes state but does not suspend ordinary polling.",
+      "cost_or_measurement": "Repeated DOM queries/sorts per sample and per frame, including nonproductive polls. No browser CPU measurement was completed, and background timer throttling can change actual frequency.",
+      "implementation_direction": "Capture media context once per tick/event and pass it to both protocol payload builders. Track the active video via bounded lifecycle discovery, prefer a linear maximum selection over sorting, and reduce idle polling while retaining navigation/reinjection detection. Flush final progress on hide/pagehide before suspending.",
+      "acceptance": "One media discovery per sampling event, bounded pending requests and correct resume/watch progress across nested frames, SPA navigation, pauses/seeks and service-worker restarts. Avoid raising bridge/storage update frequency.",
+      "sources": [
+        {
+          "path": "chrome_extensions/incremento_companion/src/content/main.js",
+          "line": 2243,
+          "symbol": "function bestVideoElement("
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/src/content/main.js",
+          "line": 2492,
+          "symbol": "function sendHeartbeat("
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/src/content/main.js",
+          "line": 2533,
+          "symbol": "function sendWebMediaHeartbeat("
+        },
+        {
+          "path": "chrome_extensions/incremento_companion/src/content/main.js",
+          "line": 2580,
+          "symbol": "periodic = window.setInterval("
+        }
+      ],
+      "regression_files": [
+        "chrome_extensions/incremento_companion/tests/bridge.test.js",
+        "tests/test_video_watch_meter.py",
+        "tests/test_video_web.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F22",
+      "title": "Index SuperMemo parents once and batch supplemental schedule writes",
+      "priority": "P2",
+      "evidence_level": "Source confirmed",
+      "trigger": "Import a large SuperMemo collection.",
+      "mechanism": "Inside the note-creation loop, parent_title uses next over ordered to locate each element's parent, repeating up to the full collection for each element. Topic schedule state is then saved through set_topic_schedule once per topic, with a commit in each call. This adds avoidable Python scans and small transactions to already expensive native note/media/history work.",
+      "cost_or_measurement": "Worst-case O(imported elements times ordered elements) parent lookup and one supplemental schedule commit per topic. End-to-end SuperMemo import time was not measured.",
+      "implementation_direction": "Build an element-ID lookup once and reuse it for parent metadata. Batch topic-state rows in the existing controlled supplemental transaction boundary where failure recovery allows. Keep ImportOperation journal/bind/commit durability boundaries intact; do not bulk-disable journaling to improve a benchmark.",
+      "acceptance": "Parent resolution is O(1) per created element, and supplemental topic writes use bounded transactions. Preserve cloze mapping, rich sources, native revlog restoration, idempotent reimport, media rollback and archived optimization data.",
+      "sources": [
+        {
+          "path": "backend/supermemo_import.py",
+          "line": 599,
+          "symbol": "def import_supermemo_collection("
+        },
+        {
+          "path": "backend/supermemo_import.py",
+          "line": 667,
+          "symbol": "parent_title = next("
+        },
+        {
+          "path": "backend/supermemo_import.py",
+          "line": 755,
+          "symbol": "for element in ordered:\n            if not element.is_item:"
+        },
+        {
+          "path": "backend/db.py",
+          "line": 3924,
+          "symbol": "def set_topic_schedule("
+        }
+      ],
+      "regression_files": [
+        "tests/test_supermemo_format.py",
+        "tests/test_supermemo_import_anki_integration.py"
+      ],
+      "dependency": "F06 also affects the final knowledge-tree persistence phase."
+    },
+    {
+      "id": "F23",
+      "title": "Profile eager imports and first database use before changing startup",
+      "priority": "P3",
+      "evidence_level": "Profiling hypothesis",
+      "trigger": "Cold-start Anki or open a profile whose Incremento database needs migration.",
+      "mechanism": "__init__.py has 89 direct relative import statements, including substantial reader/dialog modules before any of those features are opened. It also performs profile activation/migration synchronously. A thread's first get_connection can initialize schema while the connection manager's global lock is held; a slow initialization can delay other callers asking for cached handles. Routine pending-import recovery itself already has a bounded read-only preflight.",
+      "cost_or_measurement": "Import fanout and lock scope are source facts. Their contribution to startup time has not been measured, so this is lower priority than reproduced work. Deferred imports can merely move cost to first use.",
+      "implementation_direction": "Capture cold/warm import self/cumulative time, profile-open stages and first-DB-use time in a disposable synthetic environment. Lazy-load optional dialogs only when the measurement supports it; register hooks idempotently and initialize language before visible strings. Separate safe connection fast paths from potentially waiting initialization without sharing connections across threads.",
+      "acceptance": "Compare cold startup, warm profile open and first feature opening together. Preserve profile/WebEngine reset order, bounded recovery, consent-gated note-type updates, migrations and concurrent initialization correctness.",
+      "sources": [
+        {
+          "path": "__init__.py",
+          "line": 42,
+          "symbol": "from .frontend.stats_dialog import StatsDialog"
+        },
+        {
+          "path": "__init__.py",
+          "line": 3033,
+          "symbol": "def _on_profile_did_open("
+        },
+        {
+          "path": "backend/db_connection.py",
+          "line": 56,
+          "symbol": "def get("
+        },
+        {
+          "path": "backend/operation_journal.py",
+          "line": 300,
+          "symbol": "def pending_import_recovery_needed("
+        }
+      ],
+      "regression_files": [
+        "tests/test_db.py",
+        "tests/test_db_schema.py",
+        "tests/test_migration.py",
+        "tests/test_note_type_updates.py"
+      ],
+      "dependency": null
+    },
+    {
+      "id": "F24",
+      "title": "Reuse normalized config within each reviewer event",
+      "priority": "P3",
+      "evidence_level": "Measured normalization and source confirmed",
+      "trigger": "Render reviewer badges/buttons or compute a topic answer when many scheduler presets or profile preferences exist.",
+      "mechanism": "load_addon_config deep-copies and normalizes the entire config, including every preset and its legacy alias. Many configured helpers independently call it. The priority badge loads config, calls topic classification more than once, and later calls a priority-direction helper without passing the already loaded config. Similar repeated access occurs in topic scheduling.",
+      "cost_or_measurement": "Fifty normalizations took 1.640/4.609/14.199 ms with 1/25/100 presets. Even the largest case is a fraction of a millisecond per call; this is a secondary optimization, not a demonstrated major pause.",
+      "implementation_direction": "Resolve one event-local normalized snapshot and classifier, passing them through configured helpers. Consider a versioned read cache only inside config_service with explicit invalidation for every save and supported external edits. Do not maintain independent consumer caches that can disagree with Settings.",
+      "acceptance": "Bound normalization/classification calls per event and preserve unknown keys, preset aliases, concurrent reader preferences, settings changes and profile switching. Rebenchmark before adding broader cache complexity.",
+      "sources": [
+        {
+          "path": "backend/config_service.py",
+          "line": 350,
+          "symbol": "def normalize_config("
+        },
+        {
+          "path": "backend/config_service.py",
+          "line": 452,
+          "symbol": "def load_addon_config("
+        },
+        {
+          "path": "__init__.py",
+          "line": 3309,
+          "symbol": "def _sync_reviewer_priority_badge("
+        },
+        {
+          "path": "backend/topic_scheduler.py",
+          "line": 791,
+          "symbol": "def on_topic_card_answered("
+        }
+      ],
+      "regression_files": [
+        "tests/test_config_service.py",
+        "tests/test_config_properties.py",
+        "tests/test_reviewer_priority_badge.py",
+        "tests/test_settings_dialog.py"
+      ],
+      "dependency": null
+    }
+  ]
+}

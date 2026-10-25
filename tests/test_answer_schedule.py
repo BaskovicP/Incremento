@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 import answer_schedule
 
 
@@ -160,3 +162,44 @@ def test_tracker_is_profile_scoped_and_clear_discards_all_state():
 
     col = _collection_with_existing(set())
     assert list(tracker.transitions(None, collection=col)) == []
+
+
+@pytest.mark.parametrize("final_redo", [False, True])
+def test_clearing_redo_does_not_rescan_all_revlogs_per_card(monkeypatch, final_redo):
+    """Retiring Undo candidates must examine local IDs, not copy the whole run."""
+    tracker = answer_schedule.ReviewRevlogTracker()
+    size = 128
+    live_ids = set(range(1, size + 1))
+
+    class Snapshot:
+        iterations = 0
+
+        def __iter__(self):
+            self.iterations += 1
+            return iter(live_ids)
+
+        def __contains__(self, value):
+            return value in live_ids
+
+    snapshot = Snapshot()
+    monkeypatch.setattr(answer_schedule, "_existing_revlog_ids", lambda *_args, **_kwargs: snapshot)
+    for revlog_id in range(1, size + 1):
+        tracker.track("synthetic", revlog_id, revlog_id)
+
+    live_ids.remove(size)
+    assert list(tracker.transitions(SimpleNamespace(can_redo=True))) == [
+        ("synthetic", size, frozenset(), frozenset({size}))
+    ]
+    if final_redo:
+        live_ids.add(size)
+    snapshot.iterations = 0
+
+    transitions = list(tracker.transitions(SimpleNamespace(can_redo=False)))
+
+    assert transitions == (
+        [("synthetic", size, frozenset({size}), frozenset())] if final_redo else []
+    )
+    assert snapshot.iterations <= 1, "Global history was copied once for each tracked card"
+    # An abandoned Redo cannot be impersonated by a later sync reintroducing its row.
+    live_ids.add(size)
+    assert list(tracker.transitions(SimpleNamespace(can_redo=False))) == []

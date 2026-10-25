@@ -2120,6 +2120,45 @@ class TestIncrementoSessionExit:
 
 
 class TestReviewTimeTrackerIncrementoSessions:
+    def test_free_review_persists_totals_and_breakdown_once_per_event(self, tmp_path, monkeypatch):
+        tracker = _load_review_time_tracker_module()
+        spec = importlib.util.spec_from_file_location(
+            "_review_event_statistics", os.path.join(_ADDON_ROOT, "backend", "statistics.py")
+        )
+        stats = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(stats)
+        result = types.SimpleNamespace(
+            card=7, card_type="topics", study_kind="topics", tag="history", mode="random",
+            review_seconds=0.0,
+        )
+        monkeypatch.setattr(stats, "_effective_date", lambda _day_end="04:00": "2026-10-25")
+        monkeypatch.setattr(tracker, "_ADDON_DIR", str(tmp_path))
+        monkeypatch.setattr(tracker, "_active_profile", lambda: "Synthetic")
+        monkeypatch.setattr(tracker, "_card_stats_context", lambda *_args, **_kwargs: result)
+        monkeypatch.setattr(tracker, "_current_deck_is_incremento_session", lambda: False)
+        monkeypatch.setattr(tracker, "StatsManager", stats.StatsManager)
+        monkeypatch.setattr(tracker, "record_tag_breakdown", stats.record_tag_breakdown)
+        writes = []
+        write_file = stats._write_stats_file_atomic
+
+        def observe_write(addon_dir, profile, data):
+            writes.append(copy.deepcopy(data))
+            write_file(addon_dir, profile, data)
+
+        monkeypatch.setattr(stats, "_write_stats_file_atomic", observe_write)
+
+        tracker._record_review_time(7, 12.5)
+        tracker.on_reviewer_card_answered(None, types.SimpleNamespace(id=7), 3)
+
+        saved = stats.load_stats(str(tmp_path), "Synthetic")
+        assert saved["lifetime"]["type"] == {"topics": 1}
+        assert saved["time"]["lifetime"]["type"] == {"topics": 12.5}
+        assert saved["tag_breakdown"]["lifetime"]["counts"]["topics"] == {"history": 1}
+        assert saved["tag_breakdown"]["lifetime"]["seconds"]["topics"] == {"history": 12.5}
+        assert len(writes) == 2
+        assert writes[0]["time"]["lifetime"]["type"] == {"topics": 12.5}
+        assert writes[0]["tag_breakdown"]["lifetime"]["seconds"]["topics"] == {"history": 12.5}
+
     def test_review_elapsed_time_uses_ankis_per_card_idle_cap(self):
         review_time_tracker = _load_review_time_tracker_module()
         card = types.SimpleNamespace(time_taken=lambda: 60_000)
@@ -2151,8 +2190,8 @@ class TestReviewTimeTrackerIncrementoSessions:
             def __init__(self, *_args, **_kwargs):
                 pass
 
-            def record_time_only(self, fake, seconds):
-                calls.append((fake.card_type, fake.tag, seconds))
+            def record_time_only(self, fake, seconds, *, study_kind=None):
+                calls.append((fake.card_type, fake.tag, seconds, study_kind))
 
         def make_mw(model_name):
             note = types.SimpleNamespace(mid=99, tags=["reading"])
@@ -2175,7 +2214,10 @@ class TestReviewTimeTrackerIncrementoSessions:
         review_time_tracker.mw = make_mw("Incremento EPUB")
         review_time_tracker._record_pdf_time(202, 7.0)
 
-        assert calls == [("pdf", "reading", 5.0), ("epub", "reading", 7.0)]
+        assert calls == [
+            ("pdf", "reading", 5.0, "items"),
+            ("epub", "reading", 7.0, "items"),
+        ]
         assert review_time_tracker.get_runtime_session_time()["type"] == {
             "pdf": 5.0,
             "epub": 7.0,
@@ -2190,11 +2232,11 @@ class TestReviewTimeTrackerIncrementoSessions:
             def __init__(self, *_args, **_kwargs):
                 pass
 
-            def record_time_only(self, result, seconds):
-                manager_calls.append(("time", result.card_type, result.tag, seconds))
+            def record_time_only(self, result, seconds, *, study_kind=None):
+                manager_calls.append(("time", result.card_type, result.tag, seconds, study_kind))
 
-            def record(self, result, scope):
-                manager_calls.append(("count", result.card_type, result.tag, scope))
+            def record(self, result, scope, *, study_kind=None):
+                manager_calls.append(("count", result.card_type, result.tag, scope, study_kind))
 
         note = types.SimpleNamespace(mid=99, tags=["topic", "history"])
         note.note_type = lambda: {"name": "Basic"}
@@ -2219,25 +2261,11 @@ class TestReviewTimeTrackerIncrementoSessions:
         review_time_tracker.on_reviewer_card_answered(None, card, 3)
 
         assert manager_calls == [
-            ("time", "topics", "history", 12.0),
-            ("count", "topics", "history", "daily"),
+            ("time", "topics", "history", 12.0, "topics"),
+            ("count", "topics", "history", "daily", "topics"),
         ]
-        assert breakdown_calls == [
-            {
-                "study_kind": "topics",
-                "tag": "history",
-                "include_count": False,
-                "seconds": 12.0,
-                "day_end_time": "00:00",
-            },
-            {
-                "study_kind": "topics",
-                "tag": "history",
-                "include_count": True,
-                "seconds": 0.0,
-                "day_end_time": "00:00",
-            },
-        ]
+        # Joint attribution is part of each durable aggregate event now.
+        assert breakdown_calls == []
 
     def test_incremento_session_skips_duplicate_totals_but_keeps_breakdown(self):
         review_time_tracker = _load_review_time_tracker_module()

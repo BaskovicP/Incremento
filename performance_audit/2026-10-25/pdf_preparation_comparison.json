@@ -1,0 +1,184 @@
+{
+  "baseline_commit": "6125c2ca3f4e21cdd52a861c765d3916bb838d28",
+  "environment": {
+    "python": "3.14.5",
+    "machine": "arm64",
+    "pymupdf": "1.28.2",
+    "poppler_available": true
+  },
+  "scope": "Measure completed empty-PDF preparation without Anki or a GUI.\n\nUses real PyMuPDF/Poppler extraction and synthetic PDFs in a temporary folder.\nThe manager's prepared-text decision is compiled verbatim from its AST. Note\ncreation, cover rendering, storage, and actual Qt extraction are excluded; the\nQt fallback is an empty boundary fake. This is not end-to-end import latency.",
+  "source_sha256": {
+    "before": {
+      "backend/pdf_manager.py": "c3d22229e86c4cd7135f6629a90ffb6d7d61e73e38fcbd24dece729a2763fabe",
+      "backend/browser_bridge.py": "2665c3185b2cca1b27a4bb52823d6f811a298e2ea726a7065d72b3ec6e64f41f"
+    },
+    "after": {
+      "backend/pdf_manager.py": "4bb0de1a2feff7e59e9dffccd836df7ccfc96faaa0ab17962d97c2c14d593302",
+      "backend/browser_bridge.py": "f749ad8bc6006c91543014dbb44b25c4e3fa2cee62bc1353e3adbf3fc0c6461e"
+    }
+  },
+  "results": [
+    {
+      "version": "before",
+      "pages": 1,
+      "bytes": 518,
+      "median_ms": 23.901,
+      "samples_ms": [
+        46.416,
+        23.901,
+        25.877,
+        22.943,
+        23.872
+      ],
+      "extraction_passes_per_import": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "allow_qt_passes_per_import": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "version": "after",
+      "pages": 1,
+      "bytes": 518,
+      "median_ms": 11.419,
+      "samples_ms": [
+        11.843,
+        11.853,
+        10.79,
+        11.419,
+        10.787
+      ],
+      "extraction_passes_per_import": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "allow_qt_passes_per_import": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "version": "before",
+      "pages": 100,
+      "bytes": 16760,
+      "median_ms": 32.178,
+      "samples_ms": [
+        31.016,
+        33.303,
+        33.201,
+        32.178,
+        31.98
+      ],
+      "extraction_passes_per_import": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "allow_qt_passes_per_import": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "version": "after",
+      "pages": 100,
+      "bytes": 16760,
+      "median_ms": 15.77,
+      "samples_ms": [
+        16.358,
+        15.829,
+        15.114,
+        14.667,
+        15.77
+      ],
+      "extraction_passes_per_import": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "allow_qt_passes_per_import": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "version": "before",
+      "pages": 500,
+      "bytes": 83168,
+      "median_ms": 65.749,
+      "samples_ms": [
+        66.151,
+        65.749,
+        64.31,
+        64.283,
+        66.209
+      ],
+      "extraction_passes_per_import": [
+        2,
+        2,
+        2,
+        2,
+        2
+      ],
+      "allow_qt_passes_per_import": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "version": "after",
+      "pages": 500,
+      "bytes": 83168,
+      "median_ms": 31.623,
+      "samples_ms": [
+        33.909,
+        33.121,
+        31.623,
+        30.724,
+        29.373
+      ],
+      "extraction_passes_per_import": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "allow_qt_passes_per_import": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

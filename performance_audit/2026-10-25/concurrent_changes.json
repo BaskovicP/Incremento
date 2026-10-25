@@ -1,0 +1,76 @@
+{
+  "base_commit": "6125c2ca3f4e21cdd52a861c765d3916bb838d28",
+  "head_at_completion": "6125c2ca3f4e21cdd52a861c765d3916bb838d28",
+  "scope": "Observed changes made outside this audit; preserved without modification. Source diff reviewed: About credits plus localization/docs changes; performance mechanisms remain unchanged.",
+  "files": [
+    {
+      "path": "MANUAL.md",
+      "sha256_at_start": "1b98c629d310cdcd56e2c188eb6e4bb7ac514fa0c9f606d4b0a75e71cfc0b292",
+      "sha256_at_completion": "8a5888cd7fa7fc6014f1166af7c60f5c3717388d0990f9acc002a7583bc31d80"
+    },
+    {
+      "path": "__init__.py",
+      "sha256_at_start": "a211f2b9304bd4286e71acf9dff06aadbe532d83325c1a2110540d585581e798",
+      "sha256_at_completion": "c9eac10cf6fa3c9ea483a40169c1e72226140b3fe063ee77abd09cf5adb187ed",
+      "parse": "ok"
+    },
+    {
+      "path": "chrome_extensions/incremento_companion/dist/assets/builtin_translation_packs.js",
+      "sha256_at_start": "e810e037a74de26597b083f771346923a995e5950df9366b0ac862b7d65c4587",
+      "sha256_at_completion": "2dc2b7d3fa706494ba507c0ddc28dfbddd68b49d185104536cfa8cb115f99540"
+    },
+    {
+      "path": "chrome_extensions/incremento_companion/dist/assets/extension-shared.js",
+      "sha256_at_start": "c750e43e8eec794ab06188ac6011d09faa7ca98f20dabf6b2f015022ae99cfe8",
+      "sha256_at_completion": "18c1e0eb7e931a1232a842d1904ba470443cde19e604e017aea7b89f151308b1"
+    },
+    {
+      "path": "locales/builtin_translation_packs.json",
+      "sha256_at_start": "87a845434b397fa91ff15e99b9288bf61daa1e8cb38583744300c4d984be8507",
+      "sha256_at_completion": "9e8a88e2d15592461afe29b17b84adebe8cee1c3298caf7e5c1a2249555b918e",
+      "parse": "ok"
+    },
+    {
+      "path": "locales/en/LC_MESSAGES/incremento_root.mo",
+      "sha256_at_start": "ace681816528bee70797bea616ded6de90775abcf80f2c831225c1737b3cabc5",
+      "sha256_at_completion": "33c6fcd3004b69ddc493ef3c4ab4aa3b412273cd0d4cd21cbb5ca04d9ee013fe"
+    },
+    {
+      "path": "locales/en/LC_MESSAGES/incremento_root.po",
+      "sha256_at_start": "4ccea5be7d6fec949b754b151411e4ad562f2cada0aee1e5d1085cbdcee3fd7b",
+      "sha256_at_completion": "e5f04352c78a41b6803fec44174fd85c05078a7e246d51581030b6ca36e52631"
+    },
+    {
+      "path": "locales/hr/LC_MESSAGES/incremento_root.mo",
+      "sha256_at_start": "81507a15ffa43fe0a7049ea0cb8917dd1e6a5d19c742174228680165f0e5543d",
+      "sha256_at_completion": "db46b19d67134422ee591b6d20d2e048793911d0960c8811be77bdcd9a995916"
+    },
+    {
+      "path": "locales/hr/LC_MESSAGES/incremento_root.po",
+      "sha256_at_start": "523ba9643f2cc35baa416023234d4106fcc4f2c197f18477f420c881c966be6b",
+      "sha256_at_completion": "7c3fd8d906680e1d7c5c298a2265f295d38250075cdeee6ef486edf191470ac9"
+    },
+    {
+      "path": "locales/translation_catalog.json",
+      "sha256_at_start": "2cd9a6193c9990bab4f262256d30334561e8af43e11a9b95bd6ad953c8c69fc7",
+      "sha256_at_completion": "d59c3c3e49676d53983296da9fa45dbfb4ab4f607ef2788e7205ece8970e978d",
+      "parse": "ok"
+    },
+    {
+      "path": "locales/zh-Hans/LC_MESSAGES/incremento_root.mo",
+      "sha256_at_start": "c9fcd34040dda5cc2cd42d86f73cf8fef876754d248ef5ae373d132aeb8fb94a",
+      "sha256_at_completion": "d4c20a192b3ce87943fd9808ce3e9dea8b8a19169f83247ceff43db43282fb30"
+    },
+    {
+      "path": "locales/zh-Hans/LC_MESSAGES/incremento_root.po",
+      "sha256_at_start": "2040a659fe4cff8ece98e141d3ac445308f58a500b31dd84a637c9fc0510fe32",
+      "sha256_at_completion": "9c4b325d85ed20b6d5759d3dff84a06e4696d37f31e8e56abd27eb8ba3ad3ee3"
+    },
+    {
+      "path": "scripts/i18n_literal_exceptions.json",
+      "sha256_at_start": "a37125c423b6f5c00cc20372f59cb9319f939ee27f5ef98ae59069efa3bb4d14",
+      "sha256_at_completion": "3884cab7fdafbfa329e5622a4dcd358ecc5cc338a15a00fdca8ab1f862657fa9",
+      "parse": "ok"
+    }
+  ]
+}
