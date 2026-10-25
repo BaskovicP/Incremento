@@ -571,10 +571,10 @@ def _sync_writing_word_stats(*, text: str | None = None) -> None:
     _update_progress_display()
 
 
-def _autosave_from_editor() -> None:
+def _autosave_from_editor() -> bool:
     if (_writing_dock is None or not _current_writing_relpath
             or _writing_profile != _active_profile()):
-        return
+        return False
     try:
         text = _writing_dock._editor.toPlainText()
         write_writing_text(
@@ -586,20 +586,22 @@ def _autosave_from_editor() -> None:
         )
     except Exception:
         _set_status(t("writing_autosave_failed"))
-        return
+        return False
     _set_status(t("writing_autosave_on_typing"))
     _set_saved_time()
     _sync_writing_word_stats(text=text)
     _save_writing_progress()
+    return True
 
 
-def _flush_editor_state() -> None:
+def _flush_editor_state() -> bool:
     if _autosave_timer is not None:
         _autosave_timer.stop()
     if _state_save_timer is not None:
         _state_save_timer.stop()
-    _autosave_from_editor()
+    saved = _autosave_from_editor()
     _save_writing_progress()
+    return saved
 
 
 def _restore_editor_progress(progress: dict) -> None:

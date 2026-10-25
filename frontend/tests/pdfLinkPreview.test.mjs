@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {retainPdfPage, releasePdfPage} from '../src/pdfPageResources.mjs';
 import {
   pdfLinkAtPoint, pdfPreviewRegion, createPdfPreviewRenderer, attachPdfLinkPreview,
   normalizePdfLinkPreviewZoom,
@@ -212,6 +213,43 @@ test('render failures show an unavailable preview without leaking rejected promi
   tasks[0].reject(new Error('Unreadable page'));
   await pending;
   assert.equal(changes.at(-1).status, 'unavailable');
+});
+
+test('closing previews releases decoded destination pages and canvas surfaces without cleaning the active reader', async () => {
+  const h = renderer(); let cleaned = 0;
+  h.pg.cleanup = () => {cleaned++;};
+  const owner = {}; retainPdfPage(h.pg, owner);
+  const pending = h.preview.show(h.doc, footnote, {});
+  await Promise.resolve(); h.tasks[0].resolve(); await pending;
+  h.preview.dispose();
+  assert.equal(h.canvases[0].width * h.canvases[0].height, 0);
+  assert.equal(cleaned, 0, 'a shared displayed page must remain usable');
+  releasePdfPage(h.pg, owner);
+  assert.equal(cleaned, 1);
+});
+
+test('cancelled preview rendering releases its page only after rendering settles', async () => {
+  const h = renderer(); let cleaned = 0;
+  h.pg.cleanup = () => {cleaned++;};
+  const pending = h.preview.show(h.doc, footnote, {});
+  await Promise.resolve(); h.preview.clear();
+  assert.equal(cleaned, 0);
+  await pending;
+  assert.equal(cleaned, 1);
+  assert.equal(h.canvases[0].width * h.canvases[0].height, 0);
+});
+
+test('preview cache evicts large decoded pages before reaching its four-entry count limit', async () => {
+  const h = renderer();
+  const image = {width: 3000, height: 2000};
+  h.pg._intentStates = new Map([['display', {operatorList: {argsArray: [[image]]}}]]);
+  const first = h.preview.show(h.doc, footnote, {});
+  await Promise.resolve(); h.tasks[0].resolve(); await first;
+  const second = h.preview.show(h.doc, {...footnote, targetPage: 3}, {});
+  await Promise.resolve(); h.tasks[1].resolve(); await second;
+  assert.equal(h.canvases[0].width * h.canvases[0].height, 0);
+  assert.ok(h.canvases[1].width * h.canvases[1].height > 0);
+  h.preview.dispose();
 });
 
 test('scrolling inside the preview keeps it open while document scroll and outside clicks dismiss it', () => {

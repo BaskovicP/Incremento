@@ -52,6 +52,10 @@ class _ReferencePage(QWebEnginePage):
         try:
             payload = json.loads(message[len(prefix):])
             if self.state.receive(payload, profile=get_active_profile(), nonce=self.state.nonce):
+                ranges = getattr(self, '_range_bridge', None)
+                if (ranges is not None and payload.get('action') == 'reader'
+                        and ranges.handle(payload.get('command'))):
+                    return
                 self.handler(payload.get("action"), payload)
         except (ValueError, TypeError, RuntimeError):
             return
@@ -66,6 +70,14 @@ def create_reference_view(parent, snapshot, state, handler, *, page_y=None, exce
     interceptor.set_pdf_path(snapshot['path'])
     engine_profile.setUrlRequestInterceptor(interceptor)
     page = _ReferencePage(engine_profile, parent, interceptor, state, handler, full_reader=full_reader)
+    from .pdf_range_bridge import PdfRangeBridge
+    nonce = state.nonce
+    page._range_bridge = PdfRangeBridge(
+        lambda work, done: mw.taskman.run_in_background(work, done),
+        lambda value: page.runJavaScript('window.incrementoReceivePdfRange?.(' + json.dumps(value) + ');'),
+        lambda profile, cid: state.is_current(get_active_profile(), nonce)
+            and state.profile == profile and state.card_id == cid)
+    byte_range = page._range_bridge.open(_ADDON_DIR, state.profile, state.card_id, snapshot['path'])
     settings = page.settings()
     settings.setAttribute(QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
     for name in ('LocalContentCanAccessRemoteUrls', 'DnsPrefetchEnabled', 'JavascriptCanAccessClipboard',
@@ -75,7 +87,7 @@ def create_reference_view(parent, snapshot, state, handler, *, page_y=None, exce
             settings.setAttribute(attribute, False)
     view = QWebEngineView(parent)
     view.setPage(page)
-    config = {**snapshot, 'url': QUrl.fromLocalFile(snapshot['path']).toString(),
+    config = {**snapshot, 'url': QUrl.fromLocalFile(snapshot['path']).toString(), 'byte_range': byte_range,
               'page': state.page, 'zoom': state.zoom, 'scroll_ratio': state.scroll_ratio, 'max_page': state.max_page,
               'worker': pdf_dock._WORKER_URL, 'locale': get_locale(), 'custom_language': get_custom_reader_payload(),
               'excerpt': excerpt, 'page_y': page_y, 'choose_destination': choosing}
@@ -87,8 +99,7 @@ def create_reference_view(parent, snapshot, state, handler, *, page_y=None, exce
         prefix = '__incremento_reference__:' + nonce + ':'
         bridge = (
             'window.incrementoReferenceCommand = payload => console.info(' + json.dumps(prefix) + ' + JSON.stringify(payload));'
-            "window.pycmd = message => window.incrementoReferenceCommand({action:'reader',command:message});"
-            if full_reader else 'window.pycmd = message => console.info(' + json.dumps(prefix) + ' + message);')
+            "window.pycmd = message => window.incrementoReferenceCommand({action:'reader',command:message});")
         page.runJavaScript(
             bridge +
             'window._incReferencePending=' + json.dumps(config) + ';'
@@ -102,11 +113,11 @@ def create_reference_view(parent, snapshot, state, handler, *, page_y=None, exce
 
 
 class ReferenceWindow(QDockWidget):
-    def __init__(self, snapshot, *, profile, page, scroll_ratio, max_page, beside, owner, excerpt='', page_y=None, independent=False):
+    def __init__(self, snapshot, *, profile, page, scroll_ratio, max_page, beside, owner, excerpt='', page_y=None, independent=False, zoom=1):
         super().__init__(snapshot["title"], mw)
         self.state = PdfReaderState(profile, snapshot["card_id"], snapshot["filename"],
                                     page=min(max(1, page), max_page), scroll_ratio=scroll_ratio,
-                                    max_page=max_page)
+                                    max_page=max_page, zoom=zoom)
         self.owner = owner
         self.independent = independent
         self._source_path = snapshot['path']
@@ -216,6 +227,8 @@ class ReferenceWindow(QDockWidget):
         config = self.reader_config(result)
         self._reader_path = config['path']
         self._interceptor.set_pdf_path(config['path'])
+        config['byte_range'] = self.page._range_bridge.open(_ADDON_DIR, self.state.profile,
+            self.state.card_id, config['path'])
         config.update(url=QUrl.fromLocalFile(config.pop('path')).toString(),
             worker=self.reader.service._WORKER_URL, page=self.state.page, zoom=self.state.zoom,
             scroll_ratio=self.state.scroll_ratio, max_page=self.state.max_page,
@@ -401,13 +414,15 @@ def focused_reference():
     return None
 
 
-def refresh_reference_readers(profile, card_id, kind):
+def refresh_reference_readers(profile, card_id, kind, *, annotation_result=None):
     for window in list(_windows):
         state = window.state
         if not state.closed and state.profile == profile and state.card_id == card_id:
             reader = getattr(window, 'reader', None)
             if reader is not None:
                 reader.refresh(kind)
+                if annotation_result and annotation_result.get('reader_changed'):
+                    window.reload_reader(annotation_result)
 
 
 def open_reference(card_id, page=1, *, scroll_ratio=0, beside=False, owner=None, is_current=lambda: True,

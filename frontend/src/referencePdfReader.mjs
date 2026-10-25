@@ -1,3 +1,5 @@
+import {createPdfByteRangeTransport} from './pdfByteRanges.mjs';
+
 export function referenceActionLocation(requested, rendered) {
   if (!rendered || rendered.page !== requested.page || rendered.zoom !== requested.zoom
       || rendered.generation !== requested.generation) return null;
@@ -65,7 +67,7 @@ export function createReferenceReader(onChange = () => {}) {
     state, document: () => doc, navigate,
     back() {if (history.length) navigate(history.pop(), false);},
     setZoom(value) {if (!closed && doc && Number.isFinite(value)) {zoom = Math.max(.25, Math.min(4, value)); notify();}},
-    async load(lib, url, startPage = 1, maxPage = 1_000_000) {
+    async load(lib, url, startPage = 1, maxPage = 1_000_000, byteSource = null) {
       const token = ++generation;
       ++searchGeneration;
       closed = false; doc = null; pages = 0; history.length = 0;
@@ -73,7 +75,11 @@ export function createReferenceReader(onChange = () => {}) {
       zoom = 1;
       notify();
       try {task?.destroy()?.catch?.(() => {});} catch (_) {}
-      task = lib.getDocument({url, isEvalSupported: false});
+      const range = byteSource ? createPdfByteRangeTransport(lib, byteSource, window.pycmd,
+        () => {try {task?.destroy()?.catch?.(() => {});} catch (_) {}}) : null;
+      task = lib.getDocument({...(range ? {range, rangeChunkSize: byteSource.chunkSize,
+        disableAutoFetch: true, disableStream: true} : {url}), isEvalSupported: false,
+        canvasMaxAreaInBytes: 32 * 1024 * 1024});
       try {
         const loaded = await task.promise;
         if (closed || token !== generation) {loaded.destroy()?.catch?.(() => {}); return;}

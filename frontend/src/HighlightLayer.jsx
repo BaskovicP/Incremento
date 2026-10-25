@@ -5,7 +5,7 @@
  */
 
 import { createReaderLanguage } from './i18n.mjs';
-import { normalizePdfHighlightRects } from './pdfHighlightRects.mjs';
+import {pdfDisplayHighlights} from './pdfHighlightIndex.mjs';
 import { highlightBackgroundColor, highlightSolidColor } from './highlightColors.mjs';
 
 const DEFAULT_LANGUAGE = createReaderLanguage('en');
@@ -56,10 +56,7 @@ export default function HighlightLayer({
   moveHighlightNote,
   hideHighlightNote,
 }) {
-  const displayHighlights = pageHighlights.map(h => ({
-    ...h,
-    rects: isSnapshotHighlight(h) ? h.rects : normalizePdfHighlightRects(h.rects),
-  }));
+  const displayHighlights = pdfDisplayHighlights(pageHighlights);
   const renderNoteIcon = (hasNote) => (
     <svg
       aria-hidden="true"

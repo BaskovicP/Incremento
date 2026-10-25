@@ -31,6 +31,12 @@ def test_browser_session_cookies_and_local_storage_survive_restart_and_stay_isol
         from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
         from frontend.browser_profiles import create_browser_profile, destroy_browser
         app = QApplication(['browser-storage-test'])
+        # Initialize WebEngine before entering the application event loop, as
+        # Anki does. Lazy initialization inside a nested loop crashes offscreen
+        # Qt on macOS before the storage behavior can be exercised.
+        main_profile = QWebEngineProfile()
+        main_owner = QObject()
+        main_page = QWebEnginePage(main_profile, main_owner)
         def exercise():
             root, mode, person, purpose = sys.argv[1:]
             def await_result(start):
@@ -50,9 +56,6 @@ def test_browser_session_cookies_and_local_storage_survive_restart_and_stay_isol
                 assert results, 'Browser operation timed out'
                 return results[0]
             # Anki has initialized its own browser before an add-on opens a profile.
-            main_profile = QWebEngineProfile()
-            main_owner = QObject()
-            main_page = QWebEnginePage(main_profile, main_owner)
             def initialize(done):
                 main_page.loadFinished.connect(done)
                 main_page.setHtml('<html><body>Main browser fixture</body></html>')

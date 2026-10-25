@@ -15,8 +15,10 @@ except ImportError:
 
 try:
     from .backup_schedule import normalize_policy
+    from .workspace_layouts import normalize_workspaces
 except ImportError:
     from backup_schedule import normalize_policy
+    from workspace_layouts import normalize_workspaces
 
 
 CONFIG_SCHEMA_VERSION = 3
@@ -366,6 +368,7 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
         config.get('pdf_controls_collapsed_by_profile'))
     config['epub_controls_collapsed_by_profile'] = normalize_pdf_controls_preferences(
         config.get('epub_controls_collapsed_by_profile'))
+    config['workspace_layouts'] = normalize_workspaces(config.get('workspace_layouts'))
     preview_zooms = config.get("pdf_link_preview_zoom_by_profile")
     config["pdf_link_preview_zoom_by_profile"] = {
         profile: normalize_pdf_link_preview_zoom(value)

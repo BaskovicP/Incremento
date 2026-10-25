@@ -15,7 +15,7 @@ def test_large_pdf_keeps_rendering_bounded_and_snapshot_crops_correct(tmp_path, 
     if runtime is None:
         pytest.skip('Optional webpage browser component has not been explicitly installed')
     script = dedent(r'''
-        import sys
+        import base64, sys
         from pathlib import Path
         from urllib.parse import urlsplit
         sys.path.insert(0, sys.argv[1])
@@ -23,28 +23,41 @@ def test_large_pdf_keeps_rendering_bounded_and_snapshot_crops_correct(tmp_path, 
         import pymupdf
 
         root = Path.cwd()
-        target = Path(sys.argv[4]) / 'textbook.pdf'
+        sys.path.insert(0, str(root/'backend'))
+        from pdf_byte_ranges import PdfByteRangeSource
+        target = Path(sys.argv[4]) / 'user_files' / 'Synthetic' / 'pdfs' / 'textbook.pdf'
+        target.parent.mkdir(parents=True)
         with pymupdf.open() as pdf:
             for number in range(1, 1748):
                 sheet = pdf.new_page(width=600, height=800)
                 sheet.insert_text((40, 40), f'Synthetic page {number}', fontsize=18)
                 if number <= 12:
-                    image = pymupdf.Pixmap(pymupdf.csRGB, 128, 128,
-                        bytes((pixel * 37 + number) % 256 for pixel in range(128 * 128 * 3)), False)
+                    image = pymupdf.Pixmap(pymupdf.csRGB, 1600, 1680,
+                        bytes((pixel * 37 + number) % 256 for pixel in range(256)) * 31500, False)
                     sheet.insert_image(pymupdf.Rect(40, 180, 560, 760), pixmap=image)
                 sheet.draw_rect(pymupdf.Rect(270, 80, 330, 130), color=(1, 0, 0), fill=(1, 0, 0))
             pdf.save(target)
+        source = PdfByteRangeSource(sys.argv[4], 'Synthetic', 42, target)
+        assert target.stat().st_size > 96_000_000
+        reads = []
+        def read_range(request):
+            reads.append((request['begin'], request['end']))
+            return {**request, 'data': base64.b64encode(source.read(request['begin'], request['end'])).decode()}
 
         with sync_playwright() as p:
             browser = p.chromium.launch(executable_path=sys.argv[2], headless=True, chromium_sandbox=True)
             page = browser.new_page(viewport={'width': 1400, 'height': 1000}, device_scale_factor=2)
             page.set_default_timeout(10000)
+            errors = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            page.on('console', lambda message: errors.append(message.text) if message.type == 'error' else None)
+            page.expose_function('testReadPdfRange', read_range)
             assets = {f'/web/{name}': root/'web'/name for name in (
                 'pdf_dock.html', 'dist/pdf_viewer.js', 'pdfjs/pdf.min.js', 'pdfjs/pdf.worker.min.js')}
             def respond(route):
                 path = urlsplit(route.request.url).path
                 if path == '/textbook.pdf':
-                    route.fulfill(path=str(target), content_type='application/pdf')
+                    raise AssertionError('Local PDFs must not fall back to a whole-file fetch')
                 elif path in assets:
                     route.fulfill(path=str(assets[path]),
                         content_type='text/html' if path.endswith('.html') else 'text/javascript')
@@ -54,9 +67,17 @@ def test_large_pdf_keeps_rendering_bounded_and_snapshot_crops_correct(tmp_path, 
             side = sys.argv[3] == '1'
             page.goto('http://incremento.test/web/pdf_dock.html' + ('?reference=reader' if side else ''))
             page.wait_for_function('() => typeof window.' + ('incrementoReferenceStart' if side else 'incrementoPdfStart') + ' === "function"')
-            page.evaluate("""side => {
-                window.testCommands = []; window.pycmd = c => window.testCommands.push(c);
+            page.evaluate("""({side, metadata}) => {
+                window.testCommands = []; window.pycmd = c => {
+                    if (c.startsWith('incremento_pdf_range:')) {
+                        window.testReadPdfRange(JSON.parse(c.slice('incremento_pdf_range:'.length)))
+                            .then(reply => window.incrementoReceivePdfRange?.(reply));
+                    } else window.testCommands.push(c);
+                };
                 window.testPages = new Map();
+                // PDF.js exports getters: clone them into writable properties
+                // so this instrumentation actually captures the library pages.
+                window.pdfjsLib = {...window.pdfjsLib};
                 const original = window.pdfjsLib.getDocument;
                 window.pdfjsLib.getDocument = options => {
                     const task = original(options);
@@ -68,24 +89,34 @@ def test_large_pdf_keeps_rendering_bounded_and_snapshot_crops_correct(tmp_path, 
                     });
                     return task;
                 };
+                if (window.pdfjsLib.getDocument === original) throw new Error('PDF.js instrumentation did not install');
                 const worker = 'http://incremento.test/web/pdfjs/pdf.worker.min.js';
                 const url = 'http://incremento.test/textbook.pdf';
                 if (side) window.incrementoReferenceStart({card_id: 42, filename: 'textbook.pdf',
-                    page: 1, zoom: 4, url, worker, highlights: []});
+                    page: 1, zoom: 4, url, worker, highlights: [], byte_range: metadata});
                 else {
                     window._pdfWorkerSrc = worker; window._pdfFileUrl = url;
+                    window._incPdfByteRange = metadata;
                     window.incrementoPdfStart(42, 'textbook.pdf', 1, 4);
                 }
-            }""", side)
+            }""", {'side': side, 'metadata': source.descriptor})
 
             def ready(number):
-                page.wait_for_function("""number => {
-                    const canvas = [...document.querySelectorAll('#pdf-canvas-wrapper > canvas')]
-                        .find(c => c.style.display === 'block' && +c.dataset.pdfPage === number);
-                    return canvas && document.querySelector('#pdf-text-layer')?.textContent.includes(`Synthetic page ${number}`);
-                }""", arg=number)
+                try:
+                    page.wait_for_function("""number => {
+                        const canvas = [...document.querySelectorAll('#pdf-canvas-wrapper > canvas')]
+                            .find(c => c.style.display === 'block' && +c.dataset.pdfPage === number);
+                        return canvas && document.querySelector('#pdf-text-layer')?.textContent.includes(`Synthetic page ${number}`);
+                    }""", arg=number)
+                except Exception as error:
+                    raise AssertionError({'page': number, 'errors': errors, 'reads': reads[-10:],
+                        'bytes': sum(end-begin for begin, end in reads),
+                        'view': page.locator('body').inner_text()[:500]}) from error
 
             ready(1)
+            assert page.evaluate('() => testPages.has(1)'), 'resource checks require a captured page proxy'
+            assert sum(end-begin for begin, end in reads) < target.stat().st_size * .75, reads
+            assert all(end-begin <= 262144 for begin, end in reads)
             canvas = page.locator('#pdf-canvas-wrapper > canvas:visible')
             geometry = canvas.evaluate('c => ({width: c.width, height: c.height, css: c.getBoundingClientRect().toJSON()})')
             assert geometry['width'] * geometry['height'] <= 8_000_000, geometry
@@ -115,12 +146,15 @@ def test_large_pdf_keeps_rendering_bounded_and_snapshot_crops_correct(tmp_path, 
                 current = int(canvas.get_attribute('data-pdf-page'))
                 page.evaluate('delta => window.incrementoPdfNav(delta)', number - current)
                 ready(number)
+                assert page.evaluate('number => testPages.has(number)', number)
                 surfaces = page.locator('#pdf-canvas-wrapper > canvas').evaluate_all('nodes => nodes.map(c => c.width * c.height)')
                 assert sum(surfaces) <= 8_000_000, surfaces
                 # Inspect actual PDF.js resources; the library's cleanup must
                 # clear operator lists rather than only evict our own handles.
                 retained = page.evaluate('[...testPages.values()].filter(p => p._intentStates.size > 0).length')
-                assert retained <= 3, retained
+                assert retained <= 11, retained
+                assert page.evaluate("""number => [...testPages.entries()].every(([n, p]) =>
+                    p._intentStates.size === 0 || Math.abs(n - number) <= 5)""", number)
             expect(page.locator('#pdf-text-layer')).to_contain_text('Synthetic page 1')
             browser.close()
     ''')

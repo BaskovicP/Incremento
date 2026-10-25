@@ -25,11 +25,11 @@ const { isResizableTextHighlight } = await import(`data:text/javascript;base64,$
 // and PDF.js/DOM effects are replaced so the panel can be used without Anki.
 function viewer(props = {}, startup = {}) {
   const slots = [], effects = [];
-  let cursor = 0;
+  let cursor = 0, stateWrites = 0;
   const useState = initial => {
     const index = cursor++;
     if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial;
-    return [slots[index], update => { slots[index] = typeof update === 'function' ? update(slots[index]) : update; }];
+    return [slots[index], update => { stateWrites++; slots[index] = typeof update === 'function' ? update(slots[index]) : update; }];
   };
   const commands = [];
   const renderState = {
@@ -46,19 +46,30 @@ function viewer(props = {}, startup = {}) {
   const PdfPageLinks = () => null;
   const module = { exports: {} };
   const dom = {innerWidth: 1200, innerHeight: 900, _incPdfPending: {controlsCollapsed: false}, ...startup,
+    scrollY: 0, getComputedStyle: () => ({getPropertyValue: () => '58px'}),
     getSelection: () => ({ isCollapsed: true }),
     setTimeout: callback => callback(), pycmd: command => commands.push(command)};
+  dom.requestAnimationFrame = () => 1; dom.cancelAnimationFrame = () => {};
   vm.runInNewContext(code, {
     module, exports: module.exports,
     window: dom,
+    document: {documentElement: {}},
     require: specifier => ({
       ...imports,
       react: { useState, useRef: initial => useState({ current: initial })[0],
+        useMemo: (create, dependencies) => {
+          const index = cursor++, previous = slots[index];
+          if (!previous || dependencies.some((value, i) => value !== previous.dependencies[i])) {
+            slots[index] = {value: create(), dependencies};
+          }
+          return slots[index].value;
+        },
         useEffect: run => effects.push(run), useCallback: callback => callback },
       './usePdfRender.js': { usePdfRender: () => renderState },
       './HighlightLayer.jsx': { __esModule: true, default: HighlightLayer, isResizableTextHighlight },
       './PdfSelectionLayer.jsx': { __esModule: true, default: () => null },
       './PdfSnapshotLayer.jsx': { __esModule: true, default: () => null, PdfSnapshotButton: () => null },
+      './PdfHighlightTooltip.jsx': { __esModule: true, default: () => null },
       './PdfLinkPreview.jsx': { __esModule: true, default: PdfLinkPreview },
       './PdfPageLinks.jsx': { __esModule: true, default: PdfPageLinks, usePdfPageLinks: () => ({}) },
     })[specifier],
@@ -76,10 +87,14 @@ function viewer(props = {}, startup = {}) {
   const button = (nodes, text) => nodes.find(node => node.type === 'button' && (
     node.props.children === text || node.props.title === text
   ));
-  return { render, layer, button, commands, renderState,
+  return { render, layer, button, commands, renderState, stateWrites: () => stateWrites,
     bridge: () => {
       dom._incPdfPending = null;
       effects.findLast(run => run.toString().includes('window.incrementoPdfStart ='))();
+      return dom;
+    },
+    workspace: () => {
+      effects.findLast(run => run.toString().includes('window.incrementoPdfWorkspaceState ='))();
       return dom;
     },
     openFind: () => {
@@ -90,6 +105,40 @@ function viewer(props = {}, startup = {}) {
     pageLinks: nodes => nodes.filter(node => node.type === PdfPageLinks), elements,
     preview: nodes => nodes.find(node => node.type === PdfLinkPreview) };
 }
+
+test('a saved workspace captures and restores the actual PDF toolbar without writing a new preference', () => {
+  const ui = viewer({}, {_incPdfPending: {controlsCollapsed: true}});
+  ui.render();
+  const saved = ui.workspace().incrementoPdfWorkspaceState();
+  assert.equal(saved.card_id, 42);
+  assert.equal(saved.page, 1);
+  assert.equal(saved.controls.collapsed, true);
+  const controls = {...saved.controls, collapsed: false, groups: {navigation: false, annotation: true}};
+  ui.workspace().incrementoPdfRestoreWorkspace({card_id: 42, controls});
+  const nodes = ui.render();
+  assert.ok(ui.button(nodes, 'Minimize controls'));
+  assert.equal(ui.button(nodes, 'Contents'), undefined);
+  assert.equal(ui.workspace().incrementoPdfWorkspaceState().controls.groups.navigation, false);
+  assert.deepEqual(ui.commands, [], 'Restoring layout cannot write annotations or a global preference');
+  ui.workspace().incrementoPdfRestoreWorkspace({card_id: 99, controls: {collapsed: true}});
+  assert.ok(ui.button(ui.render(), 'Minimize controls'), 'A stale workspace cannot change another document');
+});
+
+test('hovering notes and unrelated toolbar updates reuse the page annotation index without updating reader state', () => {
+  const ui = viewer(); ui.render();
+  const annotation = {id: 'note', page: 1, color: 'yellow', note: 'Useful note',
+    rects: [{x: 1, y: 2, w: 3, h: 4}]};
+  ui.bridge().incrementoReceivePdfHighlights([annotation]);
+  const first = ui.layer(ui.render()).props;
+  const writes = ui.stateWrites();
+  first.showHighlightNote(annotation, {clientX: 10, clientY: 20});
+  for (let x = 0; x < 100; x++) first.moveHighlightNote({clientX: x, clientY: 20});
+  first.hideHighlightNote();
+  assert.equal(ui.stateWrites(), writes, 'pointer movement must not rerender the reader and all its annotations');
+  assert.equal(ui.layer(ui.render()).props.pageHighlights, first.pageHighlights);
+  ui.bridge().incrementoReceivePdfHighlights([{...annotation, note: 'Updated'}]);
+  assert.equal(ui.layer(ui.render()).props.pageHighlights[0].note, 'Updated');
+});
 
 // Contract: a plain annotation click exposes a small in-page palette. Recoloring
 // updates only that annotation, keeps its metadata, and cannot target another page.

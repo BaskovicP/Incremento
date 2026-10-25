@@ -89,6 +89,27 @@ test('pending and direct startup restore controls visibility without toggling PD
   assert.equal(state.controlsCollapsed, false);
 });
 
+test('reloading annotations in the same PDF retains its restored workspace controls', () => {
+  const {scope} = registerBridge();
+  const saved = {card_id: 42, controls: {collapsed: false, groups: {reading: false}}};
+  const restored = [];
+  scope.window._incWorkspaceActive = saved;
+  scope.window.incrementoPdfRestoreWorkspace = state => restored.push(state);
+  scope.window.incrementoPdfStart(42, 'first.pdf', 1, 1);
+  assert.deepEqual(restored, [saved]);
+  scope.window.incrementoPdfStart(43, 'second.pdf', 1, 1);
+  assert.equal(scope.window._incWorkspaceActive, null);
+  assert.deepEqual(restored, [saved], 'Another document must not inherit workspace controls');
+});
+
+test('remounting a side reader queues its saved controls until the new viewer is ready', () => {
+  const {scope} = registerBridge();
+  const saved = {card_id: 42, controls: {collapsed: false}};
+  scope.window._incWorkspaceActive = saved;
+  scope.window.incrementoPdfStart(42, 'first.pdf', 1, 1);
+  assert.equal(scope.window._incWorkspacePending, saved);
+});
+
 for (const entry of ['pending', 'direct']) {
   test(`${entry} startup restores PDF focus and accepts committed toolbar/settings changes`, () => {
     const saved = {cardId: 42, enabled: true, available: true};

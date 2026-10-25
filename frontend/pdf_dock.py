@@ -204,10 +204,12 @@ except ImportError:
         update_highlight_note,
     )
 try:
-    from .pdf_annotation_sync import PdfAnnotationSyncQueue, sync_error_text
+    from .pdf_annotation_sync import (PdfAnnotationSyncQueue, sync_error_text,
+        defer_annotation_sync, cancel_deferred_annotation_sync)
     from ..backend.pdf_annotations import pdf_annotation_sync_state
 except ImportError:
-    from pdf_annotation_sync import PdfAnnotationSyncQueue, sync_error_text
+    from pdf_annotation_sync import (PdfAnnotationSyncQueue, sync_error_text,
+        defer_annotation_sync, cancel_deferred_annotation_sync)
     from pdf_annotations import pdf_annotation_sync_state
 try:
     from ..backend.reader_bookmarks import (
@@ -294,7 +296,8 @@ _PDF_REF_EXCERPT_MAX_CHARS = 320
 _MAX_PDF_BRIDGE_MESSAGE_CHARS = 12_000_000
 _MAX_PDF_SNAPSHOT_BYTES = 8 * 1024 * 1024
 _pdf_annotation_generation = 0
-_annotation_queue = PdfAnnotationSyncQueue(lambda work, done: mw.taskman.run_in_background(work, done))
+_annotation_queue = PdfAnnotationSyncQueue(lambda work, done: mw.taskman.run_in_background(work, done),
+    defer=defer_annotation_sync, cancel_deferred=cancel_deferred_annotation_sync)
 
 
 def reset_for_profile_switch() -> None:
@@ -341,6 +344,8 @@ def _reload_current_pdf_annotations(result):
                      search_query=_current_pdf_search_query, search_hits=list(_current_pdf_search_hits),
                      active_search_hit_index=_current_pdf_search_hit_index,
                      offer_due_review_prompt=False, _annotation_result=result)
+    if result.get('reader_changed'):
+        _refresh_reference_pdf_state(cid, 'highlights', annotation_result=result)
 
 
 def _live_pdf_location(card_id):
@@ -370,7 +375,7 @@ def _initial_pdf_annotation_result(profile, card_id, managed_path):
     return {'reader_path': managed_path, 'native_highlights_visible': True}
 
 
-def _refresh_reference_pdf_state(card_id, kind):
+def _refresh_reference_pdf_state(card_id, kind, *, annotation_result=None):
     try:
         from .pdf_reference_workspace import refresh_reference_readers
     except ImportError:
@@ -378,10 +383,13 @@ def _refresh_reference_pdf_state(card_id, kind):
             from pdf_reference_workspace import refresh_reference_readers
         except ImportError:
             return
-    refresh_reference_readers(_active_profile(), card_id, kind)
+    if annotation_result is None:
+        refresh_reference_readers(_active_profile(), card_id, kind)
+    else:
+        refresh_reference_readers(_active_profile(), card_id, kind, annotation_result=annotation_result)
 
 
-def _schedule_pdf_annotation_sync(*, source_path=None, callback=None, refresh=False):
+def _schedule_pdf_annotation_sync(*, source_path=None, callback=None, refresh=False, immediate=False):
     cid = current_pdf_card_id()
     dock = _pdf_dock
     if cid is None or dock is None or not _current_pdf_filename:
@@ -397,7 +405,7 @@ def _schedule_pdf_annotation_sync(*, source_path=None, callback=None, refresh=Fa
             try:
                 dock._view.page().runJavaScript('window.incrementoReceivePdfHighlights && '
                     f'window.incrementoReceivePdfHighlights({json.dumps(_pdf_highlights_payload(cid))});')
-                if refresh or result.get('appearance_changed'):
+                if refresh or result.get('reader_changed') or result.get('appearance_changed'):
                     _reload_current_pdf_annotations(result)
                 if result.get('conflicts'):
                     tooltip(t('reader_pdf_sync_conflicts'))
@@ -407,7 +415,7 @@ def _schedule_pdf_annotation_sync(*, source_path=None, callback=None, refresh=Fa
             _refresh_reference_pdf_state(cid, 'highlights')
         if callback:
             callback(result, error)
-    _annotation_queue.request(_ADDON_DIR, profile, cid, filename, source_path=source_path, callback=done,
+    _annotation_queue.request(_ADDON_DIR, profile, cid, filename, source_path=source_path, callback=done, immediate=immediate,
                               callback_key=callback or ('reader-refresh', generation))
 
 
@@ -424,7 +432,7 @@ def _show_pdf_annotation_sync_dialog():
     state = pdf_annotation_sync_state(_ADDON_DIR, profile, cid) or {}
     def request(source, done):
         if _pdf_annotation_context_matches(profile, cid, filename, dock, generation):
-            _schedule_pdf_annotation_sync(source_path=source, callback=done, refresh=True)
+            _schedule_pdf_annotation_sync(source_path=source, callback=done, refresh=True, immediate=True)
     show_pdf_annotation_dialog(_pdf_dock, _pdf_storage_path(filename), state.get('source_path', ''),
                                request)
 
@@ -3482,7 +3490,11 @@ def _dispatch_pdf_bridge_message(page, message: str) -> None:
         or page._bridge_card_id != active_card_id
     ):
         return
-    _handle_pdf_js_message(message[len(expected_prefix) :])
+    command = message[len(expected_prefix):]
+    ranges = getattr(page, '_range_bridge', None)
+    if ranges is not None and ranges.handle(command):
+        return
+    _handle_pdf_js_message(command)
 
 
 class _PdfRequestInterceptor(QWebEngineUrlRequestInterceptor):
@@ -3526,6 +3538,18 @@ class _PdfDockPage(QWebEnginePage):
             self._bridge_card_id = max(0, int(card_id))
         except (TypeError, ValueError):
             self._bridge_card_id = 0
+        if not hasattr(self, '_range_bridge'):
+            try:
+                from .pdf_range_bridge import PdfRangeBridge
+            except ImportError:
+                from pdf_range_bridge import PdfRangeBridge
+            self._range_bridge = PdfRangeBridge(
+                lambda work, done: mw.taskman.run_in_background(work, done),
+                lambda value: self.runJavaScript('window.incrementoReceivePdfRange?.(' + json.dumps(value) + ');'),
+                lambda profile, cid: _active_profile() == profile
+                    and current_pdf_card_id() == cid == self._bridge_card_id)
+        self.byte_range_descriptor = self._range_bridge.open(_ADDON_DIR, _active_profile(),
+            self._bridge_card_id, pdf_path if self._bridge_card_id > 0 else None)
 
     def bridge_nonce(self) -> str:
         return self._bridge_nonce
@@ -4113,7 +4137,7 @@ def show_pdf_in_dock(
                 tooltip(sync_error_text(error))
                 return
             if (result.get('reader_path') != initial_result.get('reader_path')
-                    or result.get('changed') or result.get('imported')
+                    or result.get('reader_changed') or result.get('changed') or result.get('imported')
                     or result.get('appearance_changed') or result.get('conflicts')):
                 _reload_current_pdf_annotations(result)
         _annotation_queue.request(
@@ -4121,6 +4145,7 @@ def show_pdf_in_dock(
             callback=prepared,
             callback_key=('reader-open', generation),
             automatic=True,
+            dirty=False,
         )
         return
     if _annotation_result:
@@ -4209,6 +4234,7 @@ def show_pdf_in_dock(
         _pdf_focus_state_js() +
         f"window._pdfWorkerSrc    = {json.dumps(_WORKER_URL)};"
         f"window._pdfFileUrl      = {json.dumps(pdf_file_url)};"
+        f"window._incPdfByteRange = {json.dumps(getattr(secured_page, 'byte_range_descriptor', None))};"
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._pdfNativeHighlightsVisible = {json.dumps(bool((_annotation_result or {}).get('native_highlights_visible')))};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"

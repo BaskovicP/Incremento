@@ -3847,6 +3847,39 @@ msgstr "EPUB appearance"
 msgid "workspace_title"
 msgstr "Workspace"
 
+msgid "workspace_save"
+msgstr "Save workspace…"
+
+msgid "workspace_load"
+msgstr "Open saved workspace"
+
+msgid "workspace_delete"
+msgstr "Delete saved workspace"
+
+msgid "workspace_name"
+msgstr "Workspace name (up to 80 characters):"
+
+msgid "workspace_replace"
+msgstr "Replace the saved workspace “{name}” with the current documents and layout?"
+
+msgid "workspace_delete_confirm"
+msgstr "Delete the saved workspace “{name}”? Your documents and writing will be kept."
+
+msgid "workspace_saved"
+msgstr "Workspace saved."
+
+msgid "workspace_save_failed"
+msgstr "Could not save the workspace. Keep its panes open, use a name of up to 80 characters, and keep at most 20 saved workspaces."
+
+msgid "workspace_loaded"
+msgstr "Workspace opened."
+
+msgid "workspace_open_failed"
+msgstr "Could not open the saved workspace. Its cards or files may no longer be available."
+
+msgid "workspace_load_partial"
+msgstr "Workspace opened with {count} unavailable panes skipped."
+
 msgid "workspace_write_beside"
 msgstr "Write beside document…"
 

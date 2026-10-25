@@ -1,6 +1,9 @@
 import {pdfReaderGroups} from './sharedPdfReader.mjs';
 import { createPdfSnapshotMode, cropPdfSnapshot, encodePdfSnapshot, paintPdfSnapshotPreview } from './pdfSnapshot.mjs';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {buildPdfHighlightIndex} from './pdfHighlightIndex.mjs';
+import {createPdfHighlightTooltip} from './pdfHighlightTooltip.mjs';
+import PdfHighlightTooltip from './PdfHighlightTooltip.jsx';
 import { usePdfRender } from './usePdfRender.js';
 import HighlightLayer, { isResizableTextHighlight } from './HighlightLayer.jsx';
 import PdfSelectionLayer from './PdfSelectionLayer.jsx';
@@ -31,6 +34,7 @@ import {
 
 const CONTROLS_HEIGHT = 250;
 const COLLAPSED_CONTROLS_HEIGHT = 138;
+const NO_HIGHLIGHTS = [];
 
 const DEFAULT_LIMIT_STATUS = {
   enabled: false,
@@ -487,7 +491,10 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
   const [readAnchor, setReadAnchor] = useState(null);
   const [limitStatus, setLimitStatus] = useState(DEFAULT_LIMIT_STATUS);
   const [limitNotice, setLimitNotice] = useState(null);
-  const [hoveredHighlightNote, setHoveredHighlightNote] = useState(null);
+  const [highlightTooltip] = useState(() => createPdfHighlightTooltip({
+    schedule: run => window.requestAnimationFrame(run), cancel: id => window.cancelAnimationFrame(id),
+  }));
+  useEffect(() => () => highlightTooltip.hide(), [highlightTooltip]);
   const [highlightsScope, setHighlightsScope] = useState('all');
   const [highlightsNotesOnly, setHighlightsNotesOnly] = useState(false);
   const [focusedHighlightId, setFocusedHighlightId] = useState(null);
@@ -601,7 +608,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
   }, []);
 
   // ── Highlights for the current page ───────────────────────────────────────
-  const pageHighlights = highlights.filter(h => h.page === page);
+  const highlightIndex = useMemo(() => buildPdfHighlightIndex(highlights, compareHighlights), [highlights]);
+  const pageHighlights = highlightIndex.byPage.get(page) || NO_HIGHLIGHTS;
   const minViewerWidth = renderInfo?.pageWidth ? Math.ceil(renderInfo.pageWidth) : 0;
   const showReadMarker = (
     readAnchor
@@ -628,20 +636,15 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     : 0;
   const progressSegments = 10;
   const filledSegments = Math.round((progressPct / 100) * progressSegments);
-  const sortedHighlights = [...highlights].sort(compareHighlights);
+  const sortedHighlights = highlightIndex.sorted;
   const scopedHighlightsForPanel = highlightsScope === 'page'
-    ? sortedHighlights.filter((h) => h.page === page)
+    ? (highlightIndex.sortedByPage.get(page) || NO_HIGHLIGHTS)
     : sortedHighlights;
-  const highlightsForPanel = highlightsNotesOnly
+  const highlightsForPanel = useMemo(() => highlightsNotesOnly
     ? scopedHighlightsForPanel.filter((h) => String(h.note || '').trim())
-    : scopedHighlightsForPanel;
-  const missingCardHighlightCount = sortedHighlights.filter((highlight) => {
-    const linkedNoteId = Number(highlight.linked_note_id || 0);
-    return !(Number.isInteger(linkedNoteId) && linkedNoteId > 0) && !!String(highlight.text || '').trim();
-  }).length;
-  const currentHighlightIndex = sortedHighlights.findIndex(
-    (highlight) => String(highlight.id || '') === String(activeHighlightId || ''),
-  );
+    : scopedHighlightsForPanel, [scopedHighlightsForPanel, highlightsNotesOnly]);
+  const missingCardHighlightCount = highlightIndex.missingCards;
+  const currentHighlightIndex = highlightIndex.byId.get(String(activeHighlightId || '')) ?? -1;
   const limitEnabled = !!limitStatus?.enabled;
   const limitMode = String(limitStatus?.enforcement_mode || 'warning');
   const limitUsed = Number(limitStatus?.pages_used || 0);
@@ -676,32 +679,9 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     }));
   }, [cardIdRef]);
 
-  const showHighlightNote = useCallback((highlight, event) => {
-    const note = String(highlight?.note || '').trim();
-    if (!note) return;
-    setHoveredHighlightNote({
-      id: String(highlight.id || ''),
-      note,
-      x: Number(event?.clientX || 0),
-      y: Number(event?.clientY || 0),
-    });
-  }, []);
-
-  const moveHighlightNote = useCallback((event) => {
-    setHoveredHighlightNote((prev) => (
-      prev
-        ? {
-            ...prev,
-            x: Number(event?.clientX || prev.x || 0),
-            y: Number(event?.clientY || prev.y || 0),
-          }
-        : prev
-    ));
-  }, []);
-
-  const hideHighlightNote = useCallback(() => {
-    setHoveredHighlightNote(null);
-  }, []);
+  const showHighlightNote = highlightTooltip.show;
+  const moveHighlightNote = highlightTooltip.move;
+  const hideHighlightNote = highlightTooltip.hide;
 
   const describeLimitReached = useCallback(() => {
     const prefix = limitTotal > 0
@@ -1841,6 +1821,14 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       }
       applyScrollToTopOnPageChangeSetting(startScrollToTopOnPageChange);
       startViewer(cardId, filename, startPage, startZoom, startReadPage);
+      const workspace = window._incWorkspaceActive;
+      if (workspace?.card_id === Number(cardId)) {
+        window._incWorkspacePending = workspace;
+        window.incrementoPdfRestoreWorkspace?.(workspace);
+      } else {
+        window._incWorkspaceActive = null;
+        if (window._incWorkspacePending?.card_id !== Number(cardId)) window._incWorkspacePending = null;
+      }
     };
 
     window.incrementoPickPdfHighlightColor = finishHighlightColorPicker;
@@ -1967,6 +1955,44 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     suppressScrollPersistence,
     snapshotMode,
   ]);
+
+  // Workspace snapshots contain view settings only; annotations and content
+  // remain with the document. A startup pending value survives host-page loads.
+  useEffect(() => {
+    window.incrementoPdfWorkspaceState = () => {
+      const metrics = getPdfViewportMetrics(containerRef.current);
+      return {
+        card_id: Number(cardIdRef.current || 0), page: pageRef.current, zoom,
+        scroll: metrics && metrics.maxOffset > 0
+          ? clampScrollRatio((window.scrollY - metrics.pageTop) / metrics.maxOffset) : 0,
+        controls: {collapsed: controlsCollapsed, groups: {...controlVisibility},
+          links: clickableLinks, appearance: appearanceMode},
+      };
+    };
+    window.incrementoPdfRestoreWorkspace = state => {
+      if (!state || state.card_id !== Number(cardIdRef.current || 0)) return;
+      const controls = state.controls || {};
+      if (typeof controls.collapsed === 'boolean') setControlsCollapsed(controls.collapsed);
+      if (typeof controls.links === 'boolean') setClickableLinks(controls.links);
+      if (['original', 'dark', 'night'].includes(controls.appearance)) setAppearanceMode(controls.appearance);
+      const groups = controls.groups || {};
+      setControlVisibility(current => Object.fromEntries(Object.keys(current).map(key => (
+        [key, typeof groups[key] === 'boolean' ? groups[key] : current[key]]
+      ))));
+      setCompactPanel(null);
+      window._incWorkspaceActive = state;
+      window._incWorkspacePending = null;
+    };
+    if (window._incWorkspacePending) window.incrementoPdfRestoreWorkspace(window._incWorkspacePending);
+    else if (window._incWorkspaceActive?.card_id === Number(cardIdRef.current || 0)) {
+      window._incWorkspaceActive = window.incrementoPdfWorkspaceState();
+    }
+    return () => {
+      delete window.incrementoPdfWorkspaceState;
+      delete window.incrementoPdfRestoreWorkspace;
+    };
+  }, [appearanceMode, cardIdRef, clickableLinks, containerRef, controlsCollapsed, controlVisibility,
+    pageLinksDocument.generation, pageRef, zoom]);
 
   // ── Request card sources for current page ─────────────────────────────────
   useEffect(() => {
@@ -3387,28 +3413,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
         </div>
       )}
 
-      {showHighlightControls && !colorPopoverHighlight && hoveredHighlightNote && (
-        <div
-          style={{
-            position: 'fixed',
-            left: hoveredHighlightNote.x + 14,
-            top: hoveredHighlightNote.y + 16,
-            maxWidth: 280,
-            padding: '8px 10px',
-            background: 'rgba(20,20,20,0.96)',
-            border: '1px solid rgba(147,197,253,0.45)',
-            borderRadius: 6,
-            color: 'rgb(219,234,254)',
-            fontSize: 12,
-            lineHeight: 1.4,
-            boxShadow: '0 8px 18px rgba(0,0,0,0.35)',
-            pointerEvents: 'none',
-            zIndex: 120,
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {hoveredHighlightNote.note}
-        </div>
+      {showHighlightControls && !colorPopoverHighlight && (
+        <PdfHighlightTooltip tooltip={highlightTooltip} />
       )}
 
       <PdfLinkPreview containerRef={containerRef} pdfDocRef={pdfDocRef}

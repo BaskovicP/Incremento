@@ -142,6 +142,14 @@ def test_processing_deadline_starts_after_waiting_for_the_global_sync_lock(tmp_p
     assert lock.released
 
 
+def test_sync_reports_replaced_reader_bytes_even_when_no_native_annotations_changed(tmp_path):
+    pdf_file(tmp_path)
+    first = sync(tmp_path)
+    assert first['changed'] is False
+    assert first['reader_changed'] is True
+    assert sync(tmp_path)['reader_changed'] is False
+
+
 def test_annotation_sync_accepts_a_15000_page_pdf_but_keeps_a_page_ceiling():
     class Page:
         cropbox = (0, 0, 400, 500)
@@ -217,6 +225,24 @@ def test_unchanged_sync_reuses_cached_reader_without_resaving_the_pdf(tmp_path, 
 
     assert second['reader_path'] == first['reader_path']
     assert not second['changed']
+
+
+def test_verified_byte_fingerprints_skip_repeated_page_parsing_but_not_file_change_detection(tmp_path, monkeypatch):
+    filename = pdf_file(tmp_path)
+    facts = {}
+    sync(tmp_path, fingerprints=facts)
+    digest = annotations._content_digest
+    calls = []
+    def tracked(*args):
+        calls.append(True)
+        return digest(*args)
+    monkeypatch.setattr(annotations, '_content_digest', tracked)
+    sync(tmp_path, fingerprints=facts)
+    assert calls == []
+    change_pdf(filename, lambda doc: doc[0].insert_text((60, 160), 'Changed page content'))
+    with pytest.raises(annotations.PdfAnnotationSyncError, match='document_changed'):
+        sync(tmp_path, fingerprints=facts)
+    assert calls, 'Changed bytes must invalidate the cached page-content fingerprint'
 
 
 def test_custom_hex_color_is_kept_in_database_and_exported_pdf(tmp_path):

@@ -520,11 +520,16 @@ def _rewrite(doc, target, current):
             _create_native(page, row)
 
 
-def _stage_pdf(doc, destination):
+def _stage_pdf(doc, destination, *, temporary_path=None):
     destination.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, name = tempfile.mkstemp(prefix='.incremento-annotations-', suffix='.pdf', dir=destination.parent)
-    os.close(descriptor)
-    temporary = Path(name)
+    if temporary_path is None:
+        descriptor, name = tempfile.mkstemp(prefix='.incremento-annotations-', suffix='.pdf', dir=destination.parent)
+        os.close(descriptor)
+        temporary = Path(name)
+    else:
+        temporary = Path(temporary_path)
+        if temporary.parent != destination.parent or temporary.is_symlink() or temporary.stat().st_size:
+            raise PdfAnnotationSyncError('unsafe_path')
     try:
         import pymupdf as fitz
 
@@ -549,13 +554,18 @@ def _atomic_replace_pdf(temporary, destination, expected_signature):
     os.replace(temporary, destination)
 
 
-def _backup(addon_dir, profile, card_id, destination, expected_signature, *, source):
+def _backup(addon_dir, profile, card_id, destination, expected_signature, *, source, temporary_path=None):
     target = paths.get_pdf_annotation_backup_path(addon_dir, profile, card_id, source=source)
     _check_profile_path(addon_dir, profile, target)
     target.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(dir=target.parent, prefix='.backup-', suffix='.pdf')
-    os.close(fd)
-    temporary = Path(name)
+    if temporary_path is None:
+        fd, name = tempfile.mkstemp(dir=target.parent, prefix='.backup-', suffix='.pdf')
+        os.close(fd)
+        temporary = Path(name)
+    else:
+        temporary = Path(temporary_path)
+        if temporary.parent != target.parent or temporary.is_symlink() or temporary.stat().st_size:
+            raise PdfAnnotationSyncError('unsafe_path')
     try:
         shutil.copyfile(destination, temporary)
         if _file_signature(temporary)[-1] != expected_signature[-1]:
@@ -568,7 +578,7 @@ def _backup(addon_dir, profile, card_id, destination, expected_signature, *, sou
 
 
 def sync_pdf_annotations(addon_dir: str, profile: str, card_id: int, filename: str,
-                         *, source_path: str | None = None, cancel=None) -> dict:
+                         *, source_path: str | None = None, cancel=None, fingerprints=None) -> dict:
     try:
         import pymupdf as fitz
     except ImportError as exc:
@@ -582,7 +592,9 @@ def sync_pdf_annotations(addon_dir: str, profile: str, card_id: int, filename: s
     documents = []
     staged = []
     try:
-        return _sync_locked(addon_dir, profile, int(card_id), filename, source_path, cancel, deadline, documents, staged)
+        options = {'fingerprints': fingerprints} if fingerprints is not None else {}
+        return _sync_locked(addon_dir, profile, int(card_id), filename, source_path, cancel, deadline, documents, staged,
+                            **options)
     finally:
         for doc in documents:
             doc.close()
@@ -591,7 +603,7 @@ def sync_pdf_annotations(addon_dir: str, profile: str, card_id: int, filename: s
         _sync_lock.release()
 
 
-def _sync_locked(addon_dir, profile, card_id, filename, source_path, cancel, deadline, documents, staged):
+def _sync_locked(addon_dir, profile, card_id, filename, source_path, cancel, deadline, documents, staged, *, fingerprints=None):
     import pymupdf as fitz
 
     managed = _managed_path(addon_dir, profile, filename)
@@ -646,7 +658,13 @@ def _sync_locked(addon_dir, profile, card_id, filename, source_path, cancel, dea
         signature = _file_signature(target)
         doc = fitz.open(target)
         documents.append(doc)
-        current_digest = _content_digest(doc, cancel, deadline)
+        # Only a previously verified full byte hash may reuse a content digest.
+        # File signatures and all before-commit checks still run on every pass.
+        current_digest = fingerprints.get(signature[-1]) if fingerprints is not None else None
+        if not isinstance(current_digest, str) or not re.fullmatch(r'[0-9a-f]{64}', current_digest):
+            current_digest = _content_digest(doc, cancel, deadline)
+            if fingerprints is not None:
+                fingerprints[signature[-1]] = current_digest
         if (digest and current_digest != digest) or (state['content_digest'] and current_digest != state['content_digest']):
             raise PdfAnnotationSyncError('document_changed')
         digest = current_digest
@@ -755,6 +773,7 @@ def _sync_locked(addon_dir, profile, card_id, filename, source_path, cancel, dea
         conn.execute('UPDATE pdf_annotation_sync SET source_path=?, content_digest=?, baseline_json=? WHERE card_id=?',
                      (str(source or ''), digest, baseline_json, card_id))
     return {'reader_path': str(reader), 'source_path': str(source or ''), 'conflicts': conflicts,
+            'reader_changed': reader_temp is not None,
             'changed': bool(writes), 'retry_needed': retry_needed,
             'appearance_changed': appearance_changed,
             'imported': len(set(merged) - set(local))}

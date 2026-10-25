@@ -444,6 +444,14 @@ def test_config_sanitizer_preserves_behavior_but_removes_private_values() -> Non
     assert numeric_secret["settings"]["pin_hash"]["redacted"] is True
 
 
+def test_saved_workspaces_never_export_profile_names_card_ids_or_encoded_window_titles():
+    private = {'session_card_count': {'dialog': {'card_id': 42, 'state': 'private-window-title'}}}
+    result = diagnostics.sanitize_config({'workspace_layouts': private}, {'workspace_layouts': {}})
+    assert result['settings']['workspace_layouts']['redacted'] is True
+    assert 'private-window-title' not in json.dumps(result)
+    assert 'card_id' not in json.dumps(result)
+
+
 def test_shipped_config_keys_are_explicitly_known() -> None:
     config_path = Path(__file__).resolve().parents[1] / "config.json"
     shipped = json.loads(config_path.read_text(encoding="utf-8"))

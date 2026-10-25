@@ -49,7 +49,7 @@ export default function ReferencePdfViewer() {
       setRendered(null); setLabel(''); setStatus('reader_link_preview_loading');
       pendingExcerpt.current = data.excerpt || '';
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = data.worker;
-      model.current.load(window.pdfjsLib, data.url, data.page, data.max_page)
+      model.current.load(window.pdfjsLib, data.url, data.page, data.max_page, data.byte_range)
         .catch(() => setStatus('reader_load_error'));
     };
     window.incrementoReferenceStart = start;

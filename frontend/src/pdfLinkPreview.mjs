@@ -1,9 +1,13 @@
+import {retainPdfPage, releasePdfPage, estimatePdfPageBytes} from './pdfPageResources.mjs';
+import {pdfPageTextContent} from './pdfTextCache.mjs';
+
 export const DEFAULT_PDF_LINK_PREVIEW_ZOOM = 1.5;
 const MAX_WIDTH = 4096;
 const MAX_HEIGHT = 640;
 const MAX_PIXELS = 4 * 1024 * 1024;
 const CONTEXT = 24;
 const CACHE_SIZE = 4;
+const CACHE_BYTES = 32 * 1024 * 1024;
 
 export function normalizePdfLinkPreviewZoom(raw) {
   const value = typeof raw === 'number' || (typeof raw === 'string' && raw.trim()) ? Number(raw) : NaN;
@@ -64,6 +68,11 @@ export function createPdfPreviewRenderer({createCanvas, onChange, pixelRatio = 1
   let sequence = 0, task = null, document = null;
   let zoom = normalizePdfLinkPreviewZoom(initialZoom), activeRequest = null;
   const cache = new Map();
+  const release = entry => {
+    entry.canvas.width = entry.canvas.height = 0;
+    releasePdfPage(entry.page, entry.owner);
+  };
+  const clearCache = () => {for (const entry of cache.values()) release(entry); cache.clear();};
   const clear = () => {
     ++sequence;
     try { task?.cancel(); } catch (_) {}
@@ -71,7 +80,7 @@ export function createPdfPreviewRenderer({createCanvas, onChange, pixelRatio = 1
     activeRequest = null;
     onChange(null);
   };
-  const dispose = () => {clear(); cache.clear(); document = null;};
+  const dispose = () => {clear(); clearCache(); document = null;};
   const renderer = {
     clear, dispose,
     setZoom(value) {
@@ -82,7 +91,7 @@ export function createPdfPreviewRenderer({createCanvas, onChange, pixelRatio = 1
     },
     async show(doc, link, anchor, maxPage = null) {
       clear();
-      if (doc !== document) {cache.clear(); document = doc;}
+      if (doc !== document) {clearCache(); document = doc;}
       if (!doc || link?.kind !== 'internal' || !Number.isInteger(link.targetPage)
           || link.targetPage < 1 || link.targetPage > doc.numPages) return;
       const current = sequence;
@@ -94,29 +103,40 @@ export function createPdfPreviewRenderer({createCanvas, onChange, pixelRatio = 1
       }
       const key = JSON.stringify([link.targetPage, link.destination, zoom]);
       if (cache.has(key)) {
-        onChange({...state, ...cache.get(key), status: 'ready'});
+        const entry = cache.get(key);
+        cache.delete(key); cache.set(key, entry);
+        onChange({...state, ...entry.result, status: 'ready'});
         return;
       }
       onChange({...state, status: 'loading'});
+      let page, canvas, cached = false;
+      const owner = {};
       try {
-        const page = await doc.getPage(link.targetPage);
+        page = await doc.getPage(link.targetPage);
+        retainPdfPage(page, owner);
         if (current !== sequence) return;
         const region = pdfPreviewRegion(page, link.destination, pixelRatio, zoom);
         if (!region) throw new Error('Invalid preview region');
-        const canvas = createCanvas();
+        canvas = createCanvas();
         const dpr = region.pixelRatio;
         canvas.width = Math.ceil(region.width * dpr);
         canvas.height = Math.ceil(region.height * dpr);
         const rendering = page.render({canvasContext: canvas.getContext('2d'), viewport: region.viewport,
           transform: [dpr, 0, 0, dpr, (0 - region.left) * dpr, (0 - region.top) * dpr]});
         task = rendering;
-        const content = Promise.resolve().then(() => page.getTextContent?.()).catch(() => null);
+        const content = pdfPageTextContent(page).catch(() => null);
         await rendering.promise;
         if (current !== sequence) return;
         task = null;
         const result = {canvas, region, text: ''};
-        cache.set(key, result);
-        if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value);
+        cache.set(key, {result, canvas, page, owner,
+          bytes: canvas.width * canvas.height * 4 + estimatePdfPageBytes(page)});
+        cached = true;
+        let bytes = [...cache.values()].reduce((sum, entry) => sum + entry.bytes, 0);
+        while (cache.size > 1 && (cache.size > CACHE_SIZE || bytes > CACHE_BYTES)) {
+          const oldest = cache.keys().next().value, entry = cache.get(oldest);
+          cache.delete(oldest); bytes -= entry.bytes; release(entry);
+        }
         onChange({...state, ...result, status: 'ready'});
         // Text is an accessible equivalent; it must never hold up the image.
         const textContent = await content;
@@ -125,6 +145,11 @@ export function createPdfPreviewRenderer({createCanvas, onChange, pixelRatio = 1
         onChange({...state, ...result, status: 'ready'});
       } catch (_) {
         if (current === sequence) {task = null; onChange({...state, status: 'unavailable'});}
+      } finally {
+        if (!cached) {
+          if (canvas) canvas.width = canvas.height = 0;
+          if (page) releasePdfPage(page, owner);
+        }
       }
     },
   };

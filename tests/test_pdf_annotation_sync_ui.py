@@ -36,6 +36,52 @@ class Runner:
         done(future)
 
 
+def test_rapid_annotation_edits_wait_for_one_idle_batch_and_profile_close_retires_the_timer():
+    runner = Runner()
+    timers, calls = [], []
+    def defer(callback):
+        timers.append(callback)
+        return callback
+    queue = ui.PdfAnnotationSyncQueue(runner.submit, lambda *args, **kw: calls.append(args) or {},
+        defer=defer, cancel_deferred=lambda timer: timers.remove(timer))
+    for _ in range(10):
+        queue.request('/addon', 'Profile', 42, 'book.pdf')
+    assert runner.tasks == [] and len(timers) == 1
+    timers.pop()()
+    runner.complete()
+    assert len(calls) == 1
+    queue.request('/addon', 'Profile', 42, 'book.pdf')
+    queue.reset()
+    assert timers == [] and runner.tasks == []
+
+
+def test_read_only_open_during_sync_attaches_its_callback_without_rescanning_the_book():
+    runner = Runner()
+    replies = []
+    queue = ui.PdfAnnotationSyncQueue(runner.submit, lambda *args, **kw: {})
+    queue.request('/addon', 'Profile', 42, 'book.pdf')
+    queue.request('/addon', 'Profile', 42, 'book.pdf', automatic=True, dirty=False,
+        callback=lambda *_: replies.append('loaded'))
+    runner.complete()
+    assert replies == ['loaded'] and runner.tasks == []
+
+
+def test_annotation_scan_yields_at_each_checkpoint_while_the_reader_requests_bytes(monkeypatch):
+    runner = Runner()
+    checkpoints = []
+    monkeypatch.setattr(ui, 'wait_for_pdf_reading', lambda cancel: checkpoints.append(cancel.is_set()))
+
+    def sync(*args, cancel, **kwargs):
+        for _ in range(5):
+            assert not cancel()
+        return {}
+
+    queue = ui.PdfAnnotationSyncQueue(runner.submit, sync)
+    queue.request('/addon', 'Profile', 42, 'large.pdf', automatic=True)
+    runner.complete()
+    assert checkpoints == [False] * 5
+
+
 def test_annotation_edits_during_sync_are_coalesced_and_finish_after_the_latest_pass():
     runner = Runner()
     calls, results = [], []

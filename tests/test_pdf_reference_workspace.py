@@ -225,6 +225,23 @@ def test_shared_reader_commands_are_bound_to_the_reference_nonce_and_profile(wor
     assert len(calls) == 1
 
 
+def test_reference_byte_ranges_keep_nonce_profile_and_instance_ownership(workspace):
+    from pdf_reader_state import PdfReaderState
+    state = PdfReaderState('A', 7, 'book.pdf', page=2)
+    calls, dispatched = [], []
+    page = workspace.module._ReferencePage(None, None, None, state,
+        lambda *args: dispatched.append(args), full_reader=True)
+    page._range_bridge = SimpleNamespace(handle=lambda command: calls.append(command) or True)
+    payload = json.dumps({'action': 'reader', 'command': 'incremento_pdf_range:{"cardId":7}'})
+    page.javaScriptConsoleMessage(None, '__incremento_reference__:wrong:' + payload, 0, '')
+    assert calls == []
+    page.javaScriptConsoleMessage(None, '__incremento_reference__:' + state.nonce + ':' + payload, 0, '')
+    assert calls == ['incremento_pdf_range:{"cardId":7}'] and dispatched == []
+    workspace.profile[0] = 'B'
+    page.javaScriptConsoleMessage(None, '__incremento_reference__:' + state.nonce + ':' + payload, 0, '')
+    assert len(calls) == 1
+
+
 def test_document_refresh_only_reaches_live_panes_for_that_profile_and_card(workspace):
     from pdf_reader_state import PdfReaderState
     calls = []
@@ -234,6 +251,19 @@ def test_document_refresh_only_reaches_live_panes_for_that_profile_and_card(work
             reader=SimpleNamespace(refresh=lambda kind, key=(profile, cid, closed): calls.append((key, kind)))))
     workspace.module.refresh_reference_readers('A', 7, 'highlights')
     assert calls == [(('A', 7, False), 'highlights')]
+
+
+def test_replaced_reader_file_reloads_all_live_matching_panes_with_their_own_positions(workspace):
+    from pdf_reader_state import PdfReaderState
+    calls = []
+    for profile, cid, closed, page in [('A', 7, False, 3), ('A', 7, False, 9), ('A', 8, False, 1), ('B', 7, False, 2), ('A', 7, True, 4)]:
+        state = PdfReaderState(profile, cid, 'book.pdf', closed=closed, page=page)
+        workspace.module._windows.append(SimpleNamespace(state=state,
+            reader=SimpleNamespace(refresh=lambda *_: None),
+            reload_reader=lambda result, state=state: calls.append((state.profile, state.card_id, state.page, result))))
+    result = {'reader_path': '/unused/reader.pdf', 'reader_changed': True}
+    workspace.module.refresh_reference_readers('A', 7, 'highlights', annotation_result=result)
+    assert calls == [('A', 7, 3, result), ('A', 7, 9, result)]
 
 
 def test_delayed_snapshot_uses_the_captured_page_for_its_citation(workspace, monkeypatch):

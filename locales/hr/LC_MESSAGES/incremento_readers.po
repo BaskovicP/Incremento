@@ -3885,6 +3885,39 @@ msgstr "Izgled EPUB-a"
 msgid "workspace_title"
 msgstr "Radni prostor"
 
+msgid "workspace_save"
+msgstr "Spremi radni prostor…"
+
+msgid "workspace_load"
+msgstr "Otvori spremljeni radni prostor"
+
+msgid "workspace_delete"
+msgstr "Izbriši spremljeni radni prostor"
+
+msgid "workspace_name"
+msgstr "Naziv radnog prostora (do 80 znakova):"
+
+msgid "workspace_replace"
+msgstr "Zamijeniti spremljeni radni prostor „{name}” trenutačnim dokumentima i rasporedom?"
+
+msgid "workspace_delete_confirm"
+msgstr "Izbrisati spremljeni radni prostor „{name}”? Dokumenti i tekstovi ostat će sačuvani."
+
+msgid "workspace_saved"
+msgstr "Radni prostor je spremljen."
+
+msgid "workspace_save_failed"
+msgstr "Radni prostor nije moguće spremiti. Ostavite njegove panele otvorenima, unesite naziv do 80 znakova i čuvajte najviše 20 spremljenih radnih prostora."
+
+msgid "workspace_loaded"
+msgstr "Radni prostor je otvoren."
+
+msgid "workspace_open_failed"
+msgstr "Spremljeni radni prostor nije moguće otvoriti. Njegove kartice ili datoteke možda više nisu dostupne."
+
+msgid "workspace_load_partial"
+msgstr "Radni prostor je otvoren. Broj preskočenih nedostupnih panela: {count}."
+
 msgid "workspace_write_beside"
 msgstr "Piši uz dokument…"
 

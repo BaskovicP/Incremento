@@ -12,6 +12,7 @@ export default function SharedReferencePdfViewer() {
       const {pending, highlights} = sharedPdfReaderStartup(data);
       window._pdfWorkerSrc = data.worker;
       window._pdfFileUrl = data.url;
+      window._incPdfByteRange = data.byte_range || null;
       window._incPdfHighlights = highlights;
       window._pdfNativeHighlightsVisible = data.native_highlights_visible === true;
       window._incPdfPending = pending;

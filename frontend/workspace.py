@@ -1,12 +1,21 @@
 """Explicit, reversible layouts for Incremento panes; no operating-system automation."""
 from contextlib import ExitStack
+import base64
 
-from aqt.qt import QDockWidget, QMenu, QRect, QSignalBlocker, Qt
+from aqt.qt import QApplication, QByteArray, QDockWidget, QInputDialog, QMenu, QRect, QSignalBlocker, Qt
 
 try:
     from ..backend.i18n import t
+    from ..backend.paths import get_active_profile
+    from ..backend.config_service import load_addon_config, save_addon_config
+    from ..backend.workspace_layouts import MAX_WORKSPACES, normalize_workspace, saved_workspaces, workspace_name
 except ImportError:
     from backend.i18n import t
+    from backend.paths import get_active_profile
+    from backend.config_service import load_addon_config, save_addon_config
+    from backend.workspace_layouts import MAX_WORKSPACES, normalize_workspace, saved_workspaces, workspace_name
+
+_ADDON_PKG = __name__.split('.')[0] if '.' in __name__ else 'incremento'
 
 
 _PANE_NAMES = {
@@ -38,10 +47,135 @@ def _focus(dock):
 
 
 class WorkspaceLayouts:
-    def __init__(self, main):
+    def __init__(self, main, *, session=None, profile=get_active_profile):
         self.main = main
         self._previous = None
         self._drag = None
+        self._session = session
+        self._profile = profile
+        self._generation = 0
+
+    def _content(self):
+        if self._session is None:
+            from .workspace_session import WorkspaceSession
+            self._session = WorkspaceSession(self.main, self._profile)
+        return self._session
+
+    def saved_names(self):
+        config = load_addon_config(self.main.addonManager, _ADDON_PKG)
+        return sorted(saved_workspaces(config, self._profile()), key=str.casefold)
+
+    def save_named(self, name, done=lambda ok: None):
+        name = workspace_name(name)
+        panes = self.visible_panes()
+        if name is None or not panes:
+            done(False)
+            return
+        self._generation += 1
+        generation, profile = self._generation, self._profile()
+        # Use stable layout slots instead of persisting reference bridge nonces.
+        names = {dock: dock.objectName() for dock in panes}
+        aliases = {pane_name: 'incremento_' + ('pdf_reference' if pane_name.startswith('incremento_pdf_reference_')
+                    else 'epub_reference') + '_saved_' + str(index)
+                   for index, pane_name in enumerate(names.values()) if '_reference_' in pane_name}
+        try:
+            for dock, pane_name in names.items():
+                if pane_name in aliases:
+                    with QSignalBlocker(dock):
+                        dock.setObjectName(aliases[pane_name])
+            snapshot = {'version': 1, 'state': base64.b64encode(bytes(self.main.saveState())).decode('ascii'),
+                        'geometry': base64.b64encode(bytes(self.main.saveGeometry())).decode('ascii')}
+        finally:
+            for dock, pane_name in names.items():
+                with QSignalBlocker(dock):
+                    dock.setObjectName(pane_name)
+        def captured(entries):
+            if generation != self._generation or profile != self._profile():
+                return
+            snapshot['panes'] = [entry | {'name': aliases.get(entry['name'], entry['name'])} for entry in entries]
+            clean = normalize_workspace(snapshot)
+            if clean is None or len(entries) != len(panes):
+                done(False)
+                return
+            try:
+                config = load_addon_config(self.main.addonManager, _ADDON_PKG)
+                layouts = config.setdefault('workspace_layouts', {}).setdefault(profile, {})
+                if name not in layouts and len(layouts) >= MAX_WORKSPACES:
+                    done(False)
+                    return
+                layouts[name] = clean
+                save_addon_config(self.main.addonManager, _ADDON_PKG, config)
+            except Exception:
+                done(False)
+                return
+            for dock, entry in zip(panes, clean['panes']):
+                if entry['kind'].endswith('_reference'):
+                    dock._workspace_saved_name = entry['name']
+            done(True)
+        self._content().capture(panes, captured)
+
+    def delete_named(self, name):
+        try:
+            config = load_addon_config(self.main.addonManager, _ADDON_PKG)
+            layouts = config.get('workspace_layouts', {}).get(self._profile(), {})
+            if name not in layouts:
+                return False
+            del layouts[name]
+            save_addon_config(self.main.addonManager, _ADDON_PKG, config)
+        except Exception:
+            return False
+        return True
+
+    def load_named(self, name, done=lambda ok, missing: None):
+        config = load_addon_config(self.main.addonManager, _ADDON_PKG)
+        snapshot = saved_workspaces(config, self._profile()).get(name)
+        if snapshot is None:
+            done(False, 0)
+            return
+        self._generation += 1
+        generation, profile = self._generation, self._profile()
+        def current():
+            return generation == self._generation and profile == self._profile()
+        def opened(panes, missing):
+            if not current():
+                return
+            if not panes:
+                done(False, missing)
+                return
+            self._remember(self.visible_panes())
+            live = self.main.findChildren(QDockWidget)
+            extra = [dock for dock in self.visible_panes() if dock not in panes]
+            with ExitStack() as stack:
+                for dock in live:
+                    stack.enter_context(QSignalBlocker(dock))
+                self._leave_focus(self.visible_panes())
+                self.main.restoreGeometry(QByteArray(base64.b64decode(snapshot['geometry'])))
+                ok = self.main.restoreState(QByteArray(base64.b64decode(snapshot['state'])))
+                for dock in panes + extra:
+                    dock.show()
+                    self._keep_on_screen(dock)
+                focused = {entry['name'] for entry in snapshot['panes'] if entry.get('focused')}
+                for dock in panes:
+                    mode = _focus(dock)
+                    if mode is not None:
+                        mode.set_enabled(dock.objectName() in focused)
+                        mode.present(eligible=True, title=dock.windowTitle())
+            done(ok, missing)
+        self._content().restore(snapshot['panes'], current, opened)
+
+    @staticmethod
+    def _keep_on_screen(dock):
+        if not dock.isFloating():
+            return
+        rectangle = dock.frameGeometry()
+        screens = QApplication.screens()
+        if any(screen.availableGeometry().intersects(rectangle) for screen in screens):
+            return
+        screen = dock.screen() or QApplication.primaryScreen()
+        if screen is not None:
+            area = screen.availableGeometry()
+            dock.resize(min(dock.width(), area.width()), min(dock.height(), area.height()))
+            dock.move(area.topLeft())
 
     def enable_dragging(self):
         if self._drag is None:
@@ -209,6 +343,7 @@ class WorkspaceLayouts:
         return True
 
     def reset(self):
+        self._generation += 1
         if self._drag is not None:
             self._drag.cancel(restore=False)
         self._previous = None
@@ -236,6 +371,36 @@ def add_workspace_menu(parent, manager, open_writing, open_pdf=None):
             from aqt.utils import tooltip
             tooltip(t('workspace_too_small'))
 
+    def saved(ok):
+        from aqt.utils import tooltip
+        tooltip(t('workspace_saved' if ok else 'workspace_save_failed'))
+
+    def save():
+        from aqt.utils import askUser
+        name, accepted = QInputDialog.getText(manager.main, t('workspace_save'), t('workspace_name'))
+        if not accepted:
+            return
+        name = workspace_name(name)
+        if name is None:
+            saved(False)
+            return
+        if name in manager.saved_names() and not askUser(t('workspace_replace', name=name), parent=manager.main):
+            return
+        manager.save_named(name, saved)
+
+    def load(name):
+        def finished(ok, missing):
+            from aqt.utils import tooltip
+            tooltip(t('workspace_load_partial', count=missing) if missing else
+                    t('workspace_loaded' if ok else 'workspace_open_failed'))
+        manager.load_named(name, finished)
+
+    def delete(name):
+        from aqt.utils import askUser, tooltip
+        if askUser(t('workspace_delete_confirm', name=name), parent=manager.main):
+            if not manager.delete_named(name):
+                tooltip(t('workspace_save_failed'))
+
     def rebuild():
         menu.clear()
         if open_pdf is not None:
@@ -243,6 +408,17 @@ def add_workspace_menu(parent, manager, open_writing, open_pdf=None):
         action(menu, 'workspace_write_beside', open_writing)
         menu.addSeparator()
         panes = manager.visible_panes()
+        action(menu, 'workspace_save', save, bool(panes))
+        names = manager.saved_names()
+        saved_menu = menu.addMenu(t('workspace_load'))
+        delete_menu = menu.addMenu(t('workspace_delete'))
+        saved_menu.setEnabled(bool(names))
+        delete_menu.setEnabled(bool(names))
+        for name in names:
+            for owner, callback in ((saved_menu, load), (delete_menu, delete)):
+                item = owner.addAction(name.replace('&', '&&'))
+                item.triggered.connect(lambda checked=False, value=name, cb=callback: cb(value))
+        menu.addSeparator()
         for layout in ('columns', 'rows', 'grid'):
             action(menu, 'workspace_' + layout, lambda value=layout: arrange(value), len(panes) >= 2)
         action(menu, 'workspace_restore', manager.restore, manager._previous is not None)

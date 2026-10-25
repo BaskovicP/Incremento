@@ -49,6 +49,24 @@ def test_side_controls_save_its_own_preference_and_reject_stale_readers(reader):
     assert len(saved) == 1
 
 
+@pytest.mark.parametrize('main_open', [False, True])
+def test_side_sync_refreshes_replaced_byte_sources_in_the_main_or_all_matching_panes(reader, main_open):
+    callbacks, main, panes = [], [], []
+    s = reader.service
+    s._annotation_queue = SimpleNamespace(request=lambda *args, callback, **kw: callbacks.append(callback))
+    s.current_pdf_card_id = lambda: 7 if main_open else None
+    s._push_pdf_highlights = lambda *_: None
+    s._reload_current_pdf_annotations = main.append
+    s._refresh_reference_pdf_state = lambda *args, **kw: panes.append((args, kw))
+    reader.bridge.owner._reader_path = '/unused/reader.pdf'
+    reader.bridge.owner.reload_reader = lambda *_: pytest.fail('the shared refresh owns all matching panes')
+    reader.bridge.sync_annotations(dirty=True)
+    result = {'reader_path': '/unused/reader.pdf', 'reader_changed': True, 'appearance_changed': False}
+    callbacks.pop()(result, None)
+    assert main == ([result] if main_open else [])
+    assert panes == ([] if main_open else [((7, 'highlights'), {'annotation_result': result})])
+
+
 def test_side_highlight_add_edit_delete_uses_the_original_documents_storage(reader):
     highlight = {'id': 'shared', 'page': 4, 'text': 'A passage', 'color': 'yellow',
                  'rects': [{'x': 10, 'y': 20, 'w': 30, 'h': 12}]}

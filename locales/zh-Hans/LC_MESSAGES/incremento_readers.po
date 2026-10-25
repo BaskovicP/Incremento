@@ -3809,6 +3809,39 @@ msgstr "EPUB 外观"
 msgid "workspace_title"
 msgstr "工作区"
 
+msgid "workspace_save"
+msgstr "保存工作区…"
+
+msgid "workspace_load"
+msgstr "打开已保存的工作区"
+
+msgid "workspace_delete"
+msgstr "删除已保存的工作区"
+
+msgid "workspace_name"
+msgstr "工作区名称（最多 80 个字符）："
+
+msgid "workspace_replace"
+msgstr "将已保存的工作区“{name}”替换为当前文档和布局吗？"
+
+msgid "workspace_delete_confirm"
+msgstr "删除已保存的工作区“{name}”吗？文档和写作内容将保留。"
+
+msgid "workspace_saved"
+msgstr "工作区已保存。"
+
+msgid "workspace_save_failed"
+msgstr "无法保存工作区。请保持面板打开，使用不超过 80 个字符的名称，并最多保存 20 个工作区。"
+
+msgid "workspace_loaded"
+msgstr "工作区已打开。"
+
+msgid "workspace_open_failed"
+msgstr "无法打开已保存的工作区。相关卡片或文件可能已不可用。"
+
+msgid "workspace_load_partial"
+msgstr "工作区已打开，已跳过 {count} 个不可用面板。"
+
 msgid "workspace_write_beside"
 msgstr "在文档旁写作…"
 

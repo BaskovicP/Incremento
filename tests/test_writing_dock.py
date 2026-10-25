@@ -1,6 +1,22 @@
 import writing_dock
 
 
+def test_flush_reports_write_failure_without_claiming_the_live_text_is_saved(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    monkeypatch.setattr(writing_dock, '_writing_dock', SimpleNamespace(
+        _editor=SimpleNamespace(toPlainText=lambda: 'Unsaved synthetic text')))
+    monkeypatch.setattr(writing_dock, '_current_writing_relpath', 'writing/example.md')
+    monkeypatch.setattr(writing_dock, '_active_profile', lambda: 'A')
+    monkeypatch.setattr(writing_dock, '_writing_profile', 'A')
+    monkeypatch.setattr(writing_dock, 'write_writing_text', Mock(side_effect=OSError('Synthetic failure')))
+    monkeypatch.setattr(writing_dock, '_set_status', Mock())
+    monkeypatch.setattr(writing_dock, '_save_writing_progress', Mock())
+    monkeypatch.setattr(writing_dock, '_set_saved_time', Mock())
+    assert writing_dock._flush_editor_state() is False
+    writing_dock._set_saved_time.assert_not_called()
+
+
 def test_writing_bookmarks_localize_links_but_preserve_user_labels(monkeypatch):
     from types import SimpleNamespace
     from backend.i18n import Translator

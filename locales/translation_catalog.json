@@ -32818,6 +32818,24 @@
     },
     {
       "component": "addon",
+      "key": "workspace_delete",
+      "form": "",
+      "source": "Delete saved workspace",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_delete_confirm",
+      "form": "",
+      "source": "Delete the saved workspace “{name}”? Your documents and writing will be kept.",
+      "tokens": [
+        "{name}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_drag_hint",
       "form": "",
       "source": "Drag this title bar to a screen edge for a half, a corner for a quarter, or another pane’s edge to dock beside it. Escape cancels.",
@@ -32874,9 +32892,35 @@
     },
     {
       "component": "addon",
+      "key": "workspace_load",
+      "form": "",
+      "source": "Open saved workspace",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_load_failed",
       "form": "",
       "source": "Writing cards could not be loaded. Close this window and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_load_partial",
+      "form": "",
+      "source": "Workspace opened with {count} unavailable panes skipped.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_loaded",
+      "form": "",
+      "source": "Workspace opened.",
       "tokens": [],
       "markup": []
     },
@@ -32893,6 +32937,14 @@
       "key": "workspace_maximize",
       "form": "",
       "source": "Fill available screen",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_name",
+      "form": "",
+      "source": "Workspace name (up to 80 characters):",
       "tokens": [],
       "markup": []
     },
@@ -32925,6 +32977,14 @@
       "key": "workspace_open_beside",
       "form": "",
       "source": "Open beside",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_open_failed",
+      "form": "",
+      "source": "Could not open the saved workspace. Its cards or files may no longer be available.",
       "tokens": [],
       "markup": []
     },
@@ -32964,6 +33024,16 @@
     },
     {
       "component": "addon",
+      "key": "workspace_replace",
+      "form": "",
+      "source": "Replace the saved workspace “{name}” with the current documents and layout?",
+      "tokens": [
+        "{name}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_restore",
       "form": "",
       "source": "Restore previous layout",
@@ -32983,6 +33053,30 @@
       "key": "workspace_rows",
       "form": "",
       "source": "Stack vertically",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_save",
+      "form": "",
+      "source": "Save workspace…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_save_failed",
+      "form": "",
+      "source": "Could not save the workspace. Keep its panes open, use a name of up to 80 characters, and keep at most 20 saved workspaces.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_saved",
+      "form": "",
+      "source": "Workspace saved.",
       "tokens": [],
       "markup": []
     },

@@ -101,6 +101,42 @@ idempotent. SQLite edits made during file I/O are retained and trigger another
 pass. A private per-document catalog stamp identifies the last shared baseline;
 missing annotations in an older/unstamped snapshot are preserved rather than
 interpreted as deletions. No user comment text is stored in that stamp.
+Local PDF loading uses `backend/pdf_byte_ranges.py` and the instance-owned
+`frontend/pdf_range_bridge.py`. Each captured source authorizes one managed PDF
+or that card's exact derived reader copy under the captured profile. The existing
+nonce/card bridge carries an additional per-load token and bounded 256 KiB reads
+through the collection-free task executor, with two client requests and at most
+four server jobs in flight per reader. JavaScript supplies offsets, never a path.
+File identity is rechecked around every read; stale profile/document replies are
+dropped. PDF.js receives reassembled requested ranges with streaming and automatic
+whole-file prefetch disabled. No network listener or CSP expansion is involved.
+The visible page renders first; cancellable idle display renders on tiny temporary
+canvases prepare the moving ±5 page window within a 64 MiB estimated page-resource
+budget. The current page is always retained, even if it alone exceeds the budget;
+idle decoding stops before exhausting the remaining headroom. Hidden readers
+release neighboring pages. PDF.js image resizing also has an explicit 32 MiB
+canvas-area limit. `pdfPageResources.mjs` shares ownership between foreground
+renders, the page window and footnote previews, so disposing a preview cannot
+clean a page in use by the reader. Preview caches have a separate 32 MiB estimated
+budget and four-entry ceiling. Text and decoded page resources are released
+together; selection and font metadata share one streamed extraction, reused on
+zoom. Annotation indexes and normalized geometry are reused until edits arrive,
+and note tooltips subscribe independently of the reader.
+
+`frontend/pdf_annotation_sync.py` coalesces automatic saves after 400 ms of quiet;
+explicit sync bypasses that wait. `backend/pdf_annotation_process.py` serializes
+native annotation jobs in a separate compatible Python interpreter through the
+private `pdf_annotation_worker.py` entry point. The child imports no Anki or Qt,
+uses the installed PyMuPDF package, checks cooperative cancellation and lowers its
+CPU priority where supported. The parent bounds processing and result size,
+validates returned paths and fixed error codes, and owns exact temporary outputs
+so abnormal exits can clean them safely. A bounded in-memory, profile-scoped cache
+reuses page-content digests only after matching the full PDF byte hash; every
+file-change check and commit validation remains active. Queue reset retires the
+cache generation so an old worker cannot repopulate it. Native work never falls
+back to Anki's interpreter. `backend/pdf_reading_priority.py` remains available
+for legacy in-process checkpoint users.
+
 The derived `pdf_annotations/<card_id>/reader.pdf` omits native highlights
 and Incremento snapshot frames so the interactive viewer paints them once; other
 annotation appearances stay native. These paths belong to `backend/paths.py` and
@@ -110,6 +146,10 @@ managed PDF as a safe fallback, before starting background interchange. Moving
 to another PDF cancels obsolete work, lock-queue time is separate from the
 bounded processing budget, and unchanged baselines reuse the validated derived
 copy. Protected or changed-content documents fail closed.
+Sync results also identify a replaced derived reader file, independently of
+native annotation changes. Main and supplemental readers then reopen fresh byte
+sources while preserving each pane's own position, so later range requests never
+use a token for the replaced file. Unchanged reader copies retain their caches.
 
 `backend/db_schema.py` owns the migration ledger. `schema_migrations` and `PRAGMA user_version` advance in the same transaction as each schema change. Failed migrations roll back the schema, ledger row, and version together.
 

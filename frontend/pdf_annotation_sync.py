@@ -8,11 +8,15 @@ from threading import Event
 try:
     from ..backend import activity_log
     from ..backend.i18n import t
-    from ..backend.pdf_annotations import PdfAnnotationSyncError, sync_pdf_annotations
+    from ..backend.pdf_annotations import PdfAnnotationSyncError
+    from ..backend.pdf_annotation_process import sync_pdf_annotations_in_process, clear_annotation_process_cache
+    from ..backend.pdf_reading_priority import wait_for_pdf_reading
 except ImportError:
     import activity_log
     from i18n import t
-    from pdf_annotations import PdfAnnotationSyncError, sync_pdf_annotations
+    from pdf_annotations import PdfAnnotationSyncError
+    from pdf_annotation_process import sync_pdf_annotations_in_process, clear_annotation_process_cache
+    from pdf_reading_priority import wait_for_pdf_reading
 
 
 def sync_error_text(error):
@@ -32,13 +36,33 @@ def sync_error_text(error):
     return t(key)
 
 
+def defer_annotation_sync(callback):
+    from aqt.qt import QTimer
+    timer = QTimer()
+    timer.setSingleShot(True)
+    def run():
+        try:
+            callback()
+        finally:
+            timer.deleteLater()
+    timer.timeout.connect(run)
+    timer.start(400)
+    return timer
+
+
+def cancel_deferred_annotation_sync(timer):
+    timer.stop()
+    timer.deleteLater()
+
+
 class PdfAnnotationSyncQueue:
-    def __init__(self, submit, sync=sync_pdf_annotations):
+    def __init__(self, submit, sync=sync_pdf_annotations_in_process, *, defer=None, cancel_deferred=None):
         self.submit = submit
         self.sync = sync
         self.jobs = {}
         self.auto_suppressed = set()
         self.retained = {}
+        self.defer, self.cancel_deferred = defer, cancel_deferred
 
     def retain(self, key):
         """An additional open pane still owns this document's pending writes."""
@@ -55,6 +79,7 @@ class PdfAnnotationSyncQueue:
         self.retained.clear()
         self.cancel_except(None)
         self.auto_suppressed.clear()
+        clear_annotation_process_cache()
 
     def cancel_except(self, keep_key):
         """Cancel jobs that no longer belong to the PDF visible in the reader."""
@@ -62,11 +87,13 @@ class PdfAnnotationSyncQueue:
             if key == keep_key or key in self.retained:
                 continue
             job['cancel'].set()
+            if job.get('timer') is not None and self.cancel_deferred:
+                self.cancel_deferred(job['timer'])
             activity_log.cancel_activity(job['activity'])
             self.jobs.pop(key, None)
 
     def request(self, addon_dir, profile, card_id, filename, *, source_path=None,
-                callback=None, callback_key=None, automatic=False):
+                callback=None, callback_key=None, automatic=False, dirty=True, immediate=False):
         key = (addon_dir, profile, int(card_id), filename)
         if automatic and key in self.auto_suppressed:
             return False
@@ -74,11 +101,14 @@ class PdfAnnotationSyncQueue:
             self.auto_suppressed.discard(key)
         job = self.jobs.get(key)
         if job is not None:
-            job['pending'] = True
+            job['pending'] = job['pending'] or dirty or source_path is not None
+            job['immediate'] = job['immediate'] or immediate
             if source_path is not None:
                 job['source'] = source_path
             if callback:
                 job['callbacks'][callback_key if callback_key is not None else callback] = callback
+            if not job['running']:
+                self._schedule(key, job)
             return True
         if len(self.jobs) >= 16:
             if callback:
@@ -87,21 +117,45 @@ class PdfAnnotationSyncQueue:
         cancel = Event()
         job = {'cancel': cancel, 'source': source_path,
                'callbacks': {callback_key if callback_key is not None else callback: callback} if callback else {},
-               'pending': False, 'passes': 0,
+               'pending': False, 'passes': 0, 'running': False, 'timer': None, 'immediate': immediate,
                'activity': activity_log.start_activity(t('reader_pdf_sync_title'), cancel=cancel.set)}
         self.jobs[key] = job
-        self._start(key, job)
+        self._schedule(key, job)
         return True
 
+    def _schedule(self, key, job):
+        if job['timer'] is not None and self.cancel_deferred:
+            self.cancel_deferred(job['timer'])
+        job['timer'] = None
+        if self.defer is not None and not job['immediate']:
+            job['timer'] = self.defer(lambda: self._start(key, job))
+        else:
+            self._start(key, job)
+
     def _start(self, key, job):
+        if self.jobs.get(key) is not job:
+            return
+        job['timer'] = None
+        if job['cancel'].is_set():
+            self.jobs.pop(key, None)
+            activity_log.cancel_activity(job['activity'])
+            for callback in job['callbacks'].values():
+                callback(None, PdfAnnotationSyncError('cancelled'))
+            return
+        job['running'] = True
         source = job['source']
         job['pending'] = False
         job['passes'] += 1
         def work():
-            return self.sync(*key, source_path=source, cancel=job['cancel'].is_set)
+            def cancelled():
+                if self.sync is not sync_pdf_annotations_in_process:
+                    wait_for_pdf_reading(job['cancel'])
+                return job['cancel'].is_set()
+            return self.sync(*key, source_path=source, cancel=cancelled)
         def done(future):
             if self.jobs.get(key) is not job:
                 return
+            job['running'] = False
             result, error = None, None
             try:
                 result = future.result()
@@ -109,7 +163,7 @@ class PdfAnnotationSyncQueue:
                 error = caught
             if not job['cancel'].is_set() and not error and (job['pending'] or result.get('retry_needed')):
                 if job['passes'] < 4:
-                    self._start(key, job)
+                    self._schedule(key, job)
                     return
                 error = PdfAnnotationSyncError('file_changed')
             self.jobs.pop(key, None)

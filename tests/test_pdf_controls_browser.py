@@ -76,6 +76,14 @@ def test_pdf_essential_controls_and_drawers_fit_narrow_and_wide_readers(tmp_path
                 assert controls.locator('button, input, select').evaluate_all("""nodes=>nodes.filter(el=>el.getClientRects().length).every(el=>{
                     const r=el.getBoundingClientRect();return r.left>=-1 && r.right<=innerWidth+1;
                 })"""), 'Expanded controls must fit the current pane width'
+            saved = page.evaluate('window.incrementoPdfWorkspaceState()')
+            assert saved['card_id'] == 42 and saved['controls']['collapsed'] is False
+            controls.get_by_role('button', name='Minimize controls', exact=True).click()
+            page.evaluate('state => window.incrementoPdfRestoreWorkspace(state)', saved)
+            controls.get_by_role('button', name='Minimize controls', exact=True).wait_for()
+            # Annotation reloads reuse the viewer and must retain the workspace view.
+            page.evaluate("window.incrementoPdfStart(42,'synthetic.pdf',1,1,0,1)")
+            controls.get_by_role('button', name='Minimize controls', exact=True).wait_for()
             browser.close()
     ''')
     result = subprocess.run([runtime[0], '-I', '-c', script, str(_runtime_dir()/'packages'), runtime[1], str(scale)],

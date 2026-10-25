@@ -8,6 +8,10 @@ import * as pageLabelModule from '../src/pdfPageLabels.mjs';
 import { annotatePdfTextStyles } from '../src/pdfTextSelection.mjs';
 import { loadPdfContents } from '../src/pdfContents.mjs';
 import { pdfCanvasPlan } from '../src/pdfRenderBudget.mjs';
+import { createPdfByteRangeTransport } from '../src/pdfByteRanges.mjs';
+import { createPdfPageWindow } from '../src/pdfPageWindow.mjs';
+import { pdfPageTextSource } from '../src/pdfTextCache.mjs';
+import { retainPdfPage, releasePdfPage } from '../src/pdfPageResources.mjs';
 
 test('rendering keeps PDF spaces, narrow letters, and compressed OCR spans selectable', async () => {
   const source = readFileSync(new URL('../src/usePdfRender.js', import.meta.url), 'utf8');
@@ -20,6 +24,7 @@ test('rendering keeps PDF spaces, narrow letters, and compressed OCR spans selec
   }));
   const scope = {
     useCallback: callback => callback,
+    pdfPageTextSource,
     textLayerRef: { current: { style: { setProperty() {} }, querySelectorAll: () => spans } },
     cardIdRef: {current: 7},
     containerRef: { current: { offsetWidth: 600 } }, lastScaleRef: { current: 1 }, setRenderInfo() {},
@@ -39,6 +44,7 @@ test('rendered PDF font emphasis is attached to selectable text for extraction',
   const textLayer = { style: { setProperty() {} }, innerHTML: '' };
   const scope = {
     useCallback: callback => callback,
+    pdfPageTextSource,
     annotatePdfTextStyles,
     textLayerRef: { current: textLayer }, cardIdRef: {current: 7},
     containerRef: { current: { offsetWidth: 600 } }, lastScaleRef: { current: 1 }, setRenderInfo() {},
@@ -83,7 +89,8 @@ function loader() {
     filenameRef: { current: 'sample.pdf' },
     cardIdRef: { current: 55 },
     loadSequenceRef: { current: 0 }, loadingTaskRef: { current: null },
-    pageCacheRef: {current: new Set()},
+    pageWindowRef: {current: null}, createPdfPageWindow,
+    setTimeout, clearTimeout,
     renderSequenceRef: { current: 0 }, busyRef: { current: false },
     setTotalPages: () => {}, renderPage: page => rendered.push(page), setError: error => { if (error) errors.push(error); },
     setPageLabels: value => labels.push(value),
@@ -91,12 +98,14 @@ function loader() {
     setPage: value => pages.push(value),
     normalizePdfPageLabels,
     pdfPageLabelsMessage: (...args) => pageLabelModule.pdfPageLabelsMessage(...args),
+    createPdfByteRangeTransport,
     window: { pycmd: message => messages.push(message), pdfjsLib: {
       GlobalWorkerOptions: {},
-      getDocument: () => {
+      PDFDataRangeTransport: class {},
+      getDocument: options => {
         let resolve, reject;
         const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
-        const task = { promise, resolve, reject, destroy: async () => {} };
+        const task = { promise, resolve, reject, options, destroy: async () => {} };
         tasks.push(task);
         return task;
       },
@@ -105,6 +114,18 @@ function loader() {
   vm.runInNewContext(`${source.slice(start, end)}\nglobalThis.start = doStart;`, scope);
   return { scope, tasks, rendered, errors, labels, pages, messages, contents };
 }
+
+test('local PDFs use on-demand byte ranges without a whole-file network fallback or automatic prefetch', () => {
+  const {scope, tasks} = loader();
+  scope.window._incPdfByteRange = {token: 'current', cardId: 55, length: 97_000_000, chunkSize: 262144};
+  scope.start();
+  assert.ok(tasks[0].options.range);
+  assert.equal(tasks[0].options.url, undefined);
+  assert.equal(tasks[0].options.disableAutoFetch, true);
+  assert.equal(tasks[0].options.disableStream, true);
+  assert.equal(tasks[0].options.rangeChunkSize, 262144);
+  assert.equal(scope.window._incPdfByteRange, null);
+});
 
 test('late contents from a previous PDF never overwrite the current outline', async () => {
   const {scope, tasks, contents} = loader();
@@ -240,7 +261,7 @@ function renderHarness({pixelRatio = 2, width = 600, height = 920} = {}) {
     useCallback: callback => callback, useEffect: callback => effects.push(callback),
     resolvePdfAnnotationLink: async annotation => annotation,
     normalizePdfPageLabels, pdfPageLabelsMessage: pageLabelModule.pdfPageLabelsMessage,
-    annotatePdfTextStyles, loadPdfContents, pdfCanvasPlan,
+    annotatePdfTextStyles, loadPdfContents, pdfCanvasPlan, createPdfPageWindow, pdfPageTextSource, retainPdfPage, releasePdfPage,
     setTimeout: callback => {timers.push(callback); return timers.length;}, clearTimeout() {},
     setInterval() {}, clearInterval() {},
     ResizeObserver: class { constructor(callback) { resize = callback; } observe() {} disconnect() {} },
@@ -248,7 +269,7 @@ function renderHarness({pixelRatio = 2, width = 600, height = 920} = {}) {
       pycmd: command => commands.push(command), pdfjsLib: {
         GlobalWorkerOptions: {},
         TextLayer: class {
-          constructor({textContentSource}) { this.page = textContentSource; }
+          constructor({textContentSource}) { this.page = textContentSource.tag || textContentSource; }
           render() { textPages.push(this.page); return Promise.resolve(); }
           cancel() {}
         },
@@ -272,7 +293,7 @@ function renderHarness({pixelRatio = 2, width = 600, height = 920} = {}) {
         if (pageCache.has(number)) return Promise.resolve(pageCache.get(number));
         const page = {pageNumber: number, streamTextContent: () => `${id}:${number}`,
           cleaned: 0, cleanup() {this.cleaned++; return true;},
-          getTextContent: async () => ({items: []}), getAnnotations: async () => [],
+          getTextContent: async () => ({items: [], tag: `${id}:${number}`}), getAnnotations: async () => [],
           getViewport: ({scale}) => ({width: 600 * scale, height: 800 * scale, scale}),
           render: options => {
             const completion = deferred();
@@ -366,7 +387,7 @@ test('obsolete page loading is discarded and unmount prevents queued rendering',
   assert.deepEqual(h.textPages, []);
 });
 
-test('large textbook navigation retains at most three decoded pages and can revisit evicted pages', async () => {
+test('large textbook navigation retains only its moving page window and can revisit evicted pages', async () => {
   const h = renderHarness(); const {pages} = h.document('textbook', {numPages: 1747});
   h.api.startViewer(7, 'textbook.pdf', 1, 1);
   for (let number = 1; number <= 12; number++) {
@@ -374,7 +395,8 @@ test('large textbook navigation retains at most three decoded pages and can revi
     const job = h.renders.at(-1);
     assert.equal(job.number, number);
     job.resolve(); await setImmediate();
-    assert.ok(pages.filter(({page}) => !page.cleaned).length <= 3,
+    // The user-requested ±5 preparation window replaces the former three-page LRU.
+    assert.ok(pages.filter(({page}) => !page.cleaned).length <= 11,
       'decoded images and operator lists must not grow with every page visited');
     assert.equal(pages.at(-1).page.cleaned, 0, 'keep the displayed page ready for zoom and selection');
     if (number < 12) h.api.nav(1);

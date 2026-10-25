@@ -14,6 +14,10 @@ import { resolvePdfAnnotationLink } from './pdfLinks.mjs';
 import { normalizePdfPageLabels, pdfPageLabelsMessage } from './pdfPageLabels.mjs';
 import { annotatePdfTextStyles } from './pdfTextSelection.mjs';
 import { loadPdfContents } from './pdfContents.mjs';
+import { createPdfByteRangeTransport } from './pdfByteRanges.mjs';
+import { createPdfPageWindow } from './pdfPageWindow.mjs';
+import { pdfPageTextSource } from './pdfTextCache.mjs';
+import { retainPdfPage, releasePdfPage } from './pdfPageResources.mjs';
 
 const DEFAULT_WORKER_SRC = '/_addons/incremento/web/pdfjs/pdf.worker.min.js';
 const ZOOM_STEP = 0.1;
@@ -21,7 +25,6 @@ const ZOOM_MIN  = 0.25;
 const ZOOM_MAX  = 4.0;
 const POLL_MS   = 100;
 const POLL_MAX  = 20;
-const PAGE_CACHE_SIZE = 3;
 
 function resolveWorkerSrc(rawWorkerSrc) {
   const fallback = DEFAULT_WORKER_SRC;
@@ -65,7 +68,7 @@ export function usePdfRender() {
   const renderSequenceRef  = useRef(0);
   const loadSequenceRef    = useRef(0);
   const loadingTaskRef     = useRef(null);
-  const pageCacheRef       = useRef(new Set());
+  const pageWindowRef      = useRef(null);
 
   const pendingRenderRef   = useRef(null);
   const renderTaskRef      = useRef(null);
@@ -76,6 +79,7 @@ export function usePdfRender() {
   const retireRender = useCallback(() => {
     ++renderSequenceRef.current;
     pendingRenderRef.current = null;
+    pageWindowRef.current?.pause();
     try { renderTaskRef.current?.cancel(); } catch (_) {}
     if (textLayerRef.current?._cancelTextLayer) {
       textLayerRef.current._cancelTextLayer();
@@ -87,10 +91,18 @@ export function usePdfRender() {
     ++loadSequenceRef.current;
     retireRender();
     clearInterval(workerPollRef.current);
-    pageCacheRef.current.clear();
+    pageWindowRef.current?.dispose();
     pdfDocRef.current = null;
     try { loadingTaskRef.current?.destroy()?.catch(() => {}); } catch (_) {}
   }, [retireRender]);
+
+  useEffect(() => {
+    const document = window.document;
+    if (!document?.addEventListener) return;
+    const changed = () => pageWindowRef.current?.setVisible(!document.hidden);
+    document.addEventListener('visibilitychange', changed);
+    return () => document.removeEventListener('visibilitychange', changed);
+  }, []);
 
   /* ── Text layer (PDF.js 4.x) ──────────────────────────────────────────────── */
   const renderTextLayer = useCallback((pg, viewport) => {
@@ -115,21 +127,24 @@ export function usePdfRender() {
       cardId: cardIdRef.current, page: pg.pageNumber, textReady: false });
 
     try {
-      const stream = pg.streamTextContent();
-      const task = new lib.TextLayer({ textContentSource: stream, container: tl, viewport });
-      const cancelTextLayer = () => { try { task.cancel(); } catch (_) {} };
+      const text = pdfPageTextSource(pg);
+      let task = null, cancelled = false;
+      const cancelTextLayer = () => {cancelled = true; try {task?.cancel();} catch (_) {}};
       tl._cancelTextLayer = cancelTextLayer;
       // Spaces and narrow/compressed glyphs are real PDF text. Removing them
       // breaks native copying and drops punctuation/letters from OCR selections.
-      task.render()
-        .then(() => pg.getTextContent())
-        .then(content => {
-          if (tl._cancelTextLayer === cancelTextLayer) {
+      const show = source => {
+        if (cancelled || tl._cancelTextLayer !== cancelTextLayer) return;
+        task = new lib.TextLayer({textContentSource: source, container: tl, viewport});
+        Promise.all([task.render(), text.content]).then(([, content]) => {
+          if (!cancelled && tl._cancelTextLayer === cancelTextLayer) {
             annotatePdfTextStyles(task.textDivs, content, pg.commonObjs);
             setRenderInfo(current => ({...current, textReady: true}));
           }
-        })
-        .catch(() => {});
+        }).catch(() => {});
+      };
+      if (typeof text.source?.then === 'function') text.source.then(show).catch(() => {});
+      else show(text.source);
     } catch (_) {}
   }, []);
 
@@ -156,6 +171,7 @@ export function usePdfRender() {
   const renderPage = useCallback((num) => {
     const doc = pdfDocRef.current;
     if (!doc) return;
+    pageWindowRef.current?.pause();
     const sequence = ++renderSequenceRef.current;
     pendingRenderRef.current = {doc, num, zoom: zoomRef.current, sequence,
       cardId: cardIdRef.current};
@@ -181,8 +197,10 @@ export function usePdfRender() {
             && request.doc === pdfDocRef.current;
           let failure = 'reader_page_error';
           let pg, backCvs, displayed = false;
+          const renderOwner = {};
           try {
             pg = await request.doc.getPage(request.num);
+            retainPdfPage(pg, renderOwner);
             if (!current()) continue;
             const backId = activeCvsRef.current === 'a' ? 'b' : 'a';
             backCvs = backId === 'a' ? canvasARef.current : canvasBRef.current;
@@ -215,16 +233,7 @@ export function usePdfRender() {
             }
             activeCvsRef.current = backId;
             displayed = true;
-            // Keep a small working set for Back/zoom. PDF.js otherwise retains
-            // decoded page images and operator lists for the whole reading run.
-            const cache = pageCacheRef.current;
-            cache.delete(pg);
-            cache.add(pg);
-            while (cache.size > PAGE_CACHE_SIZE) {
-              const oldest = cache.values().next().value;
-              cache.delete(oldest);
-              try { oldest.cleanup(); } catch (_) {}
-            }
+            pageWindowRef.current?.display(pg);
             setError('');
             setPage(request.num);
             if (containerRef.current) containerRef.current.style.height = viewport.height + 'px';
@@ -234,9 +243,7 @@ export function usePdfRender() {
             if (current()) setError(failure);
           } finally {
             renderTaskRef.current = null;
-            if (pg && !pageCacheRef.current.has(pg)) {
-              try { pg.cleanup(); } catch (_) {}
-            }
+            if (pg) releasePdfPage(pg, renderOwner);
             // Cancellation must settle before releasing the back buffer.
             if (backCvs && !displayed) backCvs.width = backCvs.height = 0;
           }
@@ -261,17 +268,27 @@ export function usePdfRender() {
     setError('');
     pdfDocRef.current = null;
     try { loadingTaskRef.current?.destroy()?.catch(() => {}); } catch (_) {}
-    pageCacheRef.current.clear();
+    pageWindowRef.current?.dispose();
+    pageWindowRef.current = null;
     const lib = window.pdfjsLib;
     lib.GlobalWorkerOptions.workerSrc = resolveWorkerSrc(window._pdfWorkerSrc);
     window._pdfWorkerSrc = null;
     const pdfUrl = window._pdfFileUrl || ('/' + encodeURIComponent(filenameRef.current));
     window._pdfFileUrl = null;
-    const task = lib.getDocument({
-      url: pdfUrl,
+    const byteSource = window._incPdfByteRange;
+    window._incPdfByteRange = null;
+    let task;
+    const range = byteSource ? createPdfByteRangeTransport(lib, byteSource, window.pycmd, () => {
+      if (sequence === loadSequenceRef.current) setError('reader_load_error');
+      try { task?.destroy()?.catch(() => {}); } catch (_) {}
+    }, window) : null;
+    task = lib.getDocument({
+      ...(range ? {range, rangeChunkSize: byteSource.chunkSize, disableAutoFetch: true, disableStream: true}
+        : {url: pdfUrl}),
       // Imported PDFs are untrusted input. Incremento does not need the PDF.js
       // dynamic-code path, so keep it disabled even if a document requests it.
       isEvalSupported: false,
+      canvasMaxAreaInBytes: 32 * 1024 * 1024,
     });
     loadingTaskRef.current = task;
     task.promise
@@ -281,6 +298,10 @@ export function usePdfRender() {
           return;
         }
         pdfDocRef.current = doc;
+        pageWindowRef.current = createPdfPageWindow(doc, {
+          schedule: callback => setTimeout(callback, 150), cancel: clearTimeout,
+        });
+        pageWindowRef.current.setVisible(!window.document?.hidden);
         const total     = doc.numPages;
         const startPage = Math.min(Math.max(pageRef.current, 1), total);
         setTotalPages(total);

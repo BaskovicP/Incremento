@@ -654,6 +654,22 @@ def test_pdf_viewer_disables_eval_and_declares_csp():
     assert "object-src 'none'" in html
 
 
+def test_main_reader_byte_ranges_are_dispatched_only_after_nonce_and_card_checks(monkeypatch):
+    ranges, global_commands = [], []
+    page = types.SimpleNamespace(_bridge_nonce='current-nonce', _bridge_card_id=42,
+        _range_bridge=types.SimpleNamespace(handle=lambda command: ranges.append(command) or True))
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 42)
+    monkeypatch.setattr(pdf_dock, '_handle_pdf_js_message', global_commands.append)
+    message = 'incremento_pdf_range:{"cardId":42}'
+    pdf_dock._dispatch_pdf_bridge_message(page, pdf_dock._PYCMD_BRIDGE + 'stale:' + message)
+    assert ranges == []
+    pdf_dock._dispatch_pdf_bridge_message(page, pdf_dock._PYCMD_BRIDGE + 'current-nonce:' + message)
+    assert ranges == [message] and global_commands == []
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 43)
+    pdf_dock._dispatch_pdf_bridge_message(page, pdf_dock._PYCMD_BRIDGE + 'current-nonce:' + message)
+    assert ranges == [message]
+
+
 def test_pdf_viewer_exposes_opt_in_annotation_links():
     addon_root = Path(pdf_dock.__file__).resolve().parent.parent
     hook_source = (addon_root / "frontend" / "src" / "usePdfRender.js").read_text(
@@ -1982,6 +1998,23 @@ def test_annotation_sync_callback_cannot_update_a_different_card_or_profile(monk
     monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 77)
     callbacks.pop()(dict(reader_path='/tmp/reader.pdf'), None)
     assert scripts == []
+
+
+def test_replaced_reader_bytes_refresh_the_main_byte_source_after_a_highlight_only_sync(monkeypatch):
+    callbacks, reloaded = [], []
+    dock = types.SimpleNamespace(_view=types.SimpleNamespace(page=lambda: types.SimpleNamespace(runJavaScript=lambda *_: None)))
+    monkeypatch.setattr(pdf_dock, '_pdf_dock', dock)
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 42)
+    monkeypatch.setattr(pdf_dock, '_current_pdf_filename', 'book.pdf')
+    monkeypatch.setattr(pdf_dock, '_active_profile', lambda: 'A')
+    monkeypatch.setattr(pdf_dock, '_annotation_queue', types.SimpleNamespace(request=lambda *args, callback, **kw: callbacks.append(callback)))
+    monkeypatch.setattr(pdf_dock, '_pdf_highlights_payload', lambda *_: [])
+    monkeypatch.setattr(pdf_dock, '_refresh_reference_pdf_state', lambda *_: None)
+    monkeypatch.setattr(pdf_dock, '_reload_current_pdf_annotations', reloaded.append)
+    pdf_dock._schedule_pdf_annotation_sync()
+    result = {'reader_path': '/unused/reader.pdf', 'reader_changed': True, 'appearance_changed': False}
+    callbacks.pop()(result, None)
+    assert reloaded == [result]
 
 
 def test_highlight_bridge_saves_only_the_active_card_and_schedules_pdf_sync(monkeypatch):

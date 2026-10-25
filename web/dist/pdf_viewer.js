@@ -7122,6 +7122,157 @@
     }
   };
   var reactExports = requireReact();
+  function pdfRectsShareLine(a, b) {
+    const overlap = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+    const centerDistance = Math.abs(a.y + a.h / 2 - (b.y + b.h / 2));
+    return overlap >= Math.min(a.h, b.h) * 0.35 && centerDistance <= Math.max(a.h, b.h) * 0.6;
+  }
+  function normalizePdfHighlightRects(rects) {
+    const valid = (Array.isArray(rects) ? rects : []).filter((r) => r && [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0).map((r) => ({ x: r.x, y: r.y, w: r.w, h: r.h })).sort((a, b) => b.h - a.h || a.y - b.y || a.x - b.x);
+    const lines = [];
+    for (const rect of valid) {
+      let nearest = null;
+      let distance = Infinity;
+      for (const line of lines) {
+        const reference = line[0];
+        const candidate = Math.abs(reference.y + reference.h / 2 - rect.y - rect.h / 2);
+        if (candidate < distance && pdfRectsShareLine(reference, rect)) {
+          nearest = line;
+          distance = candidate;
+        }
+      }
+      if (nearest) nearest.push(rect);
+      else lines.push([rect]);
+    }
+    return lines.flatMap((line) => {
+      const merged = [];
+      for (const rect of line.sort((a, b) => a.x - b.x)) {
+        const previous = merged.at(-1);
+        const maxGap = previous ? Math.min(previous.h, rect.h) : 0;
+        if (previous && rect.x - (previous.x + previous.w) <= maxGap) {
+          const right = Math.max(previous.x + previous.w, rect.x + rect.w);
+          const bottom = Math.max(previous.y + previous.h, rect.y + rect.h);
+          previous.y = Math.min(previous.y, rect.y);
+          previous.w = right - previous.x;
+          previous.h = bottom - previous.y;
+        } else {
+          merged.push({ ...rect });
+        }
+      }
+      return merged;
+    }).sort((a, b) => a.y - b.y || a.x - b.x);
+  }
+  function pdfHighlightAtClientPoint(highlights, renderInfo, wrapperRect, clientX, clientY) {
+    const scale = Number(renderInfo == null ? void 0 : renderInfo.scale);
+    const left = Number(renderInfo == null ? void 0 : renderInfo.tlLeft);
+    const wrapperLeft = Number(wrapperRect == null ? void 0 : wrapperRect.left);
+    const wrapperTop = Number(wrapperRect == null ? void 0 : wrapperRect.top);
+    const x = Number(clientX);
+    const y = Number(clientY);
+    if (![scale, left, wrapperLeft, wrapperTop, x, y].every(Number.isFinite) || scale <= 0) return null;
+    const pdfX = (x - wrapperLeft - left) / scale;
+    const pdfY = (y - wrapperTop) / scale;
+    const candidates = Array.isArray(highlights) ? highlights : [];
+    for (let index = candidates.length - 1; index >= 0; index -= 1) {
+      const highlight = candidates[index];
+      const hit = normalizePdfHighlightRects(highlight == null ? void 0 : highlight.rects).some((rect) => pdfX >= rect.x && pdfX <= rect.x + rect.w && pdfY >= rect.y && pdfY <= rect.y + rect.h);
+      if (hit) return highlight;
+    }
+    return null;
+  }
+  function buildPdfHighlightIndex(highlights, compare) {
+    const sorted = [...highlights].sort(compare), byPage = /* @__PURE__ */ new Map(), sortedByPage = /* @__PURE__ */ new Map(), byId = /* @__PURE__ */ new Map();
+    let missingCards = 0;
+    const add = (map, highlight) => {
+      if (!map.has(highlight.page)) map.set(highlight.page, []);
+      map.get(highlight.page).push(highlight);
+    };
+    for (const highlight of highlights) add(byPage, highlight);
+    sorted.forEach((highlight, index) => {
+      add(sortedByPage, highlight);
+      const id = String(highlight.id || "");
+      if (!byId.has(id)) byId.set(id, index);
+      const linked = Number(highlight.linked_note_id || 0);
+      if (!(Number.isInteger(linked) && linked > 0) && String(highlight.text || "").trim()) missingCards++;
+    });
+    return { sorted, byPage, sortedByPage, byId, missingCards };
+  }
+  const display = /* @__PURE__ */ new WeakMap();
+  function pdfDisplayHighlights(highlights) {
+    if (!display.has(highlights)) display.set(highlights, highlights.map((highlight) => ({
+      ...highlight,
+      rects: highlight.color === "snapshot" ? highlight.rects : normalizePdfHighlightRects(highlight.rects)
+    })));
+    return display.get(highlights);
+  }
+  function createPdfHighlightTooltip({
+    schedule = (run) => window.requestAnimationFrame(run),
+    cancel = (id) => window.cancelAnimationFrame(id)
+  } = {}) {
+    const listeners = /* @__PURE__ */ new Set();
+    let value = null, position = null, frame = null;
+    const publish = (next) => {
+      value = next;
+      for (const listener of listeners) listener();
+    };
+    const stop = () => {
+      if (frame !== null) cancel(frame);
+      frame = null;
+      position = null;
+    };
+    return {
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      getSnapshot: () => value,
+      show(highlight, event) {
+        const note = String((highlight == null ? void 0 : highlight.note) || "").trim();
+        if (!note) return;
+        stop();
+        publish({
+          id: String(highlight.id || ""),
+          note,
+          x: Number((event == null ? void 0 : event.clientX) || 0),
+          y: Number((event == null ? void 0 : event.clientY) || 0)
+        });
+      },
+      move(event) {
+        if (!value) return;
+        position = { x: Number((event == null ? void 0 : event.clientX) ?? value.x), y: Number((event == null ? void 0 : event.clientY) ?? value.y) };
+        if (frame === null) frame = schedule(() => {
+          frame = null;
+          if (value && position) publish({ ...value, ...position });
+          position = null;
+        });
+      },
+      hide() {
+        stop();
+        if (value) publish(null);
+      }
+    };
+  }
+  function PdfHighlightTooltip({ tooltip }) {
+    const note = reactExports.useSyncExternalStore(tooltip.subscribe, tooltip.getSnapshot);
+    if (!note) return null;
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+      position: "fixed",
+      left: note.x + 14,
+      top: note.y + 16,
+      maxWidth: 280,
+      padding: "8px 10px",
+      background: "rgba(20,20,20,0.96)",
+      border: "1px solid rgba(147,197,253,0.45)",
+      borderRadius: 6,
+      color: "rgb(219,234,254)",
+      fontSize: 12,
+      lineHeight: 1.4,
+      boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
+      pointerEvents: "none",
+      zIndex: 120,
+      whiteSpace: "pre-wrap"
+    }, children: note.note });
+  }
   function pdfCanvasPlan(viewport, pixelRatio) {
     const { width, height } = viewport;
     if (![width, height].every((value) => Number.isFinite(value) && value > 0)) {
@@ -7244,64 +7395,6 @@
   }
   function truncatePdfText(value, length) {
     return Array.from(String(value || "")).slice(0, Math.max(0, length)).join("");
-  }
-  function pdfRectsShareLine(a, b) {
-    const overlap = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
-    const centerDistance = Math.abs(a.y + a.h / 2 - (b.y + b.h / 2));
-    return overlap >= Math.min(a.h, b.h) * 0.35 && centerDistance <= Math.max(a.h, b.h) * 0.6;
-  }
-  function normalizePdfHighlightRects(rects) {
-    const valid = (Array.isArray(rects) ? rects : []).filter((r) => r && [r.x, r.y, r.w, r.h].every(Number.isFinite) && r.w > 0 && r.h > 0).map((r) => ({ x: r.x, y: r.y, w: r.w, h: r.h })).sort((a, b) => b.h - a.h || a.y - b.y || a.x - b.x);
-    const lines = [];
-    for (const rect of valid) {
-      let nearest = null;
-      let distance = Infinity;
-      for (const line of lines) {
-        const reference = line[0];
-        const candidate = Math.abs(reference.y + reference.h / 2 - rect.y - rect.h / 2);
-        if (candidate < distance && pdfRectsShareLine(reference, rect)) {
-          nearest = line;
-          distance = candidate;
-        }
-      }
-      if (nearest) nearest.push(rect);
-      else lines.push([rect]);
-    }
-    return lines.flatMap((line) => {
-      const merged = [];
-      for (const rect of line.sort((a, b) => a.x - b.x)) {
-        const previous = merged.at(-1);
-        const maxGap = previous ? Math.min(previous.h, rect.h) : 0;
-        if (previous && rect.x - (previous.x + previous.w) <= maxGap) {
-          const right = Math.max(previous.x + previous.w, rect.x + rect.w);
-          const bottom = Math.max(previous.y + previous.h, rect.y + rect.h);
-          previous.y = Math.min(previous.y, rect.y);
-          previous.w = right - previous.x;
-          previous.h = bottom - previous.y;
-        } else {
-          merged.push({ ...rect });
-        }
-      }
-      return merged;
-    }).sort((a, b) => a.y - b.y || a.x - b.x);
-  }
-  function pdfHighlightAtClientPoint(highlights, renderInfo, wrapperRect, clientX, clientY) {
-    const scale = Number(renderInfo == null ? void 0 : renderInfo.scale);
-    const left = Number(renderInfo == null ? void 0 : renderInfo.tlLeft);
-    const wrapperLeft = Number(wrapperRect == null ? void 0 : wrapperRect.left);
-    const wrapperTop = Number(wrapperRect == null ? void 0 : wrapperRect.top);
-    const x = Number(clientX);
-    const y = Number(clientY);
-    if (![scale, left, wrapperLeft, wrapperTop, x, y].every(Number.isFinite) || scale <= 0) return null;
-    const pdfX = (x - wrapperLeft - left) / scale;
-    const pdfY = (y - wrapperTop) / scale;
-    const candidates = Array.isArray(highlights) ? highlights : [];
-    for (let index = candidates.length - 1; index >= 0; index -= 1) {
-      const highlight = candidates[index];
-      const hit = normalizePdfHighlightRects(highlight == null ? void 0 : highlight.rects).some((rect) => pdfX >= rect.x && pdfX <= rect.x + rect.w && pdfY >= rect.y && pdfY <= rect.y + rect.h);
-      if (hit) return highlight;
-    }
-    return null;
   }
   function annotatePdfTextStyles(textDivs, textContent, commonObjs) {
     var _a, _b, _c, _d;
@@ -7483,13 +7576,331 @@
     }
     return { page: entry.page, pageFraction };
   }
+  function decodePdfByteRange(encoded, target, decode = atob) {
+    if (typeof target.setFromBase64 === "function") {
+      const result = target.setFromBase64(encoded, { lastChunkHandling: "strict" });
+      if (result.read !== encoded.length || result.written !== target.length) throw new Error("Invalid PDF byte count");
+      return;
+    }
+    const text = decode(encoded);
+    if (text.length !== target.length) throw new Error("Invalid PDF byte count");
+    for (let index = 0; index < text.length; index++) target[index] = text.charCodeAt(index);
+  }
+  function createPdfByteRangeTransport(lib, metadata, send, onError, host = window) {
+    const { token, cardId, length, chunkSize } = metadata;
+    if (typeof token !== "string" || !Number.isSafeInteger(length) || length <= 0 || chunkSize !== 262144 || !Number.isSafeInteger(cardId) || cardId <= 0) {
+      throw new Error("Invalid PDF byte source");
+    }
+    const range = new lib.PDFDataRangeTransport(length, new Uint8Array(0), true);
+    const queued = [], pending = /* @__PURE__ */ new Map();
+    let retired = false, nextId = 0;
+    const previous = host.incrementoReceivePdfRange;
+    const abort = () => {
+      retired = true;
+      queued.length = 0;
+      pending.clear();
+      if (host.incrementoReceivePdfRange === receive) {
+        if (previous) host.incrementoReceivePdfRange = previous;
+        else delete host.incrementoReceivePdfRange;
+      }
+    };
+    const fail = () => {
+      if (!retired) {
+        abort();
+        onError(new Error("PDF range unavailable"));
+      }
+    };
+    const drain = () => {
+      while (!retired && queued.length && pending.size < 2) {
+        const request = { ...queued.shift(), requestId: ++nextId, cardId, token };
+        pending.set(request.requestId, request);
+        const { begin, end, requestId } = request;
+        try {
+          send("incremento_pdf_range:" + JSON.stringify({ begin, end, requestId, cardId, token }));
+        } catch (_) {
+          fail();
+        }
+      }
+    };
+    const receive = (payload) => {
+      if (retired || (payload == null ? void 0 : payload.token) !== token) return;
+      const request = pending.get(payload.requestId);
+      if (!request) return;
+      if (payload.error || payload.begin !== request.begin || typeof payload.data !== "string" || payload.data.length > Math.ceil(chunkSize / 3) * 4) {
+        fail();
+        return;
+      }
+      try {
+        const group = request.group;
+        const offset = request.begin - group.begin;
+        decodePdfByteRange(payload.data, group.bytes.subarray(offset, offset + request.end - request.begin), host.atob);
+        pending.delete(payload.requestId);
+        group.received += request.end - request.begin;
+        if (group.received === group.bytes.length) range.onDataRange(group.begin, group.bytes);
+        drain();
+      } catch (_) {
+        fail();
+      }
+    };
+    host.incrementoReceivePdfRange = receive;
+    range.abort = abort;
+    range.requestDataRange = (begin, end) => {
+      if (retired) return;
+      if (!Number.isSafeInteger(begin) || !Number.isSafeInteger(end) || begin < 0 || end > length || begin >= end) {
+        fail();
+        return;
+      }
+      const group = { begin, bytes: new Uint8Array(end - begin), received: 0 };
+      for (let offset = begin + Math.floor((end - begin - 1) / chunkSize) * chunkSize; offset >= begin; offset -= chunkSize) {
+        queued.unshift({ begin: offset, end: Math.min(end, offset + chunkSize), group });
+      }
+      drain();
+    };
+    return range;
+  }
+  const cache = /* @__PURE__ */ new WeakMap();
+  function save(page, entry, content) {
+    var _a;
+    if (cache.get(page) === entry) {
+      if ((((_a = content == null ? void 0 : content.items) == null ? void 0 : _a.length) || 0) <= 2e4) entry.value = content;
+      else cache.delete(page);
+    }
+    return content;
+  }
+  async function collect(reader) {
+    const content = { items: [], styles: {}, lang: null };
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) return content;
+      content.items.push(...value.items || []);
+      Object.assign(content.styles, value.styles);
+      content.lang ?? (content.lang = value.lang);
+    }
+  }
+  function pdfPageTextContent(page) {
+    let entry = cache.get(page);
+    if (entry) return entry.promise;
+    entry = {};
+    cache.set(page, entry);
+    entry.promise = Promise.resolve().then(() => {
+      var _a;
+      if (typeof page.getTextContent === "function") return page.getTextContent();
+      const stream = (_a = page.streamTextContent) == null ? void 0 : _a.call(page);
+      if (!(stream == null ? void 0 : stream.getReader)) return { items: [], styles: {} };
+      entry.reader = stream.getReader();
+      return collect(entry.reader);
+    }).then((content) => save(page, entry, content), (error) => {
+      if (cache.get(page) === entry) cache.delete(page);
+      throw error;
+    });
+    return entry.promise;
+  }
+  function pdfPageTextSource(page) {
+    var _a;
+    const previous = cache.get(page);
+    if (previous) return { source: previous.value || previous.promise, content: previous.promise };
+    const stream = (_a = page.streamTextContent) == null ? void 0 : _a.call(page);
+    if (!(stream == null ? void 0 : stream.tee)) {
+      const content = pdfPageTextContent(page);
+      return { source: content, content };
+    }
+    const [source, metadata] = stream.tee();
+    const entry = { reader: metadata.getReader(), source };
+    cache.set(page, entry);
+    entry.promise = collect(entry.reader).then((content) => save(page, entry, content), (error) => {
+      if (cache.get(page) === entry) cache.delete(page);
+      throw error;
+    });
+    return { source, content: entry.promise };
+  }
+  function forgetPdfPageText(page) {
+    var _a, _b, _c, _d;
+    const entry = cache.get(page);
+    cache.delete(page);
+    try {
+      (_b = (_a = entry == null ? void 0 : entry.reader) == null ? void 0 : _a.cancel()) == null ? void 0 : _b.catch(() => {
+      });
+    } catch (_) {
+    }
+    try {
+      (_d = (_c = entry == null ? void 0 : entry.source) == null ? void 0 : _c.cancel()) == null ? void 0 : _d.catch(() => {
+      });
+    } catch (_) {
+    }
+  }
+  const owners = /* @__PURE__ */ new WeakMap();
+  function retainPdfPage(page, owner) {
+    if (!owners.has(page)) owners.set(page, /* @__PURE__ */ new Set());
+    owners.get(page).add(owner);
+  }
+  function cleanupUnusedPdfPage(page) {
+    var _a;
+    if ((_a = owners.get(page)) == null ? void 0 : _a.size) return;
+    owners.delete(page);
+    forgetPdfPageText(page);
+    try {
+      page.cleanup();
+    } catch (_) {
+    }
+  }
+  function releasePdfPage(page, owner) {
+    var _a;
+    (_a = owners.get(page)) == null ? void 0 : _a.delete(owner);
+    cleanupUnusedPdfPage(page);
+  }
+  function estimatePdfPageBytes(page) {
+    var _a, _b, _c, _d, _e, _f;
+    if (!((_a = page._intentStates) == null ? void 0 : _a.values)) return 16 * 1024 * 1024;
+    let bytes = 65536;
+    const seen = /* @__PURE__ */ new Set();
+    for (const state of page._intentStates.values()) {
+      const list = state.operatorList;
+      bytes += (((_b = list == null ? void 0 : list.fnArray) == null ? void 0 : _b.length) || 0) * 32;
+      for (const args of (list == null ? void 0 : list.argsArray) || []) {
+        let image = args == null ? void 0 : args[0];
+        if (typeof image === "string") {
+          if (seen.has(image)) continue;
+          seen.add(image);
+          try {
+            image = ((_c = page.objs) == null ? void 0 : _c.has(image)) ? page.objs.get(image) : ((_d = page.commonObjs) == null ? void 0 : _d.has(image)) ? page.commonObjs.get(image) : null;
+          } catch (_) {
+            image = null;
+          }
+        } else if (image && typeof image === "object") {
+          if (seen.has(image)) continue;
+          seen.add(image);
+        }
+        const width = (image == null ? void 0 : image.width) || ((_e = image == null ? void 0 : image.bitmap) == null ? void 0 : _e.width);
+        const height = (image == null ? void 0 : image.height) || ((_f = image == null ? void 0 : image.bitmap) == null ? void 0 : _f.height);
+        if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+          bytes += Math.min(512 * 1024 * 1024, Math.max(width * height * 4, image.dataLen || 0));
+        }
+      }
+    }
+    return bytes;
+  }
+  function createPdfPageWindow(doc, {
+    schedule,
+    cancel,
+    createCanvas = () => document.createElement("canvas"),
+    maxBytes = 64 * 1024 * 1024,
+    estimateBytes = estimatePdfPageBytes
+  }) {
+    const held = /* @__PURE__ */ new Map();
+    const owner = {};
+    let generation = 0, timer = null, busy = false, active = false, closed = false, center = 1;
+    let visible = true;
+    let pending = [];
+    let warming = null;
+    const remove = (number, page) => {
+      held.delete(number);
+      releasePdfPage(page, owner);
+    };
+    const bytes = () => [...held.values()].reduce((total, page) => total + estimateBytes(page), 0);
+    const trim = () => {
+      let memoryPressure = false;
+      for (const [number, page] of [...held].sort(([a], [b]) => Math.abs(b - center) - Math.abs(a - center))) {
+        if (number === center) continue;
+        const overBudget = bytes() > maxBytes;
+        if (!visible || Math.abs(number - center) > 5 || overBudget) {
+          memoryPressure || (memoryPressure = overBudget);
+          remove(number, page);
+        }
+      }
+      return memoryPressure;
+    };
+    const pause = () => {
+      ++generation;
+      active = false;
+      if (timer !== null) cancel(timer);
+      timer = null;
+      pending = [];
+      try {
+        warming == null ? void 0 : warming.cancel();
+      } catch (_) {
+      }
+    };
+    const enqueue = () => {
+      if (closed || !visible || !active || busy || timer !== null || !pending.length) return;
+      if (bytes() + 8 * 1024 * 1024 > maxBytes) {
+        pending = [];
+        return;
+      }
+      timer = schedule(async () => {
+        var _a;
+        timer = null;
+        if (!active || closed) return;
+        const token = generation, number = pending.shift();
+        busy = true;
+        let page, canvas;
+        const preparation = {};
+        try {
+          page = await doc.getPage(number);
+          if (token !== generation || !active || closed) return;
+          retainPdfPage(page, preparation);
+          if (typeof page.render === "function") {
+            const base = page.getViewport({ scale: 1 });
+            const viewport = page.getViewport({ scale: Math.min(32 / base.width, 32 / base.height) });
+            canvas = createCanvas();
+            canvas.width = Math.max(1, Math.ceil(viewport.width));
+            canvas.height = Math.max(1, Math.ceil(viewport.height));
+            warming = page.render({ canvasContext: canvas.getContext("2d"), viewport });
+            await warming.promise;
+          } else await ((_a = page.getOperatorList) == null ? void 0 : _a.call(page));
+          if (token === generation && active && !closed) {
+            retainPdfPage(page, owner);
+            held.set(number, page);
+            if (trim()) pending = [];
+          }
+        } catch (_) {
+        } finally {
+          warming = null;
+          if (canvas) canvas.width = canvas.height = 0;
+          if (page) releasePdfPage(page, preparation);
+          busy = false;
+          enqueue();
+        }
+      });
+    };
+    return {
+      pause,
+      has: (page) => held.get(page.pageNumber) === page,
+      display(page) {
+        if (closed) return;
+        pause();
+        active = true;
+        center = page.pageNumber;
+        retainPdfPage(page, owner);
+        held.set(center, page);
+        trim();
+        for (let distance = 1; distance <= 5; distance++) {
+          for (const number of [center + distance, center - distance]) {
+            if (number >= 1 && number <= doc.numPages && !held.has(number)) pending.push(number);
+          }
+        }
+        enqueue();
+      },
+      setVisible(value) {
+        visible = Boolean(value);
+        if (!visible) {
+          pause();
+          trim();
+        } else if (held.has(center)) this.display(held.get(center));
+      },
+      dispose() {
+        pause();
+        closed = true;
+        for (const page of held.values()) releasePdfPage(page, owner);
+        held.clear();
+      }
+    };
+  }
   const DEFAULT_WORKER_SRC = "/_addons/incremento/web/pdfjs/pdf.worker.min.js";
   const ZOOM_STEP = 0.1;
   const ZOOM_MIN = 0.25;
   const ZOOM_MAX = 4;
   const POLL_MS = 100;
   const POLL_MAX = 20;
-  const PAGE_CACHE_SIZE = 3;
   function resolveWorkerSrc(rawWorkerSrc) {
     const fallback = DEFAULT_WORKER_SRC;
     const candidate = String(rawWorkerSrc || fallback).trim();
@@ -7530,38 +7941,49 @@
     const renderSequenceRef = reactExports.useRef(0);
     const loadSequenceRef = reactExports.useRef(0);
     const loadingTaskRef = reactExports.useRef(null);
-    const pageCacheRef = reactExports.useRef(/* @__PURE__ */ new Set());
+    const pageWindowRef = reactExports.useRef(null);
     const pendingRenderRef = reactExports.useRef(null);
     const renderTaskRef = reactExports.useRef(null);
     const workerPollRef = reactExports.useRef(null);
     const retireRender = reactExports.useCallback(() => {
-      var _a, _b;
+      var _a, _b, _c;
       ++renderSequenceRef.current;
       pendingRenderRef.current = null;
+      (_a = pageWindowRef.current) == null ? void 0 : _a.pause();
       try {
-        (_a = renderTaskRef.current) == null ? void 0 : _a.cancel();
+        (_b = renderTaskRef.current) == null ? void 0 : _b.cancel();
       } catch (_) {
       }
-      if ((_b = textLayerRef.current) == null ? void 0 : _b._cancelTextLayer) {
+      if ((_c = textLayerRef.current) == null ? void 0 : _c._cancelTextLayer) {
         textLayerRef.current._cancelTextLayer();
         textLayerRef.current._cancelTextLayer = null;
       }
     }, []);
     reactExports.useEffect(() => () => {
-      var _a, _b;
+      var _a, _b, _c;
       ++loadSequenceRef.current;
       retireRender();
       clearInterval(workerPollRef.current);
-      pageCacheRef.current.clear();
+      (_a = pageWindowRef.current) == null ? void 0 : _a.dispose();
       pdfDocRef.current = null;
       try {
-        (_b = (_a = loadingTaskRef.current) == null ? void 0 : _a.destroy()) == null ? void 0 : _b.catch(() => {
+        (_c = (_b = loadingTaskRef.current) == null ? void 0 : _b.destroy()) == null ? void 0 : _c.catch(() => {
         });
       } catch (_) {
       }
     }, [retireRender]);
+    reactExports.useEffect(() => {
+      const document2 = window.document;
+      if (!(document2 == null ? void 0 : document2.addEventListener)) return;
+      const changed = () => {
+        var _a;
+        return (_a = pageWindowRef.current) == null ? void 0 : _a.setVisible(!document2.hidden);
+      };
+      document2.addEventListener("visibilitychange", changed);
+      return () => document2.removeEventListener("visibilitychange", changed);
+    }, []);
     const renderTextLayer = reactExports.useCallback((pg, viewport) => {
-      var _a;
+      var _a, _b;
       const tl = textLayerRef.current;
       const lib = window.pdfjsLib;
       if (!tl || !lib) return;
@@ -7585,22 +8007,30 @@
         textReady: false
       });
       try {
-        const stream = pg.streamTextContent();
-        const task = new lib.TextLayer({ textContentSource: stream, container: tl, viewport });
+        const text = pdfPageTextSource(pg);
+        let task = null, cancelled = false;
         const cancelTextLayer = () => {
+          cancelled = true;
           try {
-            task.cancel();
+            task == null ? void 0 : task.cancel();
           } catch (_) {
           }
         };
         tl._cancelTextLayer = cancelTextLayer;
-        task.render().then(() => pg.getTextContent()).then((content) => {
-          if (tl._cancelTextLayer === cancelTextLayer) {
-            annotatePdfTextStyles(task.textDivs, content, pg.commonObjs);
-            setRenderInfo((current) => ({ ...current, textReady: true }));
-          }
-        }).catch(() => {
+        const show = (source) => {
+          if (cancelled || tl._cancelTextLayer !== cancelTextLayer) return;
+          task = new lib.TextLayer({ textContentSource: source, container: tl, viewport });
+          Promise.all([task.render(), text.content]).then(([, content]) => {
+            if (!cancelled && tl._cancelTextLayer === cancelTextLayer) {
+              annotatePdfTextStyles(task.textDivs, content, pg.commonObjs);
+              setRenderInfo((current) => ({ ...current, textReady: true }));
+            }
+          }).catch(() => {
+          });
+        };
+        if (typeof ((_b = text.source) == null ? void 0 : _b.then) === "function") text.source.then(show).catch(() => {
         });
+        else show(text.source);
       } catch (_) {
       }
     }, []);
@@ -7620,9 +8050,10 @@
       }
     }, []);
     const renderPage = reactExports.useCallback((num) => {
-      var _a, _b;
+      var _a, _b, _c;
       const doc = pdfDocRef.current;
       if (!doc) return;
+      (_a = pageWindowRef.current) == null ? void 0 : _a.pause();
       const sequence = ++renderSequenceRef.current;
       pendingRenderRef.current = {
         doc,
@@ -7632,20 +8063,20 @@
         cardId: cardIdRef.current
       };
       setLinkAnnotations([]);
-      if ((_a = textLayerRef.current) == null ? void 0 : _a._cancelTextLayer) {
+      if ((_b = textLayerRef.current) == null ? void 0 : _b._cancelTextLayer) {
         textLayerRef.current._cancelTextLayer();
         textLayerRef.current._cancelTextLayer = null;
       }
       if (busyRef.current) {
         try {
-          (_b = renderTaskRef.current) == null ? void 0 : _b.cancel();
+          (_c = renderTaskRef.current) == null ? void 0 : _c.cancel();
         } catch (_) {
         }
         return;
       }
       busyRef.current = true;
       const drain = async () => {
-        var _a2;
+        var _a2, _b2;
         try {
           while (pendingRenderRef.current) {
             const request = pendingRenderRef.current;
@@ -7653,8 +8084,10 @@
             const current = () => request.sequence === renderSequenceRef.current && request.doc === pdfDocRef.current;
             let failure = "reader_page_error";
             let pg, backCvs, displayed = false;
+            const renderOwner = {};
             try {
               pg = await request.doc.getPage(request.num);
+              retainPdfPage(pg, renderOwner);
               if (!current()) continue;
               const backId = activeCvsRef.current === "a" ? "b" : "a";
               backCvs = backId === "a" ? canvasARef.current : canvasBRef.current;
@@ -7690,17 +8123,7 @@
               }
               activeCvsRef.current = backId;
               displayed = true;
-              const cache = pageCacheRef.current;
-              cache.delete(pg);
-              cache.add(pg);
-              while (cache.size > PAGE_CACHE_SIZE) {
-                const oldest = cache.values().next().value;
-                cache.delete(oldest);
-                try {
-                  oldest.cleanup();
-                } catch (_) {
-                }
-              }
+              (_b2 = pageWindowRef.current) == null ? void 0 : _b2.display(pg);
               setError("");
               setPage(request.num);
               if (containerRef.current) containerRef.current.style.height = viewport.height + "px";
@@ -7710,12 +8133,7 @@
               if (current()) setError(failure);
             } finally {
               renderTaskRef.current = null;
-              if (pg && !pageCacheRef.current.has(pg)) {
-                try {
-                  pg.cleanup();
-                } catch (_) {
-                }
-              }
+              if (pg) releasePdfPage(pg, renderOwner);
               if (backCvs && !displayed) backCvs.width = backCvs.height = 0;
             }
           }
@@ -7726,7 +8144,7 @@
       void drain();
     }, [renderLinkAnnotations, renderTextLayer]);
     const doStart = reactExports.useCallback(() => {
-      var _a, _b;
+      var _a, _b, _c;
       const sequence = ++loadSequenceRef.current;
       const cardId = Number(cardIdRef.current);
       const filename = filenameRef.current;
@@ -7742,27 +8160,46 @@
         });
       } catch (_) {
       }
-      pageCacheRef.current.clear();
+      (_c = pageWindowRef.current) == null ? void 0 : _c.dispose();
+      pageWindowRef.current = null;
       const lib = window.pdfjsLib;
       lib.GlobalWorkerOptions.workerSrc = resolveWorkerSrc(window._pdfWorkerSrc);
       window._pdfWorkerSrc = null;
       const pdfUrl = window._pdfFileUrl || "/" + encodeURIComponent(filenameRef.current);
       window._pdfFileUrl = null;
-      const task = lib.getDocument({
-        url: pdfUrl,
+      const byteSource = window._incPdfByteRange;
+      window._incPdfByteRange = null;
+      let task;
+      const range = byteSource ? createPdfByteRangeTransport(lib, byteSource, window.pycmd, () => {
+        var _a2;
+        if (sequence === loadSequenceRef.current) setError("reader_load_error");
+        try {
+          (_a2 = task == null ? void 0 : task.destroy()) == null ? void 0 : _a2.catch(() => {
+          });
+        } catch (_) {
+        }
+      }, window) : null;
+      task = lib.getDocument({
+        ...range ? { range, rangeChunkSize: byteSource.chunkSize, disableAutoFetch: true, disableStream: true } : { url: pdfUrl },
         // Imported PDFs are untrusted input. Incremento does not need the PDF.js
         // dynamic-code path, so keep it disabled even if a document requests it.
-        isEvalSupported: false
+        isEvalSupported: false,
+        canvasMaxAreaInBytes: 32 * 1024 * 1024
       });
       loadingTaskRef.current = task;
       task.promise.then((doc) => {
-        var _a2;
+        var _a2, _b2;
         if (sequence !== loadSequenceRef.current) {
           (_a2 = doc.destroy()) == null ? void 0 : _a2.catch(() => {
           });
           return;
         }
         pdfDocRef.current = doc;
+        pageWindowRef.current = createPdfPageWindow(doc, {
+          schedule: (callback) => setTimeout(callback, 150),
+          cancel: clearTimeout
+        });
+        pageWindowRef.current.setVisible(!((_b2 = window.document) == null ? void 0 : _b2.hidden));
         const total = doc.numPages;
         const startPage = Math.min(Math.max(pageRef.current, 1), total);
         setTotalPages(total);
@@ -9387,10 +9824,7 @@
     moveHighlightNote,
     hideHighlightNote
   }) {
-    const displayHighlights = pageHighlights.map((h) => ({
-      ...h,
-      rects: isSnapshotHighlight(h) ? h.rects : normalizePdfHighlightRects(h.rects)
-    }));
+    const displayHighlights = pdfDisplayHighlights(pageHighlights);
     const renderNoteIcon = (hasNote) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "svg",
       {
@@ -10393,6 +10827,7 @@
   const MAX_PIXELS = 4 * 1024 * 1024;
   const CONTEXT = 24;
   const CACHE_SIZE = 4;
+  const CACHE_BYTES = 32 * 1024 * 1024;
   function normalizePdfLinkPreviewZoom(raw) {
     const value = typeof raw === "number" || typeof raw === "string" && raw.trim() ? Number(raw) : NaN;
     return Number.isFinite(value) ? Math.round(Math.max(1, Math.min(4, value)) * 4) / 4 : DEFAULT_PDF_LINK_PREVIEW_ZOOM;
@@ -10448,7 +10883,15 @@
   function createPdfPreviewRenderer({ createCanvas, onChange, pixelRatio = 1, zoom: initialZoom }) {
     let sequence = 0, task = null, document2 = null;
     let zoom = normalizePdfLinkPreviewZoom(initialZoom), activeRequest = null;
-    const cache = /* @__PURE__ */ new Map();
+    const cache2 = /* @__PURE__ */ new Map();
+    const release = (entry) => {
+      entry.canvas.width = entry.canvas.height = 0;
+      releasePdfPage(entry.page, entry.owner);
+    };
+    const clearCache = () => {
+      for (const entry of cache2.values()) release(entry);
+      cache2.clear();
+    };
     const clear = () => {
       ++sequence;
       try {
@@ -10461,7 +10904,7 @@
     };
     const dispose = () => {
       clear();
-      cache.clear();
+      clearCache();
       document2 = null;
     };
     const renderer = {
@@ -10476,7 +10919,7 @@
       async show(doc, link, anchor, maxPage = null) {
         clear();
         if (doc !== document2) {
-          cache.clear();
+          clearCache();
           document2 = doc;
         }
         if (!doc || (link == null ? void 0 : link.kind) !== "internal" || !Number.isInteger(link.targetPage) || link.targetPage < 1 || link.targetPage > doc.numPages) return;
@@ -10488,17 +10931,23 @@
           return;
         }
         const key = JSON.stringify([link.targetPage, link.destination, zoom]);
-        if (cache.has(key)) {
-          onChange({ ...state, ...cache.get(key), status: "ready" });
+        if (cache2.has(key)) {
+          const entry = cache2.get(key);
+          cache2.delete(key);
+          cache2.set(key, entry);
+          onChange({ ...state, ...entry.result, status: "ready" });
           return;
         }
         onChange({ ...state, status: "loading" });
+        let page, canvas, cached = false;
+        const owner = {};
         try {
-          const page = await doc.getPage(link.targetPage);
+          page = await doc.getPage(link.targetPage);
+          retainPdfPage(page, owner);
           if (current !== sequence) return;
           const region = pdfPreviewRegion(page, link.destination, pixelRatio, zoom);
           if (!region) throw new Error("Invalid preview region");
-          const canvas = createCanvas();
+          canvas = createCanvas();
           const dpr = region.pixelRatio;
           canvas.width = Math.ceil(region.width * dpr);
           canvas.height = Math.ceil(region.height * dpr);
@@ -10508,16 +10957,26 @@
             transform: [dpr, 0, 0, dpr, (0 - region.left) * dpr, (0 - region.top) * dpr]
           });
           task = rendering;
-          const content = Promise.resolve().then(() => {
-            var _a;
-            return (_a = page.getTextContent) == null ? void 0 : _a.call(page);
-          }).catch(() => null);
+          const content = pdfPageTextContent(page).catch(() => null);
           await rendering.promise;
           if (current !== sequence) return;
           task = null;
           const result = { canvas, region, text: "" };
-          cache.set(key, result);
-          if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value);
+          cache2.set(key, {
+            result,
+            canvas,
+            page,
+            owner,
+            bytes: canvas.width * canvas.height * 4 + estimatePdfPageBytes(page)
+          });
+          cached = true;
+          let bytes = [...cache2.values()].reduce((sum, entry) => sum + entry.bytes, 0);
+          while (cache2.size > 1 && (cache2.size > CACHE_SIZE || bytes > CACHE_BYTES)) {
+            const oldest = cache2.keys().next().value, entry = cache2.get(oldest);
+            cache2.delete(oldest);
+            bytes -= entry.bytes;
+            release(entry);
+          }
           onChange({ ...state, ...result, status: "ready" });
           const textContent = await content;
           if (current !== sequence) return;
@@ -10527,6 +10986,11 @@
           if (current === sequence) {
             task = null;
             onChange({ ...state, status: "unavailable" });
+          }
+        } finally {
+          if (!cached) {
+            if (canvas) canvas.width = canvas.height = 0;
+            if (page) releasePdfPage(page, owner);
           }
         }
       }
@@ -11206,6 +11670,7 @@
   }
   const CONTROLS_HEIGHT = 250;
   const COLLAPSED_CONTROLS_HEIGHT = 138;
+  const NO_HIGHLIGHTS = [];
   const DEFAULT_LIMIT_STATUS = {
     enabled: false,
     daily_page_limit: 0,
@@ -11617,7 +12082,11 @@
     const [readAnchor, setReadAnchor] = reactExports.useState(null);
     const [limitStatus, setLimitStatus] = reactExports.useState(DEFAULT_LIMIT_STATUS);
     const [limitNotice, setLimitNotice] = reactExports.useState(null);
-    const [hoveredHighlightNote, setHoveredHighlightNote] = reactExports.useState(null);
+    const [highlightTooltip] = reactExports.useState(() => createPdfHighlightTooltip({
+      schedule: (run) => window.requestAnimationFrame(run),
+      cancel: (id) => window.cancelAnimationFrame(id)
+    }));
+    reactExports.useEffect(() => () => highlightTooltip.hide(), [highlightTooltip]);
     const [highlightsScope, setHighlightsScope] = reactExports.useState("all");
     const [highlightsNotesOnly, setHighlightsNotesOnly] = reactExports.useState(false);
     const [focusedHighlightId, setFocusedHighlightId] = reactExports.useState(null);
@@ -11724,7 +12193,8 @@
     const suppressScrollPersistence = reactExports.useCallback((ms = 500) => {
       suppressScrollPersistUntilRef.current = Date.now() + Math.max(0, Number(ms) || 0);
     }, []);
-    const pageHighlights = highlights.filter((h) => h.page === page);
+    const highlightIndex = reactExports.useMemo(() => buildPdfHighlightIndex(highlights, compareHighlights), [highlights]);
+    const pageHighlights = highlightIndex.byPage.get(page) || NO_HIGHLIGHTS;
     const minViewerWidth = (renderInfo == null ? void 0 : renderInfo.pageWidth) ? Math.ceil(renderInfo.pageWidth) : 0;
     const showReadMarker = readAnchor && readPage > 0 && page === readPage && Number(readAnchor.page || 0) === page;
     const readMarkerRect = showReadMarker && Number.isFinite(Number(readAnchor.x)) && Number.isFinite(Number(readAnchor.y)) && Number.isFinite(Number(readAnchor.w)) && Number.isFinite(Number(readAnchor.h)) ? {
@@ -11736,16 +12206,11 @@
     const progressPct = totalPages > 0 && readPage > 0 ? Math.max(0, Math.min(100, Math.round(readPage / totalPages * 100))) : 0;
     const progressSegments = 10;
     const filledSegments = Math.round(progressPct / 100 * progressSegments);
-    const sortedHighlights = [...highlights].sort(compareHighlights);
-    const scopedHighlightsForPanel = highlightsScope === "page" ? sortedHighlights.filter((h) => h.page === page) : sortedHighlights;
-    const highlightsForPanel = highlightsNotesOnly ? scopedHighlightsForPanel.filter((h) => String(h.note || "").trim()) : scopedHighlightsForPanel;
-    const missingCardHighlightCount = sortedHighlights.filter((highlight) => {
-      const linkedNoteId = Number(highlight.linked_note_id || 0);
-      return !(Number.isInteger(linkedNoteId) && linkedNoteId > 0) && !!String(highlight.text || "").trim();
-    }).length;
-    const currentHighlightIndex = sortedHighlights.findIndex(
-      (highlight) => String(highlight.id || "") === String(activeHighlightId || "")
-    );
+    const sortedHighlights = highlightIndex.sorted;
+    const scopedHighlightsForPanel = highlightsScope === "page" ? highlightIndex.sortedByPage.get(page) || NO_HIGHLIGHTS : sortedHighlights;
+    const highlightsForPanel = reactExports.useMemo(() => highlightsNotesOnly ? scopedHighlightsForPanel.filter((h) => String(h.note || "").trim()) : scopedHighlightsForPanel, [scopedHighlightsForPanel, highlightsNotesOnly]);
+    const missingCardHighlightCount = highlightIndex.missingCards;
+    const currentHighlightIndex = highlightIndex.byId.get(String(activeHighlightId || "")) ?? -1;
     const limitEnabled = !!(limitStatus == null ? void 0 : limitStatus.enabled);
     const limitMode = String((limitStatus == null ? void 0 : limitStatus.enforcement_mode) || "warning");
     const limitUsed = Number((limitStatus == null ? void 0 : limitStatus.pages_used) || 0);
@@ -11775,26 +12240,9 @@
         id
       }));
     }, [cardIdRef]);
-    const showHighlightNote = reactExports.useCallback((highlight, event) => {
-      const note = String((highlight == null ? void 0 : highlight.note) || "").trim();
-      if (!note) return;
-      setHoveredHighlightNote({
-        id: String(highlight.id || ""),
-        note,
-        x: Number((event == null ? void 0 : event.clientX) || 0),
-        y: Number((event == null ? void 0 : event.clientY) || 0)
-      });
-    }, []);
-    const moveHighlightNote = reactExports.useCallback((event) => {
-      setHoveredHighlightNote((prev) => prev ? {
-        ...prev,
-        x: Number((event == null ? void 0 : event.clientX) || prev.x || 0),
-        y: Number((event == null ? void 0 : event.clientY) || prev.y || 0)
-      } : prev);
-    }, []);
-    const hideHighlightNote = reactExports.useCallback(() => {
-      setHoveredHighlightNote(null);
-    }, []);
+    const showHighlightNote = highlightTooltip.show;
+    const moveHighlightNote = highlightTooltip.move;
+    const hideHighlightNote = highlightTooltip.hide;
     const describeLimitReached = reactExports.useCallback(() => {
       const prefix = limitTotal > 0 ? tr("reader_limit_reached_pages", { used: Math.max(limitUsed, limitTotal), total: limitTotal }) : tr("reader_limit_reached_pdf");
       if (limitMode === "hard_stop") {
@@ -12771,6 +13219,7 @@
     }, [buildReadAnchor, canMarkReadAtPage, clearReadAnchor, pageRef, rawSetReadProgress]);
     reactExports.useEffect(() => {
       const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null, startLocale = "en", startCustomLanguage = null, startAppearanceMode = "original", startShowHighlightDeleteButtons = true, startLinkPreviewZoom = DEFAULT_PDF_LINK_PREVIEW_ZOOM, startPageY = null, startControlsCollapsed = null) => {
+        var _a, _b;
         setPageLinksDocument((current) => ({ cardId: Number(cardId), generation: current.generation + 1 }));
         contentsGenerationRef.current += 1;
         snapshotMode.setActive(false);
@@ -12821,6 +13270,14 @@
         }
         applyScrollToTopOnPageChangeSetting(startScrollToTopOnPageChange);
         startViewer(cardId, filename, startPage, startZoom, startReadPage);
+        const workspace = window._incWorkspaceActive;
+        if ((workspace == null ? void 0 : workspace.card_id) === Number(cardId)) {
+          window._incWorkspacePending = workspace;
+          (_a = window.incrementoPdfRestoreWorkspace) == null ? void 0 : _a.call(window, workspace);
+        } else {
+          window._incWorkspaceActive = null;
+          if (((_b = window._incWorkspacePending) == null ? void 0 : _b.card_id) !== Number(cardId)) window._incWorkspacePending = null;
+        }
       };
       window.incrementoPickPdfHighlightColor = finishHighlightColorPicker;
       window.incrementoPdfStart = startWithHighlights;
@@ -12943,6 +13400,54 @@
       openFind,
       suppressScrollPersistence,
       snapshotMode
+    ]);
+    reactExports.useEffect(() => {
+      var _a;
+      window.incrementoPdfWorkspaceState = () => {
+        const metrics = getPdfViewportMetrics(containerRef.current);
+        return {
+          card_id: Number(cardIdRef.current || 0),
+          page: pageRef.current,
+          zoom,
+          scroll: metrics && metrics.maxOffset > 0 ? clampScrollRatio((window.scrollY - metrics.pageTop) / metrics.maxOffset) : 0,
+          controls: {
+            collapsed: controlsCollapsed,
+            groups: { ...controlVisibility },
+            links: clickableLinks,
+            appearance: appearanceMode
+          }
+        };
+      };
+      window.incrementoPdfRestoreWorkspace = (state) => {
+        if (!state || state.card_id !== Number(cardIdRef.current || 0)) return;
+        const controls = state.controls || {};
+        if (typeof controls.collapsed === "boolean") setControlsCollapsed(controls.collapsed);
+        if (typeof controls.links === "boolean") setClickableLinks(controls.links);
+        if (["original", "dark", "night"].includes(controls.appearance)) setAppearanceMode(controls.appearance);
+        const groups = controls.groups || {};
+        setControlVisibility((current) => Object.fromEntries(Object.keys(current).map((key) => [key, typeof groups[key] === "boolean" ? groups[key] : current[key]])));
+        setCompactPanel(null);
+        window._incWorkspaceActive = state;
+        window._incWorkspacePending = null;
+      };
+      if (window._incWorkspacePending) window.incrementoPdfRestoreWorkspace(window._incWorkspacePending);
+      else if (((_a = window._incWorkspaceActive) == null ? void 0 : _a.card_id) === Number(cardIdRef.current || 0)) {
+        window._incWorkspaceActive = window.incrementoPdfWorkspaceState();
+      }
+      return () => {
+        delete window.incrementoPdfWorkspaceState;
+        delete window.incrementoPdfRestoreWorkspace;
+      };
+    }, [
+      appearanceMode,
+      cardIdRef,
+      clickableLinks,
+      containerRef,
+      controlsCollapsed,
+      controlVisibility,
+      pageLinksDocument.generation,
+      pageRef,
+      zoom
     ]);
     reactExports.useEffect(() => {
       if (!pdfDocRef.current || !cardIdRef.current) return;
@@ -14571,29 +15076,7 @@
               ]
             }
           ),
-          showHighlightControls && !colorPopoverHighlight && hoveredHighlightNote && /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "div",
-            {
-              style: {
-                position: "fixed",
-                left: hoveredHighlightNote.x + 14,
-                top: hoveredHighlightNote.y + 16,
-                maxWidth: 280,
-                padding: "8px 10px",
-                background: "rgba(20,20,20,0.96)",
-                border: "1px solid rgba(147,197,253,0.45)",
-                borderRadius: 6,
-                color: "rgb(219,234,254)",
-                fontSize: 12,
-                lineHeight: 1.4,
-                boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
-                pointerEvents: "none",
-                zIndex: 120,
-                whiteSpace: "pre-wrap"
-              },
-              children: hoveredHighlightNote.note
-            }
-          ),
+          showHighlightControls && !colorPopoverHighlight && /* @__PURE__ */ jsxRuntimeExports.jsx(PdfHighlightTooltip, { tooltip: highlightTooltip }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             PdfLinkPreview,
             {
@@ -14911,7 +15394,7 @@
           notify();
         }
       },
-      async load(lib, url, startPage = 1, maxPage = 1e6) {
+      async load(lib, url, startPage = 1, maxPage = 1e6, byteSource = null) {
         var _a, _b, _c, _d;
         const token = ++generation;
         ++searchGeneration;
@@ -14927,7 +15410,29 @@
           });
         } catch (_) {
         }
-        task = lib.getDocument({ url, isEvalSupported: false });
+        const range = byteSource ? createPdfByteRangeTransport(
+          lib,
+          byteSource,
+          window.pycmd,
+          () => {
+            var _a2, _b2;
+            try {
+              (_b2 = (_a2 = task == null ? void 0 : task.destroy()) == null ? void 0 : _a2.catch) == null ? void 0 : _b2.call(_a2, () => {
+              });
+            } catch (_) {
+            }
+          }
+        ) : null;
+        task = lib.getDocument({
+          ...range ? {
+            range,
+            rangeChunkSize: byteSource.chunkSize,
+            disableAutoFetch: true,
+            disableStream: true
+          } : { url },
+          isEvalSupported: false,
+          canvasMaxAreaInBytes: 32 * 1024 * 1024
+        });
         try {
           const loaded = await task.promise;
           if (closed || token !== generation) {
@@ -15035,7 +15540,7 @@
         setStatus("reader_link_preview_loading");
         pendingExcerpt.current = data.excerpt || "";
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = data.worker;
-        model.current.load(window.pdfjsLib, data.url, data.page, data.max_page).catch(() => setStatus("reader_load_error"));
+        model.current.load(window.pdfjsLib, data.url, data.page, data.max_page, data.byte_range).catch(() => setStatus("reader_load_error"));
       };
       window.incrementoReferenceStart = start;
       window.incrementoReferencePickPending = setPickPending;
@@ -15315,6 +15820,7 @@
         const { pending, highlights } = sharedPdfReaderStartup(data);
         window._pdfWorkerSrc = data.worker;
         window._pdfFileUrl = data.url;
+        window._incPdfByteRange = data.byte_range || null;
         window._incPdfHighlights = highlights;
         window._pdfNativeHighlightsVisible = data.native_highlights_visible === true;
         window._incPdfPending = pending;

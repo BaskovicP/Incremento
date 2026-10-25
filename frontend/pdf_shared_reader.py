@@ -85,9 +85,9 @@ class SharedPdfReader:
                 s._pdf_dock._view.page().runJavaScript(
                     'window.incrementoReceivePdfReadProgress?.(' + json.dumps(value) + ');')
         if kind == 'highlights':
-            self.sync_annotations()
+            self.sync_annotations(dirty=True)
 
-    def sync_annotations(self, source=None, callback=None):
+    def sync_annotations(self, source=None, callback=None, *, dirty=False):
         s = self.service
         def done(result, error):
             if not self.current():
@@ -100,15 +100,22 @@ class SharedPdfReader:
                     s._push_pdf_highlights(self.state.card_id)
                 # Reopen this view with the annotation-free PDF rendering copy,
                 # retaining its transient position (not the main pane's page).
-                if result.get('reader_path') and (result.get('appearance_changed')
+                if result.get('reader_changed'):
+                    if s.current_pdf_card_id() == self.state.card_id:
+                        s._reload_current_pdf_annotations(result)
+                    else:
+                        s._refresh_reference_pdf_state(self.state.card_id, 'highlights', annotation_result=result)
+                elif result.get('reader_path') and (result.get('appearance_changed')
                         or getattr(self.owner, '_reader_path', None) != result['reader_path']):
                     self.owner.reload_reader(result)
-                if result.get('appearance_changed') and s.current_pdf_card_id() == self.state.card_id:
+                if (not result.get('reader_changed') and result.get('appearance_changed')
+                        and s.current_pdf_card_id() == self.state.card_id):
                     s._reload_current_pdf_annotations(result)
             if callback:
                 callback(result, error)
         s._annotation_queue.request(s._ADDON_DIR, self.state.profile, self.state.card_id,
             self.state.filename, source_path=source, callback=done,
+            dirty=dirty, immediate=source is not None or callback is not None,
             callback_key=callback or ('reference', self.nonce), automatic=source is None and callback is None)
 
     def handle(self, message):
