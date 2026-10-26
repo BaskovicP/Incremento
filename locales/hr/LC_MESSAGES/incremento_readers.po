@@ -4270,3 +4270,6 @@ msgstr "Izađi iz fokusa (Esc)"
 
 msgid "study_focus_hint"
 msgstr "Prikaži samo ovaj prikaz preko cijelog zaslona. Esc vraća radni prostor."
+
+msgid "study_layout_save_failed"
+msgstr "Ovaj će se raspored zadržati tijekom ovog posjeta, ali vaša postavka nije spremljena."

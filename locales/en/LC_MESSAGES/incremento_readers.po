@@ -4232,3 +4232,6 @@ msgstr "Exit focus (Esc)"
 
 msgid "study_focus_hint"
 msgstr "Show only this view in full screen. Esc returns to the workspace."
+
+msgid "study_layout_save_failed"
+msgstr "This layout will be kept for this visit, but your preference could not be saved."

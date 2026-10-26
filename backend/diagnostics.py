@@ -387,6 +387,7 @@ _KNOWN_CONFIG_KEYS = {
     "epub_focus_mode",
     "pdf_controls_collapsed_by_profile",
     "epub_controls_collapsed_by_profile",
+    "study_layout_by_profile",
     "workspace_layouts",
     "pdf_highlight_extract_field",
     "pdf_show_highlight_delete_buttons",
@@ -582,6 +583,7 @@ _SENSITIVE_COLLECTION_KEYS = {
     "topic_card_tags",
 }
 _ALWAYS_REDACT_CONFIG_KEYS = {
+    "study_layout_by_profile",
     "workspace_layouts",
     "pdf_link_preview_zoom_by_profile",
     "pdf_controls_collapsed_by_profile",

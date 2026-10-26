@@ -501,6 +501,7 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         # A background side pane can change its own controls while Settings is open.
         saved['pdf_controls_collapsed_by_profile'] = {'A': {'main': False, 'side': True}}
         saved['epub_controls_collapsed_by_profile'] = {'A': {'main': False}}
+        saved['study_layout_by_profile'] = {'A': {'book': {'focus': True, 'horizontal': .65}}}
         saved['workspace_layouts'] = {'A': {'Desk': {
             'version': 1, 'state': 'UXQ=', 'geometry': 'UXQ=',
             'panes': [{'name': 'incremento_writing_dock', 'kind': 'writing', 'card_id': 42}]}}}
@@ -538,6 +539,7 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
 
     assert saved == {**original, 'pdf_controls_collapsed_by_profile': {'A': {'main': False, 'side': True}},
                      'epub_controls_collapsed_by_profile': {'A': {'main': False}},
+                     'study_layout_by_profile': {'A': {'book': {'focus': True, 'horizontal': .65}}},
                      'workspace_layouts': {'A': {'Desk': {
                          'version': 1, 'state': 'UXQ=', 'geometry': 'UXQ=',
                          'panes': [{'name': 'incremento_writing_dock', 'kind': 'writing', 'card_id': 42}]}}}}
@@ -551,6 +553,7 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         namespace['_epub_dock_mod'].apply_epub_focus_preference.assert_called_once_with(stored)
         assert stored['pdf_controls_collapsed_by_profile'] == {'A': {'main': False, 'side': True}}
         assert stored['epub_controls_collapsed_by_profile'] == {'A': {'main': False}}
+        assert stored['study_layout_by_profile'] == saved['study_layout_by_profile']
         assert stored['workspace_layouts'] == saved['workspace_layouts']
         namespace['_pdf_dock_mod'].apply_pdf_focus_preference.assert_called_once_with(stored)
         namespace["_selection_search_mod"].configure_search.assert_called_once_with(stored)

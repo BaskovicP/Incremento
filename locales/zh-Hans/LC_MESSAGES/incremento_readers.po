@@ -4194,3 +4194,6 @@ msgstr "退出专注（Esc）"
 
 msgid "study_focus_hint"
 msgstr "全屏显示当前视图。按 Esc 返回学习工作区。"
+
+msgid "study_layout_save_failed"
+msgstr "本次学习会保留此布局，但无法保存您的偏好设置。"

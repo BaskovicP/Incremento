@@ -469,6 +469,7 @@ def test_search_and_pdf_focus_preferences_export_safe_behavior() -> None:
 
 @pytest.mark.parametrize('setting', [
     'pdf_controls_collapsed_by_profile', 'epub_controls_collapsed_by_profile',
+    'study_layout_by_profile',
 ])
 def test_reader_toolbar_profile_preferences_redact_all_profile_names(setting) -> None:
     snapshot = diagnostics.sanitize_config({setting: {

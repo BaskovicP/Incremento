@@ -101,6 +101,33 @@ def normalize_pdf_controls_preferences(value: Any) -> dict:
     return result
 
 
+def normalize_study_layout_preferences(value: Any) -> dict:
+    """Only explicit per-view choices are saved; omitted values use the layout defaults."""
+    result: dict[str, dict[str, dict[str, bool | float]]] = {}
+    if not isinstance(value, Mapping):
+        return result
+    for profile, views in value.items():
+        if not isinstance(profile, str) or not profile or len(profile) > 255 or not isinstance(views, Mapping):
+            continue
+        choices = {}
+        for stage in ('book', 'video'):
+            raw = views.get(stage)
+            if not isinstance(raw, Mapping):
+                continue
+            view = {}
+            if type(raw.get('focus')) is bool:
+                view['focus'] = raw['focus']
+            for orientation in ('horizontal', 'vertical'):
+                ratio = raw.get(orientation)
+                if isinstance(ratio, (int, float)) and not isinstance(ratio, bool) and .05 <= ratio <= .95:
+                    view[orientation] = float(ratio)
+            if view:
+                choices[stage] = view
+        if choices:
+            result[profile] = choices
+    return result
+
+
 def configured_pdf_controls_collapsed(
     config: Mapping[str, Any] | None, profile: str, *, reading_only: bool = False,
 ) -> bool | None:
@@ -368,6 +395,7 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
         config.get('pdf_controls_collapsed_by_profile'))
     config['epub_controls_collapsed_by_profile'] = normalize_pdf_controls_preferences(
         config.get('epub_controls_collapsed_by_profile'))
+    config['study_layout_by_profile'] = normalize_study_layout_preferences(config.get('study_layout_by_profile'))
     config['workspace_layouts'] = normalize_workspaces(config.get('workspace_layouts'))
     preview_zooms = config.get("pdf_link_preview_zoom_by_profile")
     config["pdf_link_preview_zoom_by_profile"] = {

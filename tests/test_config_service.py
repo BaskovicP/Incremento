@@ -2,6 +2,37 @@ import config_service
 import pytest
 
 
+def test_study_layout_preferences_normalize_focus_and_ratios_without_mutating_other_profiles():
+    from copy import deepcopy
+    raw = {'study_layout_by_profile': {
+        'A': {'book': {'focus': True, 'horizontal': .63, 'vertical': .58}, 'video': {'focus': False}},
+        'B': {'video': {'horizontal': .38}},
+        'bad': {'book': {'focus': 'false', 'horizontal': True, 'vertical': float('nan')}},
+        '': {'book': {'focus': True}},
+        'invalid': [],
+    }, 'future_setting': {'keep': True}}
+    before = deepcopy(raw)
+    config = config_service.normalize_config(raw)
+    assert config['study_layout_by_profile'] == {
+        'A': {'book': {'focus': True, 'horizontal': .63, 'vertical': .58}, 'video': {'focus': False}},
+        'B': {'video': {'horizontal': .38}}}
+    assert raw == before
+    assert config['future_setting'] == {'keep': True}
+    assert config_service.normalize_config(config) == config
+
+
+@pytest.mark.parametrize('value', [None, [], True, 'focus', 5])
+def test_malformed_study_layout_preferences_fall_back_to_defaults(value):
+    config = config_service.normalize_config({'study_layout_by_profile': value})
+    assert config['study_layout_by_profile'] == {}
+
+
+@pytest.mark.parametrize('ratio', [-1, 0, 1, 100, float('inf'), float('nan'), '0.6', True])
+def test_invalid_study_pane_ratios_do_not_create_a_layout_choice(ratio):
+    config = config_service.normalize_config({'study_layout_by_profile': {'A': {'book': {'horizontal': ratio}}}})
+    assert config['study_layout_by_profile'] == {}
+
+
 def test_epub_control_preferences_are_profile_scoped_and_independent_of_pdf():
     raw = {'epub_controls_collapsed_by_profile': {
         'A': {'main': False}, 'B': {'main': True}, 'bad': {'main': 'false'}},

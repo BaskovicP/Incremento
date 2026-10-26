@@ -1,5 +1,6 @@
 """A supplemental study visit over the still-active Anki review card."""
 from pathlib import Path
+from copy import deepcopy
 import secrets
 from threading import Event
 
@@ -9,6 +10,7 @@ from aqt.qt import (QButtonGroup, QDialog, QFrame, QHBoxLayout, QKeySequence, QL
                     QPushButton, QScrollArea, QShortcut, QSize, QSplitter, QTimer, QVBoxLayout, QWidget, Qt)
 
 try:
+    from ..backend.config_service import load_addon_config, save_addon_config
     from ..backend.anki_compat import pause_reviewer_auto_advance
     from ..backend.i18n import t
     from ..backend.paths import get_active_profile
@@ -22,6 +24,7 @@ try:
     from .study_availability import card_availability, resource_availability
     from .study_focus import StudyFocus
 except ImportError:
+    from backend.config_service import load_addon_config, save_addon_config
     from backend.anki_compat import pause_reviewer_auto_advance
     from backend.i18n import t
     from backend.paths import get_active_profile
@@ -35,6 +38,7 @@ except ImportError:
     from frontend.study_focus import StudyFocus
 
 _ADDON_DIR = str(Path(__file__).resolve().parent.parent)
+_ADDON_PKG = __name__.split('.')[0]
 _window = None
 _review_token = ''
 _review_context = None
@@ -67,6 +71,20 @@ class StudyWorkspace(QDialog):
         self.setWindowTitle(t('study_resources'))
         self.resize(1200, 800)
         self.visit = StudyVisit(*_context())
+        try:
+            cfg = load_addon_config(mw.addonManager, _ADDON_PKG)
+            self._layout_preferences = deepcopy(cfg['study_layout_by_profile'].get(self.visit.profile, {}))
+        except Exception:
+            self._layout_preferences = {}
+        self._layout_changes = {}
+        self._layout_save_warned = False
+        self._layout_save_timer = QTimer(self)
+        self._layout_save_timer.setSingleShot(True)
+        self._layout_save_timer.setInterval(250)
+        self._layout_save_timer.timeout.connect(self._flush_layout_preferences)
+        self._layout_restore_timer = QTimer(self)
+        self._layout_restore_timer.setSingleShot(True)
+        self._layout_restore_timer.timeout.connect(self._restore_preferred_focus)
         self.source = normalize_source(source) if source else dict(kind='card', card_id=self.visit.card_id)
         self.reader = None
         self.reader_kind = None
@@ -88,7 +106,12 @@ class StudyWorkspace(QDialog):
         self.focus_stage = None
         self.focus_screen = StudyFocus(self, mw)
         self._pane_mode = None
-        self._pane_sizes = {}
+        self._pane_sizes = {
+            (orientation, stage): [round(ratio * 10000), round((1 - ratio) * 10000)]
+            for stage, view in self._layout_preferences.items()
+            for key, orientation in (('horizontal', Qt.Orientation.Horizontal), ('vertical', Qt.Orientation.Vertical))
+            if (ratio := view.get(key)) is not None
+        }
         # Leave the existing web document intact, including the question/answer side.
         self._suspend_reviewer()
         layout = QVBoxLayout(self)
@@ -170,6 +193,7 @@ class StudyWorkspace(QDialog):
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
         self.splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self.splitter.splitterMoved.connect(self._remember_pane_sizes)
         self.splitter.setChildrenCollapsible(False)
         self.splitter.setHandleWidth(14)
         self.book_host = QFrame(self)
@@ -342,6 +366,7 @@ class StudyWorkspace(QDialog):
                     self.context_title.setText(' '.join(value.split())[:240])
             evaluate("(() => {const q=document.getElementById('qa');return q ? q.innerText.slice(0,320) : '';})()", captured)
         self._adapt_panels()
+        self._schedule_focus_restore()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -360,13 +385,67 @@ class StudyWorkspace(QDialog):
             self.splitter.setSizes(self._pane_sizes.get(mode, [380, 620] if self.visit.stage == 'video' else [740, 260]))
             self._pane_mode = mode
 
-    def enter_focus(self, stage):
+    def _remember_pane_sizes(self, *_):
+        # splitterMoved records a drag, not resize/layout events or focus's hidden pane.
+        if (not self.current() or self.focus_stage is not None or self.visit.stage not in ('book', 'video')
+                or not self.book_host.isVisible() or not self.side.isVisible()):
+            return
+        sizes = self.splitter.sizes()
+        if not all(sizes):
+            return
+        self._pane_sizes[self._pane_mode] = sizes
+        key = 'horizontal' if self.splitter.orientation() == Qt.Orientation.Horizontal else 'vertical'
+        self._remember_layout(**{key: max(.05, min(.95, sizes[0] / sum(sizes)))})
+
+    def _remember_layout(self, **changes):
+        stage = self.visit.stage
+        self._layout_preferences.setdefault(stage, {}).update(changes)
+        self._layout_changes.setdefault(stage, {}).update(changes)
+        self._layout_save_timer.start()
+
+    def _flush_layout_preferences(self):
+        self._layout_save_timer.stop()
+        if not self._layout_changes:
+            return
+        if self.visit.profile != get_active_profile() or self.visit.collection is not mw.col:
+            self._layout_changes.clear()
+            return
+        try:
+            cfg = deepcopy(load_addon_config(mw.addonManager, _ADDON_PKG))
+            profile = cfg['study_layout_by_profile'].setdefault(self.visit.profile, {})
+            for stage, changes in self._layout_changes.items():
+                profile.setdefault(stage, {}).update(changes)
+            save_addon_config(mw.addonManager, _ADDON_PKG, cfg)
+        except Exception:
+            if not self._layout_save_warned:
+                from aqt.utils import tooltip
+                tooltip(t('study_layout_save_failed'))
+                self._layout_save_warned = True
+            return
+        self._layout_changes.clear()
+        self._layout_save_warned = False
+
+    def _schedule_focus_restore(self):
+        # Wait for the visible surface to settle. A video may load its textbook
+        # first, so a queued restore must still match the requested stage.
+        self._focus_restore_stage = self.visit.stage
+        self._layout_restore_timer.start(0)
+
+    def _restore_preferred_focus(self):
+        if (self.current() and self.isVisible() and self.visit.stage == self._focus_restore_stage
+                and self._layout_preferences.get(self.visit.stage, {}).get('focus', False)):
+            self.enter_focus(self.visit.stage, remember=False)
+
+    def enter_focus(self, stage, *, remember=True):
         if (not self.current() or self.focus_stage is not None
                 or stage not in ('book', 'video')
                 or (self.reader if stage == 'book' else self.player) is None):
             return
         if stage != self.visit.stage:
             self.navigate(stage)
+        if remember:
+            self._remember_layout(focus=True)
+            self._flush_layout_preferences()
         self._focus_sizes = self.splitter.sizes()
         self._focus_scroll = self.content_scroll.verticalScrollBar().value()
         self.focus_stage = stage
@@ -375,9 +454,12 @@ class StudyWorkspace(QDialog):
         self.focus_escape.setEnabled(True)
         (self.reader.view if stage == 'book' else self.player).setFocus()
 
-    def leave_focus(self):
+    def leave_focus(self, *, remember=True):
         if self.focus_stage is None:
             return
+        if remember:
+            self._remember_layout(focus=False)
+            self._flush_layout_preferences()
         self.focus_escape.setEnabled(False)
         self.focus_screen.leave()
         self.focus_stage = None
@@ -466,7 +548,7 @@ class StudyWorkspace(QDialog):
 
     def _set_stage(self, stage):
         if self.focus_stage is not None and stage != self.focus_stage:
-            self.leave_focus()
+            self.leave_focus(remember=False)
         self.visit.navigate(stage)
         self.stage_buttons[stage].setChecked(True)
         if stage != 'card':
@@ -682,6 +764,8 @@ class StudyWorkspace(QDialog):
             self.refresh()
             if after:
                 after()
+            else:
+                self._schedule_focus_restore()
         self.submit(work, ready, channel='document')
 
     def open_recording(self, item):
@@ -704,6 +788,7 @@ class StudyWorkspace(QDialog):
             set_stage_icon(self.stage_buttons['video'], self._recording_icon, self._stage_colors)
             self._set_stage('video')
             self.status.setText(t('study_player_paused'))
+            self._schedule_focus_restore()
         self.submit(lambda col: resolve_recording(_ADDON_DIR, profile, col, item['recording_card_id']),
                     ready, channel='recording')
 
@@ -784,13 +869,15 @@ class StudyWorkspace(QDialog):
         global _window
         if self.visit.closed:
             return
+        self._layout_restore_timer.stop()
+        self._flush_layout_preferences()
         valid = self.visit.finish(*_context())
         if _window is self:
             _window = None
         self.timer.stop()
         for cancelled in self._requests.values():
             cancelled.set()
-        self.leave_focus()
+        self.leave_focus(remember=False)
         self.surface.leave(detach=True)
         if self.player:
             self.player.dispose()

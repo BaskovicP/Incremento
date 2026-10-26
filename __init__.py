@@ -7298,9 +7298,10 @@ def openSettingsFunction() -> None:
         showInfo(_t("settings_language_profile_changed"))
         return
 
-    # Toolbar visibility is saved directly by each reader, independently of Settings.
+    # Reader controls and study layouts are saved directly, independently of Settings.
     latest_reader_config = _load_addon_config(mw.addonManager, __name__)
-    for reader_preference in ('pdf_controls_collapsed_by_profile', 'epub_controls_collapsed_by_profile', 'workspace_layouts'):
+    for reader_preference in ('pdf_controls_collapsed_by_profile', 'epub_controls_collapsed_by_profile',
+                              'study_layout_by_profile', 'workspace_layouts'):
         cfg[reader_preference] = copy.deepcopy(latest_reader_config.get(reader_preference, {}))
     cfg["ui_language"] = dlg.ui_language
     cfg["shortcuts"] = dlg.shortcuts_map

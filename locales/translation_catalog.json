@@ -32980,6 +32980,14 @@
     },
     {
       "component": "addon",
+      "key": "study_layout_save_failed",
+      "form": "",
+      "source": "This layout will be kept for this visit, but your preference could not be saved.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "study_library_limited",
       "form": "",
       "source": "Showing the 500 most recent recordings. Search within these or import another recording.",
