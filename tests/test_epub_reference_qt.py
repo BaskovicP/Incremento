@@ -4,9 +4,11 @@ from pathlib import Path
 import subprocess
 import sys
 from textwrap import dedent
+import pytest
 
 
-def test_reference_navigation_highlights_and_close_preserve_main_reader(tmp_path):
+@pytest.mark.parametrize('embedded', [False, True])
+def test_reference_navigation_highlights_and_close_preserve_main_reader(tmp_path, embedded):
     script = dedent('''
         import json, sys, types
         from pathlib import Path
@@ -78,7 +80,12 @@ def test_reference_navigation_highlights_and_close_preserve_main_reader(tmp_path
         saved.execute('INSERT INTO epub_progress(card_id,section_index,scroll_ratio) VALUES(7,1,.65)')
         saved.commit()
         result = workspace._load(col, 'A', place)
-        window = workspace.EpubReferenceWindow(result, place, profile='A', owner=None, beside=True)
+        embedded = sys.argv[2] == 'True'
+        window = workspace.EpubReferenceWindow(result, place, profile='A', owner=main if embedded else None,
+                                               beside=True, embedded=embedded)
+        if embedded:
+            layout.addWidget(window, 1)
+            assert window.parent() is main.centralWidget() and not window.isFloating()
         workspace._windows.append(window)
         main.resize(1200, 800)
         main.show()
@@ -123,7 +130,7 @@ def test_reference_navigation_highlights_and_close_preserve_main_reader(tmp_path
         assert saved.execute('SELECT section_index,scroll_ratio FROM epub_progress WHERE card_id=7').fetchone() == (1,.65)
         main.close()
     ''')
-    result = subprocess.run([sys.executable, '-c', script, str(tmp_path)],
+    result = subprocess.run([sys.executable, '-c', script, str(tmp_path), str(embedded)],
         cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=30,
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen', 'QTWEBENGINE_DISABLE_SANDBOX': '1',
              'QTWEBENGINE_CHROMIUM_FLAGS': '--disable-gpu'})

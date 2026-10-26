@@ -211,5 +211,7 @@
   "reader_more": "More",
   "reader_marked_read": "Marked read {percent}%",
   "reader_read_sections": "Sections 1–{count}",
-  "reader_exact_read_marker": "Exact read marker"
+  "reader_exact_read_marker": "Exact read marker",
+  "study_resources": "Study resources",
+  "study_link_recording": "Link recording…"
 }

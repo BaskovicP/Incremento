@@ -209,5 +209,7 @@
   "reader_more": "更多",
   "reader_marked_read": "已标记读完 {percent}%",
   "reader_read_sections": "第 1–{count} 节",
-  "reader_exact_read_marker": "精确阅读标记"
+  "reader_exact_read_marker": "精确阅读标记",
+  "study_resources": "学习资源",
+  "study_link_recording": "关联录音或视频…"
 }

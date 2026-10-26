@@ -23,6 +23,19 @@ _ADDON_DIR = str(Path(__file__).resolve().parent.parent)
 _bridges = WeakSet()
 
 
+def open_recording_action(operation, source, *, owner, is_current):
+    try:
+        from .recording_link_dialog import open_link_dialog
+        from .study_workspace import show_resources
+    except ImportError:
+        from recording_link_dialog import open_link_dialog
+        from study_workspace import show_resources
+    if operation == 'link_recording':
+        open_link_dialog(source, owner=owner, is_current=is_current)
+    else:
+        show_resources(source)
+
+
 def pdf_page_count(path):
     """Read local PDF metadata in the caller's worker, using Anki's bundled Qt."""
     from PyQt6.QtPdf import QPdfDocument
@@ -72,7 +85,7 @@ class PdfPageLinksBridge:
         point = payload.get('page_y')
         if point is not None and (type(point) not in (int, float) or not 0 <= point <= 1):
             return False
-        if operation not in ('list', 'jump', 'create', 'manage', 'remove'):
+        if operation not in ('list', 'jump', 'create', 'manage', 'remove', 'recordings', 'link_recording'):
             return False
         location = tuple(payload[key] for key in ('page', 'request', 'generation'))
         if operation == 'list':
@@ -97,6 +110,10 @@ class PdfPageLinksBridge:
             if (source['filename'] != self.filename
                     or (self.source_path is not None and source['path'] != self.source_path)):
                 raise ValueError('Source document changed')
+            if operation in ('recordings', 'link_recording'):
+                if location[0] > pdf_page_count(source['path']):
+                    raise ValueError('Source page unavailable')
+                return True
             if operation in ('create', 'manage'):
                 return True
             rows = list_pdf_page_links(_ADDON_DIR, self.profile, self.card_id, location[0])
@@ -147,6 +164,11 @@ class PdfPageLinksBridge:
                                    page_y=link.get('target_y'), beside=True, owner=self.owner, is_current=current)
                 else:
                     self.open_pdf(snapshot, link)
+            elif operation in ('recordings', 'link_recording'):
+                source = dict(kind='pdf', card_id=self.card_id, page=location[0])
+                if point is not None:
+                    source['page_y'] = point
+                open_recording_action(operation, source, owner=self.owner, is_current=source_current)
             else:
                 try:
                     from . import document_link_ui

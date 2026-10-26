@@ -75,6 +75,22 @@ def test_visible_button_jumps_to_fresh_saved_destination_and_reverse_button_retu
     assert (bridge.opened[-1][0]['card_id'], bridge.opened[-1][1]['target_page']) == (7, 3)
 
 
+@pytest.mark.parametrize('operation', ['recordings', 'link_recording'])
+def test_recording_actions_use_only_the_current_page_and_drop_stale_callbacks(bridge, monkeypatch, operation):
+    opened = []
+    monkeypatch.setattr(bridge.module, 'open_recording_action', lambda *args, **kw: opened.append(args), raising=False)
+    bridge.controller.handle(bridge.request)
+    bridge.finish()
+    assert bridge.controller.handle({**bridge.request, 'operation': operation, 'target_card_id': 999})
+    bridge.finish()
+    assert opened[0][0] == operation
+    assert opened[0][1]['card_id'] == 7 and opened[0][1]['page'] == 3
+    bridge.controller.handle({**bridge.request, 'operation': operation})
+    bridge.alive[0] = False
+    bridge.finish()
+    assert len(opened) == 1
+
+
 @pytest.mark.parametrize('change', [dict(cardId=8), dict(page=4), dict(request=0),
                                   dict(generation=2), dict(id=True), dict(direction='other')])
 def test_forged_or_stale_button_cannot_open_another_pdf(bridge, change):

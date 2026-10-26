@@ -8611,6 +8611,8 @@
   const reader_marked_read$2 = "Marked read {percent}%";
   const reader_read_sections$2 = "Sections 1–{count}";
   const reader_exact_read_marker$2 = "Exact read marker";
+  const study_resources$2 = "Study resources";
+  const study_link_recording$2 = "Link recording…";
   const en = {
     reader_pdf_focus_mode_hint: reader_pdf_focus_mode_hint$2,
     reader_pdf_focus_mode: reader_pdf_focus_mode$2,
@@ -8824,7 +8826,9 @@
     reader_more: reader_more$2,
     reader_marked_read: reader_marked_read$2,
     reader_read_sections: reader_read_sections$2,
-    reader_exact_read_marker: reader_exact_read_marker$2
+    reader_exact_read_marker: reader_exact_read_marker$2,
+    study_resources: study_resources$2,
+    study_link_recording: study_link_recording$2
   };
   const reader_pdf_focus_mode_hint$1 = "Sakrijte lijevi Anki prikaz i proširite PDF preko pune raspoložive širine. Radi na zaslonima Špilovi i Pregled te tijekom ponavljanja. Gumbi za odgovore ostaju vidljivi, a odabir se sprema.";
   const reader_pdf_focus_mode$1 = "Fokus na PDF";
@@ -9041,6 +9045,8 @@
   const reader_marked_read$1 = "Označeno pročitano {percent}%";
   const reader_read_sections$1 = "Odjeljci 1–{count}";
   const reader_exact_read_marker$1 = "Točna oznaka čitanja";
+  const study_resources$1 = "Materijali za učenje";
+  const study_link_recording$1 = "Poveži snimku…";
   const hr = {
     reader_pdf_focus_mode_hint: reader_pdf_focus_mode_hint$1,
     reader_pdf_focus_mode: reader_pdf_focus_mode$1,
@@ -9256,7 +9262,9 @@
     reader_more: reader_more$1,
     reader_marked_read: reader_marked_read$1,
     reader_read_sections: reader_read_sections$1,
-    reader_exact_read_marker: reader_exact_read_marker$1
+    reader_exact_read_marker: reader_exact_read_marker$1,
+    study_resources: study_resources$1,
+    study_link_recording: study_link_recording$1
   };
   const reader_pdf_focus_mode_hint = "隐藏左侧 Anki 区域，让 PDF 占满可用宽度。可在牌组列表、概览和复习时使用。回答按钮仍保持可见，您的选择会自动保存。";
   const reader_pdf_focus_mode = "PDF 专注模式";
@@ -9469,6 +9477,8 @@
   const reader_marked_read = "已标记读完 {percent}%";
   const reader_read_sections = "第 1–{count} 节";
   const reader_exact_read_marker = "精确阅读标记";
+  const study_resources = "学习资源";
+  const study_link_recording = "关联录音或视频…";
   const zhHans = {
     reader_pdf_focus_mode_hint,
     reader_pdf_focus_mode,
@@ -9680,7 +9690,9 @@
     reader_more,
     reader_marked_read,
     reader_read_sections,
-    reader_exact_read_marker
+    reader_exact_read_marker,
+    study_resources,
+    study_link_recording
   };
   const CATALOGS = { en, hr, "zh-Hans": zhHans };
   function normalizeReaderLocale(value) {
@@ -11395,6 +11407,12 @@
       manage() {
         command("manage");
       },
+      recordings() {
+        command("recordings");
+      },
+      linkRecording() {
+        command("link_recording");
+      },
       close() {
         current = null;
         links = [];
@@ -11430,12 +11448,14 @@
       error: current && view.error,
       create: () => model.current.create(),
       manage: () => model.current.manage(),
+      recordings: () => model.current.recordings(),
+      linkRecording: () => model.current.linkRecording(),
       remove: (row) => model.current.remove(row),
       jump: (row, mode) => model.current.jump(row, mode)
     };
   }
   function PdfPageLinks({ linksState, tr }) {
-    const { cardId, page, generation, enabled, links, loading, error, create, manage, jump, remove } = linksState;
+    const { cardId, page, generation, enabled, links, loading, error, create, manage, jump, remove, recordings, linkRecording } = linksState;
     const [openedFor, setOpenedFor] = reactExports.useState(null);
     const root = reactExports.useRef(null), trigger = reactExports.useRef(null), panel = reactExports.useRef(null);
     const key = `${cardId}:${page}:${generation}`;
@@ -11522,6 +11542,8 @@
               /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { style: { whiteSpace: "nowrap" }, children: tr("reader_page_links") }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => act(create), children: tr("reader_link_this_page") }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => act(manage), children: tr("reader_reference_links") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => act(linkRecording), children: tr("study_link_recording") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => act(recordings), children: tr("study_resources") }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", "aria-label": tr("reader_close"), onClick: close, style: { marginLeft: "auto" }, children: "×" })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, "aria-live": "polite", children: [

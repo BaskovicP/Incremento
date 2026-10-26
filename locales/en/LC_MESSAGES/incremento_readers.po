@@ -4007,3 +4007,141 @@ msgstr "Open in new window"
 
 msgid "workspace_pdf_window_limit"
 msgstr "Up to {count} PDF windows can be open at once. Close one before opening another."
+
+msgid "study_resources"
+msgstr "Study resources"
+
+msgid "study_player_paused"
+msgstr "Ready at the linked time. Press Play when you are ready."
+
+msgid "study_player_unavailable"
+msgstr "Playback is unavailable in this Anki installation."
+
+msgid "study_recording_unavailable"
+msgstr "The recording cannot be played or has changed. Reopen it, or edit the link to choose another local file."
+
+msgid "study_loading"
+msgstr "Loading…"
+
+msgid "study_position"
+msgstr "Recording position"
+
+msgid "study_play"
+msgstr "Play"
+
+msgid "study_pause"
+msgstr "Pause"
+
+msgid "study_speed"
+msgstr "Playback speed"
+
+msgid "study_volume"
+msgstr "Volume"
+
+msgid "study_replay"
+msgstr "Replay segment"
+
+msgid "study_continue"
+msgstr "Continue recording"
+
+msgid "study_segment_finished"
+msgstr "Segment finished. Return to the passage, replay, or continue."
+
+msgid "study_pdf_page"
+msgstr "PDF · page {page}"
+
+msgid "study_epub_section"
+msgstr "EPUB · section {section}"
+
+msgid "study_card"
+msgstr "Review card"
+
+msgid "study_journey"
+msgstr "Card → Textbook → Recording"
+
+msgid "study_return_card"
+msgstr "Return to card"
+
+msgid "study_close"
+msgstr "Close"
+
+msgid "study_open"
+msgstr "Open selected resource"
+
+msgid "study_refresh"
+msgstr "Refresh"
+
+msgid "study_link_recording"
+msgstr "Link recording…"
+
+msgid "study_edit"
+msgstr "Edit link…"
+
+msgid "study_remove"
+msgstr "Remove link"
+
+msgid "study_back_passage"
+msgstr "Back to passage"
+
+msgid "study_resource_unavailable"
+msgstr "This resource is unavailable, changed, or beyond its reading limit. Refresh or edit its link and try again."
+
+msgid "study_choose_resource"
+msgstr "Open a passage for context, then a linked recording. Your review card stays in place."
+
+msgid "study_no_resources"
+msgstr "No resources linked here yet. Link a textbook passage or a recording to get started."
+
+msgid "study_missing"
+msgstr "Local file unavailable"
+
+msgid "study_search_recordings"
+msgstr "Search imported recordings…"
+
+msgid "study_choose_recording"
+msgstr "1. Choose a recording"
+
+msgid "study_import_video"
+msgstr "Import video…"
+
+msgid "study_import_audio"
+msgstr "Import audio…"
+
+msgid "study_label"
+msgstr "Link label"
+
+msgid "study_start"
+msgstr "Start time"
+
+msgid "study_end"
+msgstr "End time (optional)"
+
+msgid "study_time_hint"
+msgstr "m:ss or h:mm:ss"
+
+msgid "study_use_position"
+msgstr "Use current position"
+
+msgid "study_choose_another"
+msgstr "Choose another recording"
+
+msgid "study_save_link"
+msgstr "Save link"
+
+msgid "study_cancel"
+msgstr "Cancel"
+
+msgid "study_library_limited"
+msgstr "Showing the 500 most recent recordings. Search within these or import another recording."
+
+msgid "study_import_help"
+msgstr "Import a downloaded video or lecture recording, then refresh this list."
+
+msgid "study_preview_help"
+msgstr "2. Preview the recording and set the linked time. The original file stays intact."
+
+msgid "study_import_refresh"
+msgstr "When the import finishes, press Refresh to select the recording."
+
+msgid "study_invalid_segment"
+msgstr "Wait for the preview to load, add a label, and enter valid times within the recording. End must be after start."

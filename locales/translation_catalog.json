@@ -32762,6 +32762,378 @@
     },
     {
       "component": "addon",
+      "key": "study_back_passage",
+      "form": "",
+      "source": "Back to passage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_cancel",
+      "form": "",
+      "source": "Cancel",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_card",
+      "form": "",
+      "source": "Review card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_choose_another",
+      "form": "",
+      "source": "Choose another recording",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_choose_recording",
+      "form": "",
+      "source": "1. Choose a recording",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_choose_resource",
+      "form": "",
+      "source": "Open a passage for context, then a linked recording. Your review card stays in place.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_close",
+      "form": "",
+      "source": "Close",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_continue",
+      "form": "",
+      "source": "Continue recording",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_edit",
+      "form": "",
+      "source": "Edit link…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_end",
+      "form": "",
+      "source": "End time (optional)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_epub_section",
+      "form": "",
+      "source": "EPUB · section {section}",
+      "tokens": [
+        "{section}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_import_audio",
+      "form": "",
+      "source": "Import audio…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_import_help",
+      "form": "",
+      "source": "Import a downloaded video or lecture recording, then refresh this list.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_import_refresh",
+      "form": "",
+      "source": "When the import finishes, press Refresh to select the recording.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_import_video",
+      "form": "",
+      "source": "Import video…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_invalid_segment",
+      "form": "",
+      "source": "Wait for the preview to load, add a label, and enter valid times within the recording. End must be after start.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_journey",
+      "form": "",
+      "source": "Card → Textbook → Recording",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_label",
+      "form": "",
+      "source": "Link label",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_library_limited",
+      "form": "",
+      "source": "Showing the 500 most recent recordings. Search within these or import another recording.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_link_recording",
+      "form": "",
+      "source": "Link recording…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_loading",
+      "form": "",
+      "source": "Loading…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_missing",
+      "form": "",
+      "source": "Local file unavailable",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_no_resources",
+      "form": "",
+      "source": "No resources linked here yet. Link a textbook passage or a recording to get started.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_open",
+      "form": "",
+      "source": "Open selected resource",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_pause",
+      "form": "",
+      "source": "Pause",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_pdf_page",
+      "form": "",
+      "source": "PDF · page {page}",
+      "tokens": [
+        "{page}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_play",
+      "form": "",
+      "source": "Play",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_player_paused",
+      "form": "",
+      "source": "Ready at the linked time. Press Play when you are ready.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_player_unavailable",
+      "form": "",
+      "source": "Playback is unavailable in this Anki installation.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_position",
+      "form": "",
+      "source": "Recording position",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_help",
+      "form": "",
+      "source": "2. Preview the recording and set the linked time. The original file stays intact.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_recording_unavailable",
+      "form": "",
+      "source": "The recording cannot be played or has changed. Reopen it, or edit the link to choose another local file.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_refresh",
+      "form": "",
+      "source": "Refresh",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_remove",
+      "form": "",
+      "source": "Remove link",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_replay",
+      "form": "",
+      "source": "Replay segment",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_resource_unavailable",
+      "form": "",
+      "source": "This resource is unavailable, changed, or beyond its reading limit. Refresh or edit its link and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_resources",
+      "form": "",
+      "source": "Study resources",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_return_card",
+      "form": "",
+      "source": "Return to card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_save_link",
+      "form": "",
+      "source": "Save link",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_search_recordings",
+      "form": "",
+      "source": "Search imported recordings…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_segment_finished",
+      "form": "",
+      "source": "Segment finished. Return to the passage, replay, or continue.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_speed",
+      "form": "",
+      "source": "Playback speed",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_start",
+      "form": "",
+      "source": "Start time",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_time_hint",
+      "form": "",
+      "source": "m:ss or h:mm:ss",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_use_position",
+      "form": "",
+      "source": "Use current position",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_volume",
+      "form": "",
+      "source": "Volume",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "ui_type_local_file",
       "form": "",
       "source": "Local file",
@@ -39105,6 +39477,22 @@
       "key": "reader_zoom_out",
       "form": "",
       "source": "Zoom out",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "study_link_recording",
+      "form": "",
+      "source": "Link recording…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "study_resources",
+      "form": "",
+      "source": "Study resources",
       "tokens": [],
       "markup": []
     }

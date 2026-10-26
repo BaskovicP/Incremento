@@ -213,5 +213,7 @@
   "reader_more": "Više",
   "reader_marked_read": "Označeno pročitano {percent}%",
   "reader_read_sections": "Odjeljci 1–{count}",
-  "reader_exact_read_marker": "Točna oznaka čitanja"
+  "reader_exact_read_marker": "Točna oznaka čitanja",
+  "study_resources": "Materijali za učenje",
+  "study_link_recording": "Poveži snimku…"
 }

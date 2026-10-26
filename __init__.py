@@ -187,6 +187,8 @@ from .frontend import epub_dock as _epub_dock_mod
 from .frontend import reader_links as _reader_links_mod
 from .frontend import selection_search as _selection_search_mod
 from .frontend import document_link_ui as _document_link_ui_mod
+from .frontend import study_workspace as _study_workspace_mod
+from .frontend import recording_link_dialog as _recording_link_dialog_mod
 from .frontend import pdf_reference_workspace as _pdf_reference_workspace_mod
 from .frontend import video_dock as _video_dock_mod
 from .frontend import web_dock as _web_dock_mod
@@ -2698,6 +2700,7 @@ def _add_document_link_context_actions(view, menu):
         active = getattr(getattr(mw, "reviewer", None), "card", None)
         return _active_profile() == profile and active is not None and int(active.id) == card_id
     source = {"card_id": card_id, "kind": "card", "quote": str(view.selectedText() or "")[:2000]}
+    _recording_link_dialog_mod.add_context_actions(menu, source, is_current=current)
     for key, callback in (("reader_reference_add", _document_link_ui_mod.link_pdf),
                            ("reader_reference_links", _document_link_ui_mod.show_links)):
         action = menu.addAction(_t(key))
@@ -2705,6 +2708,13 @@ def _add_document_link_context_actions(view, menu):
 
 
 _register_selection_search_hooks()
+
+gui_hooks.reviewer_did_show_question.append(_study_workspace_mod.reviewer_shown)
+gui_hooks.reviewer_did_show_answer.append(_study_workspace_mod.reviewer_shown)
+gui_hooks.reviewer_will_end.append(_study_workspace_mod.reset)
+gui_hooks.profile_will_close.append(_study_workspace_mod.reset)
+gui_hooks.profile_will_close.append(_recording_link_dialog_mod.reset)
+gui_hooks.webview_did_receive_js_message.append(_study_workspace_mod.on_js_message)
 
 
 def _close_website_browsers() -> None:
@@ -7915,3 +7925,6 @@ gui_hooks.browser_menus_did_init.append(
         _ADDON_DIR,
     )
 )
+
+# Reuse the existing journaled import paths from the recording-link picker.
+_recording_link_dialog_mod.configure_importers(video=addVideoFunction, audio=addAudioFunction)

@@ -1809,14 +1809,14 @@ def _show_pdf_reader_context_menu(view, position) -> bool:
     request = object()
     view._incremento_image_menu_request = request
 
-    def is_current(menu):
+    def is_current(menu, *, menu_visible=True):
         try:
             return (
                 _pdf_dock is not None and _pdf_dock._view is view and _pdf_reader_is_visible()
                 and _active_profile() == profile and _current_pdf_card_id == card_id
                 and _current_pdf_filename == filename and viewer_page._bridge_nonce == nonce
                 and view._incremento_image_menu_request is request
-                and getattr(view, "_incremento_reader_anchor_context_menu", None) is menu
+                and (not menu_visible or getattr(view, "_incremento_reader_anchor_context_menu", None) is menu)
             )
         except (AttributeError, RuntimeError):
             return False
@@ -1826,6 +1826,13 @@ def _show_pdf_reader_context_menu(view, position) -> bool:
             return
         anchor = _normalize_pdf_context_anchor(payload)
         if anchor is not None:
+            try:
+                from .recording_link_dialog import add_context_actions
+            except ImportError:
+                from recording_link_dialog import add_context_actions
+            add_context_actions(menu, dict(kind='pdf', card_id=card_id, page=anchor['page'],
+                scroll=anchor.get('scroll_ratio', 0), quote=selected_text), owner=_pdf_dock,
+                is_current=lambda: is_current(menu, menu_visible=False))
             for key, create in (("reader_reference_add", True), ("reader_reference_links", False)):
                 action = menu.addAction(t(key))
                 action.triggered.connect(lambda checked=False, new=create: _open_pdf_document_links(

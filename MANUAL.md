@@ -800,6 +800,18 @@ unsigned signature field alone does not block sync. Saving annotations inside
 Incremento is separate from syncing them into the PDF file.
 Legacy citation highlights without page rectangles stay in Incremento only.
 
+### Card → textbook → recording
+
+Use **Study resources** on the question or answer side of a review card to follow its existing PDF/EPUB citations and linked recordings. The same action is available from the card's right-click menu. Select a textbook passage and choose **Open selected resource** (or double-click it). The textbook opens in a separate study window at the saved page or section, with its linked recordings listed beside it. The original card and its current side stay in place.
+
+To set up a connection, open the relevant textbook passage and choose **Page links → Link recording…**, or right-click the passage and choose **Link recording…**. Selecting text first keeps a short excerpt with the association. Choose an imported local video or audio recording, preview it, enter a label and start time, and optionally enter an end time. Times accept seconds, `m:ss`, or `h:mm:ss`; **Use current position** copies the preview's timestamp. **Save link** connects the passage to the original recording without cutting or duplicating a clip. You can also link a recording directly to a review card. If the card has no textbook citation yet, **Link PDF…** in Study resources opens the existing document-and-passage picker.
+
+The recording picker shows the 500 most recent imported video/audio notes and searches within that list. Use **Import video…** or **Import audio…** to run the normal import flow, then press **Refresh** after the import finishes. Choose a downloaded local copy for video playback; a web URL alone is not playable in this reference player. Audio uses the original file in Anki's collection media. Playback depends on the codecs available in Anki's Qt media runtime.
+
+When you open a linked recording, it starts **paused** at the saved timestamp beside the textbook. Press **Play** to begin. If an end time was saved, playback pauses there and offers **Replay segment** or **Continue recording**. **Back to passage** pauses playback and returns focus to the same live textbook view, preserving its page, scroll position, and zoom. **Return to card** closes the study visit and restores the original question or answer without grading it. The visit does not change the recording's normal resume position or the textbook's normal reading position. Explicit reader actions such as adding a highlight or marking a passage read retain their usual behavior.
+
+Use **Edit link…** to change the recording, label, or timestamps; use **Remove link** to remove only the association. Missing or moved files stay visible as unavailable so you can repair the link. Existing document reading limits still apply. Links are saved in the current profile's Incremento database and included in Incremento profile backups; **Anki Sync alone does not transfer these associations**.
+
 ### Cross-references
 
 Citations added from PDF extraction link back to the exact PDF page. Highlight-created cards also try to reopen and scroll to the exact cited highlight before falling back to page/excerpt matching.

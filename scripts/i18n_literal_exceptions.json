@@ -256,5 +256,17 @@
     "sink": "getSaveFileName",
     "text": "incremento-firefox.xpi",
     "reason": "Stable portable extension export filename, not a translatable UI label."
+  },
+  {
+    "file": "frontend/recording_player.py",
+    "sink": "addItem",
+    "text": "f'{rate:g}×'",
+    "reason": "Numeric playback-rate notation with a multiplication symbol; the accessible label is translated."
+  },
+  {
+    "file": "frontend/recording_player.py",
+    "sink": "setText",
+    "text": "f'{timestamp(position / 1000)} / {timestamp(self.media.duration() / 1000)}'",
+    "reason": "Elapsed and total time in numeric media timestamp notation; the position control has a translated accessible label."
   }
 ]

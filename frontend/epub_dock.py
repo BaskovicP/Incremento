@@ -935,6 +935,21 @@ def _show_epub_reader_context_menu(view, position) -> bool:
         "window.incrementoEpubAnchorAtPoint "
         f"? window.incrementoEpubAnchorAtPoint({x}, {y}) : null;"
     )
+    profile, card_id, page = _active_profile(), _current_epub_card_id, view.page()
+    nonce = page.bridge_nonce()
+    def current():
+        return (_active_profile() == profile and _current_epub_card_id == card_id
+                and page.bridge_nonce() == nonce)
+    def populate(menu, payload):
+        anchor = _normalize_epub_context_anchor(payload)
+        if anchor is not None and current():
+            try:
+                from .recording_link_dialog import add_context_actions
+            except ImportError:
+                from recording_link_dialog import add_context_actions
+            add_context_actions(menu, dict(kind='epub', card_id=card_id, section=anchor['section_index'],
+                offset=anchor['focus_offset'], scroll=anchor['scroll_ratio'], quote=str(view.selectedText() or '')[:2000]),
+                owner=_epub_dock, is_current=current)
     return show_reader_anchor_context_menu(
         view,
         position,
@@ -946,6 +961,7 @@ def _show_epub_reader_context_menu(view, position) -> bool:
             callback,
         ),
         action_label=t("reader_copy_link_to_place"),
+        populate_menu=populate,
     )
 
 

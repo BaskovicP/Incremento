@@ -4045,3 +4045,141 @@ msgstr "Otvori u novom prozoru"
 
 msgid "workspace_pdf_window_limit"
 msgstr "Istodobno može biti otvoreno do {count} PDF prozora. Zatvori jedan prije otvaranja novog."
+
+msgid "study_resources"
+msgstr "Materijali za učenje"
+
+msgid "study_player_paused"
+msgstr "Spremno na povezanom vremenu. Pritisnite Reproduciraj kada ste spremni."
+
+msgid "study_player_unavailable"
+msgstr "Reprodukcija nije dostupna u ovoj instalaciji Ankija."
+
+msgid "study_recording_unavailable"
+msgstr "Snimku nije moguće reproducirati ili je promijenjena. Ponovno je otvorite ili uredite poveznicu i odaberite drugu lokalnu datoteku."
+
+msgid "study_loading"
+msgstr "Učitavanje…"
+
+msgid "study_position"
+msgstr "Položaj u snimci"
+
+msgid "study_play"
+msgstr "Reproduciraj"
+
+msgid "study_pause"
+msgstr "Pauziraj"
+
+msgid "study_speed"
+msgstr "Brzina reprodukcije"
+
+msgid "study_volume"
+msgstr "Glasnoća"
+
+msgid "study_replay"
+msgstr "Ponovi isječak"
+
+msgid "study_continue"
+msgstr "Nastavi snimku"
+
+msgid "study_segment_finished"
+msgstr "Isječak je završio. Vratite se na odlomak, ponovite ili nastavite."
+
+msgid "study_pdf_page"
+msgstr "PDF · stranica {page}"
+
+msgid "study_epub_section"
+msgstr "EPUB · odjeljak {section}"
+
+msgid "study_card"
+msgstr "Kartica za ponavljanje"
+
+msgid "study_journey"
+msgstr "Kartica → Udžbenik → Snimka"
+
+msgid "study_return_card"
+msgstr "Vrati se na karticu"
+
+msgid "study_close"
+msgstr "Zatvori"
+
+msgid "study_open"
+msgstr "Otvori odabrani materijal"
+
+msgid "study_refresh"
+msgstr "Osvježi"
+
+msgid "study_link_recording"
+msgstr "Poveži snimku…"
+
+msgid "study_edit"
+msgstr "Uredi poveznicu…"
+
+msgid "study_remove"
+msgstr "Ukloni poveznicu"
+
+msgid "study_back_passage"
+msgstr "Natrag na odlomak"
+
+msgid "study_resource_unavailable"
+msgstr "Ovaj materijal nije dostupan, promijenjen je ili prelazi granicu čitanja. Osvježite ili uredite poveznicu i pokušajte ponovno."
+
+msgid "study_choose_resource"
+msgstr "Otvorite odlomak za kontekst, a zatim povezanu snimku. Kartica za ponavljanje ostaje na mjestu."
+
+msgid "study_no_resources"
+msgstr "Ovdje još nema povezanih materijala. Za početak povežite odlomak iz udžbenika ili snimku."
+
+msgid "study_missing"
+msgstr "Lokalna datoteka nije dostupna"
+
+msgid "study_search_recordings"
+msgstr "Pretraži uvezene snimke…"
+
+msgid "study_choose_recording"
+msgstr "1. Odaberite snimku"
+
+msgid "study_import_video"
+msgstr "Uvezi video…"
+
+msgid "study_import_audio"
+msgstr "Uvezi zvuk…"
+
+msgid "study_label"
+msgstr "Naziv poveznice"
+
+msgid "study_start"
+msgstr "Početno vrijeme"
+
+msgid "study_end"
+msgstr "Završno vrijeme (neobavezno)"
+
+msgid "study_time_hint"
+msgstr "m:ss ili h:mm:ss"
+
+msgid "study_use_position"
+msgstr "Koristi trenutačni položaj"
+
+msgid "study_choose_another"
+msgstr "Odaberi drugu snimku"
+
+msgid "study_save_link"
+msgstr "Spremi poveznicu"
+
+msgid "study_cancel"
+msgstr "Odustani"
+
+msgid "study_library_limited"
+msgstr "Prikazano je 500 najnovijih snimki. Pretražite ih ili uvezite drugu snimku."
+
+msgid "study_import_help"
+msgstr "Uvezite preuzeti video ili snimku predavanja, a zatim osvježite popis."
+
+msgid "study_preview_help"
+msgstr "2. Pregledajte snimku i postavite povezano vrijeme. Izvorna datoteka ostaje netaknuta."
+
+msgid "study_import_refresh"
+msgstr "Kada uvoz završi, pritisnite Osvježi i odaberite snimku."
+
+msgid "study_invalid_segment"
+msgstr "Pričekajte učitavanje pregleda, dodajte naziv i unesite valjana vremena unutar snimke. Kraj mora biti nakon početka."

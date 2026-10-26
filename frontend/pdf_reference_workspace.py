@@ -113,13 +113,14 @@ def create_reference_view(parent, snapshot, state, handler, *, page_y=None, exce
 
 
 class ReferenceWindow(QDockWidget):
-    def __init__(self, snapshot, *, profile, page, scroll_ratio, max_page, beside, owner, excerpt='', page_y=None, independent=False, zoom=1):
-        super().__init__(snapshot["title"], mw)
+    def __init__(self, snapshot, *, profile, page, scroll_ratio, max_page, beside, owner, excerpt='', page_y=None, independent=False, zoom=1, embedded=False):
+        super().__init__(snapshot["title"], owner if embedded else mw)
+        self.embedded = embedded
         self.state = PdfReaderState(profile, snapshot["card_id"], snapshot["filename"],
                                     page=min(max(1, page), max_page), scroll_ratio=scroll_ratio,
                                     max_page=max_page, zoom=zoom)
         self.owner = owner
-        self.independent = independent
+        self.independent = independent or embedded
         self._source_path = snapshot['path']
         self._snapshot = dict(snapshot)
         try:
@@ -140,12 +141,17 @@ class ReferenceWindow(QDockWidget):
         self.view.customContextMenuRequested.connect(self.show_context_menu)
         self.view.loadFinished.connect(lambda ok: self.reader.sync_annotations() if ok and self.reader.current() else None)
         self.setWidget(self.view)
-        mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
-        self.setFloating(not beside)
-        if beside:
-            self.pin()
+        if embedded:
+            from aqt.qt import QWidget
+            self.setTitleBarWidget(QWidget(self))
+            self.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
         else:
-            self.resize(720, 650)
+            mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
+            self.setFloating(not beside)
+            if beside:
+                self.pin()
+            else:
+                self.resize(720, 650)
         self.topLevelChanged.connect(lambda floating: self._claim_slot())
         self.reader.service._annotation_queue.retain(self._annotation_key)
 
@@ -164,7 +170,7 @@ class ReferenceWindow(QDockWidget):
                 window.close()
 
     def pin(self):
-        if self.state.closed:
+        if self.state.closed or getattr(self, 'embedded', False):
             return
         self.setFloating(False)
         self._claim_slot()
@@ -201,9 +207,25 @@ class ReferenceWindow(QDockWidget):
         def copy(anchor):
             if self.reader.current():
                 self.command('copy', anchor)
+        def populate(menu, anchor):
+            if not self.reader.current() or not isinstance(anchor, dict):
+                return
+            try:
+                from .recording_link_dialog import add_context_actions
+                from ..backend.recording_links import normalize_source
+            except ImportError:
+                from recording_link_dialog import add_context_actions
+                from backend.recording_links import normalize_source
+            try:
+                source = normalize_source(dict(kind='pdf', card_id=self.state.card_id,
+                    page=anchor['page'], scroll=anchor.get('scrollRatio', 0),
+                    quote=str(self.view.selectedText() or '')[:2000]))
+            except (KeyError, ValueError):
+                return
+            add_context_actions(menu, source, owner=self, is_current=self.reader.current)
         return show_reader_anchor_context_menu(self.view, position,
             resolver_script=f'window.incrementoPdfAnchorAtPoint?.({x}, {y}) || null;',
-            on_copy=copy, action_label=t('reader_copy_link_to_place'))
+            on_copy=copy, action_label=t('reader_copy_link_to_place'), populate_menu=populate)
 
     def reader_config(self, result):
         s, state = self.reader.service, self.state

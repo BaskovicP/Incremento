@@ -1456,6 +1456,9 @@ def test_pdf_context_anchor_rejects_stale_cards_and_clamps_scroll_ratio(monkeypa
 @pytest.mark.parametrize("changed", ["profile", "card", "filename", "load", "closed", "menu"])
 def test_embedded_image_menu_uses_captured_profile_path_and_retires_stale_callbacks(monkeypatch, changed):
     requests, paths = [], []
+    # The recording dialog is a separate UI boundary; this test owns image capture.
+    monkeypatch.setitem(sys.modules, 'recording_link_dialog', types.SimpleNamespace(
+        add_context_actions=lambda *args, **kwargs: None))
     profile = ["A"]
     page = types.SimpleNamespace(_bridge_nonce="load-one")
     view = types.SimpleNamespace(page=lambda: page)

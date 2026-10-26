@@ -3969,3 +3969,141 @@ msgstr "在新窗口中打开"
 
 msgid "workspace_pdf_window_limit"
 msgstr "最多可同时打开 {count} 个 PDF 窗口。请先关闭一个窗口再打开新的窗口。"
+
+msgid "study_resources"
+msgstr "学习资源"
+
+msgid "study_player_paused"
+msgstr "已定位到关联时间。准备好后点击播放。"
+
+msgid "study_player_unavailable"
+msgstr "此 Anki 安装不支持播放。"
+
+msgid "study_recording_unavailable"
+msgstr "录音或视频无法播放或已更改。请重新打开，或编辑链接选择其他本地文件。"
+
+msgid "study_loading"
+msgstr "正在加载…"
+
+msgid "study_position"
+msgstr "播放位置"
+
+msgid "study_play"
+msgstr "播放"
+
+msgid "study_pause"
+msgstr "暂停"
+
+msgid "study_speed"
+msgstr "播放速度"
+
+msgid "study_volume"
+msgstr "音量"
+
+msgid "study_replay"
+msgstr "重播片段"
+
+msgid "study_continue"
+msgstr "继续播放"
+
+msgid "study_segment_finished"
+msgstr "片段已结束。可以返回段落、重播或继续播放。"
+
+msgid "study_pdf_page"
+msgstr "PDF · 第 {page} 页"
+
+msgid "study_epub_section"
+msgstr "EPUB · 第 {section} 节"
+
+msgid "study_card"
+msgstr "复习卡片"
+
+msgid "study_journey"
+msgstr "卡片 → 教材 → 录音或视频"
+
+msgid "study_return_card"
+msgstr "返回卡片"
+
+msgid "study_close"
+msgstr "关闭"
+
+msgid "study_open"
+msgstr "打开所选资源"
+
+msgid "study_refresh"
+msgstr "刷新"
+
+msgid "study_link_recording"
+msgstr "关联录音或视频…"
+
+msgid "study_edit"
+msgstr "编辑链接…"
+
+msgid "study_remove"
+msgstr "移除链接"
+
+msgid "study_back_passage"
+msgstr "返回段落"
+
+msgid "study_resource_unavailable"
+msgstr "资源不可用、已更改或超出阅读限制。请刷新或编辑链接后重试。"
+
+msgid "study_choose_resource"
+msgstr "先打开段落了解上下文，再打开关联的录音或视频。复习卡片会保留原状。"
+
+msgid "study_no_resources"
+msgstr "此处尚未关联资源。请先关联教材段落或录音、视频。"
+
+msgid "study_missing"
+msgstr "本地文件不可用"
+
+msgid "study_search_recordings"
+msgstr "搜索已导入的录音或视频…"
+
+msgid "study_choose_recording"
+msgstr "1. 选择录音或视频"
+
+msgid "study_import_video"
+msgstr "导入视频…"
+
+msgid "study_import_audio"
+msgstr "导入音频…"
+
+msgid "study_label"
+msgstr "链接名称"
+
+msgid "study_start"
+msgstr "开始时间"
+
+msgid "study_end"
+msgstr "结束时间（可选）"
+
+msgid "study_time_hint"
+msgstr "分:秒 或 时:分:秒"
+
+msgid "study_use_position"
+msgstr "使用当前位置"
+
+msgid "study_choose_another"
+msgstr "选择其他录音或视频"
+
+msgid "study_save_link"
+msgstr "保存链接"
+
+msgid "study_cancel"
+msgstr "取消"
+
+msgid "study_library_limited"
+msgstr "显示最近的 500 个录音和视频。可在其中搜索或导入其他文件。"
+
+msgid "study_import_help"
+msgstr "请导入已下载的视频或课堂录音，然后刷新列表。"
+
+msgid "study_preview_help"
+msgstr "2. 预览并设置关联时间。原始文件保持不变。"
+
+msgid "study_import_refresh"
+msgstr "导入完成后，点击刷新即可选择文件。"
+
+msgid "study_invalid_segment"
+msgstr "请等待预览加载完成，添加名称，并输入录音或视频范围内的有效时间。结束时间必须晚于开始时间。"

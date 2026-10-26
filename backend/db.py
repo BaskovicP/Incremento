@@ -805,6 +805,30 @@ def _migration_19_search_fts_keys(conn: sqlite3.Connection) -> None:
             conn.execute(f"CREATE TRIGGER {mirror}_{suffix} AFTER {event} ON {source} BEGIN {body} END")
 
 
+def _migration_20_recording_links(conn: sqlite3.Connection) -> None:
+    _begin_migration_script(conn, """
+        CREATE TABLE recording_links (
+            id INTEGER PRIMARY KEY,
+            source_card_id INTEGER NOT NULL CHECK(source_card_id > 0),
+            source_content_id TEXT,
+            source_kind TEXT NOT NULL CHECK(source_kind IN ('card','pdf','epub')),
+            source_position INTEGER NOT NULL CHECK(source_position BETWEEN 0 AND 1000000),
+            source_json TEXT NOT NULL CHECK(length(source_json) <= 16000),
+            recording_card_id INTEGER NOT NULL CHECK(recording_card_id > 0),
+            recording_content_id TEXT,
+            start REAL NOT NULL CHECK(start >= 0 AND start <= 604800),
+            end REAL CHECK(end IS NULL OR (end > start AND end <= 604800)),
+            label TEXT NOT NULL CHECK(length(label) BETWEEN 1 AND 240)
+        );
+        CREATE INDEX recording_links_source ON recording_links(source_card_id,source_kind,source_position);
+        CREATE INDEX recording_links_source_content ON recording_links(source_content_id,source_kind,source_position);
+        CREATE INDEX recording_links_recording ON recording_links(recording_card_id);
+        CREATE INDEX recording_links_recording_content ON recording_links(recording_content_id);
+        CREATE INDEX pdf_card_sources_note ON pdf_card_sources(note_id,id);
+        CREATE INDEX epub_card_sources_note ON epub_card_sources(note_id,id);
+    """)
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
@@ -824,6 +848,7 @@ _SCHEMA_MIGRATIONS = (
     (17, "highlight_document_indexes", _migration_17_highlight_document_indexes),
     (18, "epub_connections", _migration_18_epub_connections),
     (19, "search_fts_keys", _migration_19_search_fts_keys),
+    (20, "recording_links", _migration_20_recording_links),
 )
 
 

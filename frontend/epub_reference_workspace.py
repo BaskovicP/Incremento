@@ -85,9 +85,10 @@ class _ReferencePage(reader._EpubDockPage):
 
 
 class EpubReferenceWindow(QDockWidget):
-    def __init__(self, result, location, *, profile, owner=None, beside=False, on_choose=None):
+    def __init__(self, result, location, *, profile, owner=None, beside=False, on_choose=None, embedded=False):
         snapshot, self.limit, self.highlights, self.scale, self.anchor = result
-        super().__init__(snapshot['title'], mw)
+        super().__init__(snapshot['title'], owner if embedded else mw)
+        self.embedded = embedded
         self.snapshot, self.location, self.profile = snapshot, dict(location), profile
         self.owner, self.on_choose = owner, on_choose
         self.generation, self.closed, self.loaded = _generation, False, False
@@ -159,18 +160,23 @@ class EpubReferenceWindow(QDockWidget):
         button(t('reader_highlight'), lambda: self.js('window.incrementoAddEpubHighlight();'))
         button(t('reader_bookmark'), self.bookmark)
         button(t('reader_read_to_here'), self.mark_read)
-        button(t('reader_reference_pin'), self.pin)
+        if not embedded:
+            button(t('reader_reference_pin'), self.pin)
         if on_choose:
             self.choose_button = button(t('reader_epub_use_passage'), lambda: self.capture(self.choose))
             self.choose_button.setEnabled(False)
         layout.addWidget(toolbar)
         self.setWidget(host)
-        mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
-        self.setFloating(not beside)
-        if beside:
-            self.pin()
+        if embedded:
+            self.setTitleBarWidget(QWidget(self))
+            self.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
         else:
-            self.resize(760, 700)
+            mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
+            self.setFloating(not beside)
+            if beside:
+                self.pin()
+            else:
+                self.resize(760, 700)
         self.load()
 
     def current(self):
@@ -272,8 +278,10 @@ class EpubReferenceWindow(QDockWidget):
         self.js(f'window.incrementoSetEpubClickableLinks({json.dumps(self.links_enabled)});')
 
     def pin(self):
+        if getattr(self, 'embedded', False):
+            return
         for window in list(_windows):
-            if window is not self and not window.isFloating():
+            if window is not self and not getattr(window, 'embedded', False) and not window.isFloating():
                 window.close()
         self.setFloating(False)
         if self.owner is not None and self.owner is not self:
@@ -305,10 +313,24 @@ class EpubReferenceWindow(QDockWidget):
             html = reader.epub_anchor_link_html(card_id=value['cardId'], section_index=value['sectionIndex'],
                 focus_offset=value['focusOffset'], scroll_ratio=value['scrollRatio'], label=self.snapshot['title'])
             return reader.set_reader_anchor_clipboard(html, self.snapshot['title'])
+        def populate(menu, value):
+            if not self.current() or not isinstance(value, dict) or value.get('cardId') != self.location['card_id']:
+                return
+            try:
+                from .recording_link_dialog import add_context_actions
+            except ImportError:
+                from recording_link_dialog import add_context_actions
+            try:
+                source = normalize_location(dict(card_id=value['cardId'], section=value['sectionIndex'],
+                    offset=value['focusOffset'], scroll=value['scrollRatio']))
+            except (KeyError, ValueError):
+                return
+            add_context_actions(menu, dict(source, kind='epub', quote=str(self.view.selectedText() or '')[:2000]),
+                                owner=self, is_current=self.current)
         reader.show_reader_anchor_context_menu(self.view, position,
             resolver_script=f'window.incrementoEpubAnchorAtPoint({position.x()}, {position.y()});',
             on_copy=copy, run_javascript=lambda script, callback: self.js(script, callback),
-            action_label=t('reader_copy_link_to_place'))
+            action_label=t('reader_copy_link_to_place'), populate_menu=populate)
 
     def command(self, message):
         if not self.current() or not self.loaded or ':' not in message:
@@ -483,7 +505,7 @@ def open_reference(location, *, owner=None, beside=False, is_current=lambda: Tru
             return
         host = owner.owner if owner in _windows else owner
         for window in list(_windows):
-            if window.isFloating() != beside:
+            if not getattr(window, 'embedded', False) and window.isFloating() != beside:
                 window.close()
         window = EpubReferenceWindow(result, location, profile=profile, owner=host,
                                      beside=beside, on_choose=on_choose)
@@ -612,10 +634,25 @@ def show_connections(location, *, owner=None, is_current=lambda: True):
             choose_reference(owner=owner, callback=chosen, is_current=valid)
         actions = QWidget(dialog)
         flow = reader._FlowLayout(actions, margin=0, h_spacing=6, v_spacing=5)
+        def recording_action(create):
+            try:
+                from .recording_link_dialog import open_link_dialog
+                from .study_workspace import show_resources
+            except ImportError:
+                from recording_link_dialog import open_link_dialog
+                from study_workspace import show_resources
+            if valid():
+                recording_source = dict(source, kind='epub')
+                if create:
+                    open_link_dialog(recording_source, owner=dialog, is_current=valid)
+                else:
+                    show_resources(recording_source)
         for label, callback in ((t('reader_reference_open'), open_main),
                                 (t('reader_epub_reference_preview'), lambda: preview(False)),
                                 (t('reader_reference_pin'), lambda: preview(True)),
                                 (t('reader_epub_link_passage'), add), (t('reader_reference_remove'), remove),
+                                (t('study_link_recording'), lambda: recording_action(True)),
+                                (t('study_resources'), lambda: recording_action(False)),
                                 (t('reader_close'), dialog.close)):
             button = QPushButton(label, actions)
             button.clicked.connect(lambda checked=False, action=callback: action())
