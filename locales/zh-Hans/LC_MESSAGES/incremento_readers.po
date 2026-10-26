@@ -4182,3 +4182,15 @@ msgstr "管理关联…"
 
 msgid "study_retry"
 msgstr "重试"
+
+msgid "study_focus_textbook"
+msgstr "专注教材"
+
+msgid "study_focus_video"
+msgstr "专注视频"
+
+msgid "study_exit_focus"
+msgstr "退出专注（Esc）"
+
+msgid "study_focus_hint"
+msgstr "全屏显示当前视图。按 Esc 返回学习工作区。"

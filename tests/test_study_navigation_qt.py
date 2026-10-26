@@ -57,7 +57,7 @@ class Reader(QtWidgets.QWidget):
         self.state = types.SimpleNamespace(card_id=12, page=6, scroll_ratio=.4, zoom=1.5)
         self.view = QtWidgets.QTextEdit('Original passage', self)
 class Player(QtWidgets.QWidget):
-    def __init__(self, parent): super().__init__(parent); self.paused=True; self.loads=0; self.pos=0
+    def __init__(self, parent, **kw): super().__init__(parent); self.paused=True; self.loads=0; self.pos=0
     def load(self, recording, **kw): self.loads+=1; self.pos=kw['start']; self.paused=True
     def pause(self): self.paused=True
     def dispose(self): self.pause()
@@ -365,6 +365,12 @@ def test_native_stage_bar_fits_large_text_and_translated_labels(tmp_path):
                     assert w.rect().contains(QtCore.QRect(button.mapTo(w,QtCore.QPoint(0,0)),button.size()))
                 assert w.stage_buttons['book'].isChecked()
                 assert w.grab(QtCore.QRect(0,0,w.width(),150)).save(str(Path(preview_dir)/f'native-{locale}-{dark}.png'))
+                w.focus_book.click(); app.processEvents()
+                assert w.width() <= 800, (locale, w.width())
+                for button in [*w.stage_buttons.values(), w.exit_focus]:
+                    assert button.isVisible()
+                    assert button.width() >= button.fontMetrics().horizontalAdvance(button.text())+16
+                    assert w.rect().contains(QtCore.QRect(button.mapTo(w,QtCore.QPoint(0,0)),button.size()))
                 w.close(); app.processEvents()
     '''))
 

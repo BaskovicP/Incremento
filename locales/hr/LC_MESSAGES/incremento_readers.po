@@ -4258,3 +4258,15 @@ msgstr "Upravljaj poveznicama…"
 
 msgid "study_retry"
 msgstr "Pokušaj ponovno"
+
+msgid "study_focus_textbook"
+msgstr "Fokus na udžbenik"
+
+msgid "study_focus_video"
+msgstr "Fokus na video"
+
+msgid "study_exit_focus"
+msgstr "Izađi iz fokusa (Esc)"
+
+msgid "study_focus_hint"
+msgstr "Prikaži samo ovaj prikaz preko cijelog zaslona. Esc vraća radni prostor."

@@ -4220,3 +4220,15 @@ msgstr "Manage links…"
 
 msgid "study_retry"
 msgstr "Retry"
+
+msgid "study_focus_textbook"
+msgstr "Focus textbook"
+
+msgid "study_focus_video"
+msgstr "Focus video"
+
+msgid "study_exit_focus"
+msgstr "Exit focus (Esc)"
+
+msgid "study_focus_hint"
+msgstr "Show only this view in full screen. Esc returns to the workspace."

@@ -21,8 +21,9 @@ def timestamp(seconds):
 
 
 class RecordingPlayer(QWidget):
-    def __init__(self, parent=None, *, media_factory=None):
+    def __init__(self, parent=None, *, media_factory=None, compact=False):
         super().__init__(parent)
+        self.compact = compact
         self.recording = None
         self.media = None
         self.ready = False
@@ -30,6 +31,8 @@ class RecordingPlayer(QWidget):
         self.segment_finished = False
         self.enforce_end = True
         layout = QVBoxLayout(self)
+        if compact:
+            layout.setContentsMargins(0, 0, 0, 0)
         self.status = QLabel(t('study_player_paused'), self)
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
@@ -58,7 +61,7 @@ class RecordingPlayer(QWidget):
         self.play.clicked.connect(self.toggle_play)
         controls.addWidget(self.play)
         self.time = QLabel(self)
-        controls.addWidget(self.time)
+        controls.addWidget(self.time, 1 if compact else 0)
         self.speed = QComboBox(self)
         self.speed.setAccessibleName(t('study_speed'))
         for rate in (.75, 1., 1.25, 1.5, 2.):
@@ -88,6 +91,10 @@ class RecordingPlayer(QWidget):
         self.media.playbackStateChanged.connect(self.playback_changed)
         self.media.errorOccurred.connect(lambda *_: self.fail())
 
+    def _status(self, text, *, routine=False):
+        self.status.setText(text)
+        self.status.setVisible(not (self.compact and routine))
+
     def load(self, recording, *, start=0., end=None):
         if self.media is None:
             return
@@ -101,7 +108,7 @@ class RecordingPlayer(QWidget):
         self.play.setEnabled(False)
         self.video.setVisible(recording['kind'] == 'video')
         self.setMaximumHeight(190 if recording['kind'] == 'audio' else 16_777_215)
-        self.status.setText(t('study_loading'))
+        self._status(t('study_loading'))
         self.media.setSource(QUrl.fromLocalFile(recording['path']))
 
     def loaded(self, status):
@@ -118,7 +125,7 @@ class RecordingPlayer(QWidget):
                     self.ready = True
                     self.media.setPosition(round(self.start * 1000))
                     self.play.setEnabled(True)
-                    self.status.setText(t('study_player_paused'))
+                    self._status(t('study_player_paused'), routine=True)
                     self.position_changed(self.media.position())
 
     def duration_changed(self, duration):
@@ -133,7 +140,7 @@ class RecordingPlayer(QWidget):
             self.enforce_end = False
             self.segment_finished = True
             self.finished_controls.show()
-            self.status.setText(t('study_segment_finished'))
+            self._status(t('study_segment_finished'))
 
     def playback_changed(self, state):
         from PyQt6.QtMultimedia import QMediaPlayer
@@ -148,7 +155,7 @@ class RecordingPlayer(QWidget):
         except (OSError, ValueError):
             self.fail()
             return
-        self.status.setText(self.recording['title'])
+        self._status(self.recording['title'], routine=True)
         self.media.play()
 
     def toggle_play(self):
@@ -181,7 +188,7 @@ class RecordingPlayer(QWidget):
         self.pause()
         self.ready = False
         self.play.setEnabled(False)
-        self.status.setText(t('study_recording_unavailable'))
+        self._status(t('study_recording_unavailable'))
 
     def position(self):
         return self.media.position() / 1000 if self.media is not None else 0.

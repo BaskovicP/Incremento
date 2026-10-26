@@ -5,8 +5,8 @@ from threading import Event
 
 from aqt import mw
 from aqt.operations import QueryOp
-from aqt.qt import (QButtonGroup, QDialog, QFrame, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-                    QPushButton, QScrollArea, QSize, QSplitter, QTimer, QVBoxLayout, QWidget, Qt)
+from aqt.qt import (QButtonGroup, QDialog, QFrame, QHBoxLayout, QKeySequence, QLabel, QListWidget, QListWidgetItem,
+                    QPushButton, QScrollArea, QShortcut, QSize, QSplitter, QTimer, QVBoxLayout, QWidget, Qt)
 
 try:
     from ..backend.anki_compat import pause_reviewer_auto_advance
@@ -20,6 +20,7 @@ try:
     from .study_navigation import reviewer_navigation_script, set_stage_icon, style_stage_bar
     from .study_surface import StudySurface
     from .study_availability import card_availability, resource_availability
+    from .study_focus import StudyFocus
 except ImportError:
     from backend.anki_compat import pause_reviewer_auto_advance
     from backend.i18n import t
@@ -31,6 +32,7 @@ except ImportError:
     from frontend.study_navigation import reviewer_navigation_script, set_stage_icon, style_stage_bar
     from frontend.study_surface import StudySurface
     from frontend.study_availability import card_availability, resource_availability
+    from frontend.study_focus import StudyFocus
 
 _ADDON_DIR = str(Path(__file__).resolve().parent.parent)
 _window = None
@@ -83,12 +85,16 @@ class StudyWorkspace(QDialog):
         self._resume_auto_advance = lambda: None
         self._recording_summary = None
         self.surface = StudySurface(mw, self)
+        self.focus_stage = None
+        self.focus_screen = StudyFocus(self, mw)
+        self._pane_mode = None
+        self._pane_sizes = {}
         # Leave the existing web document intact, including the question/answer side.
         self._suspend_reviewer()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(16)
-        header_panel = QFrame(self)
+        header_panel = self.header_panel = QFrame(self)
         header_panel.setObjectName('study-header')
         header = QHBoxLayout(header_panel)
         header.setContentsMargins(16, 12, 16, 12)
@@ -130,6 +136,16 @@ class StudyWorkspace(QDialog):
         self.breadcrumb = QLabel('', self)
         self.breadcrumb.setWordWrap(True)
         header.addWidget(self.breadcrumb, 1)
+        header.addStretch(1)
+        self.exit_focus = QPushButton(t('study_exit_focus'), self)
+        self.exit_focus.setAutoDefault(False)
+        self.exit_focus.clicked.connect(self.leave_focus)
+        header.addWidget(self.exit_focus)
+        self.exit_focus.hide()
+        self.focus_escape = QShortcut(QKeySequence('Esc'), self)
+        self.focus_escape.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self.focus_escape.activated.connect(self.leave_focus)
+        self.focus_escape.setEnabled(False)
         layout.addWidget(header_panel)
         self.context_panel = QFrame(self)
         self.context_panel.setObjectName('study-context')
@@ -167,8 +183,19 @@ class StudyWorkspace(QDialog):
         self.book_title.setWordWrap(True)
         self.book_position = QLabel('', self.book_host)
         self.book_position.setObjectName('study-panel-detail')
-        self.book_layout.addWidget(self.book_title)
-        self.book_layout.addWidget(self.book_position)
+        book_heading = QHBoxLayout()
+        book_copy = QVBoxLayout()
+        book_copy.setSpacing(3)
+        book_copy.addWidget(self.book_title)
+        book_copy.addWidget(self.book_position)
+        book_heading.addLayout(book_copy, 1)
+        self.focus_book = QPushButton(t('study_focus_textbook'), self.book_host)
+        self.focus_book.setObjectName('study-focus-textbook')
+        self.focus_book.setAutoDefault(False)
+        self.focus_book.setToolTip(t('study_focus_hint'))
+        self.focus_book.clicked.connect(lambda: self.enter_focus('book'))
+        book_heading.addWidget(self.focus_book)
+        self.book_layout.addLayout(book_heading)
         self.splitter.addWidget(self.book_host)
         self.book_host.hide()
         self.side = QWidget(self)
@@ -186,8 +213,18 @@ class StudyWorkspace(QDialog):
         self.player_segment = QLabel('', self.play_host)
         self.player_segment.setObjectName('study-panel-detail')
         self.player_segment.setWordWrap(True)
-        player_layout.addWidget(self.player_title)
-        player_layout.addWidget(self.player_segment)
+        player_heading = QHBoxLayout()
+        player_copy = QVBoxLayout()
+        player_copy.setSpacing(3)
+        player_copy.addWidget(self.player_title)
+        player_copy.addWidget(self.player_segment)
+        player_heading.addLayout(player_copy, 1)
+        self.focus_video = QPushButton(t('study_focus_video'), self.play_host)
+        self.focus_video.setAutoDefault(False)
+        self.focus_video.setToolTip(t('study_focus_hint'))
+        self.focus_video.clicked.connect(lambda: self.enter_focus('video'))
+        player_heading.addWidget(self.focus_video)
+        player_layout.addLayout(player_heading)
         player_body = QWidget(self.play_host)
         self.play_layout = QVBoxLayout(player_body)
         self.play_layout.setContentsMargins(0, 0, 0, 0)
@@ -243,7 +280,11 @@ class StudyWorkspace(QDialog):
             button.clicked.connect(fn)
             actions.addWidget(button)
         resources_layout.addLayout(actions)
-        side.addWidget(self.resource_panel, 1)
+        self.resource_scroll = QScrollArea(self.side)
+        self.resource_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.resource_scroll.setWidgetResizable(True)
+        self.resource_scroll.setWidget(self.resource_panel)
+        side.addWidget(self.resource_scroll, 1)
         self.splitter.addWidget(self.side)
         self.splitter.setStretchFactor(0, 3)
         self.splitter.setStretchFactor(1, 2)
@@ -282,7 +323,8 @@ class StudyWorkspace(QDialog):
             QListWidget#study-resource-list::item {{ background: {c['surface']}; border: 1px solid {c['border']}; border-radius: 8px; padding: 10px; }}
             QListWidget#study-resource-list::item:selected {{ background: {c['selected']}; color: {c['accent']}; border-color: {c['accent']}; }}
             QFrame#study-resource-panel QPushButton, QFrame#study-player-panel QPushButton,
-            QFrame#study-context QPushButton, QPushButton#study-more-resources {{ padding: 7px 12px; border: 1px solid {c['border']}; border-radius: 6px; background: {c['paper']}; color: {c['ink']}; }}
+            QFrame#study-context QPushButton, QPushButton#study-more-resources,
+            QPushButton#study-focus-textbook, QFrame#study-header > QPushButton {{ padding: 5px 10px; border: 1px solid {c['border']}; border-radius: 6px; background: {c['paper']}; color: {c['ink']}; }}
             QFrame#study-resource-panel QPushButton#study-open-resource {{ background: {c['selected']}; color: {c['accent']}; font-weight: 600; }}
             QFrame#study-resource-panel QPushButton:hover, QFrame#study-player-panel QPushButton:hover,
             QFrame#study-context QPushButton:hover, QPushButton#study-more-resources:hover {{ border-color: {c['accent']}; }}
@@ -307,10 +349,47 @@ class StudyWorkspace(QDialog):
             self._adapt_panels()
 
     def _adapt_panels(self):
+        if self.focus_stage is not None:
+            return
         orientation = Qt.Orientation.Vertical if self.width() < 880 else Qt.Orientation.Horizontal
-        if self.splitter.orientation() != orientation:
+        mode = (orientation, self.visit.stage)
+        if mode != self._pane_mode:
+            if self._pane_mode is not None and all(self.splitter.sizes()):
+                self._pane_sizes[self._pane_mode] = self.splitter.sizes()
             self.splitter.setOrientation(orientation)
-            self.splitter.setSizes([500, 400])
+            self.splitter.setSizes(self._pane_sizes.get(mode, [380, 620] if self.visit.stage == 'video' else [740, 260]))
+            self._pane_mode = mode
+
+    def enter_focus(self, stage):
+        if (not self.current() or self.focus_stage is not None
+                or stage not in ('book', 'video')
+                or (self.reader if stage == 'book' else self.player) is None):
+            return
+        if stage != self.visit.stage:
+            self.navigate(stage)
+        self._focus_sizes = self.splitter.sizes()
+        self._focus_scroll = self.content_scroll.verticalScrollBar().value()
+        self.focus_stage = stage
+        self._sync_panels()
+        self.focus_screen.enter()
+        self.focus_escape.setEnabled(True)
+        (self.reader.view if stage == 'book' else self.player).setFocus()
+
+    def leave_focus(self):
+        if self.focus_stage is None:
+            return
+        self.focus_escape.setEnabled(False)
+        self.focus_screen.leave()
+        self.focus_stage = None
+        self._sync_panels()
+        self.splitter.setSizes(self._focus_sizes)
+        self.content_scroll.verticalScrollBar().setValue(self._focus_scroll)
+
+    def reject(self):
+        if self.focus_stage is not None:
+            self.leave_focus()
+        else:
+            super().reject()
 
     def _sync_panels(self, *_):
         states = self.availability()
@@ -321,20 +400,35 @@ class StudyWorkspace(QDialog):
             button.setToolTip(t('study_no_active_card') if stage == 'card' and state['disabled'] else state['status'])
             self.stage_status[stage].setText(state['status'])
         video = self.visit.stage == 'video' and self.player is not None
+        focused = self.focus_stage is not None
+        self.exit_focus.setVisible(focused)
+        self.context_panel.setVisible(bool(self.visit.card_id) and not focused)
+        self.status.setVisible(not focused)
+        self.breadcrumb.setVisible(not focused)
+        for label in self.stage_status.values():
+            label.setVisible(not focused)
+        self.focus_book.setVisible(not focused)
+        self.focus_video.setVisible(not focused)
+        self.layout().setContentsMargins(*((8, 6, 8, 6) if focused else (20, 16, 20, 16)))
+        self.layout().setSpacing(6 if focused else 16)
+        self.header_panel.layout().setContentsMargins(*((8, 4, 8, 4) if focused else (16, 12, 16, 12)))
         self.play_host.setVisible(video)
-        self.back_passage.setVisible(video and self.reader is not None)
-        self.book_host.setVisible(self.reader is not None)
-        self.more_resources.setVisible(video)
-        self.resource_panel.setVisible(not video or self.more_resources.isChecked())
+        self.back_passage.setVisible(video and self.reader is not None and not focused)
+        self.book_host.setVisible(self.reader is not None and self.focus_stage != 'video')
+        self.side.setVisible(self.focus_stage != 'book')
+        self.more_resources.setVisible(video and not focused)
+        self.resource_scroll.setVisible(not focused and (not video or self.more_resources.isChecked()))
+        self.resource_scroll.setMaximumHeight(240 if video else 16777215)
         chooser = self.reader is None and not video
-        self.resource_panel.setMaximumWidth(640 if chooser else 16777215)
-        self.side.layout().setAlignment(self.resource_panel,
+        self.resource_scroll.setMaximumWidth(640 if chooser else 16777215)
+        self.side.layout().setAlignment(self.resource_scroll,
             Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop if chooser else Qt.AlignmentFlag(0))
         self.resources.setVisible(bool(self._items))
         self.resources.setMaximumHeight(200 if video else 360 if chooser else 16777215)
         self.open_resource.setEnabled(bool(self._items))
         self.resource_intro.setText(t('study_card_hint') if self._items else
             t('study_no_textbooks' if self.source['kind'] == 'card' and self.visit.stage == 'book' else 'study_no_recordings'))
+        self._adapt_panels()
 
     def availability(self):
         return dict(card=card_availability(bool(self.visit.card_id)),
@@ -371,6 +465,8 @@ class StudyWorkspace(QDialog):
         self._resume_auto_advance = lambda: None
 
     def _set_stage(self, stage):
+        if self.focus_stage is not None and stage != self.focus_stage:
+            self.leave_focus()
         self.visit.navigate(stage)
         self.stage_buttons[stage].setChecked(True)
         if stage != 'card':
@@ -459,6 +555,7 @@ class StudyWorkspace(QDialog):
                 if channel == 'resources':
                     self._resources_failed = True
                     self._sync_panels()
+                self.status.show()
         QueryOp(parent=mw, op=run, success=done).failure(failed).run_in_background()
 
     def refresh(self, *, navigate_to=None):
@@ -591,7 +688,7 @@ class StudyWorkspace(QDialog):
         profile = self.visit.profile
         def ready(recording):
             if self.player is None:
-                self.player = RecordingPlayer(self)
+                self.player = RecordingPlayer(self, compact=True)
                 self.play_layout.addWidget(self.player)
             self.player.load(recording, start=item['start'], end=item['end'])
             self.player_title.setText(recording.get('title') or t('study_tab_video'))
@@ -693,6 +790,7 @@ class StudyWorkspace(QDialog):
         self.timer.stop()
         for cancelled in self._requests.values():
             cancelled.set()
+        self.leave_focus()
         self.surface.leave(detach=True)
         if self.player:
             self.player.dispose()

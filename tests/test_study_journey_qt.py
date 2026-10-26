@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 from textwrap import dedent
+import pytest
 
 
 def test_reference_visit_restores_reviewer_and_rejects_stale_navigation():
@@ -55,7 +56,7 @@ def test_reference_visit_restores_reviewer_and_rejects_stale_navigation():
                 self.state = types.SimpleNamespace(card_id=12, page=6, scroll_ratio=.4)
                 self.view = QtWidgets.QTextEdit('Original passage', self)
         class Player(QtWidgets.QWidget):
-            def __init__(self, parent): super().__init__(parent); self.paused=True
+            def __init__(self, parent, **kw): super().__init__(parent); self.paused=True
             def load(self, recording, **kw): self.recording=recording; self.start=kw['start']; self.paused=True
             def pause(self): self.paused=True
             def dispose(self): self.pause()
@@ -93,7 +94,8 @@ def test_reference_visit_restores_reviewer_and_rejects_stale_navigation():
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_segment_player_starts_paused_and_stops_once_at_segment_end():
+@pytest.mark.parametrize('compact', [False, True])
+def test_segment_player_starts_paused_and_stops_once_at_segment_end(compact):
     script = dedent('''
         import sys, types, tempfile
         from pathlib import Path
@@ -126,25 +128,33 @@ def test_segment_player_starts_paused_and_stops_once_at_segment_end():
             def setPlaybackRate(self, v): pass
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/'lecture.mp4'; path.write_bytes(b'synthetic')
-            player=ui.RecordingPlayer(media_factory=Decoder)
+            compact = sys.argv[1] == 'compact'
+            player=ui.RecordingPlayer(media_factory=Decoder, **({'compact': True} if compact else {}))
+            player.resize(800,600); player.show()
             record=dict(path=str(path), title='Lecture', kind='video', signature=ui.file_signature(path))
             player.load(record, start=12, end=18)
+            assert player.status.isVisible(), 'Loading must remain visible in either layout'
             player.media.mediaStatusChanged.emit(QMediaPlayer.MediaStatus.LoadedMedia)
             assert player.media.pos == 12000 and player.media.plays == 0
+            assert player.status.isVisible() is not compact, 'Compact playback already has a panel title'
             player.toggle_play(); assert player.media.plays == 1
+            assert player.status.isVisible() is not compact
             player.media.positionChanged.emit(18000)
             assert player.media.playbackState() == QMediaPlayer.PlaybackState.PausedState
             assert player.segment_finished
+            assert player.status.isVisible() and player.finished_controls.isVisible()
             player.continue_recording(); assert player.media.plays == 2
+            assert player.status.isVisible() is not compact
             player.media.positionChanged.emit(19000)
             assert player.media.playbackState() == QMediaPlayer.PlaybackState.PlayingState
             player.replay(); assert player.media.pos == 12000 and not player.segment_finished
             path.write_bytes(b'changed file')
             player.pause(); player.toggle_play()
             assert player.media.plays == 3, 'A replaced file must not play until reopened'
+            assert player.status.isVisible() and not player.play.isEnabled()
             player.dispose()
     ''')
-    result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
+    result = subprocess.run([sys.executable, '-c', script, 'compact' if compact else 'normal'], cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
 

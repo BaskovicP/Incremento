@@ -32892,6 +32892,38 @@
     },
     {
       "component": "addon",
+      "key": "study_exit_focus",
+      "form": "",
+      "source": "Exit focus (Esc)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_focus_hint",
+      "form": "",
+      "source": "Show only this view in full screen. Esc returns to the workspace.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_focus_textbook",
+      "form": "",
+      "source": "Focus textbook",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_focus_video",
+      "form": "",
+      "source": "Focus video",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "study_import_audio",
       "form": "",
       "source": "Import audio…",
