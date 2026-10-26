@@ -208,16 +208,52 @@ def test_multiple_recordings_offer_a_choice_and_textbook_only_visits_explain_mis
     ''')
 
 
+def test_native_stage_bar_fits_large_text_and_translated_labels(tmp_path):
+    run_scene(f"preview_dir={str(tmp_path)!r}\n" + dedent('''
+        from backend.i18n import initialize_language
+        from pathlib import Path
+        app.setStyle('Fusion')
+        font=app.font(); font.setPointSize(18); app.setFont(font)
+        for dark in (False,True):
+            palette=QtGui.QPalette()
+            for role,color in ((QtGui.QPalette.ColorRole.Window,'#2b2b2b' if dark else '#fafafa'),
+                               (QtGui.QPalette.ColorRole.Button,'#36383d' if dark else '#f3f4f6'),
+                               (QtGui.QPalette.ColorRole.WindowText,'#eeeeee' if dark else '#30343a'),
+                               (QtGui.QPalette.ColorRole.ButtonText,'#eeeeee' if dark else '#30343a')):
+                palette.setColor(role,QtGui.QColor(color))
+            app.setPalette(palette)
+            for locale in ('en','hr','zh-Hans'):
+                initialize_language(locale)
+                ui.show_resources(source); w=ui._window; drain()
+                w.resize(800,600); app.processEvents()
+                assert w.width() <= 800, (locale,w.width())
+                for button in w.stage_buttons.values():
+                    assert not button.icon().isNull()
+                    icon=button.icon().pixmap(32,32).toImage()
+                    assert all(icon.pixelColor(icon.width()-1,y).alpha()==0 for y in range(icon.height())), 'Icon is clipped at its right edge'
+                    assert all(icon.pixelColor(x,icon.height()-1).alpha()==0 for x in range(icon.width())), 'Icon is clipped at its lower edge'
+                    assert button.isVisible()
+                    assert button.width() >= button.fontMetrics().horizontalAdvance(button.text())+16
+                    assert w.rect().contains(QtCore.QRect(button.mapTo(w,QtCore.QPoint(0,0)),button.size()))
+                assert w.stage_buttons['book'].isChecked()
+                assert w.grab(QtCore.QRect(0,0,w.width(),150)).save(str(Path(preview_dir)/f'native-{locale}-{dark}.png'))
+                w.close(); app.processEvents()
+    '''))
+
+
 def test_reviewer_navigation_buttons_dispatch_from_real_webengine_without_replacing_the_card():
     script = dedent('''
-        from PyQt6.QtCore import QCoreApplication, QEvent, QEventLoop, QTimer
+        from PyQt6.QtCore import QCoreApplication, QEvent, QEventLoop, QTimer, Qt
         from PyQt6.QtWidgets import QApplication
         from PyQt6.QtQuick import QQuickWindow, QSGRendererInterface
         from PyQt6.QtWebEngineWidgets import QWebEngineView
         from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
         from frontend.study_navigation import reviewer_navigation_script
+        QCoreApplication.setAttribute(Qt.ApplicationAttribute.AA_UseSoftwareOpenGL)
         QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.Software)
         app=QApplication(['study-navigation-test'])
+        # Keep a real viewport with Anki's software graphics configuration.
+        # The view remains unshown, so it never interrupts the user's desktop.
         view=QWebEngineView(); view.resize(800,400)
         profile=QWebEngineProfile(view)
         page=QWebEnginePage(profile,view); view.setPage(page)
@@ -232,7 +268,7 @@ def test_reviewer_navigation_buttons_dispatch_from_real_webengine_without_replac
             return results[0]
         def load(done):
             page.loadFinished.connect(done)
-            page.setHtml('<p id="question">Original question</p>')
+            page.setHtml('<div id="qa"><p id="question">Original question</p></div>')
         assert wait(load)
         def js(source): return wait(lambda done: page.runJavaScript(source,done))
         js('window.commands=[]; window.pycmd=(message)=>commands.push(message);')
@@ -241,6 +277,7 @@ def test_reviewer_navigation_buttons_dispatch_from_real_webengine_without_replac
         script=reviewer_navigation_script(routes,'Study resources')
         js(script); js(script)
         assert js("document.querySelectorAll('#incremento-study-navigation').length") == 1
+        assert js("Boolean(document.getElementById('incremento-study-navigation').compareDocumentPosition(document.getElementById('qa')) & Node.DOCUMENT_POSITION_FOLLOWING)"), 'Study navigation belongs above the card'
         assert js("Array.from(document.querySelectorAll('#incremento-study-navigation button'),b=>b.textContent)")==['Card','Textbook','Video']
         assert js("document.querySelector('[aria-current=step]').dataset.studyStage")=='card'
         for stage in ('card','book','video'):
@@ -261,9 +298,9 @@ def test_reviewer_navigation_buttons_dispatch_from_real_webengine_without_replac
         QCoreApplication.sendPostedEvents(None,QEvent.Type.DeferredDelete)
     ''')
     result = subprocess.run([sys.executable, '-X', 'faulthandler', '-c', script], cwd=Path(__file__).resolve().parents[1],
-        # No native compositor is available on offscreen macOS. Exercise the
-        # real DOM and button commands with Chromium rendering disabled.
-        env={**os.environ, 'QT_QPA_PLATFORM': 'minimal', 'QTWEBENGINE_DISABLE_SANDBOX': '1',
-             'QTWEBENGINE_CHROMIUM_FLAGS': '--disable-gpu --disable-gpu-compositing --disable-software-rasterizer --use-gl=disabled'},
+        # Use software compositing, as in the editor WebEngine regression.
+        # Disabling the software rasterizer too leaves macOS without a surface.
+        env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen', 'QTWEBENGINE_DISABLE_SANDBOX': '1',
+             'QTWEBENGINE_CHROMIUM_FLAGS': '--disable-gpu --disable-gpu-compositing'},
         capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stdout + result.stderr

@@ -17,7 +17,7 @@ try:
                                           resolve_link_rows)
     from .study_visit import StudyVisit
     from .recording_player import RecordingPlayer, timestamp
-    from .study_navigation import reviewer_navigation_script
+    from .study_navigation import reviewer_navigation_script, set_stage_icon, style_stage_bar
 except ImportError:
     from backend.anki_compat import pause_reviewer_auto_advance
     from backend.i18n import t
@@ -26,7 +26,7 @@ except ImportError:
     from backend.study_resources import load_card_resources, resolve_document, resolve_recording, resolve_link_rows
     from frontend.study_visit import StudyVisit
     from frontend.recording_player import RecordingPlayer, timestamp
-    from frontend.study_navigation import reviewer_navigation_script
+    from frontend.study_navigation import reviewer_navigation_script, set_stage_icon, style_stage_bar
 
 _ADDON_DIR = str(Path(__file__).resolve().parent.parent)
 _window = None
@@ -73,14 +73,19 @@ class StudyWorkspace(QDialog):
         # Leave the existing web document intact, including the question/answer side.
         self._suspend_reviewer()
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 16, 20, 20)
+        layout.setSpacing(14)
         header = QHBoxLayout()
+        header.setSpacing(16)
+        self.stage_bar = QWidget(self)
+        stages = QHBoxLayout(self.stage_bar)
+        stages.setContentsMargins(5, 5, 5, 5)
+        stages.setSpacing(4)
         self.stage_buttons = {}
         self.stage_group = QButtonGroup(self)
         self.stage_group.setExclusive(True)
         for stage, key in (('card', 'study_tab_card'), ('book', 'study_tab_textbook'), ('video', 'study_tab_video')):
-            if self.stage_buttons:
-                header.addWidget(QLabel('→', self))
-            button = QPushButton(t(key), self)
+            button = QPushButton(t(key), self.stage_bar)
             button.setObjectName('study-stage-' + stage)
             button.setAccessibleName(t(key))
             button.setCheckable(True)
@@ -88,7 +93,10 @@ class StudyWorkspace(QDialog):
             button.clicked.connect(lambda _=False, stage=stage: self.navigate(stage))
             self.stage_group.addButton(button)
             self.stage_buttons[stage] = button
-            header.addWidget(button)
+            stages.addWidget(button)
+        self._stage_colors = style_stage_bar(self.stage_bar, self.stage_buttons)
+        self._recording_icon = 'video'
+        header.addWidget(self.stage_bar)
         self.stage_buttons['card'].setEnabled(bool(self.visit.card_id))
         if not self.visit.card_id:
             self.stage_buttons['card'].setToolTip(t('study_no_active_card'))
@@ -392,6 +400,8 @@ class StudyWorkspace(QDialog):
             self.player.load(recording, start=item['start'], end=item['end'])
             self.stage_buttons['video'].setText(t('study_tab_audio' if recording.get('kind') == 'audio' else 'study_tab_video'))
             self.stage_buttons['video'].setAccessibleName(self.stage_buttons['video'].text())
+            self._recording_icon = 'audio' if recording.get('kind') == 'audio' else 'video'
+            set_stage_icon(self.stage_buttons['video'], self._recording_icon, self._stage_colors)
             self._set_stage('video')
             self.status.setText(t('study_player_paused'))
         self.submit(lambda col: resolve_recording(_ADDON_DIR, profile, col, item['recording_card_id']),
@@ -542,7 +552,8 @@ def refresh_reviewer_navigation():
         return
     command = 'incremento_study:' + _review_token
     if _window is not None and _window.current():
-        routes = [dict(stage=stage, label=button.text(), command=command + ':' + stage, current=stage == 'card')
+        routes = [dict(stage=stage, label=button.text(), command=command + ':' + stage, current=stage == 'card',
+                       icon=_window._recording_icon if stage == 'video' else stage)
                   for stage, button in _window.stage_buttons.items()]
     else:
         routes = [dict(stage='resources', label=t('study_resources'), command=command, current=False)]
