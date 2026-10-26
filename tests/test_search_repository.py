@@ -55,6 +55,13 @@ def test_pdf_page_text_can_bound_hover_preview_reads(tmp_path):
     ) == "012345"
 
 
+def test_epub_section_text_can_bound_annotation_preview_reads(tmp_path):
+    addon_dir = str(tmp_path)
+    db.replace_epub_text_index(addon_dir, "Profile", 8, [("Chapter", "0123456789")])
+
+    assert search_repository.epub_section_text(addon_dir, "Profile", 8, 0, max_chars=6) == ("Chapter", "012345")
+
+
 @pytest.mark.parametrize(
     ("insert_sql", "values", "kind", "expected"),
     [
@@ -101,9 +108,9 @@ def test_highlight_search_finds_annotation_notes_and_preserves_location(tmp_path
     addon_dir = str(tmp_path)
     conn = db.get_connection(addon_dir, "Profile")
     conn.execute(
-        f"INSERT INTO {media}_highlights(id, card_id, {position}, text, note) "
-        "VALUES (?, ?, ?, ?, ?)",
-        ("diary", 7, 3, "A saved passage", "My thoughts about failure mode today"),
+        f"INSERT INTO {media}_highlights(id, card_id, {position}, text, note, color) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        ("diary", 7, 3, "A saved passage", "My thoughts about failure mode today", "green"),
     )
     conn.commit()
 
@@ -111,7 +118,7 @@ def test_highlight_search_finds_annotation_notes_and_preserves_location(tmp_path
         addon_dir, "Profile", f"{media}_annotations", "failure mode"
     )
 
-    assert rows == [(7, 3, "My thoughts about failure mode today")]
+    assert rows == [(7, 3, "My thoughts about failure mode today", "A saved passage", "green")]
     assert search_repository.search_excerpt_rows(
         addon_dir, "OtherProfile", f"{media}_annotations", "failure mode"
     ) == []

@@ -814,3 +814,21 @@ msgstr "Danas do sada: {pages}; {cards}."
 #. yes
 msgid "admin_yes"
 msgstr "Da"
+
+msgid "admin_startup_title"
+msgstr "Priprema Incrementa"
+
+msgid "admin_startup_explanation"
+msgstr "Incremento priprema lokalne podatke nakon instalacije ili nadogradnje. Za velike zbirke to može potrajati nekoliko minuta. Anki će nastaviti kada priprema završi. Ostavite Anki otvoren."
+
+msgid "admin_startup_files"
+msgstr "Priprema lokalnih datoteka…"
+
+msgid "admin_startup_database"
+msgstr "Ažuriranje lokalnih podataka i indeksa pretraživanja…"
+
+msgid "admin_startup_stage"
+msgstr "Faza pripreme"
+
+msgid "admin_startup_elapsed"
+msgstr "Proteklo: {seconds} s"

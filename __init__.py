@@ -286,6 +286,7 @@ from .frontend.reviewer_focus import (
 from .frontend.reviewer_source_cover import build_reviewer_source_cover_js
 from .frontend.reviewer_tag_dialog import ReviewerTagDialog
 from .frontend.pdf_search_lifecycle import PdfSearchLifecycle
+from .frontend.profile_startup import prepare_profile_storage as _prepare_profile_storage
 from .frontend.note_type_update_dialog import (
     ACTION_APPLY as _NOTE_TYPE_ACTION_APPLY,
     ACTION_SYNC_FIRST as _NOTE_TYPE_ACTION_SYNC_FIRST,
@@ -3107,7 +3108,7 @@ def _pdf_search_collection_changed(changes, handler=None) -> None:
 def _on_profile_did_open() -> None:
     """Activate per-profile paths and run one-time migration on first load."""
     global _diagnostic_pending_final_interval, _diagnostic_recorder, _pdf_search_lifecycle
-    from .backend.migration import migrate_to_profile_dir
+    _stop_postpone_runtime_timers()
     profile = _current_profile_name()
     cfg = _load_addon_config(mw.addonManager, __name__)
     _reset_topic_answer_runtime_state()
@@ -3130,7 +3131,11 @@ def _on_profile_did_open() -> None:
         valid=lambda: mw.col is collection and _active_profile() == profile,
     )
     _activate_profile_language(profile)
-    migrate_to_profile_dir(_ADDON_DIR, profile)
+    preparation = _prepare_profile_storage(mw, _ADDON_DIR, profile)
+    if mw.col is not collection or _current_profile_name() != profile:
+        return
+    _initialize_topic_postpone_runtime()
+    _initialize_item_skip_runtime()
     if _diagnostic_recorder is not None:
         # A defensive profile-open without its matching close must not leave a
         # second recorder accepting events for the previous profile.
@@ -3138,6 +3143,8 @@ def _on_profile_did_open() -> None:
     _diagnostic_recorder = _diagnostics_mod.DiagnosticRecorder(_ADDON_DIR, profile)
     environment = _diagnostic_environment_values()
     _record_diagnostic_event("profile_opened")
+    if preparation is not None:
+        _record_diagnostic_event("profile_storage_prepared", **preparation)
     _record_diagnostic_event("addon_started", **environment)
     compatibility = _anki_compat.compatibility_report(Reviewer, mw.col)
     _record_diagnostic_event(
@@ -3307,6 +3314,14 @@ def _schedule_note_type_update_after_profile_open(*_args) -> None:
         _schedule_incremento_note_type_update_check()
 
 
+def _stop_postpone_runtime_timers() -> None:
+    # A previous profile's pollers must not synchronously open the new DB while
+    # its upgrade is running in the preparation dialog's event loop.
+    for timer in (_topic_postpone_timer, _item_skip_timer):
+        if timer is not None:
+            timer.stop()
+
+
 def _initialize_topic_postpone_runtime() -> None:
     try:
         _release_expired_topic_postpones_now()
@@ -3329,8 +3344,7 @@ def _initialize_item_skip_runtime() -> None:
         pass
 
 
-gui_hooks.main_window_did_init.append(_initialize_topic_postpone_runtime)
-gui_hooks.main_window_did_init.append(_initialize_item_skip_runtime)
+gui_hooks.profile_will_close.append(_stop_postpone_runtime_timers)
 _browser_bridge_mod.configure_browser_capture(dispatcher=dispatch_browser_capture, opener=open_browser_capture_note)
 
 

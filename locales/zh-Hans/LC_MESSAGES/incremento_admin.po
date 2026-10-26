@@ -800,3 +800,21 @@ msgstr "截至今天目前：{pages}；{cards}。"
 #. yes
 msgid "admin_yes"
 msgstr "是"
+
+msgid "admin_startup_title"
+msgstr "正在准备 Incremento"
+
+msgid "admin_startup_explanation"
+msgstr "安装或更新后，Incremento 正在准备本地数据。大型资料库可能需要几分钟。完成后 Anki 将继续启动。请保持 Anki 打开。"
+
+msgid "admin_startup_files"
+msgstr "正在准备本地文件…"
+
+msgid "admin_startup_database"
+msgstr "正在更新本地数据和搜索索引…"
+
+msgid "admin_startup_stage"
+msgstr "准备阶段"
+
+msgid "admin_startup_elapsed"
+msgstr "已用时：{seconds} 秒"

@@ -23,6 +23,18 @@ _LEGACY_ITEMS = [
 _MIGRATION_MARKER = ".incremento_profile_migration.json"
 
 
+def profile_migration_needed(addon_dir: str, profile: str) -> bool:
+    """Check fixed legacy paths without scanning profile libraries."""
+    try:
+        from .paths import get_user_files_dir
+    except ImportError:
+        from paths import get_user_files_dir
+    target = get_user_files_dir(addon_dir, profile)
+    return not (target / _MIGRATION_MARKER).is_file() or any(
+        (target.parent / name).exists() for name in _LEGACY_ITEMS
+    )
+
+
 def _merge_legacy_directory(
     source: Path,
     destination: Path,

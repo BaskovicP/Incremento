@@ -139,6 +139,7 @@ _EVENT_SCHEMAS: dict[str, dict[str, str]] = {
         "enabled_addons": "count",
     },
     "profile_opened": {},
+    "profile_storage_prepared": {"files_ms": "count", "database_ms": "count"},
     "profile_closing": {},
     "anki_compatibility_checked": {
         "required_methods": "count",

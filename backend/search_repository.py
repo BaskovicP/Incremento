@@ -13,8 +13,8 @@ except ImportError:
 
 
 _SEARCH_SPECS = {
-    "pdf_annotations": ("pdf_highlights", ("card_id", "page", "note"), "note"),
-    "epub_annotations": ("epub_highlights", ("card_id", "section_index", "note"), "note"),
+    "pdf_annotations": ("pdf_highlights", ("card_id", "page", "note", "text", "color"), "note"),
+    "epub_annotations": ("epub_highlights", ("card_id", "section_index", "note", "text", "color"), "note"),
     "pdf_highlights": ("pdf_highlights", ("card_id", "page", "text"), "text"),
     "pdf_sources": (
         "pdf_card_sources",
@@ -197,12 +197,21 @@ def epub_section_text(
     profile: str,
     card_id: int,
     section_index: int,
+    *,
+    max_chars: int | None = None,
 ) -> tuple[str, str]:
-    row = get_connection(addon_dir, profile).execute(
-        "SELECT title, text FROM epub_text_index "
-        "WHERE card_id=? AND section_index=?",
-        (int(card_id), int(section_index)),
-    ).fetchone()
+    conn = get_connection(addon_dir, profile)
+    if max_chars is None:
+        row = conn.execute(
+            "SELECT title, text FROM epub_text_index WHERE card_id=? AND section_index=?",
+            (int(card_id), int(section_index)),
+        ).fetchone()
+    else:
+        bounded_chars = max(1, min(int(max_chars), 1_000_000))
+        row = conn.execute(
+            "SELECT title, substr(text, 1, ?) FROM epub_text_index WHERE card_id=? AND section_index=?",
+            (bounded_chars, int(card_id), int(section_index)),
+        ).fetchone()
     if not row:
         return "", ""
     return str(row[0] or ""), str(row[1] or "")

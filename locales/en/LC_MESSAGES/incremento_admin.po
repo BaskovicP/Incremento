@@ -807,3 +807,21 @@ msgstr "{pages} and {cards} so far today."
 #. yes
 msgid "admin_yes"
 msgstr "Yes"
+
+msgid "admin_startup_title"
+msgstr "Preparing Incremento"
+
+msgid "admin_startup_explanation"
+msgstr "Incremento is preparing local data after an installation or update. Large libraries may take a few minutes. Anki will continue when this finishes. Please keep Anki open."
+
+msgid "admin_startup_files"
+msgstr "Preparing local files…"
+
+msgid "admin_startup_database"
+msgstr "Updating local data and search indexes…"
+
+msgid "admin_startup_stage"
+msgstr "Preparation stage"
+
+msgid "admin_startup_elapsed"
+msgstr "Elapsed: {seconds} seconds"

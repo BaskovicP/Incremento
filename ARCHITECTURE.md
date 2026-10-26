@@ -107,8 +107,10 @@ or that card's exact derived reader copy under the captured profile. The existin
 nonce/card bridge carries an additional per-load token and bounded 256 KiB reads
 through the collection-free task executor, with two client requests and at most
 four server jobs in flight per reader. JavaScript supplies offsets, never a path.
-File identity is rechecked around every read; stale profile/document replies are
-dropped. PDF.js receives reassembled requested ranges with streaming and automatic
+File identity (device, inode, size, and nanosecond modification time) is rechecked
+around every read. Change time is excluded because Windows path and handle stats
+can disagree for an unchanged file. Stale profile/document replies are dropped.
+PDF.js receives reassembled requested ranges with streaming and automatic
 whole-file prefetch disabled. No network listener or CSP expansion is involved.
 The visible page renders first; cancellable idle display renders on tiny temporary
 canvases prepare the moving ±5 page window within a 64 MiB estimated page-resource
@@ -152,6 +154,16 @@ sources while preserving each pane's own position, so later range requests never
 use a token for the replaced file. Unchanged reader copies retain their caches.
 
 `backend/db_schema.py` owns the migration ledger. `schema_migrations` and `PRAGMA user_version` advance in the same transaction as each schema change. Failed migrations roll back the schema, ledger row, and version together.
+
+`backend/profile_startup.py` checks only fixed migration paths and the read-only
+schema version before profile services start. When preparation is required,
+`frontend/profile_startup.py` shows a visible, animated preparation dialog with
+stage and elapsed time, and runs legacy file migration plus database upgrades on
+the non-collection executor. The profile-open hook resumes after completion;
+worker connections close on their owning thread, failures propagate, and stale
+profile results cannot activate services. Postpone/skip pollers stop before
+preparation and on profile close. Current profiles skip the dialog. The support
+event `profile_storage_prepared` contains only bounded file/database durations.
 
 PDF reading state is profile-scoped in `pdf_progress`. Alongside page, zoom, scroll, and read-marker state, its validated `appearance_mode` stores the explicit Original, Dark, or Night choice for each PDF card. The config-backed PDF appearance policy supplies the default or temporarily forces one mode globally; forcing does not overwrite per-document state.
 

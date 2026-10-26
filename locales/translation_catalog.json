@@ -1980,6 +1980,56 @@
     },
     {
       "component": "addon",
+      "key": "admin_startup_database",
+      "form": "",
+      "source": "Updating local data and search indexes…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_startup_elapsed",
+      "form": "",
+      "source": "Elapsed: {seconds} seconds",
+      "tokens": [
+        "{seconds}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_startup_explanation",
+      "form": "",
+      "source": "Incremento is preparing local data after an installation or update. Large libraries may take a few minutes. Anki will continue when this finishes. Please keep Anki open.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_startup_files",
+      "form": "",
+      "source": "Preparing local files…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_startup_stage",
+      "form": "",
+      "source": "Preparation stage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_startup_title",
+      "form": "",
+      "source": "Preparing Incremento",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "admin_tag_add",
       "form": "",
       "source": "add tags",

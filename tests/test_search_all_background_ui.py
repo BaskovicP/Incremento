@@ -6,6 +6,94 @@ import sys
 from pathlib import Path
 from textwrap import dedent
 
+import pytest
+
+
+@pytest.mark.parametrize("media", ["pdf", "epub"])
+def test_real_result_link_hover_marks_annotation_source_instead_of_showing_plain_page(tmp_path, media):
+    script = dedent(r'''
+        import importlib, sys
+        from pathlib import Path
+        from types import ModuleType, SimpleNamespace
+        from anki.collection import Collection
+        from aqt.qt import QApplication, QTextBrowser, QPoint, QUrl
+        from PyQt6.QtTest import QTest
+        app = QApplication(['annotation-link-test'])
+        package = ModuleType('hover_addon'); package.__path__ = [str(Path.cwd())]
+        sys.modules['hover_addon'] = package
+        ui = importlib.import_module('hover_addon.frontend.search_all')
+        data = importlib.import_module('hover_addon.frontend.search_all_results')
+        db = importlib.import_module('hover_addon.backend.db')
+        paths = importlib.import_module('hover_addon.backend.paths')
+        class Preview(QTextBrowser):
+            def setHtml(self, html):
+                self.last_html = html
+                super().setHtml(html)
+        ui.QWebEngineView = Preview
+        root, media = Path(sys.argv[1]), sys.argv[2]
+        addon, profile = str(root / 'addon'), 'Synthetic'
+        ui._active_profile = lambda: profile
+        col = Collection(str(root / 'collection.anki2'))
+        try:
+            model = col.models.copy(col.models.by_name('Basic'))
+            col.models.add_field(model, col.models.new_field('PDF_Filename'))
+            col.models.save(model)
+            note = col.new_note(model)
+            note.fields = ['Synthetic document', 'Body', 'book.pdf']
+            col.add_note(note, 1)
+            cid = col.db.scalar('SELECT id FROM cards WHERE nid=?', note.id)
+            pdf_dir = paths.get_pdf_dir(addon, profile)
+            pdf_dir.mkdir(parents=True)
+            (pdf_dir / 'book.pdf').write_bytes(b'%PDF-fixture')
+            position = 13 if media == 'pdf' else 0
+            position_column = 'page' if media == 'pdf' else 'section_index'
+            source = 'The original source passage.'
+            context = 'Context before.\n' + source + '\nContext after.'
+            conn = db.get_connection(addon, profile)
+            conn.execute(f'INSERT INTO {media}_highlights(id,card_id,{position_column},text,note,color) '
+                         'VALUES (?,?,?,?,?,?)', ('highlight-1', cid, position, source, 'Why this matters', 'green'))
+            conn.commit()
+            if media == 'pdf':
+                db.replace_pdf_text_index(addon, profile, cid, [''] * 12 + [context])
+            else:
+                db.replace_epub_text_index(addon, profile, cid, [('Chapter', context)])
+            ui.mw = SimpleNamespace(col=col)
+            dialog = ui._SearchAllDialog(addon_dir=addon, open_pdf_card=lambda *a, **k: None,
+                                         open_epub_card=lambda *a, **k: None)
+            result = data.run_search(addon, profile, col, 'why', frozenset(['annotations']))
+            dialog._search_progress({}, result)
+            dialog.resize(1200, 700)
+            dialog.show()
+            app.processEvents()
+            urls = []
+            dialog._results.highlighted[QUrl].connect(lambda url: urls.append(url.toString()))
+            cursor = dialog._results.document().find('Page 13' if media == 'pdf' else 'Section 1')
+            assert not cursor.isNull()
+            cursor.setPosition(cursor.selectionStart())
+            point = dialog._results.cursorRect(cursor).center() + QPoint(12, 0)
+            QTest.mouseMove(dialog._results.viewport(), QPoint(1, 1))
+            QTest.mouseMove(dialog._results.viewport(), point)
+            app.processEvents()
+            assert any(url.startswith('inc://') for url in urls), urls
+            html = dialog._preview.last_html
+            assert 'id="incremento-search-source"' in html, (
+                'Qt hover lost the annotation reference and showed an unmarked page', urls,
+                dialog._preview_header.text(), html)
+            assert 'rgba(0,200,80,' in html
+            assert 'Context before.' in html and 'Context after.' in html
+            assert 'The original source passage.' in html
+            assert 'Why' in html and 'this matters' in html
+            dialog.accept()
+        finally:
+            col.close()
+            db.close_connection()
+    ''')
+    result = subprocess.run(
+        [sys.executable, '-c', script, str(tmp_path), media], cwd=Path(__file__).resolve().parents[1],
+        env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
 
 def test_search_all_only_applies_current_worker_results_and_preserves_index_handoff(tmp_path):
     script = dedent(r'''

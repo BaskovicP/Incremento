@@ -1,6 +1,8 @@
 """Bounded, read-only PDF chunks and captured-reader replies."""
 import base64
 from concurrent.futures import Future
+import os
+from types import SimpleNamespace
 
 import pytest
 
@@ -25,6 +27,67 @@ def test_pdf_open_describes_the_file_without_reading_its_contents(tmp_path, monk
     assert source.descriptor['cardId'] == 42
     assert 'path' not in source.descriptor
     assert source.read(3, 11) == b'F-' + bytes(range(6))
+
+
+def test_pdf_ranges_read_unchanged_file_when_windows_stat_and_fstat_ctimes_differ(tmp_path, monkeypatch):
+    target, source = source_file(tmp_path)
+    contents = target.read_bytes()
+    real_fstat = os.fstat
+
+    def windows_fstat(descriptor):
+        info = real_fstat(descriptor)
+        fields = {name: getattr(info, name) for name in dir(info) if name.startswith('st_')}
+        # Reproduce the reported Windows path/handle timestamp discrepancy.
+        fields['st_ctime_ns'] -= 9_472_317_500
+        fields['st_ctime'] = fields['st_ctime_ns'] / 1_000_000_000
+        return SimpleNamespace(**fields)
+
+    monkeypatch.setattr(os, 'fstat', windows_fstat)
+
+    assert source.read(0, 5) == b'%PDF-'
+    assert source.read(len(contents) - 12, len(contents)) == contents[-12:]
+
+
+@pytest.mark.parametrize(('change', 'during_read'), [
+    pytest.param('size', False, id='size-before-read'),
+    pytest.param('size', True, id='size-during-read'),
+    pytest.param('mtime', False, id='mtime-before-read'),
+    pytest.param('mtime', True, id='mtime-during-read'),
+    pytest.param('replacement', False, id='same-size-and-mtime-replacement'),
+])
+def test_pdf_ranges_reject_modified_or_replaced_snapshots(tmp_path, monkeypatch, change, during_read):
+    target, source = source_file(tmp_path)
+    original = target.stat()
+
+    def change_snapshot():
+        if change == 'size':
+            with target.open('ab') as stream:
+                stream.write(b'changed')
+            os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns))
+        elif change == 'mtime':
+            with target.open('r+b') as stream:
+                stream.write(b'%PDF-modified')
+            os.utime(target, ns=(original.st_atime_ns, original.st_mtime_ns + 2_000_000_000))
+        else:
+            replacement = target.with_name('replacement.pdf')
+            replacement.write_bytes(b'x' * original.st_size)
+            os.utime(replacement, ns=(original.st_atime_ns, original.st_mtime_ns))
+            replacement.replace(target)
+
+    if during_read:
+        real_read = os.read
+
+        def read_then_change(descriptor, length):
+            data = real_read(descriptor, length)
+            change_snapshot()
+            return data
+
+        monkeypatch.setattr(os, 'read', read_then_change)
+    else:
+        change_snapshot()
+
+    with pytest.raises(OSError, match='PDF snapshot changed'):
+        source.read(0, 5)
 
 
 @pytest.mark.parametrize(('begin', 'end'), [(-1, 5), (1, 1), (4, 3), (True, 6),

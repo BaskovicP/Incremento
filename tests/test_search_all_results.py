@@ -40,7 +40,8 @@ def test_background_search_preserves_categories_live_filter_ranking_and_progress
             conn=db.get_connection(addon,profile)
             conn.executemany('INSERT INTO pdf_highlights(id,card_id,page,text,note) VALUES (?,?,?,?,?)',
                 [(str(i),99,i,'faith','faith annotation') for i in range(120)] +
-                [(f'live-{i}',cid,121+i,'faith','faith annotation') for i in range(121)])
+                [(f'live-{i}',cid,121+i,f'faith source passage {i}','faith annotation') for i in range(121)])
+            conn.execute("UPDATE pdf_highlights SET color='purple' WHERE id LIKE 'live-%'")
             conn.execute('INSERT INTO epub_highlights(id,card_id,section_index,text) VALUES (?,?,?,?)',
                 ('epub',other,0,'faith & saved text'))
             conn.executemany('INSERT INTO pdf_card_sources(pdf_card_id,page,note_id,excerpt) VALUES (?,?,?,?)',
@@ -65,6 +66,11 @@ def test_background_search_preserves_categories_live_filter_ranking_and_progress
             assert 'faith deleted source' not in result.html
             assert 'Section 1' in result.html
             assert len(result.highlight_previews)==241
+            annotation_previews=[value for value in result.highlight_previews.values()
+                                 if isinstance(value,results.AnnotationPreview)]
+            assert len(annotation_previews)==120
+            assert annotation_previews[0]==results.AnnotationPreview('faith annotation','faith source passage 0','purple')
+            assert annotation_previews[-1].source_text=='faith source passage 119'
             assert result.pdf_needs_index is False
             assert partial and len(partial[0].html)<len(result.html)
             assert len(partial[0].highlight_previews)<len(result.highlight_previews)
@@ -74,6 +80,7 @@ def test_background_search_preserves_categories_live_filter_ranking_and_progress
             only=results.run_search(addon,profile,operation_col,'faith',frozenset(['annotations','current_profile']))
             assert only.html.count('<li>')==120
             assert 'Annotations (PDF)' in only.html and 'PDF Highlights' not in only.html
+            assert all(isinstance(value,results.AnnotationPreview) for value in only.highlight_previews.values())
             foreign=results.run_search(addon,'Other',operation_col,'faith',frozenset(['pdf_highlights']))
             assert '<li>' not in foreign.html
             empty=results.run_search(addon,profile,operation_col,'absent',frozenset(['pdf_content']))

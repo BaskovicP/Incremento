@@ -31,9 +31,16 @@ _MAX_CARD_SEARCH_CANDIDATES = 1000
 
 
 @dataclass(frozen=True)
+class AnnotationPreview:
+    note: str
+    source_text: str
+    color: str
+
+
+@dataclass(frozen=True)
 class SearchResults:
     html: str
-    highlight_previews: dict[str, str]
+    highlight_previews: dict[str, str | AnnotationPreview]
     pdf_needs_index: bool = False
     pdf_reindex_documents: tuple = ()
 
@@ -57,20 +64,21 @@ def _document_result_url(
 
 
 def _highlight_result_url(
-    previews: dict[str, str],
+    previews: dict[str, str | AnnotationPreview],
     *,
     media: str,
     card_id: int,
     position: int,
     query: str,
     text: str,
+    annotation: AnnotationPreview | None = None,
 ) -> str:
     preview_index = len(previews)
     preview_key = f"h{preview_index}"
     while preview_key in previews:
         preview_index += 1
         preview_key = f"h{preview_index}"
-    previews[preview_key] = str(text or "")
+    previews[preview_key] = annotation if annotation is not None else str(text or "")
     return _document_result_url(
         media,
         card_id,
@@ -88,7 +96,7 @@ class SearchResultsBuilder:
         self._progress = progress
         self._last_progress = 0.0
         self._last_total = 0
-        self._highlight_previews: dict[str, str] = {}
+        self._highlight_previews: dict[str, str | AnnotationPreview] = {}
         self._pdf_needs_index = False
 
     def _publish(self, parts, total):
@@ -236,12 +244,13 @@ class SearchResultsBuilder:
             if rows:
                 html.append(f"<h3>{escape(heading)}</h3>")
                 by_file: dict = {}
-                for cid, page, text in rows:
-                    by_file.setdefault(cid, []).append((page, text))
+                for cid, page, text, *source in rows:
+                    annotation = AnnotationPreview(text or "", source[0] or "", source[1]) if source else None
+                    by_file.setdefault(cid, []).append((page, text, annotation))
                 for cid, pages in by_file.items():
                     title = escape(self._pdf_title(cid))
                     html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
-                    for page, text in pages:
+                    for page, text, annotation in pages:
                         snippet = escape(self._snippet(text or "", q))
                         result_url = escape(
                             _highlight_result_url(
@@ -251,6 +260,7 @@ class SearchResultsBuilder:
                                 position=page,
                                 query=q,
                                 text=text or "",
+                                annotation=annotation,
                             ),
                             quote=True,
                         )
@@ -304,12 +314,13 @@ class SearchResultsBuilder:
             if rows:
                 html.append(f"<h3>{escape(heading)}</h3>")
                 by_file: dict = {}
-                for cid, section_index, text in rows:
-                    by_file.setdefault(cid, []).append((section_index, text))
+                for cid, section_index, text, *source in rows:
+                    annotation = AnnotationPreview(text or "", source[0] or "", source[1]) if source else None
+                    by_file.setdefault(cid, []).append((section_index, text, annotation))
                 for cid, entries in by_file.items():
                     title = escape(self._epub_title(cid))
                     html.append(f"<div style='margin:6px 0 2px'><b>{title}</b></div><ul style='margin:0 0 6px 16px'>")
-                    for section_index, text in entries:
+                    for section_index, text, annotation in entries:
                         snippet = escape(self._snippet(text or "", q))
                         result_url = escape(
                             _highlight_result_url(
@@ -319,6 +330,7 @@ class SearchResultsBuilder:
                                 position=section_index,
                                 query=q,
                                 text=text or "",
+                                annotation=annotation,
                             ),
                             quote=True,
                         )

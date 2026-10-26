@@ -13,7 +13,8 @@ PDF_RANGE_CHUNK_SIZE = 256 * 1024
 
 
 def _identity(value):
-    return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns
+    # Windows path stat and handle fstat can disagree on ctime for an unchanged file.
+    return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns
 
 
 class PdfByteRangeSource:

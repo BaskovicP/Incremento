@@ -38,6 +38,16 @@ Incremento is available from [AnkiWeb Add-ons](https://ankiweb.net/shared/info/1
 2. Enter the add-on code **`1013949798`**.
 3. Restart Anki after installation.
 
+After an installation or update, Incremento may need to prepare local files and
+upgrade its search indexes. A **Preparing Incremento** window shows the current
+stage, an animated progress indicator, and elapsed time. Large libraries may
+take a few minutes; keep Anki open until preparation finishes. This local work
+runs in the background while the window remains responsive, and Anki continues
+after it completes. Ordinary launches skip this window when the profile is
+already up to date. Preparation does not start an AnkiWeb sync; Anki's existing
+sync preferences still apply. Support bundles include the time spent preparing
+files and upgrading the database to help diagnose unusually slow openings.
+
 ### Install from source
 
 For development or manual installation, clone or copy the repository into Anki's `addons21` folder as `incremento`, then restart Anki.
@@ -558,6 +568,10 @@ Each PDF note includes:
 
 When a PDF card is reviewed, the PDF dock opens on the right.
 
+The Windows PDF-loading regression in version `2026.10.25.224930` can show
+**Could not load this PDF** for valid PDFs. After installing the fix, restart
+Anki and reopen existing PDF cards; re-importing the files is unnecessary.
+
 Large PDFs load the bytes needed for the current view first. Nearby pages are
 prepared gradually while you pause, up to five pages in either direction.
 Image-heavy pages use a smaller cache to limit memory; hidden readers release
@@ -573,7 +587,7 @@ external file changes. The worker uses the compatible Python interpreter and
 PyMuPDF installation described under **Dependencies**; missing dependencies are
 reported without installing anything automatically.
 
-Click **PDF focus** in the PDF's bottom toolbar to hide the left Anki pane—including the deck list on the Decks screen—and give the PDF the full available width. The toggle stays available in both the expanded and minimized toolbar, with no extra row above the document. It works from Decks, the deck overview, and during review, including PDFs opened from the Document Bookshelf or as references. The button stays pressed while enabled. Anki's answer controls remain below the reader during review. Click it again to restore the previous docked or floating layout without reopening the PDF or losing your place. The choice is saved immediately and remembered after restarting Anki; you can also change it under **Settings → Review → PDF focus**. Switching to a regular flashcard, leaving review, or closing the reader automatically restores the Anki pane without clearing your preference, so focus resumes the next time you open a PDF.
+Click **PDF focus** in the PDF's bottom toolbar to hide the left Anki pane—including the deck list on the Decks screen—and give the PDF the full available width. Focus also hides Anki's top navigation bar (Decks, Add, Browse, Stats, Sync), restoring its previous visibility when focus ends. The toggle stays available in both the expanded and minimized toolbar, with no extra row above the document. It works from Decks, the deck overview, and during review, including PDFs opened from the Document Bookshelf or as references. The button stays pressed while enabled. Anki's answer controls remain below the reader during review. Click it again to restore the previous docked or floating layout without reopening the PDF or losing your place. The choice is saved immediately and remembered after restarting Anki; you can also change it under **Settings → Review → PDF focus**. Switching to a regular flashcard, leaving review, or closing the reader automatically restores the Anki pane without clearing your preference, so focus resumes the next time you open a PDF.
 
 Press `Option+Shift+P` on macOS (`Alt+Shift+P` on Windows/Linux), or choose **Incremento → Document Bookshelf**, to open a searchable visual shelf of imported PDFs and EPUBs. Use **Show** inside the dialog to switch between **All documents**, **PDFs**, and **EPUBs**. **Possible duplicates only** compares document titles and reconstructed original filenames within the same document type, plus the standard embedded `Title` metadata between PDFs. PDF metadata is read and cached in the background, so opening the shelf does not wait for every PDF; hover a PDF tile to see the discovered metadata title. Generic metadata such as `Untitled` is ignored. The matcher combines case-insensitive word matching, lower weight for words that occur in many shelf entries, and three-character groups (trigrams) that tolerate punctuation, word-form, and small spelling differences. Numeric parts such as years or volume numbers must match. Treat the results as candidates rather than guaranteed byte-for-byte copies. While **Possible duplicates only** is selected, Incremento checks candidate documents for live attached Topic or Item cards in a background collection query. A green check appears over the top-right of a cover when attachments exist; hover it to see the distinct card count. This marker can help identify a copy on which you have already worked, but it does not change the duplicate score or choose which copy to retain. Right-click any tile and choose **Show in Finder** on macOS or **Show in File Explorer** on Windows to select its stored PDF or EPUB file; Linux opens the containing folder. This action is disabled when the stored file is unavailable. The same menu lets you delete that document or, when it belongs to a duplicate group, delete its directly matching candidates while keeping the selected one. Before showing confirmation, Incremento checks the same direct, provenance, legacy-source, and knowledge-tree relationships used by Review All. When live attached cards exist, the confirmation reports their distinct count and explains that the cards remain in Anki while links back to deleted documents may stop working. If that check fails or the active profile changes, nothing is deleted. Confirmed deletion removes the corresponding Anki notes/cards through Anki's undoable collection operation. Managed source files remain so Undo can restore the documents safely.
 
@@ -805,7 +819,7 @@ EPUB cards use a dedicated reader dock that clones the PDF reader toolbar. The s
 
 You can narrow the EPUB dock with all controls showing. The expanded toolbar automatically wraps its sections and buttons to fit, including the Find row. When the controls need more height, scroll within the toolbar to reach them while the document keeps its reading area. **Customize controls** and **Minimize controls** remain optional ways to reduce the toolbar.
 
-**EPUB focus** fills Anki’s available width and keeps review answer controls visible. Toggle it in either toolbar or under **Settings → Review**. The preference is saved; moving to an ordinary card restores Anki’s card area. PDF and EPUB focus share the same layout controller, so switching document types cannot leave two focused readers behind. **Original / Dark / Night** appearance is remembered separately for each EPUB without changing its contents or reading position.
+**EPUB focus** fills Anki’s available width, hides Anki’s top navigation bar, and keeps review answer controls visible. Toggle it in either toolbar or under **Settings → Review**. The preference is saved; moving to an ordinary card restores Anki’s card area and the navigation bar’s previous visibility. PDF and EPUB focus share the same layout controller, so switching document types cannot leave two focused readers behind. In either reader, Anki’s background refreshes keep the deck list and main card area hidden until focus ends. **Original / Dark / Night** appearance is remembered separately for each EPUB without changing its contents or reading position.
 
 Use **EPUB reference…** to choose another book from the Document Bookshelf and read it alongside the main book. Drag the divider to resize the panes. Each reference has its own section, scroll position, text scale, Find, Links, and Jump Back controls. A floating **Preview EPUB** can be opened from Page links. One pinned reference and one floating preview are retained. Navigation in either reference leaves the main book’s saved position unchanged. Highlights and their notes/colors are shared for the same book; explicit bookmarks and read markers belong to that book. **Extract** and Cmd/Ctrl+1–4 use the reference book as the source, including its section, tags, priority, and provenance.
 
@@ -1015,7 +1029,7 @@ It searches across:
 - EPUB file content
 - cards
 
-Search results include a preview panel. Hovering a PDF or EPUB highlight previews the saved highlighted passage; annotation results preview your saved note; source and file-content hits preview the indexed page or section for context. Enable **Annotations** to find words such as `failure mode` in your notes even with both highlight checkboxes off. PDF hits can open directly to the matching page, and card hits can open in the Anki Browser.
+Search results include a preview panel. Hovering a PDF or EPUB highlight previews the saved highlighted passage. Annotation results show your note above the page or section text, mark its source passage within that text in the original highlight color, and automatically scroll to the marked passage. This works even when the search words appear only in your note, and tolerates PDF line wrapping, hyphenation, and ligatures. If indexed context is missing or the source cannot be matched, the preview shows the saved source passage in its highlight color. The preview header identifies the document and page or section. Source and file-content hits preview the indexed page or section for context. Enable **Annotations** to find words such as `failure mode` in your notes even with both highlight checkboxes off. PDF hits can open directly to the matching page, and card hits can open in the Anki Browser.
 
 Changing a result-type checkbox applies immediately, including when **Search while typing** is off. **Existing Anki Items Only** hides indexed results whose linked document card or source note has been deleted; searches always remain scoped to the active Anki profile.
 

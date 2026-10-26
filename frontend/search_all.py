@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import threading
 from dataclasses import dataclass
-from html import escape
+from html import escape, unescape
 from urllib.parse import parse_qs, urlparse
 
 from aqt import mw
@@ -27,10 +27,12 @@ from PyQt6.QtCore import QTimer, QUrl
 
 try:
     from .latest_query import LatestQuery
-    from .search_all_results import run_search, _document_result_url, _highlight_result_url
+    from .search_all_results import AnnotationPreview, run_search, _document_result_url, _highlight_result_url
+    from .search_all_preview import PREVIEW_CONTEXT_CHARS, annotation_source_html
 except ImportError:
     from latest_query import LatestQuery  # type: ignore
-    from search_all_results import run_search, _document_result_url, _highlight_result_url  # type: ignore
+    from search_all_results import AnnotationPreview, run_search, _document_result_url, _highlight_result_url  # type: ignore
+    from search_all_preview import PREVIEW_CONTEXT_CHARS, annotation_source_html  # type: ignore
 
 try:
     from ..backend.i18n import t
@@ -137,13 +139,16 @@ class _DocumentPreviewTarget:
     position: int
     query: str
     highlight_text: str | None
+    annotation: AnnotationPreview | None = None
 
 
 def _document_preview_target(
     url: str,
-    highlight_previews: dict[str, str],
+    highlight_previews: dict[str, str | AnnotationPreview],
 ) -> _DocumentPreviewTarget | None:
-    parsed = urlparse(str(url or ""))
+    # QTextBrowser can retain HTML entities in an anchor's emitted QUrl.
+    # Decode that layer before parsing; query text remains percent-encoded.
+    parsed = urlparse(unescape(str(url or "")))
     media = parsed.netloc.lower()
     if parsed.scheme != "inc" or media not in {"pdf", "epub"}:
         return None
@@ -162,17 +167,24 @@ def _document_preview_target(
     query = (params.get("q") or [""])[0]
     highlight_keys = params.get("highlight") or []
     highlight_text: str | None = None
+    annotation = None
     if highlight_keys:
         preview_key = str(highlight_keys[0] or "")
         if not preview_key or preview_key not in highlight_previews:
             return None
-        highlight_text = str(highlight_previews[preview_key] or "")
+        preview = highlight_previews[preview_key]
+        if isinstance(preview, AnnotationPreview):
+            annotation = preview
+            highlight_text = preview.note
+        else:
+            highlight_text = str(preview or "")
     return _DocumentPreviewTarget(
         media=media,
         card_id=card_id,
         position=position,
         query=query,
         highlight_text=highlight_text,
+        annotation=annotation,
     )
 
 
@@ -239,7 +251,7 @@ class _SearchAllDialog(QDialog):
         self._open_epub_card = open_epub_card
         self._profile = _active_profile()
         self._collection = getattr(mw, "col", None)
-        self._highlight_previews: dict[str, str] = {}
+        self._highlight_previews: dict[str, str | AnnotationPreview] = {}
         self._pdf_index_cancel = threading.Event()
         self._pdf_index_running = False
         self._pdf_cache_checked = False
@@ -894,6 +906,33 @@ class _SearchAllDialog(QDialog):
             if target.highlight_text
             else f"<i style='color:#aaa'>{escape(t('search_all_no_highlight_text'))}</i>"
         )
+        if target.annotation is not None:
+            try:
+                if target.media == "pdf":
+                    page_text = pdf_page_text(self._addon_dir, self._profile, target.card_id, target.position,
+                                              max_chars=PREVIEW_CONTEXT_CHARS)
+                else:
+                    _section_title, page_text = epub_section_text(
+                        self._addon_dir, self._profile, target.card_id, target.position,
+                        max_chars=PREVIEW_CONTEXT_CHARS,
+                    )
+            except Exception:
+                page_text = ""
+            source = annotation_source_html(
+                page_text, target.annotation.source_text, target.annotation.color,
+            )
+            if not source:
+                source = f"<i style='color:#777'>{escape(t('search_all_no_highlight_text'))}</i>"
+            body = (
+                f"<div><b>{escape(t('search_all_annotations'))}</b></div><div>{body}</div>"
+                f"<div style='margin-top:18px'><b>{escape(t('reader_highlight'))}</b></div>"
+                f"<div style='margin-top:8px'>{source}</div>"
+                '<script id="incremento-search-source-scroll">'
+                "window.addEventListener('load',function(){"
+                "var source=document.getElementById('incremento-search-source');"
+                "if(source)source.scrollIntoView({block:'center'});"
+                "},{once:true});</script>"
+            )
         self._preview_header.setText(
             t("search_all_highlight_preview", media=target.media.upper(), title=title, location=location)
         )

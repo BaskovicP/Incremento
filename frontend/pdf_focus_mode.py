@@ -1,9 +1,9 @@
 """Put a live document reader across Anki's content area, retaining review controls."""
 
-from aqt.qt import QSignalBlocker, QVBoxLayout
+from aqt.qt import QEvent, QObject, QSignalBlocker, QVBoxLayout
 
 
-class PdfFocusMode:
+class PdfFocusMode(QObject):
     """Keep the dock layout and WebEngine instance intact across focus changes.
 
     Only the reader's content moves. The hidden dock retains its original split,
@@ -12,12 +12,15 @@ class PdfFocusMode:
     """
 
     def __init__(self, main_window, dock, view, *, enabled=False, save_preference=None, state_changed=None):
+        super().__init__(dock)
         self.main = main_window
         self.dock = dock
         self.active = False
         self._layout = None
         self._web = None
         self._web_was_hidden = False
+        self._toolbar = None
+        self._toolbar_was_hidden = False
         self.save_preference = save_preference
         self.state_changed = state_changed
         self.enabled = bool(enabled)
@@ -91,6 +94,14 @@ class PdfFocusMode:
         web = self.main.web
         self._layout, self._web = layout, web
         self._web_was_hidden = web.isHidden()
+        web.installEventFilter(self)
+        self._toolbar = getattr(self.main, 'toolbarWeb', None)
+        if self._toolbar is not None:
+            self._toolbar_was_hidden = self._toolbar.isHidden()
+            self._toolbar.installEventFilter(self)
+            # Anki's toolbar hide()/show() only change its HTML appearance.
+            # Hide the widget itself to reclaim the space above the reader.
+            self._toolbar.setVisible(False)
         self.active = True
         # Moving the content is not a reader-close event. In particular, do not
         # clear the document identity, bridge nonce, progress or reading timer.
@@ -102,10 +113,23 @@ class PdfFocusMode:
             self.dock.hide()
             self.host.show()
 
+    def eventFilter(self, watched, event):
+        # Anki's asynchronous render/fade callbacks may show these widgets
+        # again after focus was entered. Keep the reader's space exclusive
+        # until restoration; the reviewer answer bar remains independent.
+        if (self.active and (watched is self._web or watched is self._toolbar)
+                and event.type() == QEvent.Type.Show):
+            watched.hide()
+            return True
+        return super().eventFilter(watched, event)
+
     def _restore(self) -> None:
         if not self.active:
             return
         self.active = False
+        self._web.removeEventFilter(self)
+        if self._toolbar is not None:
+            self._toolbar.removeEventFilter(self)
         if getattr(self.main, "_incremento_document_focus", None) is self:
             self.main._incremento_document_focus = None
         with QSignalBlocker(self.dock):
@@ -114,7 +138,10 @@ class PdfFocusMode:
             self.dock.setWidget(self.host)
             self.host.show()
             self._web.setVisible(not self._web_was_hidden)
+            if self._toolbar is not None:
+                self._toolbar.setVisible(not self._toolbar_was_hidden)
         self._layout = self._web = None
+        self._toolbar = None
 
     def stop(self, *, reset: bool = False) -> None:
         self._restore()

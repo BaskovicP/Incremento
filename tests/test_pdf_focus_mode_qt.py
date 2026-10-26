@@ -32,7 +32,8 @@ def test_pdf_focus_toggle_preserves_review_controls_and_restores_card_layout(flo
         main.setCentralWidget(QWidget())
         main.mainLayout = QVBoxLayout(main.centralWidget())
         main.mainLayout.setContentsMargins(0, 0, 0, 0)
-        main.mainLayout.addWidget(QLabel('Top toolbar'))
+        main.toolbarWeb = QLabel('Decks / Add / Browse / Stats / Sync')
+        main.mainLayout.addWidget(main.toolbarWeb)
         main.web = QLabel('Synthetic flashcard' if REVIEWING else 'Deck list')
         main.web.setMinimumWidth(400)
         main.mainLayout.addWidget(main.web, 1)
@@ -67,31 +68,49 @@ def test_pdf_focus_toggle_preserves_review_controls_and_restores_card_layout(flo
         namespace['_present_pdf_reader'](55, {'Title': 'Research <paper>'}, 'synthetic.pdf')
         assert mode.available, 'Focus must be usable on Decks as well as during review'
         assert not mode.active
+        assert main.toolbarWeb.isVisible()
         mode.request_enabled(not mode.enabled)
         app.processEvents()
         assert mode.active and mode.is_visible()
         assert main.web.isHidden()
+        assert main.toolbarWeb.isHidden(), 'Focus must hide the top navigation bar'
         assert main.bottomWeb.isVisible() == REVIEWING
         assert view.isVisible()
         assert dock.windowTitle() == 'Research <paper>'
         assert view.width() >= main.width() - 10, 'The PDF must take the full window width, with no left card column'
+        assert view.mapTo(main.centralWidget(), view.rect().topLeft()).y() == 0, 'The hidden toolbar must leave no empty strip'
         if REVIEWING:
             assert view.mapTo(main, view.rect().bottomLeft()).y() < main.bottomWeb.mapTo(main, main.bottomWeb.rect().topLeft()).y()
         assert hidden_events == [], 'Moving the live reader must not signal a closed PDF'
         main.bottomWeb.click()
         assert answered == [True]
 
+        # Anki refreshes/fades its web views after asynchronous deck/reviewer
+        # renders. Those later shows must not reveal a second pane under the PDF.
+        for _ in range(3):
+            main.web.show()
+            main.toolbarWeb.show()
+            app.processEvents()
+            assert main.web.isHidden(), 'Anki refresh must not uncover the deck list below the reader'
+            assert main.toolbarWeb.isHidden()
+            assert view.isVisible() and main.bottomWeb.isVisible() == REVIEWING
+
         # Repeated PDF questions/reloads must not duplicate the embedded viewer.
         mode.present(eligible=True, title='Next PDF')
         mode.present(eligible=True, title='Next PDF')
+        assert main.toolbarWeb.isHidden()
         assert main.mainLayout.count() == 4
         mode.request_enabled(not mode.enabled)
         app.processEvents()
         assert not mode.active and main.web.isVisible()
+        assert main.toolbarWeb.isVisible()
         assert dock.isVisible() and dock.isFloating() == FLOATING
         assert main.dockWidgetArea(dock) == initial_area
         assert dock.widget() is view
         assert main.mainLayout.count() == 3
+        main.web.hide()
+        main.web.show()
+        assert main.web.isVisible(), 'Leaving focus must release ordinary Anki visibility control'
 
         mode.request_enabled(not mode.enabled)
         # A regular flashcard, ending review, or closing the reader restores it.
@@ -99,11 +118,13 @@ def test_pdf_focus_toggle_preserves_review_controls_and_restores_card_layout(flo
         dock.hide()
         app.processEvents()
         assert main.web.isVisible() and main.bottomWeb.isVisible() == REVIEWING
+        assert main.toolbarWeb.isVisible()
         assert not mode.active and not mode.is_visible()
         assert mode.enabled, 'Remember focus for the next PDF'
         mode.present(eligible=False, title='Reader unavailable')
         app.processEvents()
         assert main.web.isVisible() and not mode.active
+        assert main.toolbarWeb.isVisible()
         assert not mode.available
         mode.present(eligible=True, title='Return to PDF')
         assert mode.active
@@ -111,6 +132,7 @@ def test_pdf_focus_toggle_preserves_review_controls_and_restores_card_layout(flo
         mode.stop(reset=True)
         dock.hide()
         assert main.web.isVisible() and not mode.enabled
+        assert main.toolbarWeb.isVisible()
         assert main.mainLayout.count() == 3
         main.close()
     ''').replace('FLOATING', repr(floating)).replace('REVIEWING', repr(reviewing))
@@ -121,7 +143,8 @@ def test_pdf_focus_toggle_preserves_review_controls_and_restores_card_layout(flo
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_saved_focus_button_restores_after_recreation_and_failed_save_keeps_layout():
+@pytest.mark.parametrize('toolbar_hidden', [False, True], ids=['visible-toolbar', 'hidden-toolbar'])
+def test_saved_focus_button_restores_after_recreation_and_failed_save_keeps_layout(toolbar_hidden):
     script = dedent('''
         import sys, types
         from PyQt6 import QtCore, QtWidgets
@@ -141,6 +164,9 @@ def test_saved_focus_button_restores_after_recreation_and_failed_save_keeps_layo
         main = QMainWindow()
         main.setCentralWidget(QWidget())
         layout = QVBoxLayout(main.centralWidget())
+        main.toolbarWeb = QLabel('Navigation')
+        layout.addWidget(main.toolbarWeb)
+        main.toolbarWeb.setVisible(not TOOLBAR_HIDDEN)
         main.web = QLabel('Card')
         main.bottomWeb = QLabel('Answers')
         layout.addWidget(main.web)
@@ -156,32 +182,40 @@ def test_saved_focus_button_restores_after_recreation_and_failed_save_keeps_layo
         mode.present(eligible=True, title='PDF')
         mode.request_enabled(not mode.enabled)
         assert saved == [True] and mode.active
+        assert main.toolbarWeb.isHidden()
         assert states[-1] == (True, True)
         mode.stop(reset=True)
         mode.dock.hide()
+        assert main.toolbarWeb.isHidden() == TOOLBAR_HIDDEN
         assert saved == [True], 'Closing a profile must not clear the saved choice'
         restored = create()
         restored.present(eligible=True, title='PDF')
         assert restored.enabled and restored.active and main.web.isHidden()
+        assert main.toolbarWeb.isHidden()
         restored.save_preference = lambda enabled: False
         restored.request_enabled(not restored.enabled)
         assert restored.active and restored.enabled and main.web.isHidden()
+        assert main.toolbarWeb.isHidden()
         assert states[-1] == (True, True)
         restored.save_preference = save
         restored.request_enabled(not restored.enabled)
         assert saved == [False] and not restored.active and main.web.isVisible()
+        assert main.toolbarWeb.isHidden() == TOOLBAR_HIDDEN
         restored.stop(reset=True)
         restored.dock.hide()
         restored = create()
         restored.present(eligible=True, title='PDF')
         assert not restored.enabled and not restored.active and main.web.isVisible()
+        assert main.toolbarWeb.isHidden() == TOOLBAR_HIDDEN
         # Settings changes update the same button without writing it a second time.
         restored.set_enabled(True)
         assert restored.active and saved == [False]
+        assert main.toolbarWeb.isHidden()
         assert states[-1] == (True, True)
         restored.stop()
+        assert main.toolbarWeb.isHidden() == TOOLBAR_HIDDEN
         main.close()
-    ''')
+    ''').replace('TOOLBAR_HIDDEN', repr(toolbar_hidden))
     result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -296,6 +330,8 @@ def test_switching_pdf_and_epub_focus_restores_only_the_active_reader():
         host = QWidget()
         main.setCentralWidget(host)
         layout = QVBoxLayout(host)
+        main.toolbarWeb = QLabel('Navigation')
+        layout.addWidget(main.toolbarWeb)
         main.web, main.bottomWeb = QLabel('Card'), QLabel('Answers')
         layout.addWidget(main.web)
         layout.addWidget(main.bottomWeb)
@@ -306,14 +342,24 @@ def test_switching_pdf_and_epub_focus_restores_only_the_active_reader():
             modes.append(PdfFocusMode(main, dock, QLabel(label), enabled=True))
         main.show()
         modes[0].present(eligible=True, title='PDF')
+        assert main.toolbarWeb.isHidden()
         modes[1].present(eligible=True, title='EPUB')
         assert not modes[0].active and modes[1].active
         assert main.web.isHidden() and not main.bottomWeb.isHidden()
-        assert layout.count() == 3
+        assert main.toolbarWeb.isHidden()
+        assert layout.count() == 4
         modes[0].stop()  # A later old-reader hook must not uncover the card.
         assert main.web.isHidden()
+        assert main.toolbarWeb.isHidden()
+        main.web.show()
+        main.toolbarWeb.show()
+        assert main.web.isHidden() and main.toolbarWeb.isHidden()
         modes[1].stop()
-        assert not main.web.isHidden() and layout.count() == 2
+        assert not main.web.isHidden() and layout.count() == 3
+        assert main.toolbarWeb.isVisible()
+        main.web.hide()
+        main.web.show()
+        assert main.web.isVisible(), 'Neither retired reader may suppress Anki after leaving focus'
     ''')
     result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
                             env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'},
