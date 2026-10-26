@@ -147,11 +147,14 @@ class TopicCardClassifier:
         )
 
 
-def _topics_deck_name(scheduler_config=None) -> str:
+def _topics_deck_name(scheduler_config=None, *, config=None) -> str:
     """Parse deck name from the configured topics_filter (e.g. 'deck:Topics')."""
     try:
-        resolved = scheduler_config if scheduler_config is not None else load_scheduler_config()
-        tf = (getattr(resolved, "topics_filter", "") or "deck:Topics").strip()
+        if scheduler_config is None and config is not None:
+            tf = str((config.get("dialog") or {}).get("topics_filter") or "deck:Topics").strip()
+        else:
+            resolved = scheduler_config if scheduler_config is not None else load_scheduler_config()
+            tf = (getattr(resolved, "topics_filter", "") or "deck:Topics").strip()
         if tf.lower().startswith("deck:"):
             return tf[5:].strip('"').strip("'")
     except Exception:
@@ -315,7 +318,7 @@ def resolve_topic_card_classifier(
             for tag in configured_effective_item_tags(resolved_config)
             if str(tag or "").strip()
         ),
-        topics_deck_name=_topics_deck_name(scheduler_config),
+        topics_deck_name=_topics_deck_name(scheduler_config, config=resolved_config if config is not None else None),
     )
 
 

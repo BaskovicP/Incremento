@@ -282,7 +282,19 @@ class PdfHighlightBulkDialog(QDialog):
         self._table.setColumnCount(len(column_labels))
         self._table.setHorizontalHeaderLabels(column_labels)
         self._table.setRowCount(len(self._rows))
-        for row_index, row in enumerate(self._rows):
+        try:
+            from .render_batches import build_in_batches
+        except ImportError:
+            from render_batches import build_in_batches
+        self._render_generation = getattr(self, "_render_generation", 0) + 1
+        generation = self._render_generation
+        if not getattr(self, "_render_close_connected", False):
+            self.finished.connect(lambda *_: setattr(self, "_render_generation", self._render_generation + 1))
+            self._render_close_connected = True
+        self._table.setEnabled(False)
+        self._create_btn.setEnabled(False)
+        def render(pair):
+            row_index, row = pair
             normalized = normalize_pdf_highlight_bulk_row(
                 row,
                 visible_fields=self._visible_fields,
@@ -318,7 +330,12 @@ class PdfHighlightBulkDialog(QDialog):
             for field_offset, field_name in enumerate(self._visible_fields, start=5):
                 value_item = QTableWidgetItem(str(normalized["fields"].get(field_name) or ""))
                 self._table.setItem(row_index, field_offset, value_item)
-        self._syncing_table = False
+        def done():
+            self._syncing_table = False
+            self._table.setEnabled(True)
+            self._update_create_state()
+        build_in_batches(list(enumerate(self._rows)), render,
+                         valid=lambda: generation == self._render_generation, done=done)
 
     def _selected_row_index(self) -> int:
         indexes = self._table.selectionModel().selectedRows() if self._table.selectionModel() is not None else []
@@ -390,7 +407,7 @@ class PdfHighlightBulkDialog(QDialog):
         else:
             status = tn("reader_bulk_ready_count", ready_count)
         self._status_label.setText(status)
-        self._create_btn.setEnabled(can_create_pdf_highlight_bulk_rows(self._rows))
+        self._create_btn.setEnabled(not self._syncing_table and can_create_pdf_highlight_bulk_rows(self._rows))
         self._delete_btn.setEnabled(bool(self._rows))
         self._uncheck_btn.setEnabled(bool(self._rows))
 

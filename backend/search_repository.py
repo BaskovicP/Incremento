@@ -7,9 +7,9 @@ from dataclasses import dataclass
 import os
 
 try:
-    from .db import get_connection, search_text_match_score, split_search_terms
+    from .db import get_connection, search_text_match_score, split_search_terms, _search_request, _bounded_search_rows, _BoundedSearchRanking
 except ImportError:
-    from db import get_connection, search_text_match_score, split_search_terms  # type: ignore
+    from db import get_connection, search_text_match_score, split_search_terms, _search_request, _bounded_search_rows, _BoundedSearchRanking  # type: ignore
 
 
 _SEARCH_SPECS = {
@@ -128,6 +128,7 @@ class SearchCollection:
         return note.fields[0] if note is not None and note.fields else None
 
 
+@_search_request
 def search_excerpt_rows(
     addon_dir: str,
     profile: str,
@@ -138,7 +139,7 @@ def search_excerpt_rows(
 ) -> list[tuple]:
     """Return a ranked, bounded set of highlight/source rows."""
     spec = _SEARCH_SPECS.get(str(kind or ""))
-    terms = split_search_terms(query)
+    terms = query.terms
     if spec is None or not terms:
         return []
     table, columns, text_column = spec
@@ -149,14 +150,13 @@ def search_excerpt_rows(
         f"WHERE lower({text_column}) LIKE lower(?) "
         f"ORDER BY {columns[0]}, {columns[1]} LIMIT ?",
         (f"%{terms[0]}%", candidate_limit),
-    ).fetchall()
-    ranked = []
-    for row in rows:
+    )
+    ranked = _BoundedSearchRanking(limit, key=lambda item: (item[0], item[1][0], item[1][1]))
+    for row in _bounded_search_rows(rows, query):
         normalized = tuple(row)
         score = search_text_match_score(str(normalized[2] or ""), query)
         if score is not None:
             ranked.append((score, normalized))
-    ranked.sort(key=lambda item: (item[0], item[1][0], item[1][1]))
     return [row for _, row in ranked[: max(1, int(limit))]]
 
 

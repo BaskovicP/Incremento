@@ -36,6 +36,17 @@ def make_hl(
 
 
 class TestEpubHighlights:
+    def test_section_read_keeps_other_sections_and_cards_out_of_the_result(self, tmp_path):
+        add_highlight(str(tmp_path), "Synthetic", 7, make_hl("first", section_index=0))
+        add_highlight(str(tmp_path), "Synthetic", 7, make_hl("second", section_index=1))
+        add_highlight(str(tmp_path), "Synthetic", 8, make_hl("other-card", section_index=1))
+        assert _mod.load_highlights(str(tmp_path), "Synthetic", 7, section_index=1) == [
+            make_hl("second", section_index=1)
+        ]
+        assert _mod.load_highlights(str(tmp_path), "Synthetic", 7, section_index=2) == []
+        assert _mod.count_highlights(str(tmp_path), "Synthetic", 7, section_index=1) == 1
+        assert _mod.count_highlights(str(tmp_path), "Synthetic", 7) == 2
+
     def test_empty_when_none_added(self, tmp_path):
         assert load_highlights(str(tmp_path), "TestProfile", 1) == []
 

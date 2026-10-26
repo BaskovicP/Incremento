@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from aqt import mw
 from aqt.qt import (
     QDialog,
     QHBoxLayout,
@@ -45,6 +46,7 @@ class _CurrentDocumentSearchDialog(QDialog):
         search_hits_fn,
         open_hit_fn,
         open_search_all_fn,
+        request_is_current=None,
     ):
         super().__init__(parent)
         self._document_kind = str(document_kind or "")
@@ -92,6 +94,23 @@ class _CurrentDocumentSearchDialog(QDialog):
         button_row.addWidget(self._close_btn)
         layout.addLayout(button_row)
 
+        try:
+            from .document_query import DocumentQuery
+            from ..backend.paths import get_active_profile
+        except ImportError:
+            from document_query import DocumentQuery
+            from paths import get_active_profile
+        profile, collection = get_active_profile(), mw.col
+        self._jobs = DocumentQuery(self,
+            read=lambda captured, cid, query, cancel: list(self._search_hits_fn(query, cancel=cancel) or []),
+            publish=lambda request, hits: self._render_hits(hits),
+            current=lambda request: (request["profile"] == get_active_profile() and collection is mw.col
+                and request["query"] == self._search.text().strip()
+                and (request_is_current is None or request_is_current())))
+        self._profile = profile
+        self._result_generation = 0
+        self.finished.connect(self._jobs.close)
+        self.finished.connect(lambda *_: setattr(self, "_result_generation", self._result_generation + 1))
         self._search.textChanged.connect(self._refresh_results)
         self._search.returnPressed.connect(self._open_first_hit)
         self._search_all_btn.clicked.connect(self._open_search_all)
@@ -108,6 +127,8 @@ class _CurrentDocumentSearchDialog(QDialog):
 
     def _refresh_results(self, query: str) -> None:
         normalized_query = str(query or "").strip()
+        self._result_generation += 1
+        self._jobs._queries.invalidate()
         self._results.clear()
         self._hits = []
         self._search_all_btn.setEnabled(bool(normalized_query))
@@ -118,20 +139,31 @@ class _CurrentDocumentSearchDialog(QDialog):
             self._results.addItem(placeholder)
             return
 
-        self._hits = list(self._search_hits_fn(normalized_query) or [])
-        if not self._hits:
+        self._count.setText("…")
+        self._jobs.submit(self._profile, 0, normalized_query)
+
+    def _render_hits(self, hits) -> None:
+        self._results.clear()
+        self._hits = list(hits)
+        if not hits:
             self._count.setText(tn("reader_search_results_count", 0))
             placeholder = QListWidgetItem(t("reader_no_document_matches"))
             placeholder.setFlags(Qt.ItemFlag.NoItemFlags)
             self._results.addItem(placeholder)
             return
-
-        self._count.setText(tn("reader_search_results_count", len(self._hits)))
-        for index, hit in enumerate(self._hits):
+        self._count.setText(tn("reader_search_results_count", len(hits)))
+        try:
+            from .render_batches import build_in_batches
+        except ImportError:
+            from render_batches import build_in_batches
+        generation = self._result_generation
+        def render(pair):
+            index, hit = pair
             item = QListWidgetItem(_document_hit_summary(self._document_kind, hit))
             item.setData(Qt.ItemDataRole.UserRole, index)
             self._results.addItem(item)
-        self._results.setCurrentRow(0)
+        build_in_batches(enumerate(hits), render, valid=lambda: generation == self._result_generation,
+                         done=lambda: self._results.setCurrentRow(0))
 
     def _open_first_hit(self) -> None:
         if not self._hits:

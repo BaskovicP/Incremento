@@ -491,6 +491,33 @@ class TestAddPdfCard:
 
 
 class TestExtractPdfPagesTextFitz:
+    def test_cancellation_between_pages_closes_document_without_fallback(self):
+        fitz = MagicMock()
+        document = fitz.open.return_value
+        document.__len__.return_value = 1000
+        document.load_page.return_value.get_text.return_value = "text"
+        with patch.dict(sys.modules, {"fitz": fitz}), \
+             patch("pdf_manager.bounded_text_process") as external:
+            from concurrent.futures import CancelledError
+            with pytest.raises(CancelledError):
+                pdf_manager.extract_pdf_pages_text(
+                    "/fake/large.pdf", cancelled=lambda: document.load_page.call_count >= 2,
+                )
+        assert document.load_page.call_count == 2
+        document.close.assert_called_once()
+        external.assert_not_called()
+
+    def test_output_budget_raises_instead_of_publishing_truncated_text(self):
+        fitz = MagicMock()
+        document = fitz.open.return_value
+        document.__len__.return_value = 100
+        document.load_page.return_value.get_text.return_value = "é" * 10
+        with patch.dict(sys.modules, {"fitz": fitz}):
+            with pytest.raises(pdf_manager.ExtractionLimit):
+                pdf_manager.extract_pdf_pages_text("/fake/large.pdf", max_bytes=30)
+        assert document.load_page.call_count == 2
+        document.close.assert_called_once()
+
     def test_fitz_path_returns_per_page_text(self):
         """When fitz is importable and returns text, use it."""
         mock_fitz = MagicMock()
@@ -573,7 +600,7 @@ class TestExtractPdfPagesTextQtFallback:
         with patch.dict(sys.modules, {"fitz": None}), \
              patch("shutil.which", return_value="/synthetic/pdftotext"), \
              patch("os.path.isfile", return_value=True), \
-             patch("subprocess.run", return_value=MagicMock(returncode=0, stdout="\f\f")):
+             patch("pdf_manager.bounded_text_process", return_value="\f\f"):
             assert pdf_manager.extract_pdf_pages_text(
                 "/fake/scan.pdf", allow_qt=False, require_success=True,
             ) == []

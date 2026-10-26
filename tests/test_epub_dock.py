@@ -12,6 +12,83 @@ import aqt
 import epub_dock
 
 
+def test_active_epub_reuses_metadata_and_reverse_paths_until_identity_changes(tmp_path, monkeypatch):
+    state = {"revision": 0, "profile": "A", "escape": False}
+    sections = [{"href": f"chapter-{index}.xhtml"} for index in range(200)]
+    loads, resolutions = [], []
+
+    def load(*args, **kwargs):
+        loads.append((args, kwargs))
+        return {"sections": sections}
+
+    def resolve(_addon, _filename, index, **kwargs):
+        resolutions.append(index)
+        return str(tmp_path / ("outside" if state["escape"] else "book") / sections[index]["href"])
+
+    monkeypatch.setattr(epub_dock, "_ADDON_DIR", str(tmp_path))
+    monkeypatch.setattr(epub_dock, "_active_profile", lambda: state["profile"])
+    monkeypatch.setattr(epub_dock, "_current_epub_filename", "book.epub")
+    monkeypatch.setattr(epub_dock, "load_epub_metadata", load)
+    monkeypatch.setattr(epub_dock, "get_epub_section_path", resolve)
+    monkeypatch.setattr(epub_dock, "epub_metadata_identity", lambda *_args, **_kwargs: state["revision"], raising=False)
+    monkeypatch.setattr(epub_dock, "_epub_metadata_cache_key", None, raising=False)
+    monkeypatch.setattr(epub_dock, "_epub_metadata_cache", {}, raising=False)
+    monkeypatch.setattr(epub_dock, "_epub_section_path_cache", None, raising=False)
+    monkeypatch.setattr(epub_dock, "_epub_reverse_path_cache", {}, raising=False)
+    target = str(tmp_path / "book" / "chapter-199.xhtml")
+
+    for _ in range(5):
+        assert epub_dock._section_index_from_path(target) == 199
+    assert len(loads) == 1
+    assert len(resolutions) <= len(sections) + 5
+    state["revision"] += 1
+    assert epub_dock._section_index_from_path(target) == 199
+    assert len(loads) == 2
+    state["profile"] = "B"
+    assert epub_dock._section_index_from_path(target) == 199
+    assert len(loads) == 3
+    # A cached match never authorizes a path that the resolver now rejects.
+    state["escape"] = True
+    assert epub_dock._section_index_from_path(target) is None
+
+
+def test_epub_scroll_updates_position_without_rebuilding_section_sources(monkeypatch):
+    writes, refreshes, titles = [], [], []
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 7)
+    monkeypatch.setattr(epub_dock, "_current_epub_section_index", 1)
+    monkeypatch.setattr(epub_dock, "_current_epub_page_index", 1)
+    monkeypatch.setattr(epub_dock, "set_epub_progress", lambda *_args, **kwargs: writes.append(kwargs))
+    monkeypatch.setattr(epub_dock, "get_epub_daily_limit_status", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(epub_dock, "_update_title_and_buttons", lambda **kwargs: titles.append(kwargs))
+    monkeypatch.setattr(epub_dock, "_update_sources_panel", lambda: refreshes.append(True))
+    for index in range(10):
+        epub_dock._record_progress(1, index / 10)
+    assert len(writes) == 10
+    assert refreshes == []
+    assert titles == [{"position_only": True}] * 10
+    epub_dock._record_progress(2, 0.0)
+    assert refreshes == [True]
+
+
+def test_hidden_epub_source_panel_reads_only_counts(monkeypatch):
+    panel = MagicMock()
+    panel.isVisible.return_value = False
+    dock = types.SimpleNamespace(_sources=panel, _cards_chip=MagicMock(), _highlights_chip=MagicMock(),
+                                 _sources_btn=MagicMock(), _highlights_btn=MagicMock(), _page_cards_btn=MagicMock())
+    monkeypatch.setattr(epub_dock, "_epub_dock", dock)
+    monkeypatch.setattr(epub_dock, "_EPUB_TOOLBAR_TEXT", {"highlights": "Highlights ({count})", "page_cards": "Cards ({count})"})
+    monkeypatch.setattr(epub_dock, "_current_epub_card_id", 7)
+    monkeypatch.setattr(epub_dock, "_current_epub_section_index", 3)
+    monkeypatch.setattr(epub_dock, "get_epub_section_card_counts", lambda *_args, **_kwargs: {3: 2})
+    monkeypatch.setattr(epub_dock, "count_highlights", lambda *_args, **_kwargs: 4, raising=False)
+    monkeypatch.setattr(epub_dock, "get_epub_card_sources", MagicMock(side_effect=AssertionError("hidden panel read excerpts")))
+    monkeypatch.setattr(epub_dock, "_current_section_highlights", MagicMock(side_effect=AssertionError("hidden panel read highlight text")))
+    epub_dock._update_sources_panel()
+    panel.setHtml.assert_not_called()
+    dock._cards_chip.setText.assert_called_once()
+    dock._highlights_chip.setText.assert_called_once()
+
+
 def test_epub_control_preference_saves_only_to_captured_active_profile(monkeypatch):
     config = {'epub_controls_collapsed_by_profile': {'B': {'main': False}},
               'pdf_controls_collapsed_by_profile': {'A': {'main': False}}, 'future': 7}
@@ -359,10 +436,13 @@ def test_internal_epub_link_records_exact_source_location_for_jump_back(monkeypa
     monkeypatch.setattr(epub_dock, "_current_epub_scroll_ratio", 0.1)
     monkeypatch.setattr(epub_dock, "_epub_link_back_history", [])
     monkeypatch.setattr(epub_dock, "_current_sections", lambda: [{"title": "One"}])
+    monkeypatch.setattr(epub_dock, "_current_metadata", lambda: {"sections": [{"title": "One"}]})
+    monkeypatch.setattr(epub_dock, "_epub_section_path_cache", None)
+    monkeypatch.setattr(epub_dock, "_epub_reverse_path_cache", {})
     monkeypatch.setattr(
         epub_dock,
         "get_epub_section_path",
-        lambda addon_dir, filename, index: "/safe/book/one.xhtml",
+        lambda addon_dir, filename, index, **_kwargs: "/safe/book/one.xhtml",
     )
     monkeypatch.setattr(
         epub_dock,
@@ -1721,7 +1801,7 @@ def test_edit_current_epub_highlight_note_updates_live_view(monkeypatch):
     monkeypatch.setattr(
         epub_dock,
         "load_highlights",
-        lambda addon_dir, profile, card_id: [
+        lambda addon_dir, profile, card_id, **_kwargs: [
             {"id": "hl-1", "sectionIndex": 3, "text": "Quoted text", "note": ""}
         ],
     )
@@ -1780,7 +1860,7 @@ def test_untitled_epub_section_is_localized_in_search_navigation_and_citation(mo
     monkeypatch.setattr(epub_dock, "_current_epub_scroll_ratio", 0.25)
     monkeypatch.setattr(epub_dock, "_last_selection_meta", {})
     monkeypatch.setattr(epub_dock, "_current_sections", lambda: sections)
-    monkeypatch.setattr(epub_dock, "load_epub_metadata", lambda *args: {"sections": sections})
+    monkeypatch.setattr(epub_dock, "load_epub_metadata", lambda *args, **kwargs: {"sections": sections})
     monkeypatch.setattr(epub_dock, "search_epub_text_index_for_card", lambda *args, **kwargs: [(1, "", "A phrase")])
 
     assert epub_dock.current_card_epub_search_hits(9, "phrase")[0]["sectionTitle"] == label

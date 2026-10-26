@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import time
 import uuid
+from concurrent.futures import CancelledError
 from collections.abc import Callable
 from pathlib import Path
 
@@ -13,8 +14,10 @@ from PyQt6.QtPdf import QPdfDocument
 
 try:
     from .i18n import t
+    from .pdf_extraction import ExtractionBudget, ExtractionLimit, bounded_text_process
 except ImportError:
     from i18n import t
+    from pdf_extraction import ExtractionBudget, ExtractionLimit, bounded_text_process
 
 
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -834,6 +837,9 @@ def set_pdf_daily_limit_override(
 
 def extract_pdf_pages_text(
     pdf_path: str, *, allow_qt: bool = True, require_success: bool = False,
+    cancelled: Callable[[], bool] | None = None,
+    max_pages: int = 50_000, max_bytes: int = 32 * 1024 * 1024,
+    timeout: float = 120.0,
 ) -> list[str]:
     """Extract per-page text from a PDF.
 
@@ -847,31 +853,44 @@ def extract_pdf_pages_text(
     extraction backends so background callers can retain the Qt fallback.
     """
     completed = False
+    budget = ExtractionBudget(cancelled or (lambda: False), max_pages, max_bytes, timeout)
+    budget.check()
     # 1. PyMuPDF — best at reading Tesseract OCR output
     try:
         import fitz
         doc = fitz.open(pdf_path)
-        pages = [doc.load_page(i).get_text("text").strip() for i in range(len(doc))]
-        doc.close()
+        try:
+            pages = []
+            for i in range(len(doc)):
+                budget.check()
+                pages.append(budget.add_page(doc.load_page(i).get_text("text").strip()))
+        finally:
+            doc.close()
         completed = bool(pages)
         if any(pages):
             return pages
+    except (CancelledError, ExtractionLimit):
+        raise
     except Exception:
         pass
 
     # 2. Qt QPdfDocument
     if allow_qt:
+        budget.pages = budget.size = 0
         doc = QPdfDocument(None)
         try:
             doc.load(pdf_path)
             if doc.pageCount() > 0:
                 pages = []
                 for i in range(doc.pageCount()):
+                    budget.check()
                     sel = doc.getAllText(i)
-                    pages.append(sel.text().strip() if sel.isValid() else "")
+                    pages.append(budget.add_page(sel.text().strip() if sel.isValid() else ""))
                 completed = True
                 if any(pages):
                     return pages
+        except (CancelledError, ExtractionLimit):
+            raise
         except Exception:
             pass
         finally:
@@ -887,19 +906,17 @@ def extract_pdf_pages_text(
     exe = next((c for c in _candidates if c and os.path.isfile(c)), None)
     if exe:
         try:
-            proc = subprocess.run(
-                [exe, "-layout", "-enc", "UTF-8", pdf_path, "-"],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            if proc.returncode == 0:
-                completed = True
-                parts = [p.strip() for p in (proc.stdout or "").split("\f")]
-                while parts and not parts[-1]:
-                    parts.pop()
-                if parts:
-                    return parts
+            output = bounded_text_process([exe, "-layout", "-enc", "UTF-8", pdf_path, "-"], budget)
+            completed = True
+            parts = [p.strip() for p in output.split("\f")]
+            while parts and not parts[-1]:
+                parts.pop()
+            if len(parts) > max_pages:
+                raise ExtractionLimit("PDF extraction page budget exceeded.")
+            if parts:
+                return parts
+        except (CancelledError, ExtractionLimit):
+            raise
         except Exception:
             pass
 

@@ -2594,21 +2594,22 @@ class KnowledgeTreeDialog(QDialog):
         if card_id is None:
             tooltip(t("knowledge_tree_priority_select_one"))
             return
-        meta = get_card_metadata(
-            int(card_id),
-            addon_dir=self._addon_dir,
-            profile=self._profile,
-        ) or {}
-        priority_context = get_card_priority_context(
-            self._addon_dir,
-            self._profile,
-            int(card_id),
-        )
-        stats = subtree_priority_stats(
-            self._addon_dir,
-            self._profile,
-            int(card_id),
-        )
+        try:
+            from .background_reads import BackgroundReads
+        except ImportError:
+            from background_reads import BackgroundReads
+        if not hasattr(self, "_priority_reads"):
+            self._priority_reads = BackgroundReads(self, self._profile)
+        addon_dir, profile = self._addon_dir, self._profile
+        def read(col, cancel):
+            return (get_card_metadata(int(card_id), addon_dir=addon_dir, profile=profile, col=col) or {},
+                    get_card_priority_context(addon_dir, profile, int(card_id), col=col),
+                    subtree_priority_stats(addon_dir, profile, int(card_id)))
+        self._priority_reads.submit(read,
+            lambda values: self._show_priority_editor(int(card_id), *values),
+            lambda error: showInfo(t("knowledge_tree_priority_failed", error=error)))
+
+    def _show_priority_editor(self, card_id, meta, priority_context, stats) -> None:
         dlg = KnowledgeTreePriorityDialog(
             card_label=str(meta.get("title") or t("knowledge_tree_card_number", card_id=card_id)),
             current_priority=float(priority_context.get("priority") or 50.0),
@@ -2621,66 +2622,76 @@ class KnowledgeTreeDialog(QDialog):
         if not dlg.exec():
             return
 
-        changed_count = 0
-        try:
-            if dlg.operation == OP_SET_SELECTED:
+        from types import SimpleNamespace
+        from aqt.operations import CollectionOp
+        from anki.collection import OpChanges
+        choice = SimpleNamespace(operation=dlg.operation, selected_priority=dlg.selected_priority,
+                                 selected_a_factor=dlg.selected_a_factor, operation_payload=dict(dlg.operation_payload))
+        addon_dir, profile, collection = self._addon_dir, self._profile, mw.col
+        direction = configured_priority_lower_is_more_important()
+        def operation(col):
+            if col is not collection or self._closed or self._profile != active_profile():
+                raise RuntimeError("Anki profile changed.")
+            changed_count = 0
+            if choice.operation == OP_SET_SELECTED:
                 set_selected_card_priority(
-                    self._addon_dir,
-                    self._profile,
+                    addon_dir,
+                    profile,
                     int(card_id),
-                    dlg.selected_priority,
-                    a_factor=dlg.selected_a_factor,
+                    choice.selected_priority,
+                    a_factor=choice.selected_a_factor, col=col,
                 )
                 changed_count = 1
-            elif dlg.operation == OP_SHIFT_SUBTREE:
+            elif choice.operation == OP_SHIFT_SUBTREE:
                 changed_count = shift_subtree_priorities(
-                    self._addon_dir,
-                    self._profile,
+                    addon_dir,
+                    profile,
                     int(card_id),
-                    dlg.operation_payload.get("delta", 0.0),
+                    choice.operation_payload.get("delta", 0.0),
                     include_root=True,
                 )
-            elif dlg.operation == OP_LINEAR_SPREAD:
+            elif choice.operation == OP_LINEAR_SPREAD:
                 changed_count = spread_subtree_priorities(
-                    self._addon_dir,
-                    self._profile,
+                    addon_dir,
+                    profile,
                     int(card_id),
-                    dlg.operation_payload.get("start_priority", 50.0),
-                    dlg.operation_payload.get("end_priority", 50.0),
-                    include_root=bool(dlg.operation_payload.get("include_root")),
+                    choice.operation_payload.get("start_priority", 50.0),
+                    choice.operation_payload.get("end_priority", 50.0),
+                    include_root=bool(choice.operation_payload.get("include_root")),
                 )
-            elif dlg.operation == OP_RANDOMIZE:
+            elif choice.operation == OP_RANDOMIZE:
                 changed_count = randomize_subtree_priorities(
-                    self._addon_dir,
-                    self._profile,
+                    addon_dir,
+                    profile,
                     int(card_id),
-                    dlg.operation_payload.get("minimum_priority", 0.0),
-                    dlg.operation_payload.get("maximum_priority", 100.0),
-                    include_root=bool(dlg.operation_payload.get("include_root")),
+                    choice.operation_payload.get("minimum_priority", 0.0),
+                    choice.operation_payload.get("maximum_priority", 100.0),
+                    include_root=bool(choice.operation_payload.get("include_root")),
                 )
-            elif dlg.operation == OP_FOCUS_BRANCH:
+            elif choice.operation == OP_FOCUS_BRANCH:
                 changed_count = focus_subtree_priorities(
-                    self._addon_dir,
-                    self._profile,
+                    addon_dir,
+                    profile,
                     int(card_id),
-                    lower_is_more_important=configured_priority_lower_is_more_important(),
+                    lower_is_more_important=direction,
                 )
-            elif dlg.operation == OP_FADE_CHILDREN:
+            elif choice.operation == OP_FADE_CHILDREN:
                 changed_count = fade_child_priorities(
-                    self._addon_dir,
-                    self._profile,
+                    addon_dir,
+                    profile,
                     int(card_id),
-                    lower_is_more_important=configured_priority_lower_is_more_important(),
+                    lower_is_more_important=direction,
                 )
-        except Exception as exc:
-            showInfo(t("knowledge_tree_priority_failed", error=exc))
-            return
-
-        self.reload(select_card_id=int(card_id))
-        if changed_count:
-            tooltip(
-                tn("knowledge_tree_priority_updated", changed_count)
-            )
+            return SimpleNamespace(value=changed_count, changes=OpChanges())
+        def done(result):
+            if self._closed or self._profile != active_profile() or mw.col is not collection:
+                return
+            self.reload(select_card_id=int(card_id))
+            if result.value:
+                tooltip(tn("knowledge_tree_priority_updated", result.value))
+        CollectionOp(self, operation).success(done).failure(
+            lambda error: showInfo(t("knowledge_tree_priority_failed", error=error)) if not self._closed else None
+        ).run_in_background()
 
     def _study_selected_branch(self) -> None:
         card_id = self._single_selected_card_id()
@@ -2693,19 +2704,25 @@ class KnowledgeTreeDialog(QDialog):
             try:
                 from ..backend.knowledge_tree import build_branch_study_scope
                 from .session_launcher import learnFunction
+                from .background_reads import BackgroundReads
             except ImportError:
                 from knowledge_tree import build_branch_study_scope  # type: ignore
                 from session_launcher import learnFunction  # type: ignore
+                from background_reads import BackgroundReads
 
             def _default_branch_study(target_card_id: int) -> None:
-                branch_scope = build_branch_study_scope(
-                    self._addon_dir,
-                    self._profile,
-                    int(target_card_id),
-                )
-                if not branch_scope:
-                    raise RuntimeError(t("knowledge_tree_subtree_unavailable"))
-                learnFunction(branch_scope=branch_scope)
+                if not hasattr(self, "_branch_study_reads"):
+                    self._branch_study_reads = BackgroundReads(self, self._profile)
+                def read(col, cancel):
+                    return build_branch_study_scope(
+                        self._addon_dir, self._profile, int(target_card_id), col=col)
+                def done(branch_scope):
+                    if not branch_scope:
+                        showInfo(t("knowledge_tree_subtree_unavailable"))
+                        return
+                    learnFunction(branch_scope=branch_scope)
+                self._branch_study_reads.submit(read, done,
+                    lambda error: showInfo(t("knowledge_tree_study_open_failed", error=error)))
 
             handler = _default_branch_study
 

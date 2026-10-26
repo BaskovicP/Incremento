@@ -1,5 +1,6 @@
 import db
 import search_indexer
+from concurrent.futures import CancelledError
 
 
 def test_pdf_indexer_persists_state_and_skips_unchanged_file(tmp_path):
@@ -108,3 +109,28 @@ def test_legacy_index_without_source_signature_is_refreshed_once(tmp_path):
     assert db.search_pdf_text_index(
         addon_dir, "Profile", "fresh"
     )[0][2] == "fresh indexed text"
+
+
+def test_cancel_during_extraction_preserves_previous_index_and_retry_state(tmp_path):
+    addon_dir = str(tmp_path / "addon")
+    path = tmp_path / "large.pdf"
+    path.write_bytes(b"pdf")
+    db.replace_pdf_text_index(addon_dir, "Profile", 10, ["previous searchable text"])
+    stopped = False
+
+    def extract(_path, *, cancelled, **_kwargs):
+        nonlocal stopped
+        stopped = True
+        assert cancelled()
+        raise CancelledError()
+
+    result = search_indexer.index_pdf_documents(
+        addon_dir, "Profile", [(10, str(path))], extractor=extract,
+        cancelled=lambda: stopped, force=True,
+    )
+    assert result.cancelled
+    assert result.failed == result.indexed == 0
+    assert db.search_pdf_text_index(addon_dir, "Profile", "previous")[0][2] == "previous searchable text"
+    assert db.get_connection(addon_dir, "Profile").execute(
+        "SELECT status FROM document_index_state WHERE card_id=10"
+    ).fetchone() is None

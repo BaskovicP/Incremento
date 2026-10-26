@@ -1,0 +1,166 @@
+{
+  "baseline_commit": "6a371c732fc6c7d65bb4468fdb5853a2926ec097",
+  "node": "v25.6.0",
+  "scope": "Synthetic Node SSR, actual content module, static dependency bytes; no browser end-to-end latency claim.",
+  "F09_folder_counts": {
+    "bookmarks": 10000,
+    "repeated_reads": 1000,
+    "before": {
+      "median_ms": 373.153,
+      "samples_ms": [
+        424.689,
+        373.153,
+        372.937
+      ]
+    },
+    "after_warm": {
+      "median_ms": 0.076,
+      "samples_ms": [
+        0.198,
+        0.076,
+        0.071
+      ]
+    },
+    "after_cold_index": {
+      "median_ms": 1.031,
+      "samples_ms": [
+        1.309,
+        0.966,
+        1.031
+      ]
+    }
+  },
+  "F18_ssr": {
+    "before": {
+      "closed_folder": {
+        "median_ms": 92.559,
+        "samples_ms": [
+          101.979,
+          69.756,
+          92.559
+        ],
+        "checkboxes": 10001
+      },
+      "import_rows": {
+        "median_ms": 413.107,
+        "samples_ms": [
+          413.107,
+          403.536,
+          451.274
+        ],
+        "mounted_rows": 10000
+      }
+    },
+    "after": {
+      "closed_folder": {
+        "median_ms": 0.246,
+        "samples_ms": [
+          0.687,
+          0.246,
+          0.113
+        ],
+        "checkboxes": 1
+      },
+      "import_rows": {
+        "median_ms": 4.893,
+        "samples_ms": [
+          5.418,
+          4.676,
+          4.893
+        ],
+        "mounted_rows": 100
+      }
+    }
+  },
+  "F20_static_graph": {
+    "background.js": {
+      "before": {
+        "bytes": 986486,
+        "files": [
+          "chrome_extensions/incremento_companion/dist/background.js",
+          "chrome_extensions/incremento_companion/dist/assets/extension-vendor.js",
+          "chrome_extensions/incremento_companion/dist/assets/extension-shared.js"
+        ]
+      },
+      "after": {
+        "bytes": 177928,
+        "files": [
+          "chrome_extensions/incremento_companion/dist/background.js",
+          "chrome_extensions/incremento_companion/dist/assets/extension-shared.js"
+        ]
+      }
+    },
+    "content.js": {
+      "before": {
+        "bytes": 1001053,
+        "files": [
+          "chrome_extensions/incremento_companion/dist/content.js",
+          "chrome_extensions/incremento_companion/dist/assets/extension-vendor.js",
+          "chrome_extensions/incremento_companion/dist/assets/extension-shared.js"
+        ]
+      },
+      "after": {
+        "bytes": 192642,
+        "files": [
+          "chrome_extensions/incremento_companion/dist/content.js",
+          "chrome_extensions/incremento_companion/dist/assets/extension-shared.js"
+        ]
+      }
+    },
+    "offscreen.js": {
+      "before": {
+        "bytes": 950623,
+        "files": [
+          "chrome_extensions/incremento_companion/dist/offscreen.js",
+          "chrome_extensions/incremento_companion/dist/assets/extension-vendor.js",
+          "chrome_extensions/incremento_companion/dist/assets/extension-shared.js"
+        ]
+      },
+      "after": {
+        "bytes": 142059,
+        "files": [
+          "chrome_extensions/incremento_companion/dist/offscreen.js",
+          "chrome_extensions/incremento_companion/dist/assets/extension-shared.js"
+        ]
+      }
+    }
+  },
+  "F21_media_sampling": {
+    "before": {
+      "videos": 50,
+      "ticks": 1000,
+      "visible": {
+        "median_ms": 2.855,
+        "samples_ms": [
+          4.91,
+          2.855,
+          2.787
+        ],
+        "video_dom_queries": 2000,
+        "protocol_messages": 2000
+      },
+      "hidden": {
+        "video_dom_queries": 2000,
+        "protocol_messages": 2000
+      }
+    },
+    "after": {
+      "videos": 50,
+      "ticks": 1000,
+      "visible": {
+        "median_ms": 2.244,
+        "samples_ms": [
+          2.581,
+          1.583,
+          2.244
+        ],
+        "video_dom_queries": 0,
+        "protocol_messages": 2000
+      },
+      "hidden": {
+        "video_dom_queries": 0,
+        "protocol_messages": 0
+      }
+    }
+  }
+}

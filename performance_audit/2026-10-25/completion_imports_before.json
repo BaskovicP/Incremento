@@ -1,0 +1,30 @@
+{
+  "kind": "isolated optional-dialog import group, after Qt and DB preload; not total Anki startup",
+  "runs_ms": [
+    {
+      "frontend.stats_dialog": 23.239500005729496,
+      "frontend.pdf_quick_jump": 2.0477919606491923,
+      "frontend.pdf_bookshelf": 3.363250056281686,
+      "frontend.current_document_search_dialog": 0.331666087731719,
+      "frontend.search_all": 4.252332961186767,
+      "frontend.database_entries_dialog": 0.7237090030685067
+    },
+    {
+      "frontend.stats_dialog": 14.443166088312864,
+      "frontend.pdf_quick_jump": 1.3227090239524841,
+      "frontend.pdf_bookshelf": 2.343708067201078,
+      "frontend.current_document_search_dialog": 0.11345907114446163,
+      "frontend.search_all": 3.199417027644813,
+      "frontend.database_entries_dialog": 0.3137079766020179
+    },
+    {
+      "frontend.stats_dialog": 14.361707959324121,
+      "frontend.pdf_quick_jump": 1.1764159426093102,
+      "frontend.pdf_bookshelf": 2.4144999915733933,
+      "frontend.current_document_search_dialog": 0.11433300096541643,
+      "frontend.search_all": 2.7403749991208315,
+      "frontend.database_entries_dialog": 0.35212503280490637
+    }
+  ],
+  "median_group_ms": 21.73616725485772
+}

@@ -10,10 +10,10 @@ from typing import Literal
 
 try:
     from .config_service import load_addon_config
-    from .topic_scheduler import is_topic_card
+    from .topic_scheduler import is_topic_card, resolve_topic_card_classifier
 except ImportError:
     from config_service import load_addon_config  # type: ignore
-    from topic_scheduler import is_topic_card  # type: ignore
+    from topic_scheduler import is_topic_card, resolve_topic_card_classifier  # type: ignore
 
 
 _DEFAULT_USE_FAIL_PASS_ON_ITEMS = True
@@ -70,13 +70,15 @@ def reviewer_button_mode(
     card,
     *,
     use_fail_pass_on_items: bool | None = None,
+    config: dict | None = None,
 ) -> Literal["topic", "items_fail_pass", "standard"]:
     if card is None:
         return "standard"
-    if is_topic_card(card):
+    cfg = _resolved_config(config)
+    if is_topic_card(card, classifier=resolve_topic_card_classifier(cfg)):
         return "topic"
     if use_fail_pass_on_items is None:
-        use_fail_pass_on_items = configured_use_fail_pass_on_items()
+        use_fail_pass_on_items = bool(cfg.get("use_fail_pass_on_items", _DEFAULT_USE_FAIL_PASS_ON_ITEMS))
     if use_fail_pass_on_items:
         return "items_fail_pass"
     return "standard"

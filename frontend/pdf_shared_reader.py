@@ -41,6 +41,7 @@ class SharedPdfReader:
         self.on_change = on_change or self.changed
         self.search = {'query': '', 'hits': [], 'activeIndex': -1}
         self.search_generation = 0
+        self._find_queries = None
         self.page_labels = ()
 
     def current(self):
@@ -323,20 +324,37 @@ class SharedPdfReader:
         popup.show_at(self.owner.view)
 
     def find(self, query):
+        try:
+            from .latest_query import LatestQuery
+        except ImportError:
+            from latest_query import LatestQuery
         from aqt.operations import QueryOp
         self.search_generation += 1
-        generation = self.search_generation
-        s, profile, cid, maximum = self.service, self.state.profile, self.state.card_id, self.state.max_page
-        def work(col):
-            rows = s.search_pdf_text_index_for_card(s._ADDON_DIR, profile, cid, query.strip(), limit=250) if query.strip() else []
-            return [{'page': page, 'excerpt': s._pdf_search_snippet(text, query.strip(), max_len=260),
-                     'snippet': s._pdf_search_snippet(text, query.strip())} for page, text in rows if page <= maximum]
-        def ready(hits):
-            if self.current() and generation == self.search_generation:
-                self.search = {'query': query, 'hits': hits, 'activeIndex': 0 if hits else -1}
-                self.jump_to_search_hit()
-        QueryOp(parent=self.owner, op=work, success=ready).failure(
-            lambda error: ready([])).run_in_background()
+        def current(request):
+            return self.current() and request['generation'] == self.search_generation
+        def dispatch(ticket, success, failure, progress):
+            request = ticket.payload
+            def work(col):
+                try:
+                    from ..backend.db import CompiledSearch
+                except ImportError:
+                    from db import CompiledSearch
+                s, text = self.service, request['query'].strip()
+                compiled = CompiledSearch(text, cancel=ticket.cancel)
+                rows = s.search_pdf_text_index_for_card(s._ADDON_DIR, request['profile'],
+                    request['cid'], compiled, limit=250) if text else []
+                return [{'page': page, 'excerpt': s._pdf_search_snippet(body, text, max_len=260),
+                         'snippet': s._pdf_search_snippet(body, text)} for page, body in rows
+                        if page <= request['maximum']]
+            QueryOp(parent=self.owner, op=work, success=success).failure(failure).run_in_background()
+        def publish(request, hits):
+            self.search = {'query': request['query'], 'hits': hits, 'activeIndex': 0 if hits else -1}
+            self.jump_to_search_hit()
+        if self._find_queries is None:
+            self._find_queries = LatestQuery(dispatch=dispatch, accept=current, success=publish,
+                failure=lambda request, error: publish(request, []))
+        self._find_queries.submit({'query': query, 'generation': self.search_generation,
+            'profile': self.state.profile, 'cid': self.state.card_id, 'maximum': self.state.max_page})
 
     def jump_to_search_hit(self):
         if not self.current():
@@ -357,28 +375,29 @@ class SharedPdfReader:
             from .current_document_search_dialog import _CurrentDocumentSearchDialog
         except ImportError:
             from current_document_search_dialog import _CurrentDocumentSearchDialog
-        results = []
+        service, profile, cid, maximum = self.service, self.state.profile, self.state.card_id, self.state.max_page
         def jump(hit, index, query):
+            results = dialog._hits
             if self.current() and 0 <= index < len(results) and results[index] == hit:
                 self.search_generation += 1
                 self.search = {'query': query, 'hits': list(results), 'activeIndex': index}
                 self.jump_to_search_hit()
                 return True
             return False
-        def hits(query):
-            nonlocal results
-            if not self.current():
-                return []
-            s = self.service
-            rows = s.search_pdf_text_index_for_card(s._ADDON_DIR, self.state.profile,
-                self.state.card_id, query[:200], limit=250)
-            results = [{'page': page, 'snippet': s._pdf_search_snippet(text, query),
-                        'excerpt': s._pdf_search_snippet(text, query, max_len=260)}
-                       for page, text in rows if page <= self.state.max_page]
-            return results
+        def hits(query, *, cancel=None):
+            try:
+                from ..backend.db import CompiledSearch
+            except ImportError:
+                from db import CompiledSearch
+            compiled = CompiledSearch(query[:200], cancel=cancel)
+            rows = service.search_pdf_text_index_for_card(service._ADDON_DIR, profile, cid, compiled, limit=250)
+            return [{'page': page, 'snippet': service._pdf_search_snippet(text, query),
+                     'excerpt': service._pdf_search_snippet(text, query, max_len=260)}
+                    for page, text in rows if page <= maximum]
         dialog = _CurrentDocumentSearchDialog(self.owner, document_kind='pdf',
             document_label=self.owner.windowTitle(), initial_query=self.search['query'],
-            search_hits_fn=hits, open_hit_fn=jump, open_search_all_fn=lambda query: None)
+            search_hits_fn=hits, open_hit_fn=jump, open_search_all_fn=lambda query: None,
+            request_is_current=self.current)
         dialog._search_all_btn.hide()
         dialog.show()
         self.owner._search_dialog = dialog

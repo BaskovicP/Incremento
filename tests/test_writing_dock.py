@@ -1,4 +1,5 @@
 import writing_dock
+import pytest
 
 
 def test_flush_reports_write_failure_without_claiming_the_live_text_is_saved(monkeypatch):
@@ -186,11 +187,12 @@ def test_kept_open_writing_survives_pdf_questions_and_review_end(monkeypatch):
     assert visible == [True]
 
 
-def test_reopening_current_writing_preserves_unsaved_text_and_session_baseline(monkeypatch):
+@pytest.mark.parametrize("visible", [False, True])
+def test_reopening_current_writing_preserves_unsaved_text_and_session_baseline(monkeypatch, visible):
     from types import SimpleNamespace
     shown = []
     monkeypatch.setattr(writing_dock, '_writing_dock', SimpleNamespace(
-        widget=lambda: object(), isVisible=lambda: True,
+        widget=lambda: object(), isVisible=lambda: visible,
         show=lambda: shown.append(True), raise_=lambda: None))
     monkeypatch.setattr(writing_dock, '_current_writing_card_id', 77)
     monkeypatch.setattr(writing_dock, '_current_writing_relpath', 'writing/synthetic.md')
@@ -216,7 +218,7 @@ def test_profile_reset_stops_pending_saves_clears_identity_and_unpins(monkeypatc
     monkeypatch.setattr(writing_dock, '_current_writing_card_id', 77)
     monkeypatch.setattr(writing_dock, '_current_writing_relpath', 'writing/test.md')
     monkeypatch.setattr(writing_dock, '_writing_keep_open', True)
-    monkeypatch.setattr(writing_dock, '_flush_editor_state', lambda: events.append('save'))
+    monkeypatch.setattr(writing_dock, '_flush_editor_state', lambda **_kwargs: events.append('save'))
     for name in ('_autosave_timer', '_state_save_timer'):
         monkeypatch.setattr(writing_dock, name, SimpleNamespace(stop=lambda: events.append('stop')))
     writing_dock.reset_for_profile_switch()

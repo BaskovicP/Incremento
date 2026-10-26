@@ -5,8 +5,8 @@ import { getPdfPayloadForUrl } from "../shared/pdfFetch.js";
 import {
   DEFAULT_PRIORITY,
   buildBookmarkItems,
-  collectBookmarkIds,
-  findNodeById,
+  buildBookmarkTreeIndex,
+  bookmarkSelectionPrefix,
   formatPriority,
   getSelectedItems,
   parseTags,
@@ -50,6 +50,8 @@ export function BookmarksApp() {
   const [status, setStatus] = useState(makeStatus());
   const [results, setResults] = useState([]);
   const [progress, setProgress] = useState(makeProgress());
+  const treeIndex = useMemo(() => buildBookmarkTreeIndex(tree), [tree]);
+  const selectionPrefix = useMemo(() => bookmarkSelectionPrefix(treeIndex, itemsById), [treeIndex, itemsById]);
 
   const selectedItems = useMemo(
     () => getSelectedItems(itemsById).sort((left, right) => left.title.localeCompare(right.title, language)),
@@ -115,11 +117,11 @@ export function BookmarksApp() {
   }, []);
 
   function toggleFolder(folderId, checked) {
-    const node = findNodeById(tree, folderId);
-    if (!node) {
+    const range = treeIndex.ranges.get(String(folderId));
+    if (!range) {
       return;
     }
-    const bookmarkIds = collectBookmarkIds(node, itemsById);
+    const bookmarkIds = treeIndex.bookmarkIds.slice(...range);
     setItemsById((currentItems) => setSelectedForIds(currentItems, bookmarkIds, checked));
   }
 
@@ -325,6 +327,8 @@ export function BookmarksApp() {
               <BookmarkTree
                 nodes={tree}
                 itemsById={itemsById}
+                treeIndex={treeIndex}
+                selectionPrefix={selectionPrefix}
                 disabled={busy}
                 onToggleFolder={toggleFolder}
                 onToggleBookmark={toggleBookmark}

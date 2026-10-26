@@ -20,7 +20,7 @@ try:
         get_connection,
         get_knowledge_tree_nodes,
         set_knowledge_tree_structure,
-        set_topic_schedule,
+        set_topic_schedules,
     )
     from .note_metadata import (
         INCREMENTO_METADATA_FIELDS,
@@ -41,7 +41,7 @@ except ImportError:
         get_connection,
         get_knowledge_tree_nodes,
         set_knowledge_tree_structure,
-        set_topic_schedule,
+        set_topic_schedules,
     )
     from note_metadata import (  # type: ignore
         INCREMENTO_METADATA_FIELDS,
@@ -615,6 +615,7 @@ def import_supermemo_collection(
     if not deck_name:
         raise ValueError("A destination deck is required.")
     ordered = _ordered_elements(collection)
+    parent_titles = {element.element_id: element.title for element in ordered}
     unsupported = len(collection.elements) - len(ordered)
     existing = _existing_element_cards(col, collection.fingerprint)
     card_ids = dict(existing)
@@ -664,10 +665,7 @@ def import_supermemo_collection(
                 if model is None:
                     raise RuntimeError("The required SuperMemo note type is unavailable.")
                 parent_card_id = card_ids.get(element.parent_id or 0)
-                parent_title = next(
-                    (candidate.title for candidate in ordered if candidate.element_id == element.parent_id),
-                    "",
-                )
+                parent_title = parent_titles.get(element.parent_id, "")
                 note = col.new_note(model)
                 note["Title"] = _safe_html(element.title)
                 if cloze:
@@ -752,15 +750,10 @@ def import_supermemo_collection(
                 "INSERT OR REPLACE INTO priorities (priority, card_id) VALUES (?, ?)",
                 priority_rows,
             )
-        for element in ordered:
-            if not element.is_item:
-                set_topic_schedule(
-                    addon_dir,
-                    profile,
-                    card_ids[element.element_id],
-                    element.a_factor,
-                    max(1, element.current_interval or 1),
-                )
+        set_topic_schedules(addon_dir, profile, [
+            (card_ids[element.element_id], element.a_factor, max(1, element.current_interval or 1), None)
+            for element in ordered if not element.is_item
+        ])
         set_knowledge_tree_structure(
             addon_dir,
             profile,

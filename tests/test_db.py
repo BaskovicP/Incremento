@@ -431,6 +431,28 @@ class TestDatabaseEditorHelpers:
             for entry in entries
         )
 
+    def test_database_inspection_pages_cards_and_rows_without_mutation(self):
+        conn = db.get_connection(self.addon_dir, "TestProfile")
+        conn.execute("CREATE TABLE inspection_rows(card_id INTEGER, text TEXT)")
+        conn.executemany("INSERT INTO inspection_rows VALUES (?,?)", [(cid, "x" * 9000) for cid in range(1, 6)])
+        conn.commit()
+        before = conn.total_changes
+        cursor = None
+        seen = []
+        for _ in range(10):
+            payload = db.find_card_database_entries(
+                self.addon_dir, "TestProfile", [1, 2, 3, 4, 5],
+                cursor=cursor, max_cards=2, max_rows=1, max_bytes=20000,
+            )
+            assert len(payload["card_ids"]) <= 2
+            assert len(payload["entries"]) <= 1
+            seen.extend(entry["card_id"] for entry in payload["entries"])
+            cursor = payload["next_cursor"]
+            if cursor is None:
+                break
+        assert seen == [1, 2, 3, 4, 5]
+        assert conn.total_changes == before
+
     def test_find_card_database_entries_includes_topic_schedule_a_factor(self):
         db.set_topic_schedule(
             self.addon_dir,
@@ -1562,6 +1584,13 @@ class TestEpubCardSources:
     def teardown_method(self):
         _reset_db_module()
 
+    def test_section_counts_can_read_only_the_active_section(self):
+        for section in (0, 2, 4):
+            db.add_epub_card_source(self.addon_dir, "TestProfile", epub_card_id=7,
+                                    section_index=section, note_id=section + 100)
+        assert db.get_epub_section_card_counts(self.addon_dir, "TestProfile", 7, section_index=2) == {2: 1}
+        assert db.get_epub_section_card_counts(self.addon_dir, "TestProfile", 7, section_index=3) == {}
+
     def test_get_epub_card_sources_up_to_section(self):
         db.add_epub_card_source(self.addon_dir, "TestProfile", epub_card_id=4, section_index=0, note_id=201, excerpt="zero")
         db.add_epub_card_source(self.addon_dir, "TestProfile", epub_card_id=4, section_index=2, note_id=202, excerpt="two")
@@ -2390,6 +2419,29 @@ class TestTopicSchedule:
     def teardown_method(self):
         _reset_db_module()
 
+    def test_batch_topic_schedules_match_individual_normalization(self):
+        rows = [(1, 2.5, 7, None), (2, float("nan"), 4.25, None), (3, 3.5, 10, 2.75)]
+        for card_id, a_factor, interval, precise in rows:
+            db.set_topic_schedule(self.addon_dir, "Legacy", card_id, a_factor, interval,
+                                  precise_interval=precise)
+        db.set_topic_schedules(self.addon_dir, "Batched", rows)
+        for card_id, *_ in rows:
+            assert db.get_topic_schedule_state(self.addon_dir, "Batched", card_id) == (
+                db.get_topic_schedule_state(self.addon_dir, "Legacy", card_id)
+            )
+
+    def test_batch_topic_schedules_roll_back_every_row_on_failure(self):
+        db.set_topic_schedule(self.addon_dir, "TestProfile", 1, 2.5, 7)
+        connection = db.get_connection(self.addon_dir, "TestProfile")
+        connection.execute("CREATE TRIGGER reject_topic_insert BEFORE INSERT ON topic_schedule "
+                           "WHEN new.card_id=2 BEGIN SELECT RAISE(ABORT, 'synthetic batch failure'); END")
+        connection.commit()
+        with pytest.raises(sqlite3.IntegrityError, match="synthetic batch failure"):
+            db.set_topic_schedules(self.addon_dir, "TestProfile", [(1, 4.0, 14, None), (2, 3.0, 7, None)])
+        assert db.get_topic_schedule(self.addon_dir, "TestProfile", 1) == (2.5, 7)
+        assert connection.execute("SELECT card_id FROM topic_schedule ORDER BY card_id").fetchall() == [(1,)]
+        assert connection.in_transaction is False
+
     def test_get_default_when_not_set(self):
         a_factor, interval = db.get_topic_schedule(self.addon_dir, "TestProfile", 42)
         assert a_factor == 3.5
@@ -3164,6 +3216,45 @@ class TestKnowledgeTree:
 
     def teardown_method(self):
         _reset_db_module()
+
+    def test_structure_save_preserves_unchanged_rows_and_their_timestamps(self, monkeypatch):
+        rows = [{"card_id": 1, "parent_card_id": None},
+                {"card_id": 2, "parent_card_id": 1},
+                {"card_id": 3, "parent_card_id": 1}]
+        monkeypatch.setattr(db.time, "time", lambda: 100)
+        db.set_knowledge_tree_structure(self.addon_dir, "TestProfile", rows)
+        connection = db.get_connection(self.addon_dir, "TestProfile")
+        changes = connection.total_changes
+        monkeypatch.setattr(db.time, "time", lambda: 200)
+        db.set_knowledge_tree_structure(self.addon_dir, "TestProfile", rows)
+        assert connection.total_changes == changes
+        assert {row["updated_at"] for row in db.get_knowledge_tree_nodes(self.addon_dir, "TestProfile")} == {100}
+
+        rows[1]["parent_card_id"] = 3
+        db.set_knowledge_tree_structure(self.addon_dir, "TestProfile", rows)
+        assert connection.total_changes - changes == 2
+        saved = {row["card_id"]: row for row in db.get_knowledge_tree_nodes(self.addon_dir, "TestProfile")}
+        assert saved[1]["updated_at"] == 100
+        assert saved[2]["updated_at"] == saved[3]["updated_at"] == 200
+        assert {row["created_at"] for row in saved.values()} == {100}
+
+    def test_partial_tree_change_rolls_back_structure_and_timestamps(self, monkeypatch):
+        rows = [{"card_id": 1, "parent_card_id": None},
+                {"card_id": 2, "parent_card_id": 1},
+                {"card_id": 3, "parent_card_id": 1}]
+        monkeypatch.setattr(db.time, "time", lambda: 100)
+        db.set_knowledge_tree_structure(self.addon_dir, "TestProfile", rows)
+        before = db.get_knowledge_tree_nodes(self.addon_dir, "TestProfile")
+        connection = db.get_connection(self.addon_dir, "TestProfile")
+        connection.execute("CREATE TRIGGER reject_tree_update BEFORE UPDATE ON knowledge_tree_nodes "
+                           "WHEN new.card_id=3 BEGIN SELECT RAISE(ABORT, 'synthetic tree failure'); END")
+        connection.commit()
+        rows[1]["parent_card_id"] = 3
+        monkeypatch.setattr(db.time, "time", lambda: 200)
+        with pytest.raises(sqlite3.IntegrityError, match="synthetic tree failure"):
+            db.set_knowledge_tree_structure(self.addon_dir, "TestProfile", rows)
+        assert db.get_knowledge_tree_nodes(self.addon_dir, "TestProfile") == before
+        assert connection.in_transaction is False
 
     @pytest.mark.parametrize("shape", ["chain", "balanced", "star"])
     @pytest.mark.parametrize("reverse_order", [False, True])

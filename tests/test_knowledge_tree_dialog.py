@@ -46,6 +46,36 @@ for _name, _original in _ORIGINAL_PYQT_MODULES.items():
         sys.modules[_name] = _original
 
 
+def test_default_branch_study_defers_collection_reads_until_worker(monkeypatch):
+    import ast
+    from pathlib import Path
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    import background_reads
+    import knowledge_tree
+    queued, opened = [], []
+    class Reads:
+        def __init__(self, *args): pass
+        def submit(self, work, success, failure=None): queued.append((work, success))
+    monkeypatch.setattr(background_reads, "BackgroundReads", Reads)
+    build = Mock(return_value={"root_card_id": 7})
+    monkeypatch.setattr(knowledge_tree, "build_branch_study_scope", build)
+    monkeypatch.setitem(sys.modules, "session_launcher", SimpleNamespace(learnFunction=lambda **kw: opened.append(kw)))
+    node = next(n for n in ast.walk(ast.parse(Path(knowledge_tree_dialog.__file__).read_text()))
+                if isinstance(n, ast.FunctionDef) and n.name == "_study_selected_branch")
+    ns = dict(vars(knowledge_tree_dialog), __package__="")
+    exec(compile(ast.Module(body=[node], type_ignores=[]), "<branch-action>", "exec"), ns)
+    dialog = SimpleNamespace(_single_selected_card_id=lambda: 7, _open_branch_study=None,
+                             _addon_dir="temporary", _profile="A")
+    ns["_study_selected_branch"](dialog)
+    build.assert_not_called()
+    assert opened == [] and len(queued) == 1
+    collection = object()
+    queued[0][1](queued[0][0](collection, None))
+    build.assert_called_once_with("temporary", "A", 7, col=collection)
+    assert opened == [{"branch_scope": {"root_card_id": 7}}]
+
+
 def test_open_pdf_action_state_enables_only_for_single_pdf_linked_node():
     enabled, tool_tip = knowledge_tree_dialog._open_pdf_action_state(1, {"kind": "pdf"})
 

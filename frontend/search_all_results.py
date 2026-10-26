@@ -11,13 +11,15 @@ from urllib.parse import quote
 
 try:
     from ..backend.i18n import t
-    from ..backend.db import (get_connection, search_note_ocr_index, search_epub_text_index,
+    from ..backend.db import (
+    CompiledSearch,get_connection, search_note_ocr_index, search_epub_text_index,
                              search_pdf_text_index, search_text_match_score, split_search_terms)
     from ..backend.search_repository import SearchCollection, search_excerpt_rows
     from ..backend.pdf_search import reconcile_pdf_search_indexes
 except ImportError:
     from backend.i18n import t
-    from db import (get_connection, search_note_ocr_index, search_epub_text_index,
+    from db import (
+    CompiledSearch,get_connection, search_note_ocr_index, search_epub_text_index,
                     search_pdf_text_index, search_text_match_score, split_search_terms)
     from search_repository import SearchCollection, search_excerpt_rows
     from pdf_search import reconcile_pdf_search_indexes
@@ -208,7 +210,7 @@ class SearchResultsBuilder:
 
     def run(self, query: str) -> SearchResults:
         self._metadata.check_cancelled()
-        q = (query or "").strip()
+        q = CompiledSearch((query or "").strip(), cancel=self._metadata.cancel)
         if len(q) < _MIN_SEARCH_CHARS:
             return SearchResults("", {}, False)
 

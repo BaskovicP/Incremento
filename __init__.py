@@ -39,7 +39,6 @@ from aqt.qt import (
     qconnect,
 )
 
-from .frontend.stats_dialog import StatsDialog
 from .frontend import deck_browser_stats as _deck_browser_stats_mod
 from .backend.scheduler_config import load_scheduler_config
 from .backend.statistics import (
@@ -149,6 +148,7 @@ from .frontend.priority_dialog import PriorityDialog
 from .frontend.custom_schedule_dialog import CustomScheduleDialog
 from .frontend import timer_widget as _timer_mod
 from .backend.topic_scheduler import (
+    resolve_topic_card_classifier as _resolve_topic_card_classifier,
     TOPIC_REVIEW_BUTTONS,
     configured_default_topic_a_factor as _configured_default_topic_a_factor,
     configured_topic_less_adjustment_percent as _configured_topic_less_adjustment_percent,
@@ -265,11 +265,6 @@ from .frontend.onboarding_dialog import (
     mark_onboarding_complete,
     should_show_onboarding,
 )
-from .frontend.pdf_quick_jump import _PdfQuickJumpDialog
-from .frontend.pdf_bookshelf import (
-    _DocumentBookshelfDialog,
-    _load_bookshelf_snapshot,
-)
 from .frontend.reviewer_extract_button import build_reviewer_extract_button_js
 from .frontend.reviewer_button_style import build_reviewer_button_style_js
 from .frontend.reviewer_button_visibility import (
@@ -289,10 +284,7 @@ from .frontend.reviewer_focus import (
     schedule_reviewer_focus_restore,
 )
 from .frontend.reviewer_source_cover import build_reviewer_source_cover_js
-from .frontend.database_entries_dialog import show_database_entries_dialog
 from .frontend.reviewer_tag_dialog import ReviewerTagDialog
-from .frontend.current_document_search_dialog import _CurrentDocumentSearchDialog
-from .frontend.search_all import _SearchAllDialog
 from .frontend.pdf_search_lifecycle import PdfSearchLifecycle
 from .frontend.note_type_update_dialog import (
     ACTION_APPLY as _NOTE_TYPE_ACTION_APPLY,
@@ -308,6 +300,43 @@ from .backend.reviewer_extract import (
     initial_extract_field_values as _initial_extract_field_values,
     knowledge_tree_link_state as _knowledge_tree_link_state,
 )
+
+
+# Optional dialogs stay out of startup. These factories retain the composition
+# root's call boundary and import Qt views only when the user opens them.
+def StatsDialog(*args, **kwargs):
+    from .frontend.stats_dialog import StatsDialog as Dialog
+    return Dialog(*args, **kwargs)
+
+
+def _PdfQuickJumpDialog(*args, **kwargs):
+    from .frontend.pdf_quick_jump import _PdfQuickJumpDialog as Dialog
+    return Dialog(*args, **kwargs)
+
+
+def _DocumentBookshelfDialog(*args, **kwargs):
+    from .frontend.pdf_bookshelf import _DocumentBookshelfDialog as Dialog
+    return Dialog(*args, **kwargs)
+
+
+def _load_bookshelf_snapshot(*args, **kwargs):
+    from .frontend.pdf_bookshelf import _load_bookshelf_snapshot as load
+    return load(*args, **kwargs)
+
+
+def _CurrentDocumentSearchDialog(*args, **kwargs):
+    from .frontend.current_document_search_dialog import _CurrentDocumentSearchDialog as Dialog
+    return Dialog(*args, **kwargs)
+
+
+def _SearchAllDialog(*args, **kwargs):
+    from .frontend.search_all import _SearchAllDialog as Dialog
+    return Dialog(*args, **kwargs)
+
+
+def show_database_entries_dialog(*args, **kwargs):
+    from .frontend.database_entries_dialog import show_database_entries_dialog as show
+    return show(*args, **kwargs)
 
 _activate_pymupdf()
 
@@ -2018,6 +2047,9 @@ def _format_database_entry_value(value) -> str:
 def _format_browser_database_entries(payload: dict[str, object]) -> str:
     card_ids = [int(card_id) for card_id in list(payload.get("card_ids") or [])]
     entries = list(payload.get("entries") or [])
+    by_card = {}
+    for entry in entries:
+        by_card.setdefault(int((entry or {}).get("card_id") or 0), []).append(entry)
     lines = [
         _t("root_browser_database_selected_ids") + ": " + ", ".join(str(card_id) for card_id in card_ids),
         _t("root_browser_database_profile", profile=payload.get('profile') or ''),
@@ -2025,11 +2057,7 @@ def _format_browser_database_entries(payload: dict[str, object]) -> str:
     ]
     separator = "-" * 72
     for card_id in card_ids:
-        card_entries = [
-            entry
-            for entry in entries
-            if int((entry or {}).get("card_id") or 0) == int(card_id)
-        ]
+        card_entries = by_card.get(card_id, [])
         lines.extend(["", separator, _t("root_browser_database_card", card_id=card_id)])
         if not card_entries:
             lines.append(_t("root_browser_database_no_rows", card_id=card_id))
@@ -2057,11 +2085,15 @@ def _format_browser_database_entries(payload: dict[str, object]) -> str:
             values = dict(entry.get("values") or {})
             columns = list(entry.get("columns") or values.keys())
             for column in columns:
-                lines.append(f"    {column}: {_format_database_entry_value(values.get(column))}")
+                value = values.get(column)
+                suffix = "…" if isinstance(value, (str, bytes)) and len(value) >= 4096 else ""
+                lines.append(f"    {column}: {_format_database_entry_value(value)}{suffix}")
     return "\n".join(lines)
 
 
-def _add_effective_topic_schedule_entries(payload: dict[str, object]) -> dict[str, object]:
+def _add_effective_topic_schedule_entries(payload: dict[str, object], *, col=None, profile=None, classifier=None) -> dict[str, object]:
+    col = col if col is not None else mw.col
+    profile = profile or _active_profile()
     entries = list(payload.get("entries") or [])
     existing_topic_schedule_ids = {
         int((entry or {}).get("card_id") or 0)
@@ -2073,13 +2105,13 @@ def _add_effective_topic_schedule_entries(payload: dict[str, object]) -> dict[st
     for raw_card_id in list(payload.get("card_ids") or []):
         try:
             card_id = int(raw_card_id)
-            card = mw.col.get_card(card_id)
+            card = col.get_card(card_id)
         except Exception:
             continue
-        if card is None or not _is_topic_card(card) or card_id in existing_topic_schedule_ids:
+        if card is None or not _is_topic_card(card, classifier=classifier, col=col) or card_id in existing_topic_schedule_ids:
             continue
         try:
-            a_factor, interval = get_topic_schedule(_ADDON_DIR, _active_profile(), card_id)
+            a_factor, interval = get_topic_schedule(_ADDON_DIR, profile, card_id)
         except Exception:
             continue
         entries.append(
@@ -2103,19 +2135,58 @@ def _add_effective_topic_schedule_entries(payload: dict[str, object]) -> dict[st
 
 
 def _show_browser_database_entries(browser) -> None:
-    card_ids = _browser_selected_incremento_card_ids(browser)
-    if not card_ids:
+    from .frontend.latest_query import LatestQuery
+    from .backend.topic_scheduler import resolve_topic_card_classifier
+    from aqt.operations import QueryOp
+    profile, collection = _active_profile(), mw.col
+    selected_cards = []
+    selected_notes = []
+    for name in ("selected_cards", "selectedCards"):
+        method = getattr(browser, name, None)
+        if callable(method):
+            selected_cards = list(method() or [])
+            if selected_cards:
+                break
+    if not selected_cards:
+        for name in ("selected_notes", "selectedNotes"):
+            method = getattr(browser, name, None)
+            if callable(method):
+                selected_notes = list(method() or [])
+                if selected_notes:
+                    break
+    if not selected_cards and not selected_notes:
         showInfo(_t("root_browser_select_rows"))
         return
-
-    try:
-        payload = find_card_database_entries(_ADDON_DIR, _active_profile(), card_ids)
-    except Exception as exc:
-        showInfo(_t("root_browser_database_read_failed", error=exc))
-        return
-
-    payload = _add_effective_topic_schedule_entries(payload)
-    show_database_entries_dialog(mw, text=_format_browser_database_entries(payload))
+    classifier = resolve_topic_card_classifier(_load_addon_config(mw.addonManager, __name__))
+    def dispatch(ticket, success, failure, _progress):
+        def read(col):
+            if col is not collection or ticket.cancel.is_set():
+                return None
+            ids = selected_cards
+            if not ids:
+                ids = []
+                for start in range(0, len(selected_notes), 900):
+                    if ticket.cancel.is_set():
+                        return None
+                    batch = selected_notes[start:start + 900]
+                    marks = ",".join("?" for _ in batch)
+                    ids.extend(cid for cid, in col.db.all(f"SELECT id FROM cards WHERE nid IN ({marks}) ORDER BY id", *batch))
+            payload = find_card_database_entries(_ADDON_DIR, profile, ids,
+                        cursor=ticket.payload[1], cancelled=ticket.cancel.is_set)
+            payload = _add_effective_topic_schedule_entries(payload, col=col, profile=profile, classifier=classifier)
+            return _format_browser_database_entries(payload), payload.get("next_cursor")
+        QueryOp(parent=mw, op=read, success=success).failure(failure).run_in_background()
+    def success(request, result):
+        if result is not None:
+            request[0].set_page(*result)
+    queries = LatestQuery(dispatch=dispatch, success=success,
+        failure=lambda request, error: request[0].set_page(_t("root_browser_database_read_failed", error=error), None),
+        accept=lambda request: profile == _active_profile() and collection is mw.col)
+    def load_page(dialog, cursor):
+        dialog._previous_page.setEnabled(False)
+        dialog._next_page.setEnabled(False)
+        queries.submit((dialog, cursor))
+    show_database_entries_dialog(mw, text="…", load_page=load_page, on_close=lambda *_: queries.close())
 
 
 def _start_direct_browser_review(card_ids: list[int]) -> None:
@@ -3014,6 +3085,7 @@ _pdf_search_lifecycle = None
 
 
 def _close_pdf_search_lifecycle() -> None:
+    _invalidate_reviewer_source_cover()
     global _pdf_search_lifecycle
     if _pdf_search_lifecycle is not None:
         _pdf_search_lifecycle.close()
@@ -3026,6 +3098,8 @@ def _pdf_notes_will_be_deleted(col, note_ids) -> None:
 
 
 def _pdf_search_collection_changed(changes, handler=None) -> None:
+    if getattr(changes, "note", False) or getattr(changes, "notetype", False):
+        _invalidate_reviewer_source_cover()
     if _pdf_search_lifecycle is not None:
         _pdf_search_lifecycle.collection_changed(changes, handler)
 
@@ -3275,6 +3349,14 @@ gui_hooks.profile_did_open.append(
 gui_hooks.profile_will_close.append(_browser_bridge_mod.stop_browser_bridge)
 
 
+def _dispatch_prepared_pdf_import(normalized, success, failure, *, is_cancelled):
+    from .frontend.pdf_import import start_prepared_pdf_import
+    start_prepared_pdf_import(normalized, success, failure, is_cancelled=is_cancelled)
+
+
+_browser_bridge_mod.register_pdf_import_dispatch(_dispatch_prepared_pdf_import)
+
+
 def _close_profile_database() -> None:
     """Release the UI thread's handle without disrupting live workers."""
     close_current_connection(_ADDON_DIR, _active_profile())
@@ -3321,8 +3403,9 @@ def _sync_reviewer_priority_badge(_card=None) -> None:
         badge_config = _load_addon_config(mw.addonManager, __name__)
     except Exception:
         badge_config = {}
+    is_topic = _is_topic_card(card, classifier=_resolve_topic_card_classifier(badge_config)) if card is not None else False
     if card is not None and should_show_reviewer_priority_badge(
-        is_topic=_is_topic_card(card),
+        is_topic=is_topic,
         config=badge_config,
     ):
         try:
@@ -3330,7 +3413,7 @@ def _sync_reviewer_priority_badge(_card=None) -> None:
         except Exception:
             priority = None
         try:
-            if _is_topic_card(card):
+            if is_topic:
                 from .backend.db import get_topic_schedule
 
                 a_factor, _interval = get_topic_schedule(
@@ -3382,18 +3465,19 @@ def _sync_reviewer_priority_badge(_card=None) -> None:
                 a_factor=a_factor,
                 browser_time_seconds=browser_time_seconds,
                 custom_schedule_text=custom_schedule_text,
-                lower_is_more_important=configured_priority_lower_is_more_important(),
+                lower_is_more_important=configured_priority_lower_is_more_important(badge_config),
             )
         )
     except Exception:
         pass
 
 
-def _reviewer_pdf_source_cover_payload(card) -> dict[str, str] | None:
-    if card is None or getattr(mw, "col", None) is None:
+def _reviewer_pdf_source_cover_payload(card, *, col=None, source_index=None) -> dict[str, str] | None:
+    col = col if col is not None else getattr(mw, "col", None)
+    if card is None or col is None:
         return None
     try:
-        note = mw.col.get_note(card.nid)
+        note = col.get_note(card.nid)
     except Exception:
         note = None
     if note is None:
@@ -3401,7 +3485,7 @@ def _reviewer_pdf_source_cover_payload(card) -> dict[str, str] | None:
 
     model_name = ""
     try:
-        model = mw.col.models.get(note.mid)
+        model = col.models.get(note.mid)
         model_name = str((model or {}).get("name") or "").strip()
     except Exception:
         model_name = ""
@@ -3420,26 +3504,11 @@ def _reviewer_pdf_source_cover_payload(card) -> dict[str, str] | None:
     filename = os.path.basename(str(reference.get("filename") or "").strip())
     source_title = str(reference.get("title") or "").strip()
     cover_media = ""
-    if filename:
-        try:
-            source_card_id = find_live_pdf_card_by_filename(mw.col, filename)
-        except Exception:
-            source_card_id = None
-        if source_card_id is not None:
-            try:
-                source_card = mw.col.get_card(int(source_card_id))
-                source_note = mw.col.get_note(source_card.nid) if source_card is not None else None
-            except Exception:
-                source_note = None
-            if source_note is not None:
-                try:
-                    cover_media = str(source_note[PDF_COVER_FIELD] or "").strip()
-                except Exception:
-                    cover_media = ""
-                try:
-                    source_title = str(source_note["Title"] or "").strip() or source_title
-                except Exception:
-                    pass
+    if filename and source_index is not None:
+        source = source_index(filename)
+        if source is not None:
+            _source_card_id, resolved_title, cover_media = source
+            source_title = resolved_title or source_title
 
     if not source_title and filename:
         source_title = os.path.splitext(filename)[0].replace("_", " ").replace("-", " ").strip()
@@ -3452,24 +3521,75 @@ def _reviewer_pdf_source_cover_payload(card) -> dict[str, str] | None:
     }
 
 
-def _sync_reviewer_source_cover(_card=None) -> None:
-    reviewer = getattr(mw, "reviewer", None)
-    web = getattr(reviewer, "web", None)
+_source_cover_generation = 0
+_source_cover_index = None
+_source_cover_index_key = None
+_source_cover_payload_key = None
+_source_cover_payload = None
+_source_cover_queries = None
+
+
+def _invalidate_reviewer_source_cover() -> None:
+    global _source_cover_generation, _source_cover_index, _source_cover_index_key, _source_cover_payload_key
+    _source_cover_generation += 1
+    _source_cover_index = _source_cover_index_key = _source_cover_payload_key = None
+    if _source_cover_queries is not None:
+        _source_cover_queries.invalidate()
+
+
+def _render_reviewer_source_cover(payload) -> None:
+    web = getattr(getattr(mw, "reviewer", None), "web", None)
     if web is None:
         return
+    web.eval(build_reviewer_source_cover_js(
+        (payload or {}).get("title", ""), cover_media=str((payload or {}).get("cover_media") or ""),
+        source_label=str((payload or {}).get("source_label") or _t("root_reviewer_source_pdf")),
+    ))
 
+
+def _sync_reviewer_source_cover(_card=None) -> None:
+    global _source_cover_queries
+    from .frontend.latest_query import LatestQuery
+    from .backend.pdf_source_index import PdfSourceIndex
+    from aqt.operations import QueryOp
+    reviewer = getattr(mw, "reviewer", None)
     card = getattr(reviewer, "card", None)
-    payload = _reviewer_pdf_source_cover_payload(card)
-    try:
-        web.eval(
-            build_reviewer_source_cover_js(
-                (payload or {}).get("title", ""),
-                cover_media=str((payload or {}).get("cover_media") or ""),
-                source_label=str((payload or {}).get("source_label") or _t("root_reviewer_source_pdf")),
-            )
-        )
-    except Exception:
-        pass
+    if card is None or getattr(reviewer, "web", None) is None:
+        return
+    key = (_active_profile(), id(mw.col), int(card.id), _source_cover_generation)
+    if key == _source_cover_payload_key:
+        _render_reviewer_source_cover(_source_cover_payload)
+        return
+    def current(payload):
+        current_card = getattr(getattr(mw, "reviewer", None), "card", None)
+        return (current_card is not None and payload["key"] == (
+            _active_profile(), id(mw.col), int(current_card.id), _source_cover_generation))
+    def dispatch(ticket, success, failure, _progress):
+        def read(col):
+            global _source_cover_index, _source_cover_index_key
+            if ticket.cancel.is_set() or col is not ticket.payload["collection"]:
+                return None
+            index_key = (ticket.payload["key"][0], id(col), ticket.payload["key"][3])
+            def lookup(filename):
+                global _source_cover_index, _source_cover_index_key
+                if _source_cover_index_key != index_key:
+                    index = PdfSourceIndex.build(col, cancel=ticket.cancel)
+                    if ticket.cancel.is_set():
+                        return None
+                    _source_cover_index, _source_cover_index_key = index, index_key
+                return _source_cover_index.get(filename)
+            return _reviewer_pdf_source_cover_payload(
+                col.get_card(ticket.payload["key"][2]), col=col, source_index=lookup)
+        QueryOp(parent=mw, op=read, success=success).failure(failure).run_in_background()
+    def done(request, payload):
+        global _source_cover_payload_key, _source_cover_payload
+        _source_cover_payload_key, _source_cover_payload = request["key"], payload
+        _render_reviewer_source_cover(payload)
+    if _source_cover_queries is None:
+        _source_cover_queries = LatestQuery(dispatch=dispatch, success=done,
+                                          failure=lambda request, error: done(request, None), accept=current)
+    _render_reviewer_source_cover(None)
+    _source_cover_queries.submit({"key": key, "collection": mw.col})
 
 
 gui_hooks.reviewer_did_show_question.append(_install_reviewer_selection_bridge)
@@ -3803,16 +3923,18 @@ def _open_current_document_contents() -> bool:
 
 
 def _open_current_document_search_results() -> bool:
+    search_profile = _active_profile()
     pdf_context = _pdf_dock_mod.current_pdf_search_context()
     if pdf_context is not None:
         _CurrentDocumentSearchDialog(
             mw,
+            request_is_current=lambda: _pdf_dock_mod.current_pdf_card_id() == int(pdf_context.get("cardId") or 0),
             document_kind="pdf",
             document_label=str(pdf_context.get("documentLabel") or "PDF"),
             initial_query=str(pdf_context.get("query") or ""),
-            search_hits_fn=lambda query: _pdf_dock_mod.current_card_pdf_search_hits(
+            search_hits_fn=lambda query, cancel=None: _pdf_dock_mod.current_card_pdf_search_hits(
                 int(pdf_context.get("cardId") or 0),
-                query,
+                query, profile=search_profile, cancel=cancel,
             ),
             open_hit_fn=lambda hit, index, query: _pdf_dock_mod.open_current_pdf_search_hit(
                 hit,
@@ -3827,12 +3949,13 @@ def _open_current_document_search_results() -> bool:
     if epub_context is not None:
         _CurrentDocumentSearchDialog(
             mw,
+            request_is_current=lambda: _epub_dock_mod.current_epub_card_id() == int(epub_context.get("cardId") or 0),
             document_kind="epub",
             document_label=str(epub_context.get("documentLabel") or "EPUB"),
             initial_query=str(epub_context.get("query") or ""),
-            search_hits_fn=lambda query: _epub_dock_mod.current_card_epub_search_hits(
+            search_hits_fn=lambda query, cancel=None: _epub_dock_mod.current_card_epub_search_hits(
                 int(epub_context.get("cardId") or 0),
-                query,
+                query, profile=search_profile, cancel=cancel,
             ),
             open_hit_fn=lambda hit, index, query: _epub_dock_mod.open_current_epub_search_hit(
                 hit,
@@ -3962,24 +4085,28 @@ def _go_to_parent_in_knowledge_tree() -> None:
     _open_knowledge_tree(select_card_id=int(parent_card_id))
 
 
+_branch_study_reads = None
+
+
 def _study_knowledge_tree_branch(card_id: int) -> None:
-    try:
-        from .backend.knowledge_tree import build_branch_study_scope
-
-        branch_scope = build_branch_study_scope(
-            _ADDON_DIR,
-            _active_profile(),
-            int(card_id),
-        )
-    except Exception as exc:
-        showInfo(_t("root_branch_study_failed", error=exc))
-        return
-
-    if not branch_scope or not list(branch_scope.get("card_ids") or []):
-        tooltip(_t("root_reviewer_branch_empty"))
-        return
-
-    learnFunction(branch_scope=branch_scope)
+    global _branch_study_reads
+    from .backend.knowledge_tree import build_branch_study_scope
+    from .frontend.background_reads import BackgroundReads
+    profile, collection = _active_profile(), mw.col
+    if (_branch_study_reads is None or _branch_study_reads.profile != profile
+            or _branch_study_reads.collection is not collection):
+        if _branch_study_reads is not None:
+            _branch_study_reads.close()
+        _branch_study_reads = BackgroundReads(mw, profile)
+    def read(col, cancel):
+        return build_branch_study_scope(_ADDON_DIR, profile, int(card_id), col=col)
+    def done(scope):
+        if not scope or not scope.get("card_ids"):
+            tooltip(_t("root_reviewer_branch_empty"))
+            return
+        learnFunction(branch_scope=scope)
+    _branch_study_reads.submit(read, done,
+                              lambda error: showInfo(_t("root_branch_study_failed", error=error)))
 
 
 def _trigger_pdf_viewer_action(action: str) -> None:

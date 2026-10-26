@@ -1,6 +1,10 @@
 import database_entries_dialog
 
 
+def test_utf16_offsets_are_precomputed_once_for_non_bmp_text():
+    assert list(database_entries_dialog.utf16_prefix_offsets("a😀é𝄞")) == [0, 1, 3, 4, 6]
+
+
 def test_find_text_matches_empty_query_returns_no_matches():
     assert database_entries_dialog.find_text_matches("Alpha beta", "") == []
 

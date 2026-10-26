@@ -49,6 +49,8 @@ knowledge_tree_postpone_presets — saved postpone presets for tree/global/brows
 """
 
 import atexit
+from concurrent.futures import CancelledError
+import heapq
 import json
 import math
 import re
@@ -239,99 +241,106 @@ def _is_card_reference_column(column_name: str) -> bool:
 
 
 def find_card_database_entries(
-    addon_dir: str,
-    profile: str,
-    card_ids: list[int] | tuple[int, ...] | set[int],
+    addon_dir: str, profile: str, card_ids: list[int] | tuple[int, ...] | set[int], *,
+    cursor=None, max_cards: int = 500, max_rows: int = 2000,
+    max_bytes: int = 2 * 1024 * 1024, cancelled=None,
 ) -> dict[str, object]:
-    """Return Incremento DB rows linked to card_ids through card-id columns.
-
-    A linking column contains ``card_id`` as an underscore-delimited token, so
-    fields such as ``card_id``, ``pdf_card_id`` and ``branch_root_card_id`` all
-    match. The database is opened read-only so Browser inspection cannot mutate
-    user data.
-    """
-    normalized_ids: list[int] = []
-    seen: set[int] = set()
-    for raw_card_id in list(card_ids or []):
+    """Read one bounded page of explicitly selected cards without writing data."""
+    from concurrent.futures import CancelledError
+    normalized = []
+    seen = set()
+    for raw in card_ids or ():
         try:
-            card_id = int(raw_card_id)
-        except Exception:
+            cid = int(raw)
+        except (TypeError, ValueError):
             continue
-        if card_id in seen:
-            continue
-        seen.add(card_id)
-        normalized_ids.append(card_id)
-
-    db_path = get_db_path(addon_dir, profile)
-    result: dict[str, object] = {
-        "profile": profile,
-        "db_path": str(db_path),
-        "card_ids": normalized_ids,
-        "entries": [],
-    }
-    if not normalized_ids:
+        if cid not in seen:
+            normalized.append(cid)
+            seen.add(cid)
+    card_offset, row_offset = (cursor or (0, 0))
+    card_offset, row_offset = max(0, int(card_offset)), max(0, int(row_offset))
+    max_cards = max(1, min(500, int(max_cards)))
+    max_rows = max(1, min(2000, int(max_rows)))
+    max_bytes = max(1024, min(2 * 1024 * 1024, int(max_bytes)))
+    ids = normalized[card_offset:card_offset + max_cards]
+    result = {"profile": profile, "db_path": str(get_db_path(addon_dir, profile)),
+              "card_ids": ids, "selected_count": len(normalized), "entries": [],
+              "next_cursor": None, "values_bounded": False}
+    if not ids:
         return result
-
+    started = time.monotonic()
+    def check():
+        if cancelled is not None and cancelled():
+            raise CancelledError()
+        if time.monotonic() - started > 5:
+            raise TimeoutError("Database inspection page exceeded its time budget.")
     conn = open_database_editor_connection(addon_dir, profile, read_only=True)
+    def progress():
+        return int((cancelled is not None and cancelled()) or time.monotonic() - started > 5)
+    conn.set_progress_handler(progress, 1000)
+    entries, size, skip, more = [], 0, row_offset, False
     try:
-        table_rows = conn.execute(
-            """
-            SELECT name
-            FROM sqlite_master
-            WHERE type = 'table'
-              AND name NOT LIKE 'sqlite_%'
-            ORDER BY name COLLATE NOCASE
-            """
-        ).fetchall()
-        card_id_set = set(normalized_ids)
-        entries: list[dict[str, object]] = []
-        for table_row in table_rows:
-            table_name = str(table_row["name"])
-            quoted_table = _quote_sqlite_identifier(table_name)
-            schema_rows = conn.execute(f"PRAGMA table_info({quoted_table})").fetchall()
-            column_names = [str(row["name"]) for row in schema_rows]
-            card_columns = [
-                name
-                for name in column_names
-                if _is_card_reference_column(name)
-            ]
-            if not card_columns:
-                continue
-            select_columns = ", ".join(
-                f"{quoted_table}.{_quote_sqlite_identifier(name)}"
-                for name in column_names
-            )
-            for column_name in card_columns:
-                quoted_column = _quote_sqlite_identifier(column_name)
-                for chunk in _iter_sql_chunks(normalized_ids):
-                    placeholders = ", ".join("?" for _ in chunk)
-                    query = (
-                        f"SELECT rowid AS _incremento_rowid, {select_columns} "
-                        f"FROM {quoted_table} "
-                        f"WHERE {quoted_column} IN ({placeholders}) "
-                        f"ORDER BY {quoted_column}, rowid"
-                    )
-                    for row in conn.execute(query, tuple(chunk)).fetchall():
-                        try:
-                            matched_card_id = int(row[column_name])
-                        except Exception:
+        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name COLLATE NOCASE").fetchall()
+        for table_row in tables:
+            check()
+            table = str(table_row["name"])
+            quoted = _quote_sqlite_identifier(table)
+            names = [str(row["name"]) for row in conn.execute(f"PRAGMA table_info({quoted})")]
+            columns = [name for name in names if _is_card_reference_column(name)]
+            select = ", ".join(
+                f"CASE WHEN typeof({_quote_sqlite_identifier(name)}) IN ('text','blob') "
+                f"THEN substr({_quote_sqlite_identifier(name)},1,4096) ELSE {_quote_sqlite_identifier(name)} END AS {_quote_sqlite_identifier(name)}"
+                for name in names)
+            for column in columns:
+                qcolumn = _quote_sqlite_identifier(column)
+                for chunk in _iter_sql_chunks(ids):
+                    check()
+                    marks = ",".join("?" for _ in chunk)
+                    where = f"{qcolumn} IN ({marks})"
+                    if skip:
+                        count = conn.execute(f"SELECT count(*) FROM {quoted} WHERE {where}", tuple(chunk)).fetchone()[0]
+                        if skip >= count:
+                            skip -= count
                             continue
-                        if matched_card_id not in card_id_set:
-                            continue
-                        values = {name: row[name] for name in column_names}
-                        entries.append(
-                            {
-                                "card_id": matched_card_id,
-                                "table": table_name,
-                                "column": column_name,
-                                "rowid": row["_incremento_rowid"],
-                                "columns": column_names,
-                                "values": values,
-                            }
-                        )
+                    rows = conn.execute(
+                        f"SELECT rowid AS _incremento_rowid, {select} FROM {quoted} "
+                        f"WHERE {where} ORDER BY {qcolumn}, rowid LIMIT ? OFFSET ?",
+                        (*chunk, max_rows + 1, skip))
+                    skip = 0
+                    for row in rows:
+                        check()
+                        if len(entries) >= max_rows:
+                            more = True
+                            break
+                        values = {name: row[name] for name in names}
+                        cost = sum(len(value.encode('utf-8')) if isinstance(value, str) else len(value) if isinstance(value, bytes) else 16 for value in values.values()) + 256
+                        if size + cost > max_bytes:
+                            if not entries:
+                                raise ValueError("Database row exceeds the inspection page budget.")
+                            more = True
+                            break
+                        result["values_bounded"] |= any(isinstance(value, (str, bytes)) and len(value) >= 4096 for value in values.values())
+                        size += cost
+                        entries.append({"card_id": int(row[column]), "table": table, "column": column,
+                                        "rowid": row["_incremento_rowid"], "columns": names, "values": values})
+                    if more:
+                        break
+                if more:
+                    break
+            if more:
+                break
         result["entries"] = entries
+        result["page_bytes"] = size
+        if more:
+            result["next_cursor"] = (card_offset, row_offset + len(entries))
+        elif card_offset + max_cards < len(normalized):
+            result["next_cursor"] = (card_offset + max_cards, 0)
         return result
+    except sqlite3.OperationalError:
+        check()
+        raise
     finally:
+        conn.set_progress_handler(None, 0)
         conn.close()
 
 
@@ -3197,13 +3206,17 @@ def get_epub_card_sources_up_to_section(
     ]
 
 
-def get_epub_section_card_counts(addon_dir: str, profile: str, epub_card_id: int) -> dict:
+def get_epub_section_card_counts(
+    addon_dir: str, profile: str, epub_card_id: int, *, section_index: int | None = None,
+) -> dict:
+    section_filter = " AND section_index = ?" if section_index is not None else ""
+    params = (epub_card_id, int(section_index)) if section_index is not None else (epub_card_id,)
     rows = (
         get_connection(addon_dir, profile)
         .execute(
             "SELECT section_index, COUNT(*) FROM epub_card_sources "
-            "WHERE epub_card_id = ? GROUP BY section_index",
-            (epub_card_id,),
+            "WHERE epub_card_id = ?" + section_filter + " GROUP BY section_index",
+            params,
         )
         .fetchall()
     )
@@ -3525,30 +3538,127 @@ def _find_unordered_prefix_match(
     return sorted(positions)
 
 
-def search_text_match_score(
-    text: str, query: str
-) -> tuple[int, int, int, int] | None:
-    query_terms = split_search_terms(query)
-    if not query_terms:
+class CompiledSearch(str):
+    def __new__(cls, query, *, cancel=None):
+        value = super().__new__(cls, str(query or ""))
+        value.terms = tuple(tok for tok in _SEARCH_WORD_RE.findall(normalize_search_text(value)) if len(tok) >= 2)
+        value.cancel = cancel
+        value.started = time.monotonic()
+        return value
+
+    def check(self):
+        if self.cancel is not None and self.cancel.is_set():
+            raise CancelledError()
+        if time.monotonic() - self.started > 15:
+            raise TimeoutError("Search request exceeded its time budget.")
+
+    def score(self, text):
+        self.check()
+        if not self.terms:
+            return None
+        # The word regex already separates whitespace. Avoid a second
+        # page-sized split/join and the redundant minimum-length filter.
+        text_terms = _SEARCH_WORD_RE.findall((text or "").casefold())
+        if not text_terms:
+            return None
+
+        consecutive = _find_consecutive_prefix_match(self.terms, text_terms)
+        if consecutive is not None:
+            start, end = consecutive
+            return (0, end - start, start, len(text_terms))
+
+        ordered = _find_ordered_prefix_match(self.terms, text_terms)
+        if ordered is not None:
+            return (1, ordered[-1] - ordered[0], ordered[0], len(text_terms))
+
+        unordered = _find_unordered_prefix_match(self.terms, text_terms)
+        if unordered is not None:
+            return (2, unordered[-1] - unordered[0], unordered[0], len(text_terms))
+
         return None
-    text_terms = split_search_terms(text, min_len=1)
-    if not text_terms:
-        return None
 
-    consecutive = _find_consecutive_prefix_match(query_terms, text_terms)
-    if consecutive is not None:
-        start, end = consecutive
-        return (0, end - start, start, len(text_terms))
 
-    ordered = _find_ordered_prefix_match(query_terms, text_terms)
-    if ordered is not None:
-        return (1, ordered[-1] - ordered[0], ordered[0], len(text_terms))
+def search_text_match_score(text: str, query: str) -> tuple[int, int, int, int] | None:
+    compiled = query if isinstance(query, CompiledSearch) else CompiledSearch(query)
+    return compiled.score(text)
 
-    unordered = _find_unordered_prefix_match(query_terms, text_terms)
-    if unordered is not None:
-        return (2, unordered[-1] - unordered[0], unordered[0], len(text_terms))
 
-    return None
+class _SearchRank:
+    def __init__(self, key, sequence, value):
+        self.key, self.sequence, self.value = key, sequence, value
+
+    def __lt__(self, other):
+        return self.key > other.key or (self.key == other.key and self.sequence > other.sequence)
+
+
+class _BoundedSearchRanking:
+    def __init__(self, limit, key):
+        self.limit, self.key, self.heap, self.sequence = max(1, int(limit)), key, [], 0
+
+    def append(self, value):
+        key, sequence = self.key(value), self.sequence
+        self.sequence += 1
+        if len(self.heap) >= self.limit:
+            worst = self.heap[0]
+            if key > worst.key or (key == worst.key and sequence > worst.sequence):
+                return
+        rank = _SearchRank(key, sequence, value)
+        if len(self.heap) < self.limit:
+            heapq.heappush(self.heap, rank)
+        else:
+            heapq.heapreplace(self.heap, rank)
+
+    def __getitem__(self, index):
+        return [rank.value for rank in sorted(self.heap, key=lambda rank: (rank.key, rank.sequence))][index]
+
+
+def _bounded_search_rows(cursor, query):
+    size = 0
+    while True:
+        query.check()
+        batch = cursor.fetchmany(128)
+        if not batch:
+            return
+        for row in batch:
+            query.check()
+            size += sum(len(value) for value in row if isinstance(value, (str, bytes)))
+            if size > 32 * 1024 * 1024:
+                raise ValueError("Search request exceeded its text budget.")
+            yield row
+
+
+def _search_request(function):
+    from functools import wraps
+    import inspect
+    query_index = list(inspect.signature(function).parameters).index("query")
+    @wraps(function)
+    def bounded(*args, **kwargs):
+        args = list(args)
+        raw = args[query_index] if len(args) > query_index else kwargs.get("query", "")
+        query = raw if isinstance(raw, CompiledSearch) else CompiledSearch(raw)
+        query.check()
+        if len(args) > query_index:
+            args[query_index] = query
+        else:
+            kwargs["query"] = query
+        addon = args[0] if args else kwargs["addon_dir"]
+        profile = args[1] if len(args) > 1 else kwargs["profile"]
+        conn = get_connection(addon, profile)
+        def progress():
+            try:
+                query.check()
+                return 0
+            except Exception:
+                return 1
+        conn.set_progress_handler(progress, 1000)
+        try:
+            return function(*args, **kwargs)
+        except sqlite3.OperationalError:
+            query.check()
+            raise
+        finally:
+            conn.set_progress_handler(None, 0)
+    return bounded
 
 
 def replace_note_ocr_index(
@@ -3585,10 +3695,11 @@ def replace_note_ocr_index(
     conn.commit()
 
 
+@_search_request
 def search_note_ocr_index(
     addon_dir: str, profile: str, query: str, limit: int = 120
 ) -> list[tuple[int, int, str, str]]:
-    query_terms = split_search_terms(query)
+    query_terms = query.terms
     if not query_terms:
         return []
 
@@ -3600,7 +3711,7 @@ def search_note_ocr_index(
             "WHERE note_ocr_fts MATCH ? "
             "ORDER BY rank, note_id, card_id LIMIT ?",
             (_fts_prefix_query(query_terms), candidate_limit),
-        ).fetchall()
+        )
     else:
         pre = query_terms[0]
         rows = conn.execute(
@@ -3608,9 +3719,10 @@ def search_note_ocr_index(
             "WHERE lower(text) LIKE lower(?) "
             "ORDER BY note_id, card_id, image_name LIMIT ?",
             (f"%{pre}%", candidate_limit),
-        ).fetchall()
+        )
 
-    ranked: list[tuple[tuple[int, int, int, int], int, int, str, str]] = []
+    rows = _bounded_search_rows(rows, query)
+    ranked = _BoundedSearchRanking(limit, key=lambda item: (item[0], item[1], item[2], item[3]))
     for note_id, card_id, image_name, text in rows:
         score = search_text_match_score(text or "", query)
         if score is None:
@@ -3625,7 +3737,6 @@ def search_note_ocr_index(
             )
         )
 
-    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
     return [
         (note_id, card_id, image_name, text)
         for _, note_id, card_id, image_name, text in ranked[:limit]
@@ -3734,11 +3845,12 @@ def replace_pdf_text_index(addon_dir: str, profile: str, card_id: int, page_text
     conn.commit()
 
 
+@_search_request
 def search_pdf_text_index(
     addon_dir: str, profile: str, query: str, limit: int = 120
 ) -> list[tuple[int, int, str]]:
     """Search indexed per-page PDF text. Returns [(card_id, page, text), ...]."""
-    query_terms = split_search_terms(query)
+    query_terms = query.terms
     if not query_terms:
         return []
 
@@ -3749,26 +3861,27 @@ def search_pdf_text_index(
             "SELECT card_id, page, text FROM pdf_text_fts "
             "WHERE pdf_text_fts MATCH ? ORDER BY rank, card_id, page LIMIT ?",
             (_fts_prefix_query(query_terms), candidate_limit),
-        ).fetchall()
+        )
     else:
         pre = query_terms[0]
         rows = conn.execute(
             "SELECT card_id, page, text FROM pdf_text_index "
             "WHERE lower(text) LIKE lower(?) ORDER BY card_id, page LIMIT ?",
             (f"%{pre}%", candidate_limit),
-        ).fetchall()
+        )
 
-    ranked: list[tuple[tuple[int, int, int, int], int, int, str]] = []
+    rows = _bounded_search_rows(rows, query)
+    ranked = _BoundedSearchRanking(limit, key=lambda item: (item[0], item[1], item[2]))
     for cid, page, text in rows:
         score = search_text_match_score(text or "", query)
         if score is None:
             continue
         ranked.append((score, int(cid), int(page), text))
 
-    ranked.sort(key=lambda item: (item[0], item[1], item[2]))
     return [(cid, page, text) for _, cid, page, text in ranked[:limit]]
 
 
+@_search_request
 def search_pdf_text_index_for_card(
     addon_dir: str,
     profile: str,
@@ -3776,7 +3889,7 @@ def search_pdf_text_index_for_card(
     query: str,
     limit: int = 120,
 ) -> list[tuple[int, str]]:
-    query_terms = split_search_terms(query)
+    query_terms = query.terms
     if not query_terms:
         return []
 
@@ -3788,7 +3901,7 @@ def search_pdf_text_index_for_card(
             "WHERE pdf_text_fts MATCH ? AND card_id = ? "
             "ORDER BY rank, page LIMIT ?",
             (_fts_prefix_query(query_terms), int(card_id), candidate_limit),
-        ).fetchall()
+        )
     else:
         pre = query_terms[0]
         rows = conn.execute(
@@ -3796,16 +3909,16 @@ def search_pdf_text_index_for_card(
             "WHERE card_id = ? AND lower(text) LIKE lower(?) "
             "ORDER BY page LIMIT ?",
             (int(card_id), f"%{pre}%", candidate_limit),
-        ).fetchall()
+        )
 
-    ranked: list[tuple[tuple[int, int, int, int], int, str]] = []
+    rows = _bounded_search_rows(rows, query)
+    ranked = _BoundedSearchRanking(limit, key=lambda item: (item[0], item[1]))
     for page, text in rows:
         score = search_text_match_score(text or "", query)
         if score is None:
             continue
         ranked.append((score, int(page), str(text or "")))
 
-    ranked.sort(key=lambda item: (item[0], item[1]))
     return [(page, text) for _, page, text in ranked[:limit]]
 
 
@@ -3828,10 +3941,11 @@ def replace_epub_text_index(
         conn.commit()
 
 
+@_search_request
 def search_epub_text_index(
     addon_dir: str, profile: str, query: str, limit: int = 120
 ) -> list[tuple[int, int, str, str]]:
-    query_terms = split_search_terms(query)
+    query_terms = query.terms
     if not query_terms:
         return []
 
@@ -3843,7 +3957,7 @@ def search_epub_text_index(
             "WHERE epub_text_fts MATCH ? "
             "ORDER BY rank, card_id, section_index LIMIT ?",
             (_fts_prefix_query(query_terms), candidate_limit),
-        ).fetchall()
+        )
     else:
         pre = query_terms[0]
         rows = conn.execute(
@@ -3851,9 +3965,10 @@ def search_epub_text_index(
             "WHERE lower(title || ' ' || text) LIKE lower(?) "
             "ORDER BY card_id, section_index LIMIT ?",
             (f"%{pre}%", candidate_limit),
-        ).fetchall()
+        )
 
-    ranked: list[tuple[tuple[int, int, int, int], int, int, str, str]] = []
+    rows = _bounded_search_rows(rows, query)
+    ranked = _BoundedSearchRanking(limit, key=lambda item: (item[0], item[1], item[2]))
     for cid, section_index, title, text in rows:
         combined = " ".join(part for part in (title or "", text or "") if part)
         score = search_text_match_score(combined, query)
@@ -3861,10 +3976,10 @@ def search_epub_text_index(
             continue
         ranked.append((score, int(cid), int(section_index), str(title or ""), str(text or "")))
 
-    ranked.sort(key=lambda item: (item[0], item[1], item[2]))
     return [(cid, section_index, title, text) for _, cid, section_index, title, text in ranked[:limit]]
 
 
+@_search_request
 def search_epub_text_index_for_card(
     addon_dir: str,
     profile: str,
@@ -3872,7 +3987,7 @@ def search_epub_text_index_for_card(
     query: str,
     limit: int = 120,
 ) -> list[tuple[int, str, str]]:
-    query_terms = split_search_terms(query)
+    query_terms = query.terms
     if not query_terms:
         return []
 
@@ -3884,7 +3999,7 @@ def search_epub_text_index_for_card(
             "WHERE epub_text_fts MATCH ? AND card_id = ? "
             "ORDER BY rank, section_index LIMIT ?",
             (_fts_prefix_query(query_terms), int(card_id), candidate_limit),
-        ).fetchall()
+        )
     else:
         pre = query_terms[0]
         rows = conn.execute(
@@ -3892,9 +4007,10 @@ def search_epub_text_index_for_card(
             "WHERE card_id = ? AND lower(title || ' ' || text) LIKE lower(?) "
             "ORDER BY section_index LIMIT ?",
             (int(card_id), f"%{pre}%", candidate_limit),
-        ).fetchall()
+        )
 
-    ranked: list[tuple[tuple[int, int, int, int], int, str, str]] = []
+    rows = _bounded_search_rows(rows, query)
+    ranked = _BoundedSearchRanking(limit, key=lambda item: (item[0], item[1]))
     for section_index, title, text in rows:
         combined = " ".join(part for part in (title or "", text or "") if part)
         score = search_text_match_score(combined, query)
@@ -3902,7 +4018,6 @@ def search_epub_text_index_for_card(
             continue
         ranked.append((score, int(section_index), str(title or ""), str(text or "")))
 
-    ranked.sort(key=lambda item: (item[0], item[1]))
     return [
         (section_index, title, text)
         for _, section_index, title, text in ranked[:limit]
@@ -3978,6 +4093,22 @@ def get_topic_schedule(
     return a_factor, rounded_interval
 
 
+def get_topic_schedules(addon_dir: str, profile: str, card_ids) -> dict[int, tuple[float, int]]:
+    ids = list(dict.fromkeys(int(cid) for cid in card_ids))
+    result = {}
+    conn = get_connection(addon_dir, profile)
+    for start in range(0, len(ids), 900):
+        batch = ids[start:start + 900]
+        marks = ",".join("?" for _ in batch)
+        for cid, a_factor, interval, precise in conn.execute(
+            f"SELECT card_id,a_factor,interval,precise_interval FROM topic_schedule WHERE card_id IN ({marks})", batch,
+        ):
+            rounded = _rounded_topic_interval(interval, 1.0)
+            precise = _normalize_topic_interval(interval if precise is None else precise, float(rounded))
+            result[int(cid)] = (_normalize_topic_a_factor(a_factor), _rounded_topic_interval(precise, float(rounded)))
+    return result
+
+
 def topic_schedule_exists(addon_dir: str, profile: str, card_id: int) -> bool:
     row = get_connection(addon_dir, profile).execute(
         "SELECT 1 FROM topic_schedule WHERE card_id = ?",
@@ -4014,6 +4145,27 @@ def set_topic_schedule(
         ),
     )
     conn.commit()
+
+
+def set_topic_schedules(
+    addon_dir: str, profile: str, rows: list[tuple[int, float, float, float | None]],
+) -> None:
+    """Normalize a supplemental schedule batch and persist it atomically."""
+    normalized = []
+    for card_id, a_factor, interval, precise_interval in rows:
+        precise = _normalize_topic_interval(interval if precise_interval is None else precise_interval)
+        rounded = _rounded_topic_interval(interval if precise_interval is None else precise)
+        normalized.append((card_id, _normalize_topic_a_factor(a_factor), rounded, precise))
+    if not normalized:
+        return
+    conn = get_connection(addon_dir, profile)
+    with conn:
+        conn.executemany(
+            "INSERT INTO topic_schedule (card_id, a_factor, interval, precise_interval) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(card_id) DO UPDATE SET "
+            "a_factor = excluded.a_factor, interval = excluded.interval, precise_interval = excluded.precise_interval",
+            normalized,
+        )
 
 
 def _normalize_topic_review_choice(value) -> str:
@@ -5000,6 +5152,11 @@ def set_knowledge_tree_structure(
         for parent_card_id, items in grouped.items():
             items.sort(key=lambda item: (item[2], item[0]))
             for sort_order, (card_id, node_kind, _raw_sort) in enumerate(items):
+                previous = existing.get(card_id)
+                if previous is not None and (
+                    previous["parent_card_id"], previous["node_kind"], previous["sort_order"]
+                ) == (parent_card_id, node_kind, sort_order):
+                    continue
                 created_at = int(existing.get(card_id, {}).get("created_at") or now)
                 conn.execute(
                     "INSERT INTO knowledge_tree_nodes "

@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_PRIORITY,
   buildBookmarkItems,
+  buildBookmarkTreeIndex,
+  bookmarkSelectionPrefix,
   collectBookmarkIds,
   countSelected,
   findNodeById,
@@ -16,6 +18,31 @@ import {
   sliderValueToPriority,
   updateBookmarkItem,
 } from "../src/bookmarks/bookmarkModel.js";
+
+test("folder ranges and selection prefixes keep nested totals with linear storage", () => {
+  const tree = makeTree();
+  const items = buildBookmarkItems(tree);
+  const index = buildBookmarkTreeIndex(tree);
+  const prefix = bookmarkSelectionPrefix(index, setSelectedForIds(items, ["11", "21"], true));
+  const [start, end] = index.ranges.get("10");
+  assert.deepEqual(index.bookmarkIds.slice(start, end), ["11", "12"]);
+  assert.equal(prefix[end] - prefix[start], 1);
+  assert.equal(index.nodes.get("12").title, "Spec PDF");
+  let deep = {id: "leaf", url: "https://example.test"};
+  for (let i = 0; i < 10000; i++) deep = {id: String(i), children: [deep]};
+  const large = buildBookmarkTreeIndex([deep]);
+  assert.equal(large.ranges.size, 10001);
+  assert.deepEqual(large.bookmarkIds, ["leaf"]);
+});
+
+test("building bookmark metadata handles deep folders without recursive copies", () => {
+  let node = {id: "deep-leaf", title: "Leaf", url: "https://example.test"};
+  for (let i = 4999; i >= 0; i--) node = {id: `folder-${i}`, title: `Folder ${i}`, children: [node]};
+  const items = buildBookmarkItems([node]);
+  assert.equal(Object.keys(items).length, 1);
+  assert.ok(items['deep-leaf'].folderPath.startsWith('Folder 0 / Folder 1'));
+  assert.ok(items['deep-leaf'].folderPath.endsWith('Folder 4999'));
+});
 
 function makeTree() {
   return [

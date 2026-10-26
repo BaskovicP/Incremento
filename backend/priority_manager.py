@@ -62,6 +62,25 @@ def set_priority(addon_dir: str, profile: str, card_id: int, priority: float) ->
     conn.commit()
 
 
+def get_priorities(addon_dir: str, profile: str, card_ids) -> dict[int, float]:
+    ids = list(dict.fromkeys(int(cid) for cid in card_ids))
+    result = {}
+    conn = get_connection(addon_dir, profile)
+    for start in range(0, len(ids), 900):
+        chunk = ids[start:start + 900]
+        marks = ",".join("?" for _ in chunk)
+        result.update(conn.execute(f"SELECT card_id, priority FROM priorities WHERE card_id IN ({marks})", chunk))
+    return result
+
+
+def set_priorities(addon_dir: str, profile: str, rows) -> None:
+    normalized = [(int(cid), round(float(value), 4)) for cid, value in rows]
+    if normalized:
+        conn = get_connection(addon_dir, profile)
+        with conn:
+            conn.executemany("INSERT OR REPLACE INTO priorities(card_id,priority) VALUES (?,?)", normalized)
+
+
 def invert_all_priorities(addon_dir: str, profile: str) -> int:
     """Invert all stored priorities for the profile using `100 - priority`.
 

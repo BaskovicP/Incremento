@@ -1367,5 +1367,11 @@
   },
   "snapshot_shortcut_scope_firefox": {
     "message": "使用截图快捷键时请保持 Firefox 处于焦点。Firefox 不支持全局扩展快捷键。"
+  },
+  "bookmark_previous_page": {
+    "message": "上一页"
+  },
+  "bookmark_next_page": {
+    "message": "下一页"
   }
 }

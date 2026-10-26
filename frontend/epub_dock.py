@@ -124,6 +124,7 @@ try:
         get_read_anchor,
         get_read_section_index,
         get_epub_section_path,
+        epub_metadata_identity,
         load_epub_metadata,
         regenerate_epub_card_cover,
         save_epub_daily_limit_settings,
@@ -148,6 +149,7 @@ except ImportError:
         get_read_anchor,
         get_read_section_index,
         get_epub_section_path,
+        epub_metadata_identity,
         load_epub_metadata,
         regenerate_epub_card_cover,
         save_epub_daily_limit_settings,
@@ -161,6 +163,7 @@ except ImportError:
 try:
     from ..backend.epub_highlights import (
         add_highlight,
+        count_highlights,
         load_highlights,
         remove_highlight,
         update_highlight,
@@ -170,6 +173,7 @@ try:
 except ImportError:
     from epub_highlights import (  # type: ignore
         add_highlight,
+        count_highlights,
         load_highlights,
         remove_highlight,
         update_highlight,
@@ -218,6 +222,10 @@ _ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
 _epub_dock = None
 _current_epub_card_id: int | None = None
 _current_epub_filename: str | None = None
+_epub_metadata_cache_key = None
+_epub_metadata_cache: dict = {}
+_epub_section_path_cache: tuple[str, ...] | None = None
+_epub_reverse_path_cache: dict[str, int] = {}
 _current_epub_section_index = 0
 _current_epub_scroll_ratio = 0.0
 _current_epub_finished = False
@@ -523,7 +531,7 @@ def _first_query_offset(text: str, query: str) -> int:
     return -1
 
 
-def current_card_epub_search_hits(card_id: int, query: str, *, limit: int = 250) -> list[dict]:
+def current_card_epub_search_hits(card_id: int, query: str, *, limit: int = 250, profile: str | None = None, cancel=None) -> list[dict]:
     try:
         normalized_card_id = int(card_id or 0)
     except Exception:
@@ -531,9 +539,15 @@ def current_card_epub_search_hits(card_id: int, query: str, *, limit: int = 250)
     normalized_query = str(query or "").strip()
     if normalized_card_id <= 0 or not normalized_query:
         return []
+    if cancel is not None:
+        try:
+            from ..backend.db import CompiledSearch
+        except ImportError:
+            from db import CompiledSearch
+        normalized_query = CompiledSearch(normalized_query, cancel=cancel)
     rows = search_epub_text_index_for_card(
         _ADDON_DIR,
-        _active_profile(),
+        profile or _active_profile(),
         normalized_card_id,
         normalized_query,
         limit=limit,
@@ -975,7 +989,7 @@ def epub_citation() -> str:
     if not _current_epub_card_id or not _current_epub_filename:
         return ""
     try:
-        meta = load_epub_metadata(_ADDON_DIR, _current_epub_filename)
+        meta = _current_metadata()
         sections = meta.get("sections") or []
         section = sections[_current_epub_section_index] if 0 <= _current_epub_section_index < len(sections) else None
         title = str((section or {}).get("title") or "").strip() or t("reader_section_number", number=_current_epub_section_index + 1)
@@ -3666,6 +3680,10 @@ def _stop_epub_focus():
 
 
 def reset_for_profile_switch():
+    global _epub_find_jobs
+    if _epub_find_jobs is not None:
+        _epub_find_jobs.close()
+        _epub_find_jobs = None
     global _epub_dock, _current_epub_card_id, _current_epub_filename, _epub_link_back_history
     try:
         from .epub_reference_workspace import reset_for_profile_switch as reset_references
@@ -3673,6 +3691,7 @@ def reset_for_profile_switch():
         from epub_reference_workspace import reset_for_profile_switch as reset_references
     reset_references()
     _stop_epub_focus()
+    _clear_epub_metadata_cache()
     dock, _epub_dock = _epub_dock, None
     _current_epub_card_id = _current_epub_filename = None
     _epub_link_back_history = []
@@ -4683,8 +4702,13 @@ def _build_epub_dock() -> None:
     mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
     def _on_visibility_changed(visible: bool) -> None:
+        global _epub_find_jobs
         if visible:
             return
+        if _epub_find_jobs is not None and not _epub_reader_is_visible():
+            _epub_find_jobs.close()
+            _epub_find_jobs = None
+        _clear_epub_metadata_cache()
         if _cb_epub_view_stopped:
             try:
                 _cb_epub_view_stopped(_current_epub_card_id)
@@ -4865,20 +4889,37 @@ def open_current_document_search_results() -> bool:
         return False
 
 
+_epub_find_jobs = None
+
+
 def _apply_epub_find_query(query: str) -> None:
-    global _current_epub_search_query, _current_epub_search_hits, _current_epub_search_hit_index
+    global _epub_find_jobs, _current_epub_search_query, _current_epub_search_hits, _current_epub_search_hit_index
+    try:
+        from .document_query import DocumentQuery
+    except ImportError:
+        from document_query import DocumentQuery
     normalized_query = str(query or "").strip()
+    if _epub_find_jobs is not None:
+        _epub_find_jobs._queries.invalidate()
     _current_epub_search_query = normalized_query
-    if _current_epub_card_id is None or not normalized_query:
-        _current_epub_search_hits = []
-        _current_epub_search_hit_index = -1
-        _sync_epub_find_bar()
-        return
-    _current_epub_search_hits = current_card_epub_search_hits(_current_epub_card_id, normalized_query)
-    _current_epub_search_hit_index = 0 if _current_epub_search_hits else -1
+    _current_epub_search_hits, _current_epub_search_hit_index = [], -1
     _sync_epub_find_bar()
-    if _current_epub_search_hit_index >= 0:
-        _open_epub_search_hit(_current_epub_search_hit_index, offer_due_review_prompt=False)
+    if _current_epub_card_id is None or not normalized_query:
+        return
+    if _epub_find_jobs is None:
+        def read(profile, cid, text, cancel):
+            return current_card_epub_search_hits(cid, text, profile=profile, cancel=cancel)
+        def publish(request, hits):
+            global _current_epub_search_hits, _current_epub_search_hit_index
+            _current_epub_search_hits = hits
+            _current_epub_search_hit_index = 0 if hits else -1
+            _sync_epub_find_bar()
+            if hits:
+                _open_epub_search_hit(0, offer_due_review_prompt=False)
+        _epub_find_jobs = DocumentQuery(mw, read=read, publish=publish,
+            current=lambda request: (_epub_dock is not None and _current_epub_card_id == request["card_id"]
+                and _active_profile() == request["profile"] and _current_epub_search_query == request["query"]))
+    _epub_find_jobs.submit(_active_profile(), _current_epub_card_id, normalized_query)
 
 
 def _open_epub_search_hit(index: int, *, offer_due_review_prompt: bool = False) -> None:
@@ -5168,8 +5209,8 @@ def _toggle_epub_sources_panel(scope: str = "all") -> None:
         and previous_scope == resolved_scope
     )
     _epub_dock._sources_scope = resolved_scope
-    _update_sources_panel()
     _epub_dock._sources.setVisible(visible)
+    _update_sources_panel()
     _epub_dock._sources_btn.blockSignals(True)
     _epub_dock._sources_btn.setChecked(visible and resolved_scope == "all")
     _epub_dock._sources_btn.blockSignals(False)
@@ -5288,11 +5329,8 @@ def _open_current_epub_page_cards_in_browser() -> bool:
 def _current_section_highlights() -> list[dict]:
     if _current_epub_card_id is None:
         return []
-    return [
-        row
-        for row in load_highlights(_ADDON_DIR, _active_profile(), int(_current_epub_card_id))
-        if int(row.get("sectionIndex", -1)) == int(_current_epub_section_index)
-    ]
+    return load_highlights(_ADDON_DIR, _active_profile(), int(_current_epub_card_id),
+                           section_index=int(_current_epub_section_index))
 
 
 def _edit_current_epub_highlight_note(hl_id: str) -> None:
@@ -5585,10 +5623,48 @@ def _handle_epub_snapshot(msg: str) -> None:
         showInfo(t("reader_epub_snapshot_failed", error=exc))
 
 
+def _clear_epub_metadata_cache() -> None:
+    global _epub_metadata_cache_key, _epub_metadata_cache, _epub_section_path_cache, _epub_reverse_path_cache
+    _epub_metadata_cache_key = None
+    _epub_metadata_cache = {}
+    _epub_section_path_cache = None
+    _epub_reverse_path_cache = {}
+
+
 def _current_metadata() -> dict:
+    global _epub_metadata_cache_key, _epub_metadata_cache, _epub_section_path_cache, _epub_reverse_path_cache
     if not _current_epub_filename:
         return {}
-    return load_epub_metadata(_ADDON_DIR, _current_epub_filename)
+    profile, filename = _active_profile(), _current_epub_filename
+    def identity():
+        return (_ADDON_DIR, profile, filename, load_epub_metadata,
+                epub_metadata_identity(_ADDON_DIR, filename, profile=profile))
+    key = identity()
+    if key != _epub_metadata_cache_key:
+        metadata = load_epub_metadata(_ADDON_DIR, filename, profile=profile)
+        _epub_metadata_cache = metadata
+        _epub_metadata_cache_key = identity()
+        _epub_section_path_cache = None
+        _epub_reverse_path_cache = {}
+    return _epub_metadata_cache
+
+
+def _current_section_path(index: int) -> str:
+    return get_epub_section_path(_ADDON_DIR, _current_epub_filename, index,
+                                 profile=_active_profile(), metadata=_current_metadata())
+
+
+def _current_section_paths() -> tuple[str, ...]:
+    global _epub_section_path_cache, _epub_reverse_path_cache
+    metadata = _current_metadata()
+    if _epub_section_path_cache is None:
+        _epub_section_path_cache = tuple(
+            _current_section_path(index) for index in range(len(metadata.get("sections") or []))
+        )
+        _epub_reverse_path_cache = {}
+        for index, path in enumerate(_epub_section_path_cache):
+            _epub_reverse_path_cache.setdefault(os.path.normpath(path), index)
+    return _epub_section_path_cache
 
 
 def _current_sections() -> list[dict]:
@@ -5667,7 +5743,7 @@ def _update_epub_limit_status_control() -> None:
     )
 
 
-def _update_title_and_buttons() -> None:
+def _update_title_and_buttons(*, position_only: bool = False) -> None:
     if _epub_dock is None:
         return
     markdown_edit = getattr(_epub_dock, '_markdown_edit_btn', None)
@@ -5763,29 +5839,31 @@ def _update_title_and_buttons() -> None:
     _update_epub_progress_controls(count)
     _sync_epub_compact_action_states()
     _update_epub_limit_status_control()
-    _refresh_epub_bookmarks_panel()
+    if not position_only:
+        _refresh_epub_bookmarks_panel()
     _sync_epub_link_back_buttons()
 
 
 def _update_sources_panel() -> None:
     if _epub_dock is None or _current_epub_card_id is None:
         return
-    cards = get_epub_card_sources(_ADDON_DIR, _active_profile(), _current_epub_card_id, _current_epub_section_index)
-    counts = get_epub_section_card_counts(_ADDON_DIR, _active_profile(), _current_epub_card_id)
+    counts = get_epub_section_card_counts(_ADDON_DIR, _active_profile(), _current_epub_card_id,
+                                         section_index=int(_current_epub_section_index))
     count = int(counts.get(_current_epub_section_index, 0) or 0)
-    highlights = _current_section_highlights()
+    highlight_count = count_highlights(_ADDON_DIR, _active_profile(), int(_current_epub_card_id),
+                                       section_index=int(_current_epub_section_index))
     _epub_dock._cards_chip.setText(t("reader_epub_cards_count", count=count))
     _epub_dock._cards_chip.setToolTip(tn("reader_epub_section_cards", count))
-    _epub_dock._highlights_chip.setText(t("reader_epub_highlights_count", count=len(highlights)))
-    _epub_dock._highlights_chip.setToolTip(tn("reader_epub_section_highlights", len(highlights)))
+    _epub_dock._highlights_chip.setText(t("reader_epub_highlights_count", count=highlight_count))
+    _epub_dock._highlights_chip.setToolTip(tn("reader_epub_section_highlights", highlight_count))
     _epub_dock._sources_btn.setToolTip(
-        t("reader_epub_details_counts", cards=count, highlights=len(highlights))
+        t("reader_epub_details_counts", cards=count, highlights=highlight_count)
     )
     _epub_dock._highlights_btn.setText(
-        _EPUB_TOOLBAR_TEXT["highlights"].format(count=len(highlights))
+        _EPUB_TOOLBAR_TEXT["highlights"].format(count=highlight_count)
     )
     _epub_dock._highlights_btn.setToolTip(
-        t("reader_epub_highlights_section_tooltip", count=len(highlights))
+        t("reader_epub_highlights_section_tooltip", count=highlight_count)
     )
     _epub_dock._page_cards_btn.setText(
         _EPUB_TOOLBAR_TEXT["page_cards"].format(count=count)
@@ -5794,6 +5872,10 @@ def _update_sources_panel() -> None:
     _epub_dock._page_cards_btn.setToolTip(
         tn("reader_epub_page_cards_tooltip", count)
     )
+    if not _epub_dock._sources.isVisible():
+        return
+    cards = get_epub_card_sources(_ADDON_DIR, _active_profile(), _current_epub_card_id, _current_epub_section_index)
+    highlights = _current_section_highlights()
     scope = str(getattr(_epub_dock, "_sources_scope", "all"))
     html = ["<div style='font-family:sans-serif;font-size:12px'>"]
     if scope != "highlights" and cards:
@@ -5848,6 +5930,7 @@ def _record_progress(
     global _current_epub_limit_state
     if _current_epub_card_id is None:
         return
+    previous_section = _current_epub_section_index
     _current_epub_section_index = max(0, int(section_index))
     _current_epub_scroll_ratio = max(0.0, min(float(scroll_ratio), 1.0))
     if page_index is not None:
@@ -5877,19 +5960,22 @@ def _record_progress(
         )
     except Exception:
         pass
-    _update_title_and_buttons()
-    _update_sources_panel()
+    _update_title_and_buttons(position_only=True)
+    if previous_section != _current_epub_section_index:
+        _update_sources_panel()
 
 
 def _section_index_from_path(local_path: str) -> int | None:
     if not _current_epub_filename:
         return None
     normalized = os.path.normpath(local_path or "")
-    for idx, _section in enumerate(_current_sections()):
-        section_path = os.path.normpath(get_epub_section_path(_ADDON_DIR, _current_epub_filename, idx))
-        if section_path == normalized:
-            return idx
-    return None
+    try:
+        _current_section_paths()
+        index = _epub_reverse_path_cache.get(normalized)
+        # A cached identity never bypasses the fresh containment check.
+        return index if index is not None and os.path.normpath(_current_section_path(index)) == normalized else None
+    except (OSError, RuntimeError, ValueError):
+        return None
 
 
 def _open_epub_reader_link(
@@ -5906,10 +5992,7 @@ def _open_epub_reader_link(
         return False
     try:
         sections = _current_sections()
-        section_paths = [
-            get_epub_section_path(_ADDON_DIR, _current_epub_filename, index)
-            for index in range(len(sections))
-        ]
+        section_paths = list(_current_section_paths())
         if not section_paths:
             return False
         current_index = max(0, min(_current_epub_section_index, len(section_paths) - 1))
@@ -6143,11 +6226,7 @@ def _on_load_finished(ok: bool) -> None:
     global _pending_epub_link_fragment
     if not ok or _epub_dock is None or _current_epub_card_id is None:
         return
-    highlights = [
-        hl
-        for hl in load_highlights(_ADDON_DIR, _active_profile(), _current_epub_card_id)
-        if int(hl.get("sectionIndex", -1)) == int(_current_epub_section_index)
-    ]
+    highlights = _current_section_highlights()
     js = _build_page_script(
         card_id=_current_epub_card_id,
         section_index=_current_epub_section_index,
@@ -6182,7 +6261,7 @@ def _load_current_section() -> None:
     if _epub_dock is None or _current_epub_filename is None:
         return
     try:
-        path = get_epub_section_path(_ADDON_DIR, _current_epub_filename, _current_epub_section_index)
+        path = _current_section_path(_current_epub_section_index)
     except Exception as exc:
         showInfo(t("reader_epub_section_open_failed", error=exc))
         return
@@ -6225,6 +6304,8 @@ def show_epub_in_dock(
         int(_current_epub_card_id or 0) == int(card_id)
         and str(_current_epub_filename or "") == str(filename or "").strip()
     )
+    if not same_document:
+        _clear_epub_metadata_cache()
     popup = getattr(_epub_dock, "_contents_popup", None)
     if popup is not None:
         popup.close()

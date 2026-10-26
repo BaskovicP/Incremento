@@ -27,7 +27,11 @@ export default defineConfig({
           if (id.includes("node_modules")) {
             return "extension-vendor";
           }
+          if (id.endsWith("/languagePacks.js") || id.endsWith("/locales/translation_catalog.json")) {
+            return "extension-language-packs";
+          }
           if (id.includes("chrome_extensions/incremento_companion/src/shared/")) {
+            if (id.endsWith(".jsx") || id.endsWith("/i18nReact.js")) return "extension-ui";
             return "extension-shared";
           }
           return null;

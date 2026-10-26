@@ -93,8 +93,8 @@ def get_writing_dir() -> str:
     return d
 
 
-def _writing_backup_dir(addon_dir: str) -> str:
-    path = str(_paths.get_writing_backup_dir(addon_dir, _paths.get_active_profile()))
+def _writing_backup_dir(addon_dir: str, *, profile: str | None = None) -> str:
+    path = str(_paths.get_writing_backup_dir(addon_dir, profile or _paths.get_active_profile()))
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -167,10 +167,10 @@ def _backup_base_name(relpath: str) -> str:
     return f"{stem}-{digest}{ext or '.md'}"
 
 
-def _backup_slot_path(addon_dir: str, relpath: str, tier_key: str) -> str:
+def _backup_slot_path(addon_dir: str, relpath: str, tier_key: str, *, profile: str | None = None) -> str:
     base_name = _backup_base_name(relpath)
     stem, ext = os.path.splitext(base_name)
-    return os.path.join(_writing_backup_dir(addon_dir), f"{stem}.{tier_key}{ext or '.md'}")
+    return os.path.join(_writing_backup_dir(addon_dir, profile=profile), f"{stem}.{tier_key}{ext or '.md'}")
 
 
 def _backup_meta(path: str, tier_key: str, label: str) -> dict | None:
@@ -189,10 +189,10 @@ def _backup_meta(path: str, tier_key: str, label: str) -> dict | None:
     }
 
 
-def list_writing_backups(addon_dir: str, relpath: str) -> list[dict]:
+def list_writing_backups(addon_dir: str, relpath: str, *, profile: str | None = None) -> list[dict]:
     rows: list[dict] = []
     for tier_key, _threshold_seconds, label in _BACKUP_SLOTS:
-        meta = _backup_meta(_backup_slot_path(addon_dir, relpath, tier_key), tier_key, label)
+        meta = _backup_meta(_backup_slot_path(addon_dir, relpath, tier_key, profile=profile), tier_key, label)
         if meta:
             rows.append(meta)
     return rows
@@ -204,6 +204,7 @@ def _refresh_due_backups(
     source_path: str,
     *,
     backup_tiers=None,
+    profile: str | None = None,
     now: float | None = None,
 ) -> list[dict]:
     if not os.path.exists(source_path):
@@ -212,7 +213,7 @@ def _refresh_due_backups(
     created: list[dict] = []
     for tier_key in normalize_writing_backup_tiers(backup_tiers):
         threshold_seconds, label = _BACKUP_SLOT_MAP[tier_key]
-        backup_path = _backup_slot_path(addon_dir, relpath, tier_key)
+        backup_path = _backup_slot_path(addon_dir, relpath, tier_key, profile=profile)
         should_refresh = True
         if os.path.exists(backup_path):
             try:
@@ -260,20 +261,21 @@ def write_writing_text(
     relpath: str,
     text: str,
     *,
+    profile: str | None = None,
     backups_enabled: bool = True,
     backup_tiers=None,
     now: float | None = None,
 ) -> list[dict]:
-    path = writing_file_abspath(addon_dir, relpath)
+    path = writing_file_abspath(addon_dir, relpath, profile=profile)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     selected_tiers = normalize_writing_backup_tiers(backup_tiers)
     if backups_enabled and selected_tiers and os.path.exists(path):
-        _refresh_due_backups(addon_dir, relpath, path, backup_tiers=selected_tiers, now=now)
+        _refresh_due_backups(addon_dir, relpath, path, backup_tiers=selected_tiers, now=now, profile=profile)
     tmp = f"{path}.tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         f.write(text or "")
     os.replace(tmp, path)
-    return list_writing_backups(addon_dir, relpath)
+    return list_writing_backups(addon_dir, relpath, profile=profile)
 
 
 def restore_writing_backup(addon_dir: str, relpath: str, tier_key: str) -> dict:

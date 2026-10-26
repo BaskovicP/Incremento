@@ -8,13 +8,17 @@ except ImportError:
     from db import get_connection  # type: ignore
 
 
-def load_highlights(addon_dir: str, profile: str, card_id: int) -> list[dict]:
+def load_highlights(
+    addon_dir: str, profile: str, card_id: int, *, section_index: int | None = None,
+) -> list[dict]:
+    section_filter = " AND section_index = ?" if section_index is not None else ""
+    params = (card_id, int(section_index)) if section_index is not None else (card_id,)
     rows = (
         get_connection(addon_dir, profile)
         .execute(
             "SELECT id, section_index, color, text, note, start_offset, end_offset "
-            "FROM epub_highlights WHERE card_id = ? ORDER BY section_index, start_offset, id",
-            (card_id,),
+            "FROM epub_highlights WHERE card_id = ?" + section_filter + " ORDER BY section_index, start_offset, id",
+            params,
         )
         .fetchall()
     )
@@ -30,6 +34,14 @@ def load_highlights(addon_dir: str, profile: str, card_id: int) -> list[dict]:
         }
         for r in rows
     ]
+
+
+def count_highlights(addon_dir: str, profile: str, card_id: int, *, section_index: int | None = None) -> int:
+    section_filter = " AND section_index = ?" if section_index is not None else ""
+    params = (card_id, int(section_index)) if section_index is not None else (card_id,)
+    return int(get_connection(addon_dir, profile).execute(
+        "SELECT COUNT(*) FROM epub_highlights WHERE card_id = ?" + section_filter, params,
+    ).fetchone()[0])
 
 
 def add_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> None:

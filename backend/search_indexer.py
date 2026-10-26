@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
+from concurrent.futures import CancelledError
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -102,7 +103,7 @@ def index_pdf_documents(
                 # that it still describes the current file. Re-extract it once
                 # in the background; new imports record state immediately.
                 try:
-                    pages = extract(path, allow_qt=False)
+                    pages = extract(path, allow_qt=False, cancelled=is_cancelled)
                 except TypeError:
                     pages = extract(path)
                 status = (
@@ -132,6 +133,8 @@ def index_pdf_documents(
                                 (card_id, mtime_ns, size_bytes, status, now),
                             )
                         indexed += 1
+        except CancelledError:
+            return IndexResult(total, indexed, skipped, failed, True)
         except Exception:
             failed += 1
             try:

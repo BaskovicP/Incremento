@@ -48,6 +48,8 @@ def test_bookshelf_analysis_and_math_encoding_are_deferred_and_stale_results_are
         assert dialog._list.count() == len(entries)
         assert dialog._list.currentItem() is chosen
         dialog._search.setText('Neuroscience')
+        dialog._filter_timer.stop()
+        dialog._filter_timer.timeout.emit()
         assert dialog._list.count() == 2
         dialog.reject()
         done(future)  # a late callback must be harmless
@@ -63,7 +65,7 @@ def test_bookshelf_analysis_and_math_encoding_are_deferred_and_stale_results_are
             cover_dialog = shelf._DocumentBookshelfDialog(addon_dir='/tmp/unused', entries=[cover_entry])
             cover_dialog.show()
             jobs.clear()
-            cover_dialog._load_next_thumbnail(cover_dialog._thumbnail_generation)
+            cover_dialog._prioritize_thumbnails()
             assert len(jobs) == 1
             work, done = jobs.pop()
             thumbnail = work()

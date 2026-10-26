@@ -962,7 +962,7 @@ Drag an Incremento pane by its **title bar**. A blue placement outline appears w
 
 While a PDF or EPUB is open, choose **Incremento → Workspace → Write beside document…**. Search for a writing card and choose **Open beside**. **New writing…** opens the existing writing-card creation dialog; after creating the card, select it in the list. Loading the list happens in the background. The picker shows up to 2,000 writing cards, including suspended cards; Quick Open Content remains available for larger libraries.
 
-The writing pane opens beside the reader with **Keep open while studying** enabled. If the PDF or EPUB is in focus mode, it stays in Anki’s central reading area while writing takes the right side. It keeps the chosen writing card visible when you review other cards or leave review. Uncheck this option to resume following writing cards in the reviewer; closing the writing pane also turns it off. Only one writing card is open at a time. Opening another writing card explicitly switches the editor. Autosave, backups, per-card cursor position, and word progress continue to work. Reopening an already visible writing card preserves its live text and session word baseline.
+The writing pane opens beside the reader with **Keep open while studying** enabled. If the PDF or EPUB is in focus mode, it stays in Anki’s central reading area while writing takes the right side. It keeps the chosen writing card visible when you review other cards or leave review. Uncheck this option to resume following writing cards in the reviewer; closing the writing pane also turns it off. Only one writing card is open at a time. Opening another writing card explicitly switches the editor. Autosave, backups, per-card cursor position, and word progress continue to work. Reopening an already open writing card, including a hidden pane, preserves its live text and session word baseline.
 
 Use **Incremento → Workspace** to organize the open Incremento panes:
 
@@ -1628,3 +1628,16 @@ The Document Bookshelf is optimized for visual recognition across PDFs and EPUBs
 2. Add tag quotas in the scheduler.
 3. Use **Today** scope to preserve balance across multiple sessions.
 4. Check **Statistics** to verify both counts and time are balanced.
+
+
+## 16. Large libraries and responsive tools
+
+Session counts and PDF-target lists update in the background after a brief typing pause. PDF/EPUB Find and Current Document Search show the newest query; closing a dialog or changing profiles discards old results. Searches have text and time budgets: if a request exceeds a budget, narrow the query and try again. Cancellation preserves already committed document indexes.
+
+**Incremento Database Entries** is read-only and loads one page at a time. Use **Previous** and **Next** to reach the rest of a large selection. A page contains at most 500 selected cards, 2,000 matching database rows and 2 MiB of displayed data; very long individual values are shortened to 4,096 characters with an ellipsis. Closing the dialog cancels loading. Search and match navigation apply to the displayed page.
+
+Document Bookshelf loads covers for the visible rows and a small nearby margin. Scroll to load later covers; offscreen covers may be released and loaded again. PDF highlight lists display 50 entries per page, with Previous/Next controls. Highlight selection and actions remain available on later pages.
+
+The writing preview updates after a short pause and does no markdown parsing while hidden. Autosaves run in order in the background; closing, switching writing cards or restoring a backup waits for the latest save. If a save fails, the editor keeps its live text and reports the failure rather than claiming it was saved. Cursor/scroll progress and the chosen word-count mode are preserved.
+
+Companion bookmark folders mount their children when expanded. Long folder and import lists display 100 entries per page. Folder selection totals include every descendant, including later pages, and importing includes all selected entries. Use Previous/Next to reach the remaining entries.

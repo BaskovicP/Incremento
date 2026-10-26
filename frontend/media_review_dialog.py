@@ -513,21 +513,30 @@ class MediaAttachedReviewDialog(QDialog):
         excluded_rows = list(selection.get("excluded_rows") or [])
         self._ready_tree.clear()
         self._excluded_tree.clear()
-        for tree, rows in (
-            (self._ready_tree, ready_rows),
-            (self._excluded_tree, excluded_rows),
-        ):
-            for row in rows:
-                item = QTreeWidgetItem(
-                    list(media_review_result_cells(row, media_kind=self._media_kind))
-                )
-                label = str(row.get("card_label") or "").strip()
-                if label:
-                    item.setToolTip(0, label)
-                tree.addTopLevelItem(item)
-            tree.resizeColumnToContents(1)
-            tree.resizeColumnToContents(2)
-            tree.resizeColumnToContents(3)
+        try:
+            from .render_batches import build_in_batches
+        except ImportError:
+            from render_batches import build_in_batches
+        self._render_generation = getattr(self, "_render_generation", 0) + 1
+        generation = self._render_generation
+        if not getattr(self, "_render_close_connected", False):
+            self.finished.connect(lambda *_: setattr(self, "_render_generation", self._render_generation + 1))
+            self._render_close_connected = True
+        def render(pair):
+            tree, row = pair
+            item = QTreeWidgetItem(list(media_review_result_cells(row, media_kind=self._media_kind)))
+            label = str(row.get("card_label") or "").strip()
+            if label:
+                item.setToolTip(0, label)
+            tree.addTopLevelItem(item)
+        def done():
+            for tree in (self._ready_tree, self._excluded_tree):
+                tree.header().setResizeContentsPrecision(100)
+                for column in (1, 2, 3):
+                    tree.resizeColumnToContents(column)
+        items = [(self._ready_tree, row) for row in ready_rows]
+        items.extend((self._excluded_tree, row) for row in excluded_rows)
+        build_in_batches(items, render, valid=lambda: generation == self._render_generation, done=done)
         self._result_tabs.setTabText(
             self._ready_tab_index,
             t("reader_media_ready_tab", count=len(ready_rows)),

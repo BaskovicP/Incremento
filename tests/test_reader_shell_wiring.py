@@ -219,7 +219,7 @@ def test_epub_dynamic_counts_keep_the_pdf_text_and_icons_after_refresh():
     source = (ROOT / "frontend" / "epub_dock.py").read_text(encoding="utf-8")
 
     assert '_EPUB_TOOLBAR_TEXT["bookmarks"].format(count=len(bookmarks))' in source
-    assert '_EPUB_TOOLBAR_TEXT["highlights"].format(count=len(highlights))' in source
+    assert '_EPUB_TOOLBAR_TEXT["highlights"].format(count=highlight_count)' in source
     assert '_EPUB_TOOLBAR_TEXT["page_cards"].format(count=count)' in source
     assert '_EPUB_TOOLBAR_TEXT["clickable_links"].format(' in source
 

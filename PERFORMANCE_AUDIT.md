@@ -6,7 +6,91 @@ The largest opportunities are repeated whole-library work on the UI thread, quad
 
 Concurrent About-credit, documentation and localization edits were observed and preserved. Their source diff does not change the identified performance mechanisms. [The concurrent-change record](</Users/paulobaskovic/Library/Application Support/Anki2/addons21/incremento/performance_audit/2026-10-25/concurrent_changes.json>) lists the observed files; the inventory retains initial and completion hashes. Source line anchors and extension bundle sizes were rechecked against the completion snapshot.
 
-Implementation update: the first performance batch now addresses F03, F05, F06, F08, F09 and F11. [Implementation results](#implementation-results) below records the applied scope, before/after measurements, remaining work and verification. The original audit measurements and inventory remain historical snapshots.
+Completion update, 26 October 2026: all 24 numbered findings have implementations and regression coverage. The completion pass starts from `6a371c732fc6c7d65bb4468fdb5853a2926ec097`, after the first performance batch. The completion results below supersede the original backlog and first-batch handoff. Original measurements, line anchors and inventories remain historical evidence.
+
+## Completion results — all 24 findings
+
+Every numbered finding is addressed. This means the audited mechanism has been removed or bounded with explicit lifecycle/resource controls; it does not mean every possible performance cost has disappeared. Native Anki scheduling, Answer Card Undo/Redo, profile isolation, import journals, SQLite durability and optional-FTS fallbacks remain covered. The audit's unmeasured profiling watchlist remains a watchlist, not a claim of another reproduced defect.
+
+The table reports synthetic component measurements on macOS arm64, Python 3.14.5 / SQLite 3.53.2 and Node 25.6.0. Ordinary timings are medians of three runs. Cold EPUB lookup, native import, Qt construction and browser observer measurements identify their smaller sample sizes in the raw artifacts. Warm caches are explicitly identified. None of these ratios is a whole-application speed claim. Supported-Python CI on 3.12/3.13 is still a separate environment.
+
+| ID | Implemented improvement | Before → after on the same workload |
+| --- | --- | --- |
+| F01 | Debounced background session counts, one classifier/pool snapshot, batched PDF targets | 10,000 cards / 20 tag rows: **1,125.1 → 59.5 ms**; 504 → 24 SQL reads; 42 → 1 classifier resolutions |
+| F02 | Active-EPUB metadata snapshot and validated reverse section map | Cold last-section lookup in a 10 MB / 200-section book: **1,356.5 → 8.2 ms**; 201 → 1 JSON reads. Warm: 0 reads |
+| F03 | Combined statistics totals and tag-attribution persistence | First batch: **97.0 → 55.8 ms** with 512 populated tags; 4 → 2 durable saves per review cycle |
+| F04 | Background, generation-scoped PDF source index and question/answer payload reuse | 20 lookups / 4,000 PDFs: **59.7 → 11.1 ms including index construction**; warm lookups add 0.004 ms; 80,000 per-note loads avoided |
+| F05 | Stable indexed FTS identities for replacement/deletion | First batch: 4,000-page replacement **814.0 → 126.5 ms**. Fresh insertion still has the documented 70 ms tradeoff |
+| F06 | Iterative validation plus structural-change-only tree writes | First batch deep validation: 275.6 → 11.1 ms. Completion 4,000-node unchanged save: **10.81 → 5.54 ms**, 4,000 → 0 updated rows; leaf move updates 1 row |
+| F07 | Cancellable, paged, read-only database inspection; compact Unicode offsets | 1,000 positions in 312,000 characters: **152.1 → 11.7 ms**. Each inspection page bounds cards, rows, text and elapsed work |
+| F08 | PDF copy, cover, native fallback and indexing in the collection worker; prepared empty text retained | 200-page native import: longest sampled UI event-pump gap **63.1 → 13.8 ms**; UI pumps 0 → 14. One sample; not an import-throughput claim |
+| F09 | One private bookmark accumulator, iterative deep traversal, folder ranges and selection prefix counts | First batch: 5,000 opaque IDs 2,065 → 3.7 ms. 1,000 counts over 10,000 bookmarks: **373.2 → 0.076 ms warm**; separate range construction 1.03 ms, selection-prefix setup excluded |
+| F10 | Debounced/hidden-aware markdown preview and one ordered background save queue | Twenty edits of 105,000 characters: markdown parse work **142.1 → 6.9 ms**, 20 → 1 parses; hidden preview: 0 parses |
+| F11 | Local Undo/Redo membership checks instead of repeated global history differences | First batch Python transition: **310.5 → 3.0 ms** at 4,000 cards. Newly measured real SQLite boundary: 2.74 ms / 12 queries for 10,000 revlog IDs |
+| F12 | Compiled queries, streaming candidate batches, bounded top-result ranking, async current-document search | Same 1,200 ranked results / 12,000 pages: **129.1 → 104.1 ms**; peak Python allocation **7.18 → 0.61 MB**, 91.5% less |
+| F13 | Section-scoped EPUB highlight reads and position-only progress updates | 20,000 saved highlights / 100 in current section: **23.75 → 0.103 ms**; 20,000 → 100 materialized rows |
+| F14 | Shared exact-duplicate groups, lazy peer expansion, separate fuzzy edges | 800 same-origin documents: **61.1 → 13.6 ms**; 639,200 → 1,600 stored references; Python peak 37.6 → 5.87 MB |
+| F15 | Batched branch/media projections and supplemental writes; background previews and native mutation operations | Shift 4,000 priorities: **341.8 → 16.0 ms**; 4,000 → 1 commits, 4,000 → 5 priority reads |
+| F16 | Disconnect the Find observer around owned writes; idempotent marks; preserve PDF.js text changes | 1,000 spans plus one external update over 10 frames: **10 → 2 render callbacks**, **89.1 → 5.2 ms** highlight work; one headless-browser sample |
+| F17 | Per-page cancellation plus time/page/output budgets and bounded/reaped external extractor | Cancel after page 2 of 1,000: **48.4 → 2.93 ms** return time; 1,000 → 2 loaded pages, documents closed in both cases |
+| F18 | Bounded Qt construction, deferred bookmark folders, 100-row imports and 50-row PDF highlights | React SSR: closed 10,000-leaf folder **92.6 → 0.246 ms**; import rows **413.1 → 4.89 ms**. Qt 5,000 rows: 1 → 126 callbacks; see timing caveat below |
+| F19 | Visible/prefetched thumbnails, debounced filters and 24 MiB derived-image LRU | Initial viewport / 2,000 covers: **918.0 → 4.11 ms** native decode work; 2,000 → 9 images; raster accounting 409.6 → 1.84 MB |
+| F20 | Split non-React core, UI and lazy custom-language validation chunks | Static content-script graph **1,001,053 → 192,642 bytes**, 80.8% smaller; background 986,486 → 177,928; offscreen 950,623 → 142,059 |
+| F21 | One media sample for both heartbeat protocols, live video collection and hidden-poll suspension | 1,000 visible ticks: **2.86 → 2.24 ms**, 2,000 → 0 warm DOM queries; same 2,000 protocol messages. Hidden periodic ticks emit 0; playback events still flush |
+| F22 | One SuperMemo parent map and one batch of supplemental topic schedules | 256-topic native import: **119.7 → 97.6 ms**; 36,992 → 4,352 element-ID reads; 256 → 1 topic commits; journal durability retained |
+| F23 | Defer six optional dialog modules; initialize SQLite outside the registry lock | **21.7 ms** isolated optional import group deferred to first use. Under a controlled 100 ms initializer stall, unrelated cached lookup **110.1 → 0.002 ms**; first schema open 6.98 → 6.69 ms |
+| F24 | One normalized config/classifier snapshot per reviewer event | 100 events with 20 populated presets: **261.9 → 96.1 ms**, 300 → 100 config reads |
+
+The Qt construction budget is cooperative: at most 40 rows per callback and a 5 ms elapsed-work target, checked between rows. In the recorded sample its worst callback fell from 28.8 to 22.1 ms, while total construction rose from 28.8 to 55.7 ms because it yields to the event loop. A single Qt allocation, garbage collection or paint/layout can exceed the target. The implementation does not promise a hard frame-time limit. React numbers measure server rendering of production JSX, not a browser DOM commit. Thumbnail byte counts are conservative cache accounting, not process RSS.
+
+Search retains its previous candidate ordering/caps and exact phrase/prefix/repeated-term/Unicode ranking, including the LIKE fallback. Excerpt FTS was evaluated and not added: adopting token-only matching would change the existing substring candidate semantics, and new mirrors add write/migration costs. Streaming, cancellation, a request text/time budget and bounded result retention remove the audited amplification without that behavior change. Large requests fail explicitly on budgets rather than silently dropping candidates.
+
+PDF extraction cancellation is cooperative between native page calls; it cannot interrupt a single non-cooperative native call. External `pdftotext` has a kill/reap boundary and output/time checks. QWebEngine webpage rendering stays UI-owned and asynchronous; managed copying, covers, Qt PDF fallback and text indexing run outside the UI thread. Writing close/card-switch/backup restoration waits for ordered saves and preserves the live editor on failure; profile teardown flushes the captured profile. No delayed-save policy was introduced for review statistics or import journals.
+
+Knowledge-tree `updated_at` now means the last structural change to that row's parent, kind or sibling order. An unchanged save preserves the timestamp; changed rows update together transactionally. This deliberate timestamp meaning is documented in the architecture and protected by rollback/no-op tests.
+
+The checkout also contains concurrent profile-startup preparation, diagnostics/localization and PDF focus-toolbar changes. They were preserved and tested with this working tree; they are not claimed as performance implementations from this pass. No real `user_files/` content was read or modified. Benchmarks and native/browser tests use disposable profiles and fixtures.
+
+### Evidence, reproduction and hands-on checks
+
+Current per-finding status, test mapping and source hashes are recorded in [completion results](</Users/paulobaskovic/Library/Application Support/Anki2/addons21/incremento/performance_audit/2026-10-25/completion_results.json>). Raw measurements are [metadata/tree](</Users/paulobaskovic/Library/Application Support/Anki2/addons21/incremento/performance_audit/2026-10-25/completion_measurements.json>), [CPU/SQLite](</Users/paulobaskovic/Library/Application Support/Anki2/addons21/incremento/performance_audit/2026-10-25/completion_cpu_measurements.json>), [native Qt/Anki](</Users/paulobaskovic/Library/Application Support/Anki2/addons21/incremento/performance_audit/2026-10-25/completion_native_measurements.json>), [extension](</Users/paulobaskovic/Library/Application Support/Anki2/addons21/incremento/performance_audit/2026-10-25/completion_extension_measurements.json>) and [Find observer](</Users/paulobaskovic/Library/Application Support/Anki2/addons21/incremento/performance_audit/2026-10-25/completion_browser_measurements.json>). First-batch raw results remain below.
+
+Run from the repository root. These commands create and delete synthetic fixtures, including the 4,000-node tree; they do not alter your Anki collection. The native program uses an offscreen Qt application. The browser program requires the already-installed optional webpage browser component and uses an offline headless page; it never installs software or touches an existing browser tab.
+
+```bash
+.venv/bin/python performance_audit/2026-10-25/completion_benchmarks.py --output /tmp/incremento-completion-metadata.json
+.venv/bin/python performance_audit/2026-10-25/completion_cpu_benchmarks.py --output /tmp/incremento-completion-cpu.json
+QT_QPA_PLATFORM=offscreen .venv/bin/python performance_audit/2026-10-25/completion_native_benchmarks.py --output /tmp/incremento-completion-native.json
+node performance_audit/2026-10-25/completion_extension_benchmarks.mjs /tmp/incremento-completion-extension.json
+.venv/bin/python performance_audit/2026-10-25/completion_browser_benchmarks.py --output /tmp/incremento-completion-browser.json
+```
+
+For visual checks, use a disposable Anki profile and your own test documents. These steps demonstrate the changed interaction; use the commands above for comparable before/after numbers.
+
+| Findings | Steps and expected result |
+| --- | --- |
+| F01 | Open Start Incremental Learning, add tag rows, and type rapidly in a Topic/Item filter. Counts update after a brief pause; switch Basic/Advanced and confirm the same counts. Close/reopen or switch profiles before a result returns; old results must not appear |
+| F02/F13 | Open a long EPUB, jump to a late section, then scroll repeatedly. Find/highlights follow the current section; ordinary scroll updates do not rebuild a whole-book highlight list. Add/delete a highlight and verify its count refreshes |
+| F03/F24 | Review tagged Topic and Item cards. Check statistics totals/time and the reviewer badge/buttons. Save changed Settings and review again; the next event must use the new setting |
+| F04 | Review extracted cards linked to a PDF source. Flip question/answer repeatedly, then edit the source title/cover and review again. The cover is reused within a card and refreshes after source changes |
+| F05/F17 | Use Reindex PDF text on a test library. Reindex an already indexed document; cancel during another long PDF. Previously committed text remains available after cancellation. Use the FTS tradeoff program below to compare first insertion and replacement |
+| F06/F15 | Build a nested Knowledge Tree, save without editing, then move one leaf. Open branch study, subset review, priority tools and postpone preview. Results/selection stay correct while reads run in the background. Check native Undo after a postpone change |
+| F07 | In Browser select test cards and open Incremento Database Entries. Use page navigation to reach later results; search for repeated text and step through matches. Very long values show an ellipsis. Close during loading; no stale result should reopen the dialog |
+| F08 | Import a multi-page PDF through Companion; also import a webpage as PDF. Anki can continue processing UI events while copy/cover/index work runs. Verify a text-free PDF creates its card without a second extraction and that searchable PDFs appear in Search ALL |
+| F09/F18 | Open Companion bookmark import with a large folder. Leave the folder closed, then expand it and use Previous/Next page. Selected totals cover the entire folder; import rows page by 100 and all selected entries remain included. In a PDF with many highlights, page through the 50-row list |
+| F10 | Open a long writing card, type a burst with preview visible, then hide the preview and type again. Reopen the same card and verify live text/cursor/word progress. Switch cards or close and reopen after saving; text and backup behavior remain intact |
+| F11 | Review several Topic/custom-schedule cards, Undo, Redo, then Undo and make another native edit that clears Redo. Check the same intervals and one-time-rule restoration; the benchmark supplies the large-history fixture |
+| F12/F16 | Type a common phrase in PDF/EPUB Find and Current Document Search, then change it rapidly. Only the newest results should display. Navigate/rerender a PDF page while Find is active; markings settle without repeating their own redraws |
+| F14/F19 | Open Document Bookshelf with many covers and same-origin copies. Filter duplicates, inspect peers, resize, and scroll to the middle/end. All visible tiles gain covers; offscreen tiles are deferred and duplicates retain direct-match semantics |
+| F20/F21 | Reload the unpacked Companion extension and open a new synthetic video page. Progress remains correct for the largest active player, including a dynamically inserted/replaced player; hide the tab and verify final position/playback events still persist. Static graph bytes are measured by the extension program |
+| F22 | Import a small SuperMemo fixture in a test profile, then reimport it. Verify parent titles/tree placement, topic schedules, cloze/media metadata and idempotency. The native benchmark creates the 256-topic scaling fixture automatically |
+| F23 | Start a disposable profile, then open Statistics, Bookshelf, Search ALL and database inspection for the first time and again. Optional imports move to first use. The database benchmark separately measures cold/warm initialization and lock contention; it does not claim an end-to-end Anki startup percentage |
+
+### Completion verification
+
+The final performance-only source passed **4075 Python tests** with 61 warnings, **249 reader tests** and **236 Companion tests**, through the complete release gate. The shared checkout, including preserved concurrent edits, separately passed **4,090 Python tests**. Translation checks, compilation, Ruff, configured mypy, ESLint and all four mutation guards passed; seven deterministic repair cases passed, npm audit found zero vulnerabilities and pip reported no broken requirements. Both generated targets reproduced byte for byte. Every file in the performance-only add-on matches the staged source; runtime data, local metadata and development files are excluded.
+
+The complete release gate, rebuilt-asset reproducibility, dependency audit, deterministic repair checks and final package hash are recorded in [completion checks](</Users/paulobaskovic/Library/Application Support/Anki2/addons21/incremento/performance_audit/2026-10-25/completion_checks.json>). This section refers to the final completion run; verification further below belongs to the historical audit/first batch.
 
 ## Scope and confidence
 
@@ -530,7 +614,7 @@ Read [the structured backlog](</Users/paulobaskovic/Library/Application Support/
 
 > Implement one selected finding from this audit at a time. First confirm that the cited mechanism still exists, reproduce it with synthetic or explicitly authorized data, and read the applicable agent/test guides. Write the failing behavioral/scaling regression, make the smallest safe change, and run the affected checks. Preserve the acceptance constraints and all profile, Anki ownership, Undo, security and durability contracts. Report before/after measurements with the same fixture and distinguish a local benchmark gain from end-to-end user latency. Do not treat an unmeasured hypothesis as an observed production bottleneck.
 
-## Implementation results
+## First-batch implementation results (historical)
 
 The first batch on 25 October 2026 removes repeated extraction, object copying, ancestor traversal, whole-index deletion scans and duplicate statistics saves. It also reduces Undo tracking work. These changes address six measured mechanisms; the broader UI work in the original backlog remains open.
 
@@ -584,7 +668,7 @@ Exact commands and failure families are in [implementation checks](</Users/paulo
 
 Release verification on 25 October 2026 completed the full `package_addon.py --release --clean-staging` gate with the required headless browser and temporary local-socket permissions: **4,012 Python tests passed** in 191.79 seconds, with 62 warnings; **247 viewer tests and 230 extension tests passed**. Translation checks, both builds, compilation, Ruff, configured mypy, ESLint, all four mutation guards and seven deterministic repair cases passed. Dependency audit reported zero vulnerabilities, and `pip check` found no broken requirements. Archive validation confirmed the shipped files match the source and exclude runtime user data and local `meta.json`. The existing contributor-credit and translation changes are included with their rebuilt assets. [Release checks](</Users/paulobaskovic/Library/Application Support/Anki2/addons21/incremento/performance_audit/2026-10-25/release_checks.json>) records the artifact hash and complete gate results.
 
-### Next priorities
+### First-batch handoff (superseded by completion results)
 
 Continue with F01 session-dialog queries, F02 EPUB metadata reuse, F04 reviewer source-cover lookup, F07 bounded database inspection and F10 writing preview/save scheduling. Complete F06's change-only persistence only after specifying timestamp behavior. Finish F08's webpage/cover preparation with a working browser/Qt integration environment, and treat F09 folder mounting as a separate rendering workload. Keep the fresh-indexing overhead visible when tuning F05 further.
 

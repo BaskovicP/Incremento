@@ -1,0 +1,190 @@
+{
+  "scope": "Compare schema 18/19 fresh PDF indexing, size, and one-time migration cost.\n\nUses isolated temporary SQLite files with Incremento's WAL/NORMAL settings.\nSource indexes and text are synthetic. No live profiles or Anki are accessed.",
+  "environment": {
+    "python": "3.14.5",
+    "sqlite": "3.53.2",
+    "machine": "arm64"
+  },
+  "source_sha256": {
+    "backend/db.py": "e8dfe4e803d838201cd325d1228a5d86756d718da5fab4307e282fead4b2d09b",
+    "backend/db_schema.py": "bceed638c39119deebb8934dc117c7db881c3668aadcfac91d4df6b6a09b55bb"
+  },
+  "results": [
+    {
+      "schema": 18,
+      "pages": 1000,
+      "fresh_insert_median_ms": 9.988,
+      "fresh_insert_samples_ms": [
+        10.055,
+        10.216,
+        9.988,
+        9.867,
+        9.732
+      ],
+      "database_allocated_bytes_before_migration": [
+        696320,
+        696320,
+        696320,
+        696320,
+        696320
+      ],
+      "upgrade_to_19_samples_ms": [
+        3.47,
+        3.477,
+        3.175,
+        3.017,
+        2.895
+      ],
+      "upgrade_to_19_median_ms": 3.175
+    },
+    {
+      "schema": 19,
+      "pages": 1000,
+      "fresh_insert_median_ms": 21.164,
+      "fresh_insert_samples_ms": [
+        21.345,
+        21.164,
+        20.313,
+        20.332,
+        21.349
+      ],
+      "database_allocated_bytes_before_migration": [
+        753664,
+        753664,
+        753664,
+        753664,
+        753664
+      ],
+      "upgrade_to_19_samples_ms": [],
+      "upgrade_to_19_median_ms": null
+    },
+    {
+      "schema": 18,
+      "pages": 4000,
+      "fresh_insert_median_ms": 38.852,
+      "fresh_insert_samples_ms": [
+        39.489,
+        38.753,
+        38.852,
+        38.896,
+        38.276
+      ],
+      "database_allocated_bytes_before_migration": [
+        1089536,
+        1089536,
+        1089536,
+        1089536,
+        1089536
+      ],
+      "upgrade_to_19_samples_ms": [
+        10.442,
+        12.657,
+        9.927,
+        9.942,
+        9.962
+      ],
+      "upgrade_to_19_median_ms": 9.962
+    },
+    {
+      "schema": 19,
+      "pages": 4000,
+      "fresh_insert_median_ms": 121.783,
+      "fresh_insert_samples_ms": [
+        129.253,
+        104.509,
+        121.936,
+        121.783,
+        111.282
+      ],
+      "database_allocated_bytes_before_migration": [
+        1224704,
+        1224704,
+        1224704,
+        1224704,
+        1224704
+      ],
+      "upgrade_to_19_samples_ms": [],
+      "upgrade_to_19_median_ms": null
+    }
+  ],
+  "delete_document_with_unrelated_corpus": [
+    {
+      "schema": 18,
+      "unrelated_pages": 0,
+      "deleted_document_pages": 50,
+      "median_ms": 0.228,
+      "samples_ms": [
+        0.254,
+        0.228,
+        0.225,
+        0.268,
+        0.21
+      ]
+    },
+    {
+      "schema": 19,
+      "unrelated_pages": 0,
+      "deleted_document_pages": 50,
+      "median_ms": 0.139,
+      "samples_ms": [
+        0.161,
+        0.139,
+        0.137,
+        0.139,
+        0.138
+      ]
+    },
+    {
+      "schema": 18,
+      "unrelated_pages": 2000,
+      "deleted_document_pages": 50,
+      "median_ms": 6.925,
+      "samples_ms": [
+        6.938,
+        6.925,
+        6.91,
+        6.768,
+        7.007
+      ]
+    },
+    {
+      "schema": 19,
+      "unrelated_pages": 2000,
+      "deleted_document_pages": 50,
+      "median_ms": 0.173,
+      "samples_ms": [
+        0.277,
+        0.171,
+        0.173,
+        0.171,
+        0.23
+      ]
+    },
+    {
+      "schema": 18,
+      "unrelated_pages": 8000,
+      "deleted_document_pages": 50,
+      "median_ms": 27.021,
+      "samples_ms": [
+        28.501,
+        28.409,
+        27.021,
+        25.804,
+        26.584
+      ]
+    },
+    {
+      "schema": 19,
+      "unrelated_pages": 8000,
+      "deleted_document_pages": 50,
+      "median_ms": 0.205,
+      "samples_ms": [
+        0.331,
+        0.205,
+        0.191,
+        0.194,
+        0.233
+      ]
+    }
+  ]
+}

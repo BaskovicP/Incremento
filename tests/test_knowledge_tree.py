@@ -1593,3 +1593,17 @@ class TestSubsetReviewRows:
         assert result == latest_reviews
         assert len(fake_mw.col.db.calls) == 3
         assert all(len(params) <= 2 for _sql, params in fake_mw.col.db.calls)
+def test_bulk_branch_priority_shift_uses_one_atomic_write(tmp_path, monkeypatch):
+    import db
+    addon_dir = str(tmp_path)
+    profile = "Batch"
+    rows = [{"card_id": i, "parent_card_id": None if i == 1 else 1,
+             "node_kind": "topic", "sort_order": i} for i in range(1, 501)]
+    db.set_knowledge_tree_structure(addon_dir, profile, rows)
+    connection = db.get_connection(addon_dir, profile)
+    commits = []
+    connection.set_trace_callback(lambda sql: commits.append(sql) if sql == "COMMIT" else None)
+    assert knowledge_tree.shift_subtree_priorities(addon_dir, profile, 1, 5) == 500
+    connection.set_trace_callback(None)
+    assert len(commits) == 1
+    assert set(dict(connection.execute("SELECT card_id,priority FROM priorities")).values()) == {55.0}

@@ -885,7 +885,7 @@ def _prepare_writing_item_off_main(normalized: dict) -> None:
     normalized[_PREPARED_WRITING_MARKDOWN_KEY] = True
 
 
-def prepare_add_content_request_off_main(payload_or_request) -> dict:
+def prepare_add_content_request_off_main(payload_or_request, *, render_webpage=None) -> dict:
     request = (
         payload_or_request
         if isinstance(payload_or_request, _NormalizedAddContentRequest)
@@ -903,6 +903,14 @@ def prepare_add_content_request_off_main(payload_or_request) -> dict:
         for normalized in prepared["items"]:
             _prepare_writing_item_off_main(normalized)
             _prepare_pdf_item_off_main(normalized)
+            if (render_webpage is not None and normalized.get("kind") == "pdf"
+                    and not normalized.get(_PREPARED_PDF_PATH_KEY)):
+                path = _make_temp_pdf_path()
+                normalized[_PREPARED_PDF_PATH_KEY] = path
+                render_webpage(normalized, path)
+                pages = _extract_pdf_pages_text_off_main(path)
+                if pages is not None:
+                    normalized[_PREPARED_PDF_PAGE_TEXTS_KEY] = pages
     except Exception:
         cleanup_prepared_add_content_request(prepared)
         raise
@@ -1049,13 +1057,14 @@ def _store_browser_capture_snapshot(col, snapshot: dict, title: str, index: int)
                     pass
 
 
-def _parent_card_title_on_main(parent_card_id: int | None) -> str:
+def _parent_card_title_on_main(parent_card_id: int | None, *, col=None) -> str:
     if parent_card_id is None:
         return ""
     try:
         from aqt import mw
 
-        card = mw.col.get_card(int(parent_card_id))
+        col = col if col is not None else mw.col
+        card = col.get_card(int(parent_card_id))
         note = card.note()
         fields = list(getattr(note, "fields", []) or [])
         if fields:
@@ -1071,12 +1080,13 @@ def _source_metadata_for_extension_card(
     source_title: str,
     source_link: str,
     parent_card_id: int | None = None,
+    col=None,
 ) -> dict[str, str]:
     return build_incremento_metadata(
         source_type=source_type,
         source_title=source_title,
         source_link=source_link,
-        parent=_parent_card_title_on_main(parent_card_id),
+        parent=_parent_card_title_on_main(parent_card_id, col=col),
         parent_card_id=parent_card_id,
     )
 
@@ -1086,6 +1096,7 @@ def _sync_parent_child_knowledge_tree_on_main(
     parent_card_id: int | None,
     child_card_id: int,
     node_kind: str = "item",
+    col=None, profile=None,
 ) -> dict:
     if parent_card_id is None:
         return {}
@@ -1106,10 +1117,11 @@ def _sync_parent_child_knowledge_tree_on_main(
 
     return ensure_extract_lineage_cards_in_tree(
         _addon_dir,
-        _active_profile(),
+        profile or _active_profile(),
         source_card_id=parent_card_id,
         created_card_ids=[child_card_id],
         created_node_kind=node_kind,
+        **({"col": col} if col is not None else {}),
     )
 
 
@@ -1287,6 +1299,133 @@ def _insert_browser_capture_note(col, model, field_names, normalized, profile, o
     return {"ok": True, "type": "browser_capture", "cardId": card_id, "noteId": int(note.id),
             "noteTypeName": normalized["note_type_name"], "deckName": deck_name,
             "title": normalized["title"], "knowledgeTree": tree}
+
+
+_pdf_import_dispatch = None
+
+
+def register_pdf_import_dispatch(callback) -> None:
+    global _pdf_import_dispatch
+    _pdf_import_dispatch = callback
+
+
+def import_prepared_pdf_item(normalized: dict, *, col, profile: str) -> dict:
+    """Only collection mutations and worker-safe PDF work; no Qt widgets."""
+    try:
+        from .pdf_manager import add_pdf_card
+        from .priority_manager import set_priority
+    except ImportError:
+        from pdf_manager import add_pdf_card
+        from priority_manager import set_priority
+    path = str(normalized.get(_PREPARED_PDF_PATH_KEY) or "")
+    if not path or not os.path.isfile(path):
+        raise RuntimeError("Prepared PDF file was not found.")
+    title, deck_name = normalized["title"], normalized["deck_name"]
+    parent = normalized.get("parent_card_id")
+    card_id = add_pdf_card(
+        _addon_dir, col, path, title, deck_name=deck_name, tags=normalized["tags"], profile=profile,
+        metadata=_source_metadata_for_extension_card(source_type="PDF", source_title=title,
+            source_link=normalized["url"], parent_card_id=parent, col=col),
+        precomputed_page_texts=normalized.get(_PREPARED_PDF_PAGE_TEXTS_KEY),
+    )
+    set_priority(_addon_dir, profile, int(card_id), normalized["priority"])
+    tree = _sync_parent_child_knowledge_tree_on_main(
+        parent_card_id=parent, child_card_id=int(card_id), node_kind="item", col=col, profile=profile)
+    return {"ok": True, "kind": "pdf", "cardId": int(card_id), "title": title,
+            "deckName": deck_name, "knowledgeTree": tree}
+
+
+def _render_prepared_webpage_pdf(normalized, path, *, require_authorized=None):
+    def render():
+        if require_authorized is not None:
+            require_authorized()
+        from ..frontend.webpage_dialog import render_webpage_to_pdf
+        options = dict(normalized.get("pdf_options") or _normalize_pdf_options({}))
+        snapshot = bool(normalized.get("capture_opened_page"))
+        if snapshot:
+            options["dynamic"] = False
+        render_webpage_to_pdf(path, url=normalized["url"],
+            html="" if options["dynamic"] else normalized["html"], **options,
+            **({"prefer_snapshot": True} if snapshot else {}),
+            timeout_ms=90000 if options["dynamic"] else 45000)
+    _run_on_main_and_wait(render)
+
+
+def _run_pdf_import_and_wait(normalized, *, require_authorized):
+    from aqt import mw
+    done, cancelled = threading.Event(), threading.Event()
+    box = {}
+    cleanup_lock = threading.Lock()
+    def late_cleanup():
+        with cleanup_lock:
+            path = box.pop("late_cleanup", "")
+        if path:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    def success(result):
+        box["result"] = result
+        done.set()
+        late_cleanup()
+    def failure(error):
+        box["error"] = error
+        done.set()
+        late_cleanup()
+    def check():
+        require_authorized()
+        return cancelled.is_set()
+    def launch():
+        try:
+            if check():
+                return
+            if _pdf_import_dispatch is None:
+                raise RuntimeError("PDF import is unavailable.")
+            _pdf_import_dispatch(normalized, success, failure, is_cancelled=check)
+        except Exception as error:
+            failure(error)
+    mw.taskman.run_on_main(launch)
+    if not done.wait(180):
+        cancelled.set()
+        # A running import owns the prepared path until its callback. The
+        # request cleanup must not delete an in-use file after a timeout.
+        with cleanup_lock:
+            box["late_cleanup"] = normalized.pop(_PREPARED_PDF_PATH_KEY, "")
+        if done.is_set():
+            late_cleanup()
+        raise TimeoutError("Incremento PDF import timed out.")
+    if "error" in box:
+        raise box["error"]
+    return box["result"]
+
+
+def _run_content_request_and_wait(request, *, require_authorized):
+    results = []
+    for item in request["items"]:
+        try:
+            require_authorized()
+            if item["kind"] == "pdf":
+                result = _run_pdf_import_and_wait(item, require_authorized=require_authorized)
+            else:
+                def add():
+                    require_authorized()
+                    return _add_content_item_on_main(item)
+                result = _run_on_main_and_wait(add)
+            results.append(result)
+        except Exception as error:
+            if not request["batch"]:
+                raise
+            results.append({"ok": False, "kind": item["kind"], "title": item["title"],
+                            "deckName": item["deck_name"], "error": str(error)})
+    if any(result.get("ok") for result in results):
+        def refresh():
+            require_authorized()
+            _refresh_anki_after_import()
+        _run_on_main_and_wait(refresh)
+    if not request["batch"]:
+        return results[0]
+    imported = sum(bool(result.get("ok")) for result in results)
+    return {"ok": True, "results": results, "importedCount": imported, "failedCount": len(results) - imported}
 
 
 def _add_content_item_on_main(normalized: dict) -> dict:
@@ -2084,16 +2223,17 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
                 else:
                     raise ValueError("Invalid browser PDF handoff action.")
             elif request_path == BRIDGE_PATH:
-                prepared_request = prepare_add_content_request_off_main(payload)
+                prepared_request = prepare_add_content_request_off_main(payload,
+                    render_webpage=lambda item, path: _render_prepared_webpage_pdf(
+                        item, path, require_authorized=self._require_current_authorization))
                 try:
                     if prepared_request.get("browser_capture"):
                         result = _run_browser_capture_and_wait(
                             prepared_request["items"][0], require_authorized=self._require_current_authorization,
                         )
                     else:
-                        result = self._run_authorized_on_main_and_wait(
-                            lambda: _add_content_request_on_main(prepared_request)
-                        )
+                        result = _run_content_request_and_wait(
+                            prepared_request, require_authorized=self._require_current_authorization)
                 finally:
                     cleanup_prepared_add_content_request(prepared_request)
             elif request_path == WEB_TRACK_MEDIA_PATH:

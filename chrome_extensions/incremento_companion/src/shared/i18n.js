@@ -3,7 +3,18 @@ import enMessages from "../../_locales/en/messages.json" with { type: "json" };
 import hrMessages from "../../_locales/hr/messages.json" with { type: "json" };
 import zhMessages from "../../_locales/zh_CN/messages.json" with { type: "json" };
 
-import { canonicalPackLocale, validatedStoredPacks, validateLanguagePack, LANGUAGE_PACKS_KEY, MAX_PACKS, LanguagePackError } from "./languagePacks.js";
+import { canonicalPackLocale, LANGUAGE_PACKS_KEY, MAX_PACKS, LanguagePackError } from "./languagePackIdentity.js";
+
+let packValidation = null;
+async function loadPackValidation() {
+  if (!packValidation) packValidation = await import("./languagePacks.js");
+  return packValidation;
+}
+function storedPacks(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !Object.keys(value).length) return {};
+  return packValidation ? packValidation.validatedStoredPacks(value)
+    : loadPackValidation().then(module => module.validatedStoredPacks(value));
+}
 
 export const LANGUAGE_KEY = "ui_language";
 export const LANGUAGES = Object.freeze([
@@ -77,7 +88,10 @@ export async function initializeLanguage(chromeApi = chrome) {
   const readRevision = revision;
   try {
     const data = await chromeApi?.storage?.local?.get?.([LANGUAGE_KEY, LANGUAGE_PACKS_KEY]);
-    if (revision === readRevision) setLanguage(data?.[LANGUAGE_KEY], chromeApi, validatedStoredPacks(data?.[LANGUAGE_PACKS_KEY]));
+    if (revision === readRevision) {
+      const nextPacks = await storedPacks(data?.[LANGUAGE_PACKS_KEY]);
+      if (revision === readRevision) setLanguage(data?.[LANGUAGE_KEY], chromeApi, nextPacks);
+    }
   } catch (_error) {
     if (revision === readRevision) setLanguage("auto", chromeApi, {});
   }
@@ -99,14 +113,30 @@ export function subscribeLanguage(callback) {
 export function watchLanguageStorage(chromeApi = chrome) {
   const changed = chromeApi?.storage?.onChanged;
   if (!changed?.addListener) return () => {};
+  let waiting = null;
+  let desiredPreference = preference;
+  let desiredPacks = packs;
   const listener = (changes, area) => {
     if (area !== "local") return;
     const languageChanged = Object.hasOwn(changes || {}, LANGUAGE_KEY);
     const packsChanged = Object.hasOwn(changes || {}, LANGUAGE_PACKS_KEY);
     if (languageChanged || packsChanged) {
-      revision += 1;
-      setLanguage(languageChanged ? changes[LANGUAGE_KEY]?.newValue : preference, chromeApi,
-        packsChanged ? validatedStoredPacks(changes[LANGUAGE_PACKS_KEY]?.newValue) : packs);
+      if (!waiting) { desiredPreference = preference; desiredPacks = packs; }
+      if (languageChanged) desiredPreference = changes[LANGUAGE_KEY]?.newValue;
+      if (packsChanged) desiredPacks = storedPacks(changes[LANGUAGE_PACKS_KEY]?.newValue);
+      const ticket = ++revision;
+      const chosen = desiredPreference;
+      const candidate = desiredPacks;
+      if (candidate && typeof candidate.then === "function") {
+        waiting = candidate;
+        return candidate.then(validated => {
+          if (ticket === revision) setLanguage(chosen, chromeApi, validated);
+        }).catch(() => {
+          if (ticket === revision) setLanguage(chosen, chromeApi, {});
+        }).finally(() => { if (waiting === candidate) waiting = null; });
+      }
+      waiting = null;
+      setLanguage(chosen, chromeApi, candidate);
     }
   };
   changed.addListener(listener);
@@ -199,6 +229,7 @@ export function localizeDocument(titleKey) {
 // keeps the preference and its catalog available together in every context.
 // Other Settings drafts join this write so a failed save cannot apply only part.
 export async function saveLanguageSettings(value, pending = {}, chromeApi = chrome, additionalSettings = {}) {
+  const {validatedStoredPacks, validateLanguagePack} = await loadPackValidation();
   const stored = await chromeApi.storage.local.get(LANGUAGE_PACKS_KEY);
   const merged = validatedStoredPacks(stored?.[LANGUAGE_PACKS_KEY]);
   for (const candidate of Object.values(pending)) {

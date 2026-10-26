@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import Iterable
 
 from aqt import mw
+try:
+    from .background_reads import BackgroundReads
+except ImportError:
+    from background_reads import BackgroundReads
 from aqt.qt import (
     QApplication,
     QButtonGroup,
@@ -240,6 +244,7 @@ class KnowledgeTreePostponeDialog(QDialog):
         super().__init__(parent)
         self._addon_dir = addon_dir
         self._profile = profile
+        self._reads = BackgroundReads(self, profile)
         self._branch_root_card_id = None if branch_root_card_id is None else int(branch_root_card_id)
         self._browser_card_ids = _unique_ints(browser_card_ids)
         self._browser_scope_name = str(browser_scope_name or "").strip()
@@ -799,43 +804,62 @@ class KnowledgeTreePostponeDialog(QDialog):
             return False
         return True
 
+    def _postpone_request(self):
+        return (self._current_config(),
+                self._branch_root_card_id if self._scope_branch.isChecked() else None,
+                tuple(self._browser_card_ids) if self._scope_browser.isChecked() else None)
+
     def _simulate_postpone(self) -> None:
         if not self._validate_scope():
             return
-        try:
-            summary = simulate_postpone_plan(
-                self._addon_dir,
-                self._profile,
-                self._current_config(),
-                branch_root_card_id=self._branch_root_card_id if self._scope_branch.isChecked() else None,
-                browser_card_ids=self._browser_card_ids if self._scope_browser.isChecked() else None,
-            )
-        except Exception as exc:
-            showInfo(t("reader_postpone_simulation_failed", error=exc))
-            return
-        self._last_simulation = summary
-        _SimulationDialog(_format_postpone_summary(summary), parent=self).exec()
+        config, root, ids = self._postpone_request()
+        addon_dir, profile = self._addon_dir, self._profile
+        def read(col, cancel):
+            return simulate_postpone_plan(addon_dir, profile, config,
+                                          branch_root_card_id=root, browser_card_ids=ids, col=col)
+        def done(summary):
+            self._last_simulation = summary
+            _SimulationDialog(_format_postpone_summary(summary), parent=self).exec()
+        self._reads.submit(read, done, lambda error: showInfo(t("reader_postpone_simulation_failed", error=error)))
 
     def _apply_postpone(self) -> None:
         if not self._validate_scope():
             return
+        from aqt.operations import CollectionOp
+        from anki.collection import OpChanges
+        from types import SimpleNamespace
         try:
-            summary = apply_postpone_plan(
-                self._addon_dir,
-                self._profile,
-                self._current_config(),
-                branch_root_card_id=self._branch_root_card_id if self._scope_branch.isChecked() else None,
-                browser_card_ids=self._browser_card_ids if self._scope_browser.isChecked() else None,
-            )
-        except Exception as exc:
-            showInfo(t("reader_postpone_apply_failed", error=exc))
-            return
-        count = int(summary.get("applied_count") or 0)
-        if count <= 0:
-            showInfo(t("reader_postpone_no_qualified_cards"))
-            return
-        tooltip(tn("reader_postpone_applied_count", count))
-        self.accept()
+            from ..backend.paths import get_active_profile
+        except ImportError:
+            from paths import get_active_profile
+        config, root, ids = self._postpone_request()
+        addon_dir, profile, collection = self._addon_dir, self._profile, mw.col
+        self._postpone_btn.setEnabled(False)
+        def operation(col):
+            if col is not collection or get_active_profile() != profile:
+                raise RuntimeError("Anki profile changed.")
+            changes = []
+            summary = apply_postpone_plan(addon_dir, profile, config,
+                branch_root_card_id=root, browser_card_ids=ids, col=col, changes=changes)
+            merged = OpChanges()
+            for change in changes:
+                merged.MergeFrom(change)
+            return SimpleNamespace(value=summary, changes=merged)
+        def done(result):
+            if get_active_profile() != profile or mw.col is not collection:
+                return
+            self._postpone_btn.setEnabled(True)
+            count = int(result.value.get("applied_count") or 0)
+            if count <= 0:
+                showInfo(t("reader_postpone_no_qualified_cards"))
+                return
+            tooltip(tn("reader_postpone_applied_count", count))
+            self.accept()
+        def failed(error):
+            if get_active_profile() == profile and mw.col is collection:
+                self._postpone_btn.setEnabled(True)
+                showInfo(t("reader_postpone_apply_failed", error=error))
+        CollectionOp(self, operation).success(done).failure(failed).run_in_background()
 
     def _show_help(self) -> None:
         showInfo(t("reader_postpone_help_text"))

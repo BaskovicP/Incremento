@@ -32,6 +32,8 @@ class ProfileConnectionManager:
         self._lock = threading.RLock()
         self._local = threading.local()
         self._records: dict[tuple[int, int], _ConnectionRecord] = {}
+        self._generation = 0
+        self._profile_generations = {}
 
     @staticmethod
     def _thread_key() -> tuple[int, int]:
@@ -62,35 +64,37 @@ class ProfileConnectionManager:
     ) -> sqlite3.Connection:
         """Return this thread's connection, replacing it on profile change."""
         with self._lock:
-            self._prune_dead_threads()
             thread_key = self._thread_key()
             current = self._records.get(thread_key)
             if current is not None and current.cache_key == cache_key:
                 return current.connection
+            self._prune_dead_threads()
             if current is not None:
                 self._close_record(thread_key, current)
+            generation = (self._generation, self._profile_generations.get(cache_key, 0))
 
-            db_path.parent.mkdir(parents=True, exist_ok=True)
-            connection = sqlite3.connect(
-                str(db_path),
-                timeout=max(0.001, self._busy_timeout_ms / 1000.0),
-                check_same_thread=False,
-            )
-            try:
-                connection.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
-                connection.execute("PRAGMA journal_mode=WAL")
-                connection.execute("PRAGMA synchronous=NORMAL")
-                initialize(connection)
-            except Exception:
+        # SQLite serializes schema work for each database itself. A slow first
+        # open must not hold the registry lock used by unrelated ready workers.
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        connection = sqlite3.connect(
+            str(db_path), timeout=max(0.001, self._busy_timeout_ms / 1000.0),
+            check_same_thread=False,
+        )
+        try:
+            connection.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA synchronous=NORMAL")
+            initialize(connection)
+        except Exception:
+            connection.close()
+            raise
+        with self._lock:
+            if generation != (self._generation, self._profile_generations.get(cache_key, 0)):
                 connection.close()
-                raise
-
-            record = _ConnectionRecord(
-                cache_key=cache_key,
-                connection=connection,
-                thread_ref=weakref.ref(threading.current_thread()),
+                raise RuntimeError("Database initialization retired during shutdown.")
+            self._records[thread_key] = _ConnectionRecord(
+                cache_key, connection, weakref.ref(threading.current_thread()),
             )
-            self._records[thread_key] = record
             self._local.cache_key = cache_key
             return connection
 
@@ -113,6 +117,10 @@ class ProfileConnectionManager:
     def close_all(self, *, cache_key: str | None = None) -> None:
         """Close all managed connections, optionally only one profile DB."""
         with self._lock:
+            if cache_key is None:
+                self._generation += 1
+            else:
+                self._profile_generations[cache_key] = self._profile_generations.get(cache_key, 0) + 1
             for key, record in list(self._records.items()):
                 if cache_key is None or record.cache_key == cache_key:
                     self._close_record(key, record)

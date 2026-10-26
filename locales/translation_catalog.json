@@ -34099,6 +34099,22 @@
     },
     {
       "component": "extension",
+      "key": "bookmark_next_page",
+      "form": "",
+      "source": "Next page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "bookmark_previous_page",
+      "form": "",
+      "source": "Previous page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "bookmarks",
       "form": "",
       "source": "Bookmarks",

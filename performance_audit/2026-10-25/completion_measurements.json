@@ -1,0 +1,154 @@
+{
+  "baseline_commit": "6a371c732fc6c7d65bb4468fdb5853a2926ec097",
+  "scope": "Measure remaining fixes against commit 6a371c7 using synthetic temporary data.\n\nProduction definitions are compiled from their AST to omit GUI imports. EPUB\nmetadata uses real JSON reads with a synthetic contained-path resolver; highlight\nand tree cases use real temporary SQLite. These are component measurements.",
+  "environment": {
+    "python": "3.14.5",
+    "sqlite": "3.53.2"
+  },
+  "source_sha256": {
+    "before": {
+      "backend/db.py": "60bacb2cc1ce37851f598e5adfbba8014f8dabf107661b68fcc87a232a040e31",
+      "backend/epub_manager.py": "60cb136a3c0aaae26be3bcee0e81aaed5501c243261adc75a4c88e028f1150ea",
+      "backend/epub_highlights.py": "d3f1542fe78d1e0f20d5ffd9c89938246c0a71ab60ff14f93ada5b9070a71264",
+      "frontend/epub_dock.py": "23924547e2681c05cee5c81a6adf36bd8c30dcd2c96142ec90faa29b525c4e08"
+    },
+    "after": {
+      "backend/db.py": "e8dfe4e803d838201cd325d1228a5d86756d718da5fab4307e282fead4b2d09b",
+      "backend/epub_manager.py": "65906e2068a9993241aa3dc02382ea893dd8e06df526723487bffee2c0d30a81",
+      "backend/epub_highlights.py": "148081a26179651876004ff52effefbf4f3572e8fc162f68fa1af7929a0c02dd",
+      "frontend/epub_dock.py": "0ccda3709dca9df9d5bfb3b7ae962b2c9dfa5017f3443c4bd6534dfb37e08923"
+    }
+  },
+  "F02_epub_metadata": [
+    {
+      "stage": "before",
+      "sections": 200,
+      "metadata_bytes": 10008104,
+      "cold": {
+        "median_ms": 1356.535,
+        "samples_ms": [
+          1356.535
+        ]
+      },
+      "cold_json_reads": 201,
+      "warm": {
+        "median_ms": 1307.101,
+        "samples_ms": [
+          1285.638,
+          1307.101,
+          1348.622
+        ]
+      },
+      "warm_json_reads_per_lookup": 201
+    },
+    {
+      "stage": "after",
+      "sections": 200,
+      "metadata_bytes": 10008104,
+      "cold": {
+        "median_ms": 8.178,
+        "samples_ms": [
+          8.178
+        ]
+      },
+      "cold_json_reads": 1,
+      "warm": {
+        "median_ms": 0.01,
+        "samples_ms": [
+          0.012,
+          0.01,
+          0.01
+        ]
+      },
+      "warm_json_reads_per_lookup": 0
+    }
+  ],
+  "F13_epub_highlights": [
+    {
+      "stage": "before",
+      "total_highlights": 20000,
+      "section_highlights": 100,
+      "median_ms": 23.75,
+      "samples_ms": [
+        23.817,
+        23.75,
+        23.171
+      ],
+      "materialized_rows_per_read": 20000
+    },
+    {
+      "stage": "after",
+      "total_highlights": 20000,
+      "section_highlights": 100,
+      "median_ms": 0.103,
+      "samples_ms": [
+        0.169,
+        0.103,
+        0.102
+      ],
+      "materialized_rows_per_read": 100
+    }
+  ],
+  "F06_tree_writes": [
+    {
+      "stage": "before",
+      "nodes": 4000,
+      "unchanged_save": {
+        "median_ms": 10.807,
+        "samples_ms": [
+          10.681,
+          10.807,
+          11.12
+        ]
+      },
+      "unchanged_save_changed_rows": [
+        4000,
+        4000,
+        4000
+      ],
+      "move_one_leaf": {
+        "median_ms": 10.447,
+        "samples_ms": [
+          10.447,
+          10.444,
+          10.482
+        ]
+      },
+      "move_one_leaf_changed_rows": [
+        4000,
+        4000,
+        4000
+      ]
+    },
+    {
+      "stage": "after",
+      "nodes": 4000,
+      "unchanged_save": {
+        "median_ms": 5.538,
+        "samples_ms": [
+          5.351,
+          5.538,
+          11.464
+        ]
+      },
+      "unchanged_save_changed_rows": [
+        0,
+        0,
+        0
+      ],
+      "move_one_leaf": {
+        "median_ms": 5.492,
+        "samples_ms": [
+          5.486,
+          5.955,
+          5.492
+        ]
+      },
+      "move_one_leaf_changed_rows": [
+        1,
+        1,
+        1
+      ]
+    }
+  ]
+}

@@ -5,6 +5,10 @@ from math import isfinite
 from typing import Callable
 
 from aqt import mw
+try:
+    from .background_reads import BackgroundReads
+except ImportError:
+    from background_reads import BackgroundReads
 from aqt.qt import (
     QAbstractItemView,
     QButtonGroup,
@@ -130,10 +134,13 @@ class KnowledgeTreeSubsetDialog(QDialog):
         super().__init__(parent)
         self._addon_dir = addon_dir
         self._profile = profile
+        self._reads = BackgroundReads(self, profile)
         self._root_card_id = int(root_card_id)
         self._reveal_in_tree = reveal_in_tree
         self._all_rows: list[dict] = []
         self._visible_rows: list[dict] = []
+        self._render_generation = 0
+        self.finished.connect(lambda *_: setattr(self, "_render_generation", self._render_generation + 1))
 
         root_meta = get_card_metadata(
             self._root_card_id,
@@ -278,13 +285,15 @@ class KnowledgeTreeSubsetDialog(QDialog):
         return bool(self._scope_subtree.isChecked())
 
     def _reload_rows(self) -> None:
-        self._all_rows = build_subset_review_rows(
-            self._addon_dir,
-            self._profile,
-            self._root_card_id,
-            include_descendants=self._include_descendants(),
-        )
-        self._apply_filter()
+        include = self._include_descendants()
+        addon_dir, profile, root = self._addon_dir, self._profile, self._root_card_id
+        def read(col, cancel):
+            return build_subset_review_rows(addon_dir, profile, root,
+                                            include_descendants=include, col=col, cancel=cancel)
+        def done(rows):
+            self._all_rows = rows
+            self._apply_filter()
+        self._reads.submit(read, done, lambda error: showInfo(str(error)))
 
     def _apply_filter(self) -> None:
         query = self._filter_edit.text().strip().lower()
@@ -320,7 +329,15 @@ class KnowledgeTreeSubsetDialog(QDialog):
         self._table.setSortingEnabled(False)
         self._table.setRowCount(len(self._visible_rows))
 
-        for row_index, row in enumerate(self._visible_rows):
+        try:
+            from .render_batches import build_in_batches
+        except ImportError:
+            from render_batches import build_in_batches
+        self._render_generation = getattr(self, "_render_generation", 0) + 1
+        generation = self._render_generation
+        rows = list(enumerate(self._visible_rows))
+        def render(pair):
+            row_index, row = pair
             priority = row.get("priority")
             priority_text = "" if priority is None else f"{float(priority):.0f}"
             a_factor = row.get("a_factor")
@@ -361,9 +378,12 @@ class KnowledgeTreeSubsetDialog(QDialog):
             self._set_cell(row_index, 11, str(row.get("note_type_name") or ""), sort_key=str(row.get("note_type_name") or "").lower())
             self._set_cell(row_index, 12, str(int(row.get("card_id") or 0)), sort_key=int(row.get("card_id") or 0))
 
-        self._table.setSortingEnabled(True)
-        self._update_summary()
-        self._refresh_actions()
+        def done():
+            self._table.setSortingEnabled(True)
+            self._update_summary()
+            self._refresh_actions()
+        build_in_batches(rows, render,
+            valid=lambda: generation == self._render_generation and self._profile == self._reads.current_profile(), done=done)
 
     def _update_summary(self) -> None:
         total_rows = len(self._all_rows)

@@ -4,7 +4,7 @@ import os
 import random
 import re
 from datetime import date, datetime, timedelta
-from collections import defaultdict
+from collections import defaultdict, deque
 from concurrent.futures import CancelledError
 from dataclasses import dataclass
 from threading import Event
@@ -33,7 +33,7 @@ try:
     )
     from .paths import get_active_profile as _active_profile
     from .pdf_manager import find_live_pdf_card_by_filename, get_page
-    from .priority_manager import get_priority, set_priority
+    from .priority_manager import get_priority, set_priority, get_priorities, set_priorities
 except ImportError:
     from config_service import load_addon_config  # type: ignore
     from db import (  # type: ignore
@@ -53,7 +53,7 @@ except ImportError:
     )
     from paths import get_active_profile as _active_profile  # type: ignore
     from pdf_manager import find_live_pdf_card_by_filename, get_page  # type: ignore
-    from priority_manager import get_priority, set_priority  # type: ignore
+    from priority_manager import get_priority, set_priority, get_priorities, set_priorities  # type: ignore
 
 
 NODE_KIND_TOPIC = "topic"
@@ -345,21 +345,23 @@ def _card_title(card) -> str:
     return f"Card {getattr(card, 'id', 0)}"
 
 
-def card_exists(card_id: int) -> bool:
+def card_exists(card_id: int, *, col=None) -> bool:
+    col = col if col is not None else getattr(mw, "col", None)
     try:
-        if mw is None or getattr(mw, "col", None) is None:
+        if col is None:
             return False
-        mw.col.get_card(int(card_id))
+        col.get_card(int(card_id))
         return True
     except Exception:
         return False
 
 
-def get_card_metadata(card_id: int, *, addon_dir: str | None = None, profile: str | None = None) -> dict | None:
+def get_card_metadata(card_id: int, *, addon_dir: str | None = None, profile: str | None = None, col=None) -> dict | None:
+    col = col if col is not None else getattr(mw, "col", None)
     try:
-        if mw is None or getattr(mw, "col", None) is None:
+        if col is None:
             return None
-        card = mw.col.get_card(int(card_id))
+        card = col.get_card(int(card_id))
         note = card.note()
     except Exception:
         return None
@@ -375,7 +377,7 @@ def get_card_metadata(card_id: int, *, addon_dir: str | None = None, profile: st
     deck_name = ""
     try:
         did = card.odid if getattr(card, "odid", 0) else card.did
-        deck = mw.col.decks.get(did)
+        deck = col.decks.get(did)
         if deck:
             deck_name = str(deck.get("name") or "").strip()
     except Exception:
@@ -469,12 +471,13 @@ def resolve_card_pdf_target(
     }
 
 
-def infer_node_kind_for_card(card_id: int) -> str:
-    if mw is None or getattr(mw, "col", None) is None:
+def infer_node_kind_for_card(card_id: int, *, col=None) -> str:
+    col = col if col is not None else getattr(mw, "col", None)
+    if col is None:
         return NODE_KIND_ITEM
 
     try:
-        card = mw.col.get_card(int(card_id))
+        card = col.get_card(int(card_id))
     except Exception:
         return NODE_KIND_ITEM
 
@@ -519,12 +522,13 @@ def infer_node_kind_for_card(card_id: int) -> str:
     return NODE_KIND_ITEM
 
 
-def metadata_parent_card_id(card_id: int) -> int | None:
-    if mw is None or getattr(mw, "col", None) is None:
+def metadata_parent_card_id(card_id: int, *, col=None) -> int | None:
+    col = col if col is not None else getattr(mw, "col", None)
+    if col is None:
         return None
 
     try:
-        card = mw.col.get_card(int(card_id))
+        card = col.get_card(int(card_id))
         note = card.note()
         raw_value = str(note[INCREMENTO_PARENT_CARD_ID_FIELD] or "").strip()
     except Exception:
@@ -541,12 +545,13 @@ def metadata_parent_card_id(card_id: int) -> int | None:
     return parent_card_id
 
 
-def metadata_child_card_ids(card_id: int) -> list[int]:
-    if mw is None or getattr(mw, "col", None) is None:
+def metadata_child_card_ids(card_id: int, *, col=None) -> list[int]:
+    col = col if col is not None else getattr(mw, "col", None)
+    if col is None:
         return []
 
     try:
-        note_ids = mw.col.find_notes(
+        note_ids = col.find_notes(
             f'"{INCREMENTO_PARENT_CARD_ID_FIELD}:{int(card_id)}"'
         )
     except Exception:
@@ -556,7 +561,7 @@ def metadata_child_card_ids(card_id: int) -> list[int]:
     seen: set[int] = set()
     for note_id in list(note_ids or []):
         try:
-            card_ids = mw.col.find_cards(f"nid:{int(note_id)}")
+            card_ids = col.find_cards(f"nid:{int(note_id)}")
         except Exception:
             continue
         for raw_card_id in list(card_ids or []):
@@ -572,14 +577,15 @@ def metadata_child_card_ids(card_id: int) -> list[int]:
     return child_card_ids
 
 
-def metadata_ancestor_card_ids(card_id: int) -> list[int]:
+def metadata_ancestor_card_ids(card_id: int, *, col=None) -> list[int]:
+    col = col if col is not None else getattr(mw, "col", None)
     card_id = int(card_id)
     seen: set[int] = {card_id}
 
     ancestors: list[int] = []
     current_card_id = card_id
     while True:
-        parent_card_id = metadata_parent_card_id(current_card_id)
+        parent_card_id = metadata_parent_card_id(current_card_id, **({"col": col} if col is not None else {}))
         if parent_card_id is None or parent_card_id in seen:
             break
         ancestors.append(parent_card_id)
@@ -612,6 +618,7 @@ def ensure_extract_lineage_cards_in_tree(
     addon_dir: str,
     profile: str,
     *,
+    col=None,
     source_card_id: int | None = None,
     created_card_ids=None,
     created_node_kind: str | None = None,
@@ -630,7 +637,7 @@ def ensure_extract_lineage_cards_in_tree(
         ordered_card_ids.append(resolved_card_id)
 
     if source_card_id is not None:
-        for related_card_id in metadata_ancestor_card_ids(int(source_card_id)):
+        for related_card_id in metadata_ancestor_card_ids(int(source_card_id), **({"col": col} if col is not None else {})):
             append_card(related_card_id)
     for created_card_id in list(created_card_ids or []):
         append_card(created_card_id)
@@ -649,7 +656,7 @@ def ensure_extract_lineage_cards_in_tree(
             source_card_id_int = None
 
     def desired_parent_for_card(card_id: int) -> int | None:
-        metadata_parent_id = metadata_parent_card_id(card_id)
+        metadata_parent_id = metadata_parent_card_id(card_id, **({"col": col} if col is not None else {}))
         if (
             metadata_parent_id is not None
             and metadata_parent_id != int(card_id)
@@ -696,7 +703,7 @@ def ensure_extract_lineage_cards_in_tree(
         node_kind = (
             normalize_node_kind(created_node_kind)
             if created_node_kind and card_id in created_card_id_set
-            else infer_node_kind_for_card(card_id)
+            else infer_node_kind_for_card(card_id, **({"col": col} if col is not None else {}))
         )
         try:
             link_card_to_tree(
@@ -705,6 +712,7 @@ def ensure_extract_lineage_cards_in_tree(
                 card_id,
                 node_kind,
                 parent_card_id=desired_parent_id,
+                **({"col": col} if col is not None else {}),
             )
             linked_card_ids.append(card_id)
         except Exception as exc:
@@ -1059,9 +1067,10 @@ def search_knowledge_tree_nodes(
     return results
 
 
-def _save_note(note) -> None:
+def _save_note(note, *, col=None) -> None:
+    col = col if col is not None else getattr(mw, "col", None)
     try:
-        mw.col.update_note(note)
+        col.update_note(note)
         return
     except Exception:
         pass
@@ -1071,12 +1080,13 @@ def _save_note(note) -> None:
         pass
 
 
-def apply_node_kind_to_card(card_id: int, node_kind: str) -> list[str]:
+def apply_node_kind_to_card(card_id: int, node_kind: str, *, col=None) -> list[str]:
+    col = col if col is not None else getattr(mw, "col", None)
     kind = normalize_node_kind(node_kind)
-    if mw is None or getattr(mw, "col", None) is None:
+    if col is None:
         raise RuntimeError("Anki collection is not available.")
 
-    card = mw.col.get_card(int(card_id))
+    card = col.get_card(int(card_id))
     note = card.note()
     tags = sync_note_kind_tags(
         note,
@@ -1084,7 +1094,7 @@ def apply_node_kind_to_card(card_id: int, node_kind: str) -> list[str]:
         topic_tags=configured_topic_tags(),
         item_tags=configured_item_tags(),
     )
-    _save_note(note)
+    _save_note(note, col=col)
     return tags
 
 
@@ -1319,6 +1329,7 @@ def link_card_to_tree(
     card_id: int,
     node_kind: str,
     *,
+    col=None,
     parent_card_id: int | None = None,
     sort_order: int | None = None,
 ) -> None:
@@ -1329,6 +1340,7 @@ def link_card_to_tree(
         node_kind,
         parent_card_id=parent_card_id,
         sort_order=sort_order,
+        **({"col": col} if col is not None else {}),
     )
     if result["linked_count"] >= 1:
         return
@@ -1344,6 +1356,7 @@ def link_cards_to_tree(
     card_ids,
     node_kind: str,
     *,
+    col=None,
     parent_card_id: int | None = None,
     sort_order: int | None = None,
     insert_after_card_id: int | None = None,
@@ -1389,11 +1402,11 @@ def link_cards_to_tree(
             continue
 
         try:
-            if not card_exists(card_id):
+            if not card_exists(card_id, **({"col": col} if col is not None else {})):
                 raise RuntimeError(f"Card {card_id} was not found in the current collection.")
             if get_knowledge_tree_node(addon_dir, profile, card_id) is not None:
                 raise RuntimeError(f"Card {card_id} is already present in the knowledge tree.")
-            apply_node_kind_to_card(card_id, kind)
+            apply_node_kind_to_card(card_id, kind, **({"col": col} if col is not None else {}))
         except Exception as exc:
             errors.append({"card_id": card_id, "error": str(exc)})
             continue
@@ -1553,9 +1566,9 @@ def subtree_node_infos(rows: list[dict], root_card_id: int) -> list[dict]:
 
     grouped = _group_rows(rows)
     infos: list[dict] = []
-    queue: list[tuple[dict, int]] = [(root_row, 0)]
+    queue = deque([(root_row, 0)])
     while queue:
-        row, depth = queue.pop(0)
+        row, depth = queue.popleft()
         clone = _clone_row(row)
         clone["depth"] = int(depth)
         infos.append(clone)
@@ -1580,10 +1593,8 @@ def subtree_priority_stats(addon_dir: str, profile: str, root_card_id: int) -> d
         }
 
     grouped = _group_rows(rows)
-    priorities = [
-        float(get_priority(addon_dir, profile, int(info["card_id"])))
-        for info in infos
-    ]
+    stored = get_priorities(addon_dir, profile, [info["card_id"] for info in infos])
+    priorities = [float(stored.get(int(info["card_id"]), 50.0)) for info in infos]
     return {
         "exists": True,
         "total_count": len(infos),
@@ -1684,10 +1695,11 @@ def _format_calendar_day(value: date | datetime) -> str:
     return value.strftime("%b %d, %Y")
 
 
-def _latest_revlog_by_card_id(card_ids: list[int]) -> dict[int, int]:
-    if not card_ids or not _collection_available():
+def _latest_revlog_by_card_id(card_ids: list[int], *, col=None) -> dict[int, int]:
+    col = col if col is not None else getattr(mw, "col", None)
+    if not card_ids or col is None:
         return {}
-    db = getattr(mw.col, "db", None)
+    db = getattr(col, "db", None)
     if db is None or not hasattr(db, "all"):
         return {}
 
@@ -1723,7 +1735,7 @@ def _last_review_label(review_id: int | None) -> tuple[str, float]:
     return (_format_calendar_day(dt), dt.timestamp())
 
 
-def _next_review_label(card) -> tuple[str, float]:
+def _next_review_label(card, *, col=None) -> tuple[str, float]:
     if card is None:
         return ("", float("inf"))
 
@@ -1753,7 +1765,8 @@ def _next_review_label(card) -> tuple[str, float]:
         except Exception:
             return (str(due_value), float(due_value))
 
-    today = getattr(getattr(mw.col, "sched", None), "today", None) if _collection_available() else None
+    col = col if col is not None else getattr(mw, "col", None)
+    today = getattr(getattr(col, "sched", None), "today", None)
     if today is None:
         return (str(due_value), float(due_value))
 
@@ -1771,8 +1784,11 @@ def build_subset_review_rows(
     root_card_id: int,
     *,
     include_descendants: bool = True,
+    col=None, cancel=None,
 ) -> list[dict]:
-    if not _collection_available():
+    explicit_col = col
+    col = col if col is not None else getattr(mw, "col", None)
+    if col is None:
         return []
 
     rows = get_knowledge_tree_nodes(addon_dir, profile)
@@ -1783,21 +1799,35 @@ def build_subset_review_rows(
         return []
 
     card_ids = [int(info["card_id"]) for info in infos]
-    latest_reviews = _latest_revlog_by_card_id(card_ids)
+    if explicit_col is not None:
+        try:
+            from .card_projection import ReadCollection, supports_projection
+        except ImportError:
+            from card_projection import ReadCollection, supports_projection
+        if supports_projection(col):
+            col = ReadCollection(col, cancel=cancel)
+            col.load(card_ids)
+    latest_reviews = _latest_revlog_by_card_id(card_ids, col=col)
+    priorities = get_priorities(addon_dir, profile, card_ids)
     subset_rows: list[dict] = []
 
     try:
-        from .db import get_topic_schedule
+        from .db import get_topic_schedule, get_topic_schedules
     except ImportError:
-        from db import get_topic_schedule  # type: ignore
+        from db import get_topic_schedule, get_topic_schedules  # type: ignore
 
+    schedules = get_topic_schedules(addon_dir, profile, card_ids) if explicit_col is not None else None
     for tree_index, info in enumerate(infos, start=1):
+        if cancel is not None and cancel.is_set():
+            raise CancelledError()
         card_id = int(info["card_id"])
-        meta = get_card_metadata(card_id, addon_dir=addon_dir, profile=profile)
+        meta = get_card_metadata(card_id, col=col) if explicit_col is not None else get_card_metadata(card_id, addon_dir=addon_dir, profile=profile)
+        if meta is not None and explicit_col is not None:
+            meta["priority"] = priorities.get(card_id, 50.0)
         if meta is None:
             continue
         try:
-            card = mw.col.get_card(card_id)
+            card = col.get_card(card_id)
         except Exception:
             continue
 
@@ -1812,12 +1842,13 @@ def build_subset_review_rows(
         interval = max(0, int(getattr(card, "ivl", 0) or 0))
         if node_kind == NODE_KIND_TOPIC:
             try:
-                a_factor, topic_interval = get_topic_schedule(addon_dir, profile, card_id)
+                a_factor, topic_interval = (schedules.get(card_id, (3.5, 1)) if schedules is not None
+                                            else get_topic_schedule(addon_dir, profile, card_id))
                 interval = max(interval, max(0, int(topic_interval or 0)))
             except Exception:
                 a_factor = None
 
-        next_review_text, next_review_sort = _next_review_label(card)
+        next_review_text, next_review_sort = _next_review_label(card, col=col)
         last_review_text, last_review_sort = _last_review_label(latest_reviews.get(card_id))
         title = str(meta.get("title") or f"Card {card_id}")
         depth = max(0, int(info.get("depth", 0) or 0))
@@ -1858,14 +1889,29 @@ def build_branch_study_scope(
     addon_dir: str,
     profile: str,
     root_card_id: int,
+    *, col=None,
 ) -> dict | None:
-    rows = load_knowledge_tree_nodes(addon_dir, profile, cleanup_missing=False)
+    if col is None:
+        rows = load_knowledge_tree_nodes(addon_dir, profile, cleanup_missing=False)
+    else:
+        rows = get_knowledge_tree_nodes(addon_dir, profile)
     infos = subtree_node_infos(rows, int(root_card_id))
     if not infos:
         return None
 
     root_info = infos[0]
     card_ids = [int(info["card_id"]) for info in infos]
+    if col is not None:
+        live = set()
+        for start in range(0, len(card_ids), 900):
+            batch = card_ids[start:start + 900]
+            marks = ",".join("?" for _ in batch)
+            live.update(int(cid) for cid, in col.db.all(f"SELECT id FROM cards WHERE id IN ({marks})", *batch))
+        card_ids = [cid for cid in card_ids if cid in live]
+        meta = get_card_metadata(int(root_card_id), col=col) or {}
+        root_info = {**root_info, "title": meta.get("title", "")}
+        if not card_ids:
+            return None
     return {
         "root_card_id": int(root_card_id),
         "root_title": str(root_info.get("title") or f"Card {int(root_card_id)}"),
@@ -1873,7 +1919,8 @@ def build_branch_study_scope(
     }
 
 
-def get_card_priority_context(addon_dir: str, profile: str, card_id: int) -> dict:
+def get_card_priority_context(addon_dir: str, profile: str, card_id: int, *, col=None) -> dict:
+    col = col if col is not None else getattr(mw, "col", None)
     priority = float(get_priority(addon_dir, profile, int(card_id)))
     is_topic = False
     a_factor = None
@@ -1887,13 +1934,13 @@ def get_card_priority_context(addon_dir: str, profile: str, card_id: int) -> dic
         from db import get_topic_schedule  # type: ignore
 
     try:
-        card = mw.col.get_card(int(card_id)) if mw is not None and getattr(mw, "col", None) is not None else None
+        card = col.get_card(int(card_id)) if col is not None else None
     except Exception:
         card = None
 
     if card is not None:
         try:
-            is_topic = bool(is_topic_card(card))
+            is_topic = bool(is_topic_card(card, col=col))
         except Exception:
             is_topic = False
 
@@ -1923,11 +1970,12 @@ def set_selected_card_priority(
     priority: float,
     *,
     a_factor: float | None = None,
+    col=None,
 ) -> dict:
     clamped_priority = _clamp_priority(priority)
     set_priority(addon_dir, profile, int(card_id), clamped_priority)
 
-    context = get_card_priority_context(addon_dir, profile, int(card_id))
+    context = get_card_priority_context(addon_dir, profile, int(card_id), col=col)
     if a_factor is not None and context.get("is_topic"):
         try:
             from .db import set_topic_schedule
@@ -1984,10 +2032,13 @@ def shift_subtree_priorities(
         int(root_card_id),
         include_root=include_root,
     )
+    updates = []
+    stored = get_priorities(addon_dir, profile, [info["card_id"] for info in infos])
     for info in infos:
         card_id = int(info["card_id"])
-        current = float(get_priority(addon_dir, profile, card_id))
-        set_priority(addon_dir, profile, card_id, _clamp_priority(current + delta_value))
+        current = float(stored.get(card_id, 50.0))
+        updates.append((card_id, _clamp_priority(current + delta_value)))
+    set_priorities(addon_dir, profile, updates)
     return len(infos)
 
 
@@ -2015,6 +2066,8 @@ def spread_subtree_priorities(
     origin_depth = 0 if include_root else 1
     depth_span = max(0, max_depth - origin_depth)
 
+    updates = []
+    stored = get_priorities(addon_dir, profile, [info["card_id"] for info in infos])
     for info in infos:
         depth = int(info.get("depth", 0))
         if depth_span == 0:
@@ -2022,12 +2075,8 @@ def spread_subtree_priorities(
         else:
             ratio = (depth - origin_depth) / depth_span
         next_priority = start_value + ((end_value - start_value) * ratio)
-        set_priority(
-            addon_dir,
-            profile,
-            int(info["card_id"]),
-            _clamp_priority(next_priority),
-        )
+        updates.append((int(info["card_id"]), _clamp_priority(next_priority)))
+    set_priorities(addon_dir, profile, updates)
     return len(infos)
 
 
@@ -2056,17 +2105,15 @@ def randomize_subtree_priorities(
         lower, upper = upper, lower
 
     rng = random.Random(seed)
+    updates = []
+    stored = get_priorities(addon_dir, profile, [info["card_id"] for info in infos])
     for info in infos:
         if abs(upper - lower) < 1e-9:
             next_priority = lower
         else:
             next_priority = rng.uniform(lower, upper)
-        set_priority(
-            addon_dir,
-            profile,
-            int(info["card_id"]),
-            _clamp_priority(next_priority),
-        )
+        updates.append((int(info["card_id"]), _clamp_priority(next_priority)))
+    set_priorities(addon_dir, profile, updates)
     return len(infos)
 
 
@@ -2095,13 +2142,16 @@ def focus_subtree_priorities(
         return 0
 
     important_end = _important_priority_end(lower_is_more_important)
+    updates = []
+    stored = get_priorities(addon_dir, profile, [info["card_id"] for info in infos])
     for info in infos:
         depth = int(info.get("depth", 0))
         strength = max(0.2, 0.8 - (depth * 0.15))
         card_id = int(info["card_id"])
-        current = float(get_priority(addon_dir, profile, card_id))
+        current = float(stored.get(card_id, 50.0))
         next_priority = current + ((important_end - current) * strength)
-        set_priority(addon_dir, profile, card_id, _clamp_priority(next_priority))
+        updates.append((card_id, _clamp_priority(next_priority)))
+    set_priorities(addon_dir, profile, updates)
     return len(infos)
 
 
@@ -2122,13 +2172,16 @@ def fade_child_priorities(
         return 0
 
     less_important_end = _less_important_priority_end(lower_is_more_important)
+    updates = []
+    stored = get_priorities(addon_dir, profile, [info["card_id"] for info in infos])
     for info in infos:
         depth = int(info.get("depth", 0))
         strength = min(0.8, 0.25 + (max(0, depth - 1) * 0.15))
         card_id = int(info["card_id"])
-        current = float(get_priority(addon_dir, profile, card_id))
+        current = float(stored.get(card_id, 50.0))
         next_priority = current + ((less_important_end - current) * strength)
-        set_priority(addon_dir, profile, card_id, _clamp_priority(next_priority))
+        updates.append((card_id, _clamp_priority(next_priority)))
+    set_priorities(addon_dir, profile, updates)
     return len(infos)
 
 

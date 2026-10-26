@@ -301,6 +301,10 @@ _annotation_queue = PdfAnnotationSyncQueue(lambda work, done: mw.taskman.run_in_
 
 
 def reset_for_profile_switch() -> None:
+    global _pdf_find_jobs
+    if _pdf_find_jobs is not None:
+        _pdf_find_jobs.close()
+        _pdf_find_jobs = None
     """Retire file workers and reader callbacks before profile storage changes."""
     global _pdf_dock
     try:
@@ -1395,7 +1399,7 @@ def _pdf_search_snippet(text: str, query: str, max_len: int = 180) -> str:
     return snippet
 
 
-def current_card_pdf_search_hits(card_id: int, query: str, *, limit: int = 250) -> list[dict]:
+def current_card_pdf_search_hits(card_id: int, query: str, *, limit: int = 250, profile: str | None = None, cancel=None) -> list[dict]:
     try:
         normalized_card_id = int(card_id or 0)
     except Exception:
@@ -1403,9 +1407,15 @@ def current_card_pdf_search_hits(card_id: int, query: str, *, limit: int = 250) 
     normalized_query = str(query or "").strip()
     if normalized_card_id <= 0 or not normalized_query:
         return []
+    if cancel is not None:
+        try:
+            from ..backend.db import CompiledSearch
+        except ImportError:
+            from db import CompiledSearch
+        normalized_query = CompiledSearch(normalized_query, cancel=cancel)
     rows = search_pdf_text_index_for_card(
         _ADDON_DIR,
-        _active_profile(),
+        profile or _active_profile(),
         normalized_card_id,
         normalized_query,
         limit=limit,
@@ -2613,27 +2623,33 @@ def _push_pdf_bookmarks(card_id: int | None = None) -> None:
         pass
 
 
+_pdf_find_jobs = None
+
+
 def _update_pdf_search(query: str, *, active_index: int = 0) -> None:
-    card_id = current_pdf_card_id()
-    input_query = str(query or "")
-    normalized_query = input_query.strip()
-    if card_id is None:
-        _sync_pdf_search_state("", [], -1)
-        _emit_pdf_search_state()
-        return
-    if not normalized_query:
-        _sync_pdf_search_state(input_query, [], -1)
-        _emit_pdf_search_state()
-        return
-    hits = current_card_pdf_search_hits(card_id, normalized_query)
-    resolved_index = -1
-    if hits:
-        resolved_index = max(0, min(int(active_index), len(hits) - 1))
-    # Keep the exact text in the controlled React input. In particular, a
-    # trailing space must survive this bridge round trip so the user can type
-    # the next word, while lookup continues to use the trimmed query above.
-    _sync_pdf_search_state(input_query, hits, resolved_index)
+    global _pdf_find_jobs
+    try:
+        from .document_query import DocumentQuery
+    except ImportError:
+        from document_query import DocumentQuery
+    card_id, input_query = current_pdf_card_id(), str(query or "")
+    if _pdf_find_jobs is not None:
+        _pdf_find_jobs._queries.invalidate()
+    _sync_pdf_search_state(input_query if card_id is not None else "", [], -1)
     _emit_pdf_search_state()
+    if card_id is None or not input_query.strip():
+        return
+    if _pdf_find_jobs is None:
+        def read(profile, cid, text, cancel):
+            return current_card_pdf_search_hits(cid, text.strip(), profile=profile, cancel=cancel)
+        def publish(request, hits):
+            index = max(0, min(request["active_index"], len(hits) - 1)) if hits else -1
+            _sync_pdf_search_state(request["query"], hits, index)
+            _emit_pdf_search_state()
+        _pdf_find_jobs = DocumentQuery(mw, read=read, publish=publish,
+            current=lambda request: (_pdf_dock is not None and current_pdf_card_id() == request["card_id"]
+                and _active_profile() == request["profile"] and _current_pdf_search_query == request["query"]))
+    _pdf_find_jobs.submit(_active_profile(), card_id, input_query, active_index=int(active_index))
 
 
 def _jump_to_first_pdf_search_hit(query: str) -> None:
@@ -3874,8 +3890,12 @@ def _build_pdf_dock():
     mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
 
     def _on_visibility_changed(visible: bool) -> None:
+        global _pdf_find_jobs
         if visible:
             return
+        if _pdf_find_jobs is not None and not _pdf_reader_is_visible():
+            _pdf_find_jobs.close()
+            _pdf_find_jobs = None
         _stop_current_pdf_view()
 
     dock.visibilityChanged.connect(_on_visibility_changed)

@@ -1,4 +1,6 @@
 import {pdfReaderGroups} from './sharedPdfReader.mjs';
+import {observeSearchText} from './pdfSearchObserver.mjs';
+import {pageWindow} from './pagedRows.mjs';
 import { createPdfSnapshotMode, cropPdfSnapshot, encodePdfSnapshot, paintPdfSnapshotPreview } from './pdfSnapshot.mjs';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {buildPdfHighlightIndex} from './pdfHighlightIndex.mjs';
@@ -299,10 +301,14 @@ function clearSearchHitStyles(textLayer) {
   textLayer.querySelectorAll('span').forEach((span) => {
     if (span.dataset.incSearchHit === '1') {
       if (typeof span.dataset.incSearchOriginalText === 'string') {
-        span.textContent = span.dataset.incSearchOriginalText;
+        // PDF.js may replace this text between render passes.
+        if (span.textContent === span.dataset.incSearchOriginalText) {
+          span.textContent = span.dataset.incSearchOriginalText;
+        }
         delete span.dataset.incSearchOriginalText;
       }
       span.dataset.incSearchHit = '0';
+      delete span.dataset.incSearchQuery;
     }
   });
 }
@@ -326,14 +332,12 @@ function buildSearchHighlightRegex(query) {
 
 function highlightSpanText(span, regex) {
   if (!span || !regex) return false;
-  const originalText = typeof span.dataset.incSearchOriginalText === 'string'
-    ? span.dataset.incSearchOriginalText
-    : String(span.textContent || '');
+  const originalText = String(span.textContent || '');
   if (!originalText) return false;
 
   regex.lastIndex = 0;
   if (!regex.test(originalText)) {
-    span.textContent = originalText;
+    if (span.textContent !== originalText) span.textContent = originalText;
     delete span.dataset.incSearchOriginalText;
     return false;
   }
@@ -349,10 +353,9 @@ function highlightSpanText(span, regex) {
 
 function applySearchHitStyles(textLayer, query) {
   if (!textLayer) return null;
-  clearSearchHitStyles(textLayer);
 
   const q = String(query || '').trim().toLowerCase();
-  if (!q) return null;
+  if (!q) { clearSearchHitStyles(textLayer); return null; }
 
   const spans = Array.from(textLayer.querySelectorAll('span')).filter(
     (span) => span.dataset.incSearchFragment !== '1',
@@ -360,9 +363,15 @@ function applySearchHitStyles(textLayer, query) {
   const regex = buildSearchHighlightRegex(query);
   let firstHit = null;
   for (const span of spans) {
+    if (span.dataset.incSearchQuery === q
+      && span.textContent === span.dataset.incSearchOriginalText) {
+      if (!firstHit) firstHit = span;
+      continue;
+    }
     const hit = highlightSpanText(span, regex);
-    if (!hit) continue;
+    if (!hit) { span.dataset.incSearchHit = '0'; delete span.dataset.incSearchQuery; continue; }
     span.dataset.incSearchHit = '1';
+    span.dataset.incSearchQuery = q;
     if (!firstHit) firstHit = span;
   }
   return firstHit;
@@ -481,6 +490,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
   // ── Page card panel state ──────────────────────────────────────────────────
   const [pageCards,     setPageCards]     = useState([]);
   const [showHighlightsPanel, setShowHighlightsPanel] = useState(false);
+  const [highlightPanelOffset, setHighlightPanelOffset] = useState(0);
   const [bookmarks, setBookmarks] = useState([]);
   const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
@@ -644,6 +654,12 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     ? scopedHighlightsForPanel.filter((h) => String(h.note || '').trim())
     : scopedHighlightsForPanel, [scopedHighlightsForPanel, highlightsNotesOnly]);
   const missingCardHighlightCount = highlightIndex.missingCards;
+  const highlightPanelPage = pageWindow(highlightsForPanel.length, highlightPanelOffset);
+  useEffect(() => { setHighlightPanelOffset(0); }, [page, highlightsScope, highlightsNotesOnly]);
+  useEffect(() => {
+    const index = highlightsForPanel.findIndex(highlight => String(highlight.id) === String(activeHighlightId));
+    if (index >= 0) setHighlightPanelOffset(Math.floor(index / 50) * 50);
+  }, [activeHighlightId]);
   const currentHighlightIndex = highlightIndex.byId.get(String(activeHighlightId || '')) ?? -1;
   const limitEnabled = !!limitStatus?.enabled;
   const limitMode = String(limitStatus?.enforcement_mode || 'warning');
@@ -944,7 +960,6 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     const tl = textLayerRef.current;
     if (!tl) return;
     let didScroll = false;
-    let rafId = 0;
 
     const renderSearchHits = () => {
       const firstHit = applySearchHitStyles(tl, searchQuery);
@@ -957,19 +972,10 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       } catch (_) {}
     };
 
-    renderSearchHits();
-
-    const observer = new MutationObserver(() => {
-      if (rafId) window.cancelAnimationFrame(rafId);
-      rafId = window.requestAnimationFrame(renderSearchHits);
+    return observeSearchText(tl, {
+      render: renderSearchHits,
+      clear: () => clearSearchHitStyles(tl),
     });
-    observer.observe(tl, { childList: true, subtree: true, characterData: true });
-
-    return () => {
-      if (rafId) window.cancelAnimationFrame(rafId);
-      observer.disconnect();
-      clearSearchHitStyles(tl);
-    };
   }, [searchQuery, page, renderInfo, textLayerRef, clearPendingResumeScroll, suppressScrollPersistence, searchJumpNonce]);
 
   useEffect(() => {
@@ -3198,6 +3204,13 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
             {tr(showHighlightControls ? 'reader_hide_highlight_controls' : 'reader_show_highlight_controls')}
           </button>
 
+          {highlightsForPanel.length > 50 && <nav style={{display: 'flex', gap: 12, marginBottom: 8}}>
+            <button type="button" disabled={highlightPanelPage.start === 0}
+              onClick={() => setHighlightPanelOffset(highlightPanelPage.previous)}>{tr('reader_previous_page')}</button>
+            <span role="status" aria-live="polite">{highlightPanelPage.start + 1}–{highlightPanelPage.end} / {highlightsForPanel.length}</span>
+            <button type="button" disabled={highlightPanelPage.end === highlightsForPanel.length}
+              onClick={() => setHighlightPanelOffset(highlightPanelPage.next)}>{tr('reader_next_page')}</button>
+          </nav>}
           {highlightsForPanel.length === 0 ? (
             <div style={{ fontSize: 12, opacity: 0.75 }}>
               {highlightsNotesOnly
@@ -3206,7 +3219,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {highlightsForPanel.map((hl) => {
+              {highlightsForPanel.slice(highlightPanelPage.start, highlightPanelPage.end).map((hl) => {
                 const note = String(hl.note || '').trim();
                 const excerpt = String(hl.text || tr('reader_no_text')).trim();
                 const linkedNoteId = Number(hl.linked_note_id || 0);

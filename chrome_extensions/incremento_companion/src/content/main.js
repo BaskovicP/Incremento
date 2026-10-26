@@ -38,7 +38,7 @@ import { requestExtensionRuntime } from "../shared/runtimeMessaging.js";
 import { dismissPageToast, showPageToast } from "./toast.js";
 
 (() => {
-  const CONTENT_SCRIPT_VERSION = "browser-capture-v13";
+  const CONTENT_SCRIPT_VERSION = "browser-capture-v14";
   const BROWSER_CAPTURE_ROOT_ID = "incremento-browser-capture-root";
   const scriptState = (
     window.__incrementoContentScriptState
@@ -2240,15 +2240,24 @@ import { dismissPageToast, showPageToast } from "./toast.js";
     }
   }
 
+  let liveVideoElements = null;
   function bestVideoElement() {
-    const videos = Array.from(document.querySelectorAll("video"));
-    if (videos.length === 0) return null;
-    videos.sort((a, b) => {
-      const as = (a.videoWidth || 0) * (a.videoHeight || 0);
-      const bs = (b.videoWidth || 0) * (b.videoHeight || 0);
-      return bs - as;
-    });
-    return videos[0];
+    let best = null;
+    let bestArea = 0;
+    // A live collection tracks inserted/removed players without repeated DOM
+    // selector scans or an observer on every page mutation. Still compare
+    // dimensions on each sample so the largest-player selection stays exact.
+    if (!liveVideoElements && typeof document.getElementsByTagName === "function") {
+      liveVideoElements = document.getElementsByTagName("video");
+    }
+    for (const video of liveVideoElements || document.querySelectorAll("video")) {
+      const area = (video.videoWidth || 0) * (video.videoHeight || 0);
+      if (best === null || area > bestArea) {
+        best = video;
+        bestArea = area;
+      }
+    }
+    return best;
   }
 
   function applyMediaResume(seconds, triesLeft = 12) {
@@ -2298,8 +2307,8 @@ import { dismissPageToast, showPageToast } from "./toast.js";
     };
   }
 
-  function detectCurrentMediaSeconds() {
-    const { provider, video } = currentTrackedMedia();
+  function detectCurrentMediaSeconds(media = null) {
+    const { provider, video } = media || currentTrackedMedia();
     let sec = -1;
     let found = false;
     if (video) {
@@ -2328,8 +2337,9 @@ import { dismissPageToast, showPageToast } from "./toast.js";
 
   function getCurrentMediaContext() {
     const href = window.location.href || "";
-    const { provider, videoId, mediaUrl, mediaTitle } = currentTrackedMedia();
-    const detected = detectCurrentMediaSeconds();
+    const media = currentTrackedMedia();
+    const { provider, videoId, mediaUrl, mediaTitle } = media;
+    const detected = detectCurrentMediaSeconds(media);
     return {
       ok: true,
       pageUrl: href,
@@ -2489,9 +2499,9 @@ import { dismissPageToast, showPageToast } from "./toast.js";
     }
   }
 
-  function sendHeartbeat(force = false, flush = false) {
+  function sendHeartbeat(force = false, flush = false, media = null) {
     if (!extensionAlive) return;
-    const { provider, videoId, video } = currentTrackedMedia();
+    const { provider, videoId, video } = media || currentTrackedMedia();
     if (!provider) return;
 
     let sec = -1;
@@ -2530,11 +2540,11 @@ import { dismissPageToast, showPageToast } from "./toast.js";
     });
   }
 
-  function sendWebMediaHeartbeat(force = false, flush = false) {
+  function sendWebMediaHeartbeat(force = false, flush = false, media = null) {
     if (!extensionAlive) return;
 
     const href = window.location.href || "";
-    const { provider, videoId, video, mediaUrl, mediaTitle } = currentTrackedMedia();
+    const { provider, videoId, video, mediaUrl, mediaTitle } = media || currentTrackedMedia();
     if (!video && !provider) return;
 
     let sec = -1;
@@ -2577,9 +2587,15 @@ import { dismissPageToast, showPageToast } from "./toast.js";
     });
   }
 
+  function sendMediaHeartbeats(force = false, flush = false) {
+    if (!extensionAlive) return;
+    const media = currentTrackedMedia();
+    sendHeartbeat(force, flush, media);
+    sendWebMediaHeartbeat(force, flush, media);
+  }
+
   periodic = window.setInterval(() => {
-    sendHeartbeat(false, false);
-    sendWebMediaHeartbeat(false, false);
+    if (document.visibilityState !== "hidden") sendMediaHeartbeats(false, false);
   }, 1000);
   badgePoll = window.setInterval(() => {
     const nextHref = window.location.href || "";
@@ -2591,30 +2607,26 @@ import { dismissPageToast, showPageToast } from "./toast.js";
     }
   }, 750);
   window.addEventListener("pagehide", () => {
-    sendHeartbeat(true, true);
-    sendWebMediaHeartbeat(true, true);
+    sendMediaHeartbeats(true, true);
   }, { capture: true });
   window.addEventListener("beforeunload", () => {
-    sendHeartbeat(true, true);
-    sendWebMediaHeartbeat(true, true);
+    sendMediaHeartbeats(true, true);
   }, { capture: true });
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
-      sendHeartbeat(true, true);
-      sendWebMediaHeartbeat(true, true);
+      sendMediaHeartbeats(true, true);
+    } else {
+      sendMediaHeartbeats(true, false);
     }
   });
   document.addEventListener("timeupdate", () => {
-    sendHeartbeat(false, false);
-    sendWebMediaHeartbeat(false, false);
+    sendMediaHeartbeats(false, false);
   }, true);
   document.addEventListener("play", () => {
-    sendHeartbeat(true, false);
-    sendWebMediaHeartbeat(true, false);
+    sendMediaHeartbeats(true, false);
   }, true);
   document.addEventListener("pause", () => {
-    sendHeartbeat(true, true);
-    sendWebMediaHeartbeat(true, true);
+    sendMediaHeartbeats(true, true);
   }, true);
   document.addEventListener("ended", () => sendHeartbeat(true, true), true);
 

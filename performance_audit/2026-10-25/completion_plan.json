@@ -1,0 +1,456 @@
+{
+  "baseline_commit": "6a371c732fc6c7d65bb4468fdb5853a2926ec097",
+  "objective": "Finish every remaining performance finding and verify the full release gate.",
+  "findings": [
+    {
+      "id": "F01",
+      "title": "Move session dialog counts and PDF targets off the UI thread",
+      "priority": "P1",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_learn_dialog.py",
+        "tests/test_learn_dialog_qt.py",
+        "tests/test_cards.py",
+        "tests/test_session_setup_model.py",
+        "tests/test_latest_query.py",
+        "tests/test_background_reads.py"
+      ],
+      "benchmarks": [
+        "completion_cpu_measurements.json#F01_session_counts"
+      ],
+      "original_follow_up": "Use a debounced, coalesced QueryOp request carrying the profile, collection, filters and one classifier. Reuse classification metadata within that request and load PDF titles/progress in batches. Show a loading state and discard closed, superseded or profile-switched results. Reuse LatestQuery where appropriate.",
+      "implementation": "Debounced background session counts, one classifier/pool snapshot, batched PDF targets",
+      "measurement": "10,000 cards / 20 tag rows: **1,125.1 \u2192 59.5 ms**; 504 \u2192 24 SQL reads; 42 \u2192 1 classifier resolutions"
+    },
+    {
+      "id": "F02",
+      "title": "Reuse EPUB metadata and a reverse section path map",
+      "priority": "P1",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_epub_dock.py",
+        "tests/test_epub_security_integration.py",
+        "tests/test_epub_manager.py",
+        "tests/test_reader_links.py"
+      ],
+      "benchmarks": [
+        "completion_measurements.json#F02_epub_metadata"
+      ],
+      "original_follow_up": "Keep a bounded snapshot for the active document, keyed by captured profile, filename, metadata identity and sanitizer version. Build a validated path-to-section map once. Clear it on replacement, sanitization changes, document/profile switch and close. Preserve containment checks; never cache arbitrary path acceptance.",
+      "implementation": "Active-EPUB metadata snapshot and validated reverse section map",
+      "measurement": "Cold last-section lookup in a 10 MB / 200-section book: **1,356.5 \u2192 8.2 ms**; 201 \u2192 1 JSON reads. Warm: 0 reads"
+    },
+    {
+      "id": "F03",
+      "title": "Combine statistics updates within each review event",
+      "priority": "P1",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_statistics.py",
+        "tests/test_session.py",
+        "tests/test_stats_progress.py",
+        "tests/test_learning_statistics.py"
+      ],
+      "benchmarks": [
+        "implementation_results.json#F03",
+        "completion_regression_measurements.json#statistics"
+      ],
+      "original_follow_up": "Synchronous durable writes remain; do not disable durability to optimize them.",
+      "implementation": "Combined statistics totals and tag-attribution persistence",
+      "measurement": "First batch: **97.0 \u2192 55.8 ms** with 512 populated tags; 4 \u2192 2 durable saves per review cycle"
+    },
+    {
+      "id": "F04",
+      "title": "Stop scanning the PDF library for each reviewer source cover",
+      "priority": "P1",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_reviewer_source_cover.py",
+        "tests/test_pdf_manager.py",
+        "tests/test_note_metadata.py",
+        "tests/test_pdf_source_index.py"
+      ],
+      "benchmarks": [
+        "completion_cpu_measurements.json#F04_source_covers"
+      ],
+      "original_follow_up": "Resolve a verified source card identity directly when available. Otherwise use a batched, collection-generation-scoped derived filename index with exact-match precedence and the existing unique-fuzzy fallback. Reuse the resolved payload between the two sides of one card and invalidate after relevant note/document changes.",
+      "implementation": "Background, generation-scoped PDF source index and question/answer payload reuse",
+      "measurement": "20 lookups / 4,000 PDFs: **59.7 \u2192 11.1 ms including index construction**; warm lookups add 0.004 ms; 80,000 per-note loads avoided"
+    },
+    {
+      "id": "F05",
+      "title": "Address FTS maintenance scans during document replacement",
+      "priority": "P1",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_db.py",
+        "tests/test_db_schema.py",
+        "tests/test_search_indexer.py",
+        "tests/test_search_repository.py",
+        "tests/test_pdf_search_safety.py"
+      ],
+      "benchmarks": [
+        "implementation_results.json#F05",
+        "completion_fts_tradeoffs.json"
+      ],
+      "original_follow_up": "Fresh insertion overhead is measured in fts_tradeoffs.json; profile real upgrade sizes.",
+      "implementation": "Stable indexed FTS identities for replacement/deletion",
+      "measurement": "First batch: 4,000-page replacement **814.0 \u2192 126.5 ms**. Fresh insertion still has the documented 70 ms tradeoff"
+    },
+    {
+      "id": "F06",
+      "title": "Make knowledge tree validation linear and persist only changed rows",
+      "priority": "P1",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_db.py",
+        "tests/test_knowledge_tree.py",
+        "tests/test_knowledge_tree_mind_map.py"
+      ],
+      "benchmarks": [
+        "implementation_results.json#F06",
+        "completion_measurements.json#F06_tree_writes"
+      ],
+      "original_follow_up": "Define timestamp semantics before implementing changed-row persistence and batched multi-node edits.",
+      "implementation": "Iterative validation plus structural-change-only tree writes",
+      "measurement": "First batch deep validation: 275.6 \u2192 11.1 ms. Completion 4,000-node unchanged save: **10.81 \u2192 5.54 ms**, 4,000 \u2192 0 updated rows; leaf move updates 1 row"
+    },
+    {
+      "id": "F07",
+      "title": "Bound database inspection and avoid quadratic text highlighting",
+      "priority": "P1",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_database_entries_dialog.py",
+        "tests/test_db.py"
+      ],
+      "benchmarks": [
+        "completion_cpu_measurements.json#F07_unicode_offsets"
+      ],
+      "original_follow_up": "Move discovery/lookup/formatting into a captured-profile cancellable read operation, with explicit selection, row and byte budgets and paging. Group entries by card once. Precompute UTF-16 offsets once or use a stable Qt-native search strategy, debounce queries and update only the active selection on navigation.",
+      "implementation": "Cancellable, paged, read-only database inspection; compact Unicode offsets",
+      "measurement": "1,000 positions in 312,000 characters: **152.1 \u2192 11.7 ms**. Each inspection page bounds cards, rows, text and elapsed work"
+    },
+    {
+      "id": "F08",
+      "title": "Keep empty PDF preparation from falling back to UI extraction",
+      "priority": "P1",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_browser_bridge.py",
+        "tests/test_pdf_manager.py",
+        "tests/test_operation_journal.py",
+        "tests/test_webpage_pdf_integration.py",
+        "tests/test_pdf_import_worker_integration.py",
+        "tests/test_pdf_import_dispatch.py"
+      ],
+      "benchmarks": [
+        "completion_native_measurements.json#F08_pdf_import",
+        "pdf_preparation_comparison.json"
+      ],
+      "original_follow_up": "Move webpage rendering, cover generation, managed copying/indexing and Qt-only fallback work off the UI path with lifecycle coverage.",
+      "implementation": "PDF copy, cover, native fallback and indexing in the collection worker; prepared empty text retained",
+      "measurement": "200-page native import: longest sampled UI event-pump gap **63.1 \u2192 13.8 ms**; UI pumps 0 \u2192 14. One sample; not an import-throughput claim"
+    },
+    {
+      "id": "F09",
+      "title": "Build the bookmark index in one pass",
+      "priority": "P1",
+      "status": "implemented_verified",
+      "tests": [
+        "chrome_extensions/incremento_companion/tests/bookmarkModel.test.js",
+        "chrome_extensions/incremento_companion/tests/bookmarkRendering.test.js"
+      ],
+      "benchmarks": [
+        "completion_extension_measurements.json#F09_folder_counts",
+        "completion_bookmark_model_measurements.json"
+      ],
+      "original_follow_up": "Folder subtree indexes and deferred DOM mounting require separate rendering measurements.",
+      "implementation": "One private bookmark accumulator, iterative deep traversal, folder ranges and selection prefix counts",
+      "measurement": "First batch: 5,000 opaque IDs 2,065 \u2192 3.7 ms. 1,000 counts over 10,000 bookmarks: **373.2 \u2192 0.076 ms warm**; separate range construction 1.03 ms, selection-prefix setup excluded"
+    },
+    {
+      "id": "F10",
+      "title": "Debounce full writing preview and serialize saves outside typing handlers",
+      "priority": "P1",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_writing_dock.py",
+        "tests/test_writing_manager.py",
+        "tests/test_writing_workspace_qt.py",
+        "tests/test_snapshot_writer.py",
+        "tests/test_writing_performance.py"
+      ],
+      "benchmarks": [
+        "completion_native_measurements.json#F10_writing_preview"
+      ],
+      "original_follow_up": "Keep caret/status updates immediate, debounce preview and word-count snapshots, and skip preview parsing while hidden. Capture immutable text/profile/card generations for an ordered background save queue; retain a safe close/profile-switch flush and visible failure handling. Persist unchanged editor state only when dirty.",
+      "implementation": "Debounced/hidden-aware markdown preview and one ordered background save queue",
+      "measurement": "Twenty edits of 105,000 characters: markdown parse work **142.1 \u2192 6.9 ms**, 20 \u2192 1 parses; hidden preview: 0 parses"
+    },
+    {
+      "id": "F11",
+      "title": "Remove repeated global set differences in Undo tracking",
+      "priority": "P2",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_topic_scheduler.py",
+        "tests/test_custom_schedule.py",
+        "tests/test_topic_scheduler_anki_integration.py"
+      ],
+      "benchmarks": [
+        "implementation_results.json#F11",
+        "completion_cpu_measurements.json#F11_sql"
+      ],
+      "original_follow_up": "SQL boundary was excluded from the benchmark.",
+      "implementation": "Local Undo/Redo membership checks instead of repeated global history differences",
+      "measurement": "First batch Python transition: **310.5 \u2192 3.0 ms** at 4,000 cards. Newly measured real SQLite boundary: 2.74 ms / 12 queries for 10,000 revlog IDs"
+    },
+    {
+      "id": "F12",
+      "title": "Reduce search candidate amplification and repeated tokenization",
+      "priority": "P2",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_search_repository.py",
+        "tests/test_search_all_results.py",
+        "tests/test_current_document_search_dialog.py",
+        "tests/test_pdf_dock.py",
+        "tests/test_epub_dock.py",
+        "tests/test_document_query.py",
+        "tests/test_search_performance.py",
+        "tests/test_pdf_shared_reader.py"
+      ],
+      "benchmarks": [
+        "completion_cpu_measurements.json#F12_search"
+      ],
+      "original_follow_up": "Compile query terms once per request, reduce redundant text work and use incremental candidate batches with cancellation and explicit work/byte budgets. Evaluate proper text indexes for excerpts with the required fallback. Move current-document searches to debounced latest-request workers. Preserve ranking, prefix, phrase and Unicode semantics rather than just lowering caps.",
+      "implementation": "Compiled queries, streaming candidate batches, bounded top-result ranking, async current-document search",
+      "measurement": "Same 1,200 ranked results / 12,000 pages: **129.1 \u2192 104.1 ms**; peak Python allocation **7.18 \u2192 0.61 MB**, 91.5% less"
+    },
+    {
+      "id": "F13",
+      "title": "Make EPUB progress events update only position-dependent state",
+      "priority": "P2",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_epub_dock.py",
+        "tests/test_epub_highlights.py",
+        "tests/test_reader_controls_qt.py",
+        "tests/test_reader_links.py"
+      ],
+      "benchmarks": [
+        "completion_measurements.json#F13_epub_highlights"
+      ],
+      "original_follow_up": "Query highlights for the active section using the existing card/section index. Cache section counts and panel data per document generation; invalidate on highlight/source/bookmark mutations. Separate position persistence from section-change and visible-panel updates.",
+      "implementation": "Section-scoped EPUB highlight reads and position-only progress updates",
+      "measurement": "20,000 saved highlights / 100 in current section: **23.75 \u2192 0.103 ms**; 20,000 \u2192 100 materialized rows"
+    },
+    {
+      "id": "F14",
+      "title": "Avoid materializing every peer in large duplicate groups",
+      "priority": "P2",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_pdf_bookshelf.py"
+      ],
+      "benchmarks": [
+        "completion_cpu_measurements.json#F14_duplicates"
+      ],
+      "original_follow_up": "Represent exact-equivalence groups compactly and resolve selected peers lazily. Keep fuzzy edges separate because fuzzy similarity is not transitive; connected components alone cannot replace direct-match semantics. Reuse one computed match model within each shelf snapshot.",
+      "implementation": "Shared exact-duplicate groups, lazy peer expansion, separate fuzzy edges",
+      "measurement": "800 same-origin documents: **61.1 \u2192 13.6 ms**; 639,200 \u2192 1,600 stored references; Python peak 37.6 \u2192 5.87 MB"
+    },
+    {
+      "id": "F15",
+      "title": "Batch remaining branch and linked-media inspection paths",
+      "priority": "P2",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_knowledge_tree.py",
+        "tests/test_knowledge_tree_postpone.py",
+        "tests/test_media_review.py",
+        "tests/test_media_review_dialog.py",
+        "tests/test_priority_manager.py",
+        "tests/test_background_reads.py",
+        "tests/test_knowledge_tree_dialog.py",
+        "tests/test_pdf_import_worker_integration.py"
+      ],
+      "benchmarks": [
+        "completion_cpu_measurements.json#F15_priorities"
+      ],
+      "original_follow_up": "Extend operation-owned batch projections to the remaining consumers, limit branch study reads to required structure/metadata, and reuse one classifier and adjacency map. Use deque for breadth-first traversal. Put synchronous read previews in QueryOp and ordinary mutations in CollectionOp. Batch supplemental writes transactionally, preserving per-card errors and native Undo semantics.",
+      "implementation": "Batched branch/media projections and supplemental writes; background previews and native mutation operations",
+      "measurement": "Shift 4,000 priorities: **341.8 \u2192 16.0 ms**; 4,000 \u2192 1 commits, 4,000 \u2192 5 priority reads"
+    },
+    {
+      "id": "F16",
+      "title": "Prevent PDF Find highlighting from observing its own writes",
+      "priority": "P2",
+      "status": "implemented_verified",
+      "tests": [
+        "frontend/tests/pdfSelection.test.mjs",
+        "tests/test_pdf_controls_browser.py",
+        "tests/test_pdf_dock.py",
+        "tests/test_pdf_find_observer_browser.py",
+        "frontend/tests/pdfSearchObserver.test.mjs"
+      ],
+      "benchmarks": [
+        "completion_browser_measurements.json#F16_find"
+      ],
+      "original_follow_up": "Observe text-layer lifecycle once, or disconnect/suppress the observer around owned writes and reconnect afterward. Make highlighting idempotent and modify only changed spans. Do not mutate PDF.js selection structure gratuitously.",
+      "implementation": "Disconnect the Find observer around owned writes; idempotent marks; preserve PDF.js text changes",
+      "measurement": "1,000 spans plus one external update over 10 frames: **10 \u2192 2 render callbacks**, **89.1 \u2192 5.2 ms** highlight work; one headless-browser sample"
+    },
+    {
+      "id": "F17",
+      "title": "Add cancellation and resource budgets inside PDF extraction",
+      "priority": "P2",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_search_indexer.py",
+        "tests/test_pdf_manager.py",
+        "tests/test_pdf_search_safety.py",
+        "tests/test_pdf_extraction.py"
+      ],
+      "benchmarks": [
+        "completion_native_measurements.json#F17_extraction"
+      ],
+      "original_follow_up": "Introduce cooperative checks between pages, a bounded extraction result/stream strategy, and explicit subprocess time/output budgets with termination cleanup. Consider a dedicated process for non-cooperative native work, using the existing annotation-process lifecycle as a reference, without assuming arbitrary thread parallelism is safe.",
+      "implementation": "Per-page cancellation plus time/page/output budgets and bounded/reaped external extractor",
+      "measurement": "Cancel after page 2 of 1,000: **48.4 \u2192 2.93 ms** return time; 1,000 \u2192 2 loaded pages, documents closed in both cases"
+    },
+    {
+      "id": "F18",
+      "title": "Bound Qt and React item creation after background reads",
+      "priority": "P2",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_knowledge_tree.py",
+        "tests/test_knowledge_tree_mind_map.py",
+        "tests/test_accessibility_ux.py",
+        "frontend/tests/pdfHighlights.test.mjs",
+        "tests/test_render_batches.py",
+        "frontend/tests/pagedRows.test.mjs",
+        "chrome_extensions/incremento_companion/tests/bookmarkRendering.test.js"
+      ],
+      "benchmarks": [
+        "completion_native_measurements.json#F18_qt_rows",
+        "completion_extension_measurements.json#F18_ssr"
+      ],
+      "original_follow_up": "Measure callback/commit time separately from query time. Use a model/view or paged/windowed representation for large collections, or bounded generation-aware construction batches. Preserve selection, expanded state, stable row order, accessibility and immediate cancellation of obsolete builds.",
+      "implementation": "Bounded Qt construction, deferred bookmark folders, 100-row imports and 50-row PDF highlights",
+      "measurement": "React SSR: closed 10,000-leaf folder **92.6 \u2192 0.246 ms**; import rows **413.1 \u2192 4.89 ms**. Qt 5,000 rows: 1 \u2192 126 callbacks; see timing caveat below"
+    },
+    {
+      "id": "F19",
+      "title": "Load bookshelf thumbnails for visible tiles with a byte budget",
+      "priority": "P2",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_pdf_bookshelf.py",
+        "tests/test_bounded_cache.py",
+        "tests/test_thumbnail_viewport_qt.py"
+      ],
+      "benchmarks": [
+        "completion_native_measurements.json#F19_thumbnails"
+      ],
+      "original_follow_up": "Prioritize viewport tiles with a small prefetch margin and an LRU byte budget; debounce filtering and reuse stable items where practical. Keep bounded parallel decoding only after measuring file/CPU pressure, and mark collection-free image work explicitly where supported.",
+      "implementation": "Visible/prefetched thumbnails, debounced filters and 24 MiB derived-image LRU",
+      "measurement": "Initial viewport / 2,000 covers: **918.0 \u2192 4.11 ms** native decode work; 2,000 \u2192 9 images; raster accounting 409.6 \u2192 1.84 MB"
+    },
+    {
+      "id": "F20",
+      "title": "Split extension runtime chunks by actual consumers",
+      "priority": "P2",
+      "status": "implemented_verified",
+      "tests": [
+        "chrome_extensions/incremento_companion/tests/languagePacks.test.js",
+        "chrome_extensions/incremento_companion/tests/i18n.test.js",
+        "chrome_extensions/incremento_companion/tests/bridge.test.js",
+        "tests/test_extension_bundle_graph.py",
+        "chrome_extensions/incremento_companion/tests/customLanguageRuntime.test.js"
+      ],
+      "benchmarks": [
+        "completion_extension_measurements.json#F20_static_graph"
+      ],
+      "original_follow_up": "Separate non-React bridge/browser/i18n core from UI hooks and settings/export validation. Investigate loading custom-pack validation only when needed while preserving validation before use. Remove forced all-shared cohabitation and inspect static entry graphs after a reproducible build.",
+      "implementation": "Split non-React core, UI and lazy custom-language validation chunks",
+      "measurement": "Static content-script graph **1,001,053 \u2192 192,642 bytes**, 80.8% smaller; background 986,486 \u2192 177,928; offscreen 950,623 \u2192 142,059"
+    },
+    {
+      "id": "F21",
+      "title": "Share media detection across heartbeat paths",
+      "priority": "P2",
+      "status": "implemented_verified",
+      "tests": [
+        "chrome_extensions/incremento_companion/tests/bridge.test.js",
+        "tests/test_video_watch_meter.py",
+        "tests/test_video_web.py",
+        "chrome_extensions/incremento_companion/tests/mediaSampling.test.js"
+      ],
+      "benchmarks": [
+        "completion_extension_measurements.json#F21_media_sampling"
+      ],
+      "original_follow_up": "Capture media context once per tick/event and pass it to both protocol payload builders. Track the active video via bounded lifecycle discovery, prefer a linear maximum selection over sorting, and reduce idle polling while retaining navigation/reinjection detection. Flush final progress on hide/pagehide before suspending.",
+      "implementation": "One media sample for both heartbeat protocols, live video collection and hidden-poll suspension",
+      "measurement": "1,000 visible ticks: **2.86 \u2192 2.24 ms**, 2,000 \u2192 0 warm DOM queries; same 2,000 protocol messages. Hidden periodic ticks emit 0; playback events still flush"
+    },
+    {
+      "id": "F22",
+      "title": "Index SuperMemo parents once and batch supplemental schedule writes",
+      "priority": "P2",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_supermemo_format.py",
+        "tests/test_supermemo_import_anki_integration.py"
+      ],
+      "benchmarks": [
+        "completion_native_measurements.json#F22_supermemo"
+      ],
+      "original_follow_up": "Build an element-ID lookup once and reuse it for parent metadata. Batch topic-state rows in the existing controlled supplemental transaction boundary where failure recovery allows. Keep ImportOperation journal/bind/commit durability boundaries intact; do not bulk-disable journaling to improve a benchmark.",
+      "implementation": "One SuperMemo parent map and one batch of supplemental topic schedules",
+      "measurement": "256-topic native import: **119.7 \u2192 97.6 ms**; 36,992 \u2192 4,352 element-ID reads; 256 \u2192 1 topic commits; journal durability retained"
+    },
+    {
+      "id": "F23",
+      "title": "Profile eager imports and first database use before changing startup",
+      "priority": "P3",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_db.py",
+        "tests/test_db_schema.py",
+        "tests/test_migration.py",
+        "tests/test_note_type_updates.py",
+        "tests/test_db_connection_manager.py"
+      ],
+      "benchmarks": [
+        "completion_native_measurements.json#F23_imports",
+        "completion_native_measurements.json#F23_database",
+        "completion_imports_before.json"
+      ],
+      "original_follow_up": "Capture cold/warm import self/cumulative time, profile-open stages and first-DB-use time in a disposable synthetic environment. Lazy-load optional dialogs only when the measurement supports it; register hooks idempotently and initialize language before visible strings. Separate safe connection fast paths from potentially waiting initialization without sharing connections across threads.",
+      "implementation": "Defer six optional dialog modules; initialize SQLite outside the registry lock",
+      "measurement": "**21.7 ms** isolated optional import group deferred to first use. Under a controlled 100 ms initializer stall, unrelated cached lookup **110.1 \u2192 0.002 ms**; first schema open 6.98 \u2192 6.69 ms"
+    },
+    {
+      "id": "F24",
+      "title": "Reuse normalized config within each reviewer event",
+      "priority": "P3",
+      "status": "implemented_verified",
+      "tests": [
+        "tests/test_config_service.py",
+        "tests/test_config_properties.py",
+        "tests/test_reviewer_priority_badge.py",
+        "tests/test_settings_dialog.py"
+      ],
+      "benchmarks": [
+        "completion_cpu_measurements.json#F24_config"
+      ],
+      "original_follow_up": "Resolve one event-local normalized snapshot and classifier, passing them through configured helpers. Consider a versioned read cache only inside config_service with explicit invalidation for every save and supported external edits. Do not maintain independent consumer caches that can disagree with Settings.",
+      "implementation": "One normalized config/classifier snapshot per reviewer event",
+      "measurement": "100 events with 20 populated presets: **261.9 \u2192 96.1 ms**, 300 \u2192 100 config reads"
+    }
+  ],
+  "current_work": "All 24 findings implemented, benchmarked and verified by the complete release gate."
+}

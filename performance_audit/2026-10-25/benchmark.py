@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import ast
 from collections import Counter, defaultdict, deque
+from collections.abc import Mapping
 from dataclasses import dataclass
 import hashlib
 import html
@@ -219,13 +220,13 @@ def database_text_measurements():
 
 
 def bookshelf_measurements():
-    names = {"_BookshelfEntry", "_DuplicateFingerprint", "_normalized_bookshelf_duplicate_label",
+    names = {"_BookshelfEntry", "_DuplicateFingerprint", "_DuplicateMatches", "_normalized_bookshelf_duplicate_label",
         "_bookshelf_origin_label", "_bookshelf_metadata_title_label", "_duplicate_tokens",
         "_duplicate_trigrams", "_duplicate_fingerprint", "_duplicate_feature_weights",
         "_weighted_duplicate_scores", "_duplicate_channel_matches", "_bookshelf_duplicate_matches"}
     assignments = {"_MANAGED_FILENAME_UUID_RE", "_VISIBLE_DUPLICATE_SUFFIX_RE", "_DUPLICATE_NOISE_TOKENS",
         "_MAX_DUPLICATE_FEATURE_BUCKET", "_MAX_EXACT_TITLE_BUCKET", "_GENERIC_PDF_METADATA_TITLES", "_KIND_PDF"}
-    module = pure_source("frontend/pdf_bookshelf.py", names, assignments=assignments)
+    module = pure_source("frontend/pdf_bookshelf.py", names, assignments=assignments, extra={"Mapping": Mapping})
     results = []
     for size in (200, 400, 800):
         entries = [module._BookshelfEntry(title=f"Distinct title {index}", card_id=index + 1, kind="PDF",
@@ -233,7 +234,9 @@ def bookshelf_measurements():
         result = module._bookshelf_duplicate_matches(entries)
         edges = sum(len(peers) for peers in result.values())
         assert edges == size * (size - 1)
-        results.append({"documents_with_same_normalized_origin": size, "stored_peer_references": edges,
+        results.append({"documents_with_same_normalized_origin": size,
+            "expanded_peer_references": edges,
+            "stored_peer_references": getattr(result, "stored_reference_count", edges),
             **timed(lambda: module._bookshelf_duplicate_matches(entries))})
     return results
 

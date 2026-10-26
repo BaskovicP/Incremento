@@ -84,3 +84,17 @@ test("a later storage event wins against a slow custom language startup read", a
   await read;
   assert.equal(currentLocale(), "hr");
 });
+
+test("a language change during deferred pack validation keeps both the newest language and validated packs", async () => {
+  const runtime = await import("../src/shared/i18n.js?deferred-validation-race");
+  const api = chromeFake({ui_language: "en"});
+  await runtime.initializeLanguage(api);
+  const stop = runtime.watchLanguageStorage(api);
+  const packChange = api.listeners[0]({ui_language: {newValue: "custom:de"},
+    ui_language_packs: {newValue: {de: german()}}}, "local");
+  const languageChange = api.listeners[0]({ui_language: {newValue: "hr"}}, "local");
+  await Promise.all([packChange, languageChange]);
+  assert.equal(runtime.currentLocale(), "hr");
+  assert.equal(runtime.currentLanguagePacks().de.name, "Deutsch");
+  stop();
+});

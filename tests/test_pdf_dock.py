@@ -2244,6 +2244,17 @@ def test_current_card_pdf_search_hits_orders_pages_and_builds_snippets(monkeypat
 
 
 def test_pdf_find_preserves_trailing_space_while_searching_trimmed_query(monkeypatch):
+    import document_query
+    from document_query import DocumentQuery
+    from types import SimpleNamespace
+    timer = SimpleNamespace(start=lambda: None, stop=lambda: None)
+    def make_query(parent, **options):
+        def dispatch(ticket, success, failure, progress):
+            request = ticket.payload
+            success(options["read"](request["profile"], request["card_id"], request["query"], ticket.cancel))
+        return DocumentQuery(parent, **options, timer=timer, dispatch=dispatch)
+    monkeypatch.setattr(document_query, "DocumentQuery", make_query)
+    monkeypatch.setattr(pdf_dock, "_pdf_find_jobs", None)
     searched = []
     scripts = []
 
@@ -2261,11 +2272,14 @@ def test_pdf_find_preserves_trailing_space_while_searching_trimmed_query(monkeyp
     monkeypatch.setattr(
         pdf_dock,
         "current_card_pdf_search_hits",
-        lambda card_id, query: searched.append((card_id, query)) or [],
+        lambda card_id, query, **_kwargs: searched.append((card_id, query)) or [],
     )
 
     pdf_dock._update_pdf_search("target ")
 
+    assert searched == []
+    assert pdf_dock._current_pdf_search_query == "target "
+    pdf_dock._pdf_find_jobs.start()
     assert searched == [(77, "target")]
     assert pdf_dock._current_pdf_search_query == "target "
     assert scripts

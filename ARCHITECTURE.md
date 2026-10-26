@@ -272,3 +272,16 @@ live under `.dependencies/pymupdf/<runtime-tag>/`, outside profile data and rele
 inputs. The composition root activates that folder before readers use it; it
 never launches the Anki executable as Python. yt-dlp is never silently installed
 into Anki's Python environment.
+
+
+## Performance boundaries for large libraries
+
+Session counts/PDF targets, current-document search, reviewer source-cover resolution and branch read previews use captured-profile/latest-request workers. UI callbacks validate profile, collection, card/request generation and dialog lifetime before publishing. Anki remains authoritative for card/note mutations, scheduling and Undo; read-only batch card projections must never be passed to native mutation APIs. Collection workers own PDF managed-file copying, cover/native text extraction and index persistence; QWebEngine pages remain UI-owned and render asynchronously.
+
+Knowledge-tree `updated_at` is the last structural modification time of that row: changing parent, node kind or sibling order updates it, while saving identical structure preserves it. Structure and supplemental multi-priority/topic writes retain transaction rollback. Schema 19 from the first performance batch remains the only schema change; this completion pass adds no migration.
+
+Writing uses one active immutable save snapshot and one replaceable pending snapshot on a serial worker. File, backup, word-count and progress writes carry the captured profile; success is published only for the current editor generation. Closing/card switching/backup restoration flushes and exposes failure. The writer cache is derived state, reset on profile teardown and disk restoration, and includes word-count mode and daily baseline semantics.
+
+Database inspection uses a read-only connection and explicit card/row/byte/time page budgets. Search candidates stream in bounded batches with cancellation, a 15-second request budget and a 32 MiB character/byte accounting budget; ranking retains only the requested result count. Source ordering, prefix/phrase/Unicode semantics, legacy LIKE fallback and requested limits remain unchanged. Budget exhaustion is an error, never a silent partial index replacement. PDF extraction checks cancellation between pages, defaults to 50,000 pages/32 MiB UTF-8/120 seconds, and spools external output away from Python heap with child kill/reap cleanup. A single native page call remains non-preemptible.
+
+Qt object construction is generation-aware and yields after at most 40 rows or a 5 ms elapsed target checked between rows. React bookmark/import/highlight surfaces are paged or deferred without dropping logical selections. Bookshelf decoded previews use a conservative 24 MiB LRU and visible-row/prefetch scheduling; this is a derived-raster accounting limit, not a process-RSS guarantee. Extension bridge/i18n core has no static React or translation-CSV dependency; custom-pack validation remains mandatory before applying a nonempty custom pack and loads lazily.

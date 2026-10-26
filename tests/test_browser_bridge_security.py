@@ -49,8 +49,8 @@ def test_wire_request_cannot_delete_a_claimed_prepared_file(monkeypatch, tmp_pat
     }
     imports = []
     monkeypatch.setattr(browser_bridge, "_run_on_main_and_wait", lambda fn: fn())
-    monkeypatch.setattr(browser_bridge, "_add_content_request_on_main",
-                        lambda request: imports.append(request) or {"ok": True})
+    monkeypatch.setattr(browser_bridge, "_run_content_request_and_wait",
+                        lambda request, **_kwargs: imports.append(request) or {"ok": True})
     handler, responses = _post(monkeypatch, payload)
 
     handler._do_POST()

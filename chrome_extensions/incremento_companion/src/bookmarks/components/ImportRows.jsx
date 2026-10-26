@@ -1,3 +1,4 @@
+import {PagedItems} from "./PagedItems.jsx";
 import {
   PRIORITY_SLIDER_MAX,
   formatPriority,
@@ -26,8 +27,8 @@ export function ImportRows({
   }
 
   return (
-    <div className="import-rows">
-      {items.map((item) => (
+    <PagedItems items={items}>{visible => <div className="import-rows">
+      {visible.map((item) => (
         <article className={`import-row${item.importState === "error" ? " is-error" : ""}`} key={item.id}>
           <div className="row-top">
             <label>
@@ -117,6 +118,6 @@ export function ImportRows({
           </div>
         </article>
       ))}
-    </div>
+    </div>}</PagedItems>
   );
 }

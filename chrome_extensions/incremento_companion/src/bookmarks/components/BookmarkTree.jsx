@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { collectBookmarkIds, countSelected } from "../bookmarkModel.js";
+import {PagedItems} from "./PagedItems.jsx";
+import { useEffect, useRef, useState } from "react";
 import { formatNumber, t } from "../../shared/i18n.js";
 
 function FolderCheckbox({ folderId, checked, indeterminate, disabled, onToggle }) {
@@ -44,18 +44,20 @@ function BookmarkNode({ node, item, disabled, onToggleBookmark }) {
   );
 }
 
-function FolderNode({ node, itemsById, disabled, onToggleFolder, onToggleBookmark }) {
-  const bookmarkIds = collectBookmarkIds(node, itemsById);
-  if (bookmarkIds.length === 0) {
+function FolderNode({ node, itemsById, treeIndex, selectionPrefix, disabled, onToggleFolder, onToggleBookmark }) {
+  const [expanded, setExpanded] = useState(false);
+  const [start, end] = treeIndex.ranges.get(String(node.id)) || [0, 0];
+  const count = end - start;
+  if (count === 0) {
     return null;
   }
-  const selectedCount = countSelected(bookmarkIds, itemsById);
-  const isChecked = selectedCount > 0 && selectedCount === bookmarkIds.length;
-  const isPartial = selectedCount > 0 && selectedCount < bookmarkIds.length;
+  const selectedCount = selectionPrefix[end] - selectionPrefix[start];
+  const isChecked = selectedCount > 0 && selectedCount === count;
+  const isPartial = selectedCount > 0 && selectedCount < count;
 
   return (
     <li className="tree-node tree-folder">
-      <details>
+      <details onToggle={(event) => { if (event.target === event.currentTarget) setExpanded(event.currentTarget.open); }}>
         <summary>
           <div className="tree-folder-summary">
             <span className="tree-toggle" aria-hidden="true">▶</span>
@@ -68,26 +70,29 @@ function FolderNode({ node, itemsById, disabled, onToggleFolder, onToggleBookmar
             />
             <label className="tree-row tree-label">
               <span className="tree-title">{String(node.title || t("folder")).trim() || t("folder")}</span>
-              <span className="tree-meta">{t("selected_count", { selected: formatNumber(selectedCount), total: formatNumber(bookmarkIds.length) })}</span>
+              <span className="tree-meta">{t("selected_count", { selected: formatNumber(selectedCount), total: formatNumber(count) })}</span>
             </label>
           </div>
         </summary>
-        <div className="tree-children">
+        {expanded ? <div className="tree-children">
           <BookmarkTree
             nodes={node.children || []}
             itemsById={itemsById}
+            treeIndex={treeIndex}
+            selectionPrefix={selectionPrefix}
             disabled={disabled}
             onToggleFolder={onToggleFolder}
             onToggleBookmark={onToggleBookmark}
           />
-        </div>
+        </div> : null}
       </details>
     </li>
   );
 }
 
-export function BookmarkTree({ nodes, itemsById, disabled, onToggleFolder, onToggleBookmark }) {
-  const visibleNodes = (nodes || []).map((node) => {
+export function BookmarkTree({ nodes, itemsById, treeIndex, selectionPrefix, disabled, onToggleFolder, onToggleBookmark }) {
+  return <PagedItems items={nodes || []}>{visible => {
+  const visibleNodes = visible.map((node) => {
     if (node.url) {
       const item = itemsById[String(node.id)];
       return item
@@ -107,6 +112,8 @@ export function BookmarkTree({ nodes, itemsById, disabled, onToggleFolder, onTog
         key={String(node.id)}
         node={node}
         itemsById={itemsById}
+        treeIndex={treeIndex}
+        selectionPrefix={selectionPrefix}
         disabled={disabled}
         onToggleFolder={onToggleFolder}
         onToggleBookmark={onToggleBookmark}
@@ -119,4 +126,5 @@ export function BookmarkTree({ nodes, itemsById, disabled, onToggleFolder, onTog
   }
 
   return <ul className="tree-list">{visibleNodes}</ul>;
+  }}</PagedItems>;
 }

@@ -724,6 +724,20 @@ def _metadata_path(stored_filename: str, *, profile: str | None = None) -> str:
     )
 
 
+def epub_metadata_identity(addon_dir: str, stored_filename: str, *, profile: str) -> tuple:
+    """Fingerprint cached metadata without creating a runtime directory."""
+    name = Path(str(stored_filename or "")).name
+    if name in {"", ".", ".."}:
+        return (_EPUB_SANITIZER_VERSION, None)
+    path = _paths.get_epub_extract_root(addon_dir, profile) / name / "metadata.json"
+    try:
+        stat = path.stat()
+        return (_EPUB_SANITIZER_VERSION, stat.st_dev, stat.st_ino, stat.st_size,
+                stat.st_mtime_ns, stat.st_ctime_ns)
+    except OSError:
+        return (_EPUB_SANITIZER_VERSION, None)
+
+
 def load_epub_metadata(
     addon_dir: str,
     stored_filename: str,
@@ -928,13 +942,16 @@ def ensure_epub_extracted(
         raise
 
 
-def get_epub_section_path(addon_dir: str, stored_filename: str, section_index: int) -> str:
-    meta = load_epub_metadata(addon_dir, stored_filename)
+def get_epub_section_path(
+    addon_dir: str, stored_filename: str, section_index: int, *,
+    profile: str | None = None, metadata: dict | None = None,
+) -> str:
+    meta = metadata if metadata is not None else load_epub_metadata(addon_dir, stored_filename, profile=profile)
     sections = meta.get("sections") or []
     if not sections:
         raise RuntimeError(t("backend_epub_no_sections"))
     idx = max(0, min(int(section_index), len(sections) - 1))
-    section_path = _extract_epub_path(stored_filename, str(sections[idx]["href"] or ""))
+    section_path = _extract_epub_path(stored_filename, str(sections[idx]["href"] or ""), profile=profile)
     if not section_path:
         raise RuntimeError("EPUB section path escapes extraction root.")
     return section_path

@@ -332,3 +332,12 @@ Imports stay offline in Chrome's local extension storage. A file may contain at 
 ## License
 
 All rights reserved. Using, copying, modifying, or distributing this code requires prior written permission from Paulo Baskovic.
+
+
+## Large bookmark collections and media tracking
+
+Folders load their child rows when expanded. Folder and import lists show 100 rows per page; use Previous/Next to reach the rest. Selection totals cover the complete folder, and the import includes every selected entry across pages. Deep folder nesting uses iterative traversal so it does not depend on the JavaScript call-stack limit.
+
+Both media heartbeat protocols share one sample of the current largest video. A live video collection tracks inserted/replaced players without repeated selector scans. Hidden tabs stop periodic sampling after a final flush; actual playback and visibility/page-hide events continue reporting progress. Reload the extension and refresh a test tab after updating to activate this version.
+
+The generated runtime separates bridge/browser/i18n core from React UI and custom-language CSV validation. Custom packs are still validated before use; the parser/export catalog loads only when required. Source changes require rebuilding with `npm --prefix frontend run build:extension` from the repository root.

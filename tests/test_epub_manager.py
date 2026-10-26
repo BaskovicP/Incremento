@@ -13,6 +13,24 @@ sys.modules.setdefault("db", db)
 import epub_manager
 
 
+def test_metadata_identity_is_profile_scoped_and_tracks_atomic_replacement(tmp_path, monkeypatch):
+    addon = str(tmp_path)
+    missing = epub_manager.epub_metadata_identity(addon, "book.epub", profile="A")
+    assert list(tmp_path.iterdir()) == []
+    path = epub_manager._paths.get_epub_extract_root(addon, "A") / "book.epub" / "metadata.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{}")
+    first = epub_manager.epub_metadata_identity(addon, "book.epub", profile="A")
+    replacement = path.with_suffix(".new")
+    replacement.write_text("{}")
+    os.replace(replacement, path)
+    second = epub_manager.epub_metadata_identity(addon, "book.epub", profile="A")
+    assert missing != first != second
+    assert epub_manager.epub_metadata_identity(addon, "book.epub", profile="B") == missing
+    monkeypatch.setattr(epub_manager, "_EPUB_SANITIZER_VERSION", epub_manager._EPUB_SANITIZER_VERSION + 1)
+    assert epub_manager.epub_metadata_identity(addon, "book.epub", profile="A") != second
+
+
 def _write_test_epub(path: Path) -> None:
     with zipfile.ZipFile(path, "w") as zf:
         zf.writestr("mimetype", "application/epub+zip")

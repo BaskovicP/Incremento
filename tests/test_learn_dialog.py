@@ -77,6 +77,36 @@ _rename_named_scheduler_profile = _MOD._rename_named_scheduler_profile
 SchedulerConfigDialog = _MOD.SchedulerConfigDialog
 
 
+def test_session_count_projection_classifies_each_pool_once_and_reuses_it_for_tags(monkeypatch):
+    from threading import Event
+    calls = []
+    classifier = object()
+    col = SimpleNamespace(find_cards=lambda query: calls.append(query) or [1, 3, 9])
+    monkeypatch.setattr(_MOD._card_utils, "get_all_topic_cards", lambda **kw: calls.append(kw) or [1, 2])
+    monkeypatch.setattr(_MOD._card_utils, "get_all_item_cards", lambda **kw: calls.append(kw) or [3, 4])
+    monkeypatch.setattr(_MOD._card_utils, "clear_topic_item_cache", lambda: None)
+    result = _MOD._session_count_snapshot(
+        col, topics_filter="topic-filter", items_filter="item-filter", ready="ready",
+        tags=["tag-one", "tag-one"], content_queries={}, classifier=classifier, cancel=Event(),
+    )
+    assert result == {"topics": 2, "items": 2, "tags": {"tag-one": (1, 1)}, "content": {}}
+    assert len(calls) == 3
+    assert calls[0]["col"] is col and calls[0]["topic_classifier"] is classifier
+    assert calls[1]["col"] is col and calls[1]["topic_classifier"] is classifier
+
+
+def test_session_count_typing_invalidates_immediately_and_only_starts_timer():
+    calls = []
+    dialog = object.__new__(SchedulerConfigDialog)
+    dialog._mix_preview_closed = False
+    dialog._counts_query = SimpleNamespace(invalidate=lambda: calls.append("invalidate"))
+    dialog._counts_timer = SimpleNamespace(start=lambda: calls.append("timer"))
+    dialog._counts_lbl = SimpleNamespace(setText=lambda text: calls.append(text))
+    dialog._refresh_counts()
+    dialog._refresh_counts()
+    assert calls == ["invalidate", "…", "timer"] * 2
+
+
 def test_croatian_live_preview_translates_labels_and_preserves_escaped_content(monkeypatch):
     from backend.i18n import Translator
     translator = Translator('hr')
@@ -262,6 +292,9 @@ def _availability_preview_dialog(monkeypatch, target=500):
     dialog._mix_preview_timer = SimpleNamespace(
         start=lambda: timer_starts.append(True), stop=lambda: None)
     dialog._preview_refresh_timer = SimpleNamespace(stop=lambda: None)
+    dialog._counts_timer = SimpleNamespace(stop=lambda: None)
+    dialog._counts_query = SimpleNamespace(close=lambda: None)
+    dialog._pdf_targets_query = SimpleNamespace(close=lambda: None)
     dialog._branch_scope = {'root_card_id': 1, 'card_ids': [1, 2]}
     dialog.to_config = lambda: SimpleNamespace(session_card_count=target)
     monkeypatch.setattr(_MOD, '_run_session_preview_query',

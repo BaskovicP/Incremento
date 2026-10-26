@@ -194,6 +194,7 @@ def test_full_side_search_keeps_all_results_when_a_hit_is_chosen(reader, monkeyp
     assert reader.bridge.search_generation > previous_generation
     options = dialogs[0].options
     hits = options['search_hits_fn']('word')
+    dialogs[0]._hits = hits
     options['open_hit_fn'](hits[1], 1, 'word')
     assert reader.bridge.search['hits'] == hits
     assert reader.bridge.search['activeIndex'] == 1

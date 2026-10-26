@@ -1501,5 +1501,11 @@
   },
   "snapshot_shortcut_scope_firefox": {
     "message": "Keep Firefox focused when using snapshot shortcuts. Firefox does not support global extension shortcuts."
+  },
+  "bookmark_previous_page": {
+    "message": "Previous page"
+  },
+  "bookmark_next_page": {
+    "message": "Next page"
   }
 }

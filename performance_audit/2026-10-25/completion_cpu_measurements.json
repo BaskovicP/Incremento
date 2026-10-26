@@ -1,0 +1,195 @@
+{
+  "baseline_commit": "6a371c732fc6c7d65bb4468fdb5853a2926ec097",
+  "scope": "Reproducible component benchmarks; synthetic data only, never live profiles.\n\nUses baseline definitions from Git and current definitions against identical\ntemporary SQLite/synthetic collection boundaries. Timings are not end-to-end\nAnki latency. Native UI/import measurements are in completion_native_benchmarks.py.\n",
+  "python": "3.14.5",
+  "sqlite": "3.53.2",
+  "F01_session_counts": {
+    "cards": 10000,
+    "tag_rows": 20,
+    "boundary": "real SQLite; synthetic Anki search returning the same tagged pool; classifier config parsing excluded",
+    "before": {
+      "median_ms": 1125.124,
+      "samples_ms": [
+        1120.259,
+        1168.768,
+        1125.124
+      ],
+      "classifier_resolutions": 42,
+      "card_searches": 21,
+      "sql_queries": 504
+    },
+    "after": {
+      "median_ms": 59.471,
+      "samples_ms": [
+        65.066,
+        59.471,
+        58.623
+      ],
+      "classifier_resolutions": 1,
+      "card_searches": 21,
+      "sql_queries": 24
+    }
+  },
+  "F04_source_covers": {
+    "pdf_notes": 4000,
+    "lookups": 20,
+    "before": {
+      "median_ms": 59.723,
+      "samples_ms": [
+        60.779,
+        59.723,
+        58.308
+      ],
+      "operations": {
+        "note_loads": 80000,
+        "card_searches": 20
+      }
+    },
+    "after_warm": {
+      "median_ms": 0.004,
+      "samples_ms": [
+        0.009,
+        0.004,
+        0.004
+      ],
+      "operations": {}
+    },
+    "after_cold_index": {
+      "median_ms": 11.083,
+      "samples_ms": [
+        11.499,
+        10.994,
+        11.083
+      ]
+    },
+    "boundary": "real SQLite batches; synthetic note API, no Anki RPC timing"
+  },
+  "F07_unicode_offsets": {
+    "characters": 312000,
+    "positions": 1000,
+    "before": {
+      "median_ms": 152.078,
+      "samples_ms": [
+        156.752,
+        152.078,
+        128.963
+      ]
+    },
+    "after": {
+      "median_ms": 11.712,
+      "samples_ms": [
+        11.712,
+        11.702,
+        11.859
+      ]
+    },
+    "offset_storage_bytes": 1248004
+  },
+  "F12_search": {
+    "before": {
+      "median_ms": 129.079,
+      "samples_ms": [
+        129.342,
+        129.079,
+        120.321
+      ],
+      "peak_python_bytes": 7177865,
+      "returned_rows": 1200
+    },
+    "after": {
+      "median_ms": 104.14,
+      "samples_ms": [
+        104.14,
+        107.256,
+        101.464
+      ],
+      "peak_python_bytes": 609678,
+      "returned_rows": 1200
+    },
+    "rows": 12000,
+    "ranking_equal": true
+  },
+  "F14_duplicates": {
+    "before": {
+      "median_ms": 61.141,
+      "samples_ms": [
+        71.286,
+        60.927,
+        61.141
+      ],
+      "peak_python_bytes": 37609549,
+      "stored_peer_references": 639200
+    },
+    "after": {
+      "median_ms": 13.644,
+      "samples_ms": [
+        13.644,
+        13.427,
+        14.269
+      ],
+      "peak_python_bytes": 5868453,
+      "stored_peer_references": 1600
+    }
+  },
+  "F15_priorities": {
+    "before": {
+      "median_ms": 341.775,
+      "samples_ms": [
+        341.775,
+        342.124,
+        336.718
+      ],
+      "commits": 4000,
+      "priority_reads": 4000
+    },
+    "after": {
+      "median_ms": 16.029,
+      "samples_ms": [
+        15.567,
+        16.029,
+        16.619
+      ],
+      "commits": 1,
+      "priority_reads": 5
+    }
+  },
+  "F24_config": {
+    "before": {
+      "median_ms": 261.934,
+      "samples_ms": [
+        262.157,
+        255.226,
+        261.934
+      ],
+      "config_reads_per_100_events": 300
+    },
+    "after": {
+      "median_ms": 96.118,
+      "samples_ms": [
+        98.583,
+        92.104,
+        96.118
+      ],
+      "config_reads_per_100_events": 100
+    }
+  },
+  "F11_sql": {
+    "median_ms": 2.744,
+    "samples_ms": [
+      3.024,
+      2.708,
+      2.744
+    ],
+    "tracked_revlogs": 10000,
+    "bounded_sql_queries": 12,
+    "scope": "SQL boundary only; earlier implementation_results.json measures Python transition work"
+  },
+  "source_sha256": {
+    "backend/db.py": "e8dfe4e803d838201cd325d1228a5d86756d718da5fab4307e282fead4b2d09b",
+    "backend/knowledge_tree.py": "66d8187b2132b38e689475c4751c7d95ac5f7946fdd114fbb308402121e0748b",
+    "backend/reviewer_buttons.py": "5ebc79027c4ef4e83e5cf8b6be9646d687d975b05c51b46489bd7ad670bb08ff",
+    "backend/pdf_source_index.py": "702c0d83220d0bea9d5cdaf59535f2450a4bcf320d668148938e5f4aabc5c624",
+    "frontend/database_entries_dialog.py": "ac8c5f8069a072f95affb34a4779b4ef248f2881cbebe4be30dc10562f121d10",
+    "frontend/pdf_bookshelf.py": "239540f7ba16ab59f2cb74a9e9f6c0d42e33366945df8b939c1316678092fe7a"
+  }
+}

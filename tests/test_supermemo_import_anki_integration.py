@@ -8,6 +8,65 @@ import sys
 from textwrap import dedent
 
 
+def test_supermemo_parent_resolution_and_topic_state_scale_linearly():
+    script = dedent(r'''
+        import json
+        import tempfile
+        from datetime import date
+        from pathlib import Path
+        from anki.collection import Collection
+        from backend import db
+        from backend.supermemo_format import SuperMemoCollection, SuperMemoElement
+        from backend.supermemo_import import import_supermemo_collection
+
+        reads = 0
+        class CountedElement(SuperMemoElement):
+            def __getattribute__(self, name):
+                global reads
+                if name == "element_id": reads += 1
+                return super().__getattribute__(name)
+
+        size = 256
+        elements = tuple(CountedElement(
+            element_id=index, element_type=0, status=2, parent_id=index-1 if index>1 else None,
+            sort_order=index, priority_rank=index, a_factor=2.5, forgetting_index=10,
+            current_interval=7, due_date=None, repetition_count=0, lapse_count=0,
+            title=f"Topic {index}", question="", answer="", body="Synthetic body", history=(),
+        ) for index in range(1,size+1))
+        with tempfile.TemporaryDirectory(prefix="incremento-import-scaling-") as temporary:
+            root = Path(temporary)
+            collection = Collection(str(root/"synthetic.anki2"))
+            source = SuperMemoCollection(name="Synthetic", kno_path=root/"source.Kno",
+                collection_dir=root, fingerprint="b"*64, structure_version=22,
+                first_day=date(2024,1,1), last_day=date(2024,1,1), default_forgetting_index=10,
+                elements=elements, optimization_files=())
+            connection = db.get_connection(str(root), "Synthetic")
+            topic_pending = False
+            topic_commits = 0
+            def trace(statement):
+                global topic_pending, topic_commits
+                if "INTO topic_schedule" in statement: topic_pending = True
+                if statement == "COMMIT" and topic_pending:
+                    topic_commits += 1
+                    topic_pending = False
+            connection.set_trace_callback(trace)
+            result = import_supermemo_collection(str(root), "Synthetic", collection, source, deck_name="Synthetic")
+            connection.set_trace_callback(None)
+            print(json.dumps({"element_id_reads": reads, "topic_commits": topic_commits}))
+            assert result.created == size
+            assert reads <= size*48
+            assert topic_commits == 1
+            child = collection.get_card(result.card_ids_by_element[size]).note()
+            assert child["Incremento_Parent"] == f"Topic {size-1}"
+            assert len(db.get_knowledge_tree_nodes(str(root), "Synthetic")) == size
+            collection.close()
+            db.close_connection()
+    ''')
+    result = subprocess.run([sys.executable, "-c", script], cwd=os.path.dirname(os.path.dirname(__file__)),
+                            capture_output=True, text=True, timeout=90)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_supermemo_import_maps_native_state_without_replacing_anki_scheduler() -> None:
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     script = dedent(

@@ -1,6 +1,16 @@
 import reviewer_buttons as buttons
 
 
+def test_reviewer_event_uses_one_config_snapshot_for_classification_and_buttons(monkeypatch):
+    calls = []
+    config = {"use_fail_pass_on_items": False}
+    monkeypatch.setattr(buttons, "_resolved_config", lambda value=None: calls.append(value) or config)
+    monkeypatch.setattr(buttons, "resolve_topic_card_classifier", lambda value: ("classifier", value), raising=False)
+    monkeypatch.setattr(buttons, "is_topic_card", lambda card, **kwargs: calls.append(kwargs) or False)
+    assert buttons.reviewer_button_mode(object()) == "standard"
+    assert calls == [None, {"classifier": ("classifier", config)}]
+
+
 def test_configured_use_fail_pass_on_items_reads_config():
     assert buttons.configured_use_fail_pass_on_items({}) is True
     assert buttons.configured_use_fail_pass_on_items(
@@ -69,7 +79,7 @@ def test_reviewer_button_mode_prefers_topic_cards():
     card = _Card()
     original = buttons.is_topic_card
     try:
-        buttons.is_topic_card = lambda _card: True
+        buttons.is_topic_card = lambda _card, **_kwargs: True
         assert buttons.reviewer_button_mode(card, use_fail_pass_on_items=True) == "topic"
     finally:
         buttons.is_topic_card = original
@@ -82,7 +92,7 @@ def test_reviewer_button_mode_enables_items_fail_pass_for_non_topics():
     card = _Card()
     original = buttons.is_topic_card
     try:
-        buttons.is_topic_card = lambda _card: False
+        buttons.is_topic_card = lambda _card, **_kwargs: False
         assert (
             buttons.reviewer_button_mode(card, use_fail_pass_on_items=True)
             == "items_fail_pass"

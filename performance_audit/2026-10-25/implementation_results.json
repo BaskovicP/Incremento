@@ -1,7 +1,7 @@
 {
   "date": "2026-10-25",
   "baseline_commit": "6125c2ca3f4e21cdd52a861c765d3916bb838d28",
-  "scope": "First implementation batch; component measurements are not end-to-end UI latency.",
+  "scope": "Historical first implementation batch; current verified statuses and source hashes are in completion_results.json.",
   "source_sha256": {
     "backend/answer_schedule.py": "0de6336d1d7872ba130b552d2153788d97094b0bbf50dc36c31d330993f81f9a",
     "backend/browser_bridge.py": "f749ad8bc6006c91543014dbb44b25c4e3fa2cee62bc1353e3adbf3fc0c6461e",
@@ -1079,5 +1079,6 @@
     "checks.json"
   ],
   "release_checks_file": "release_checks.json",
-  "release_validation_passed": true
+  "release_validation_passed": true,
+  "superseded_by": "completion_results.json"
 }

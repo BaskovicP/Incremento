@@ -7,6 +7,13 @@ import knowledge_tree_postpone as ktp
 import priority_manager
 
 
+def test_scope_search_uses_provided_collection_when_global_collection_is_closed(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(ktp, "mw", None)
+    collection = SimpleNamespace(find_cards=lambda query: [7, 8])
+    assert ktp._search_card_ids("is:due", col=collection) == [7, 8]
+
+
 def _fresh_dir():
     return tempfile.mkdtemp()
 
@@ -77,7 +84,7 @@ class TestKnowledgeTreePostpone:
             patch.object(
                 ktp,
                 "is_topic_card",
-                side_effect=lambda card: int(card.id) in self.topic_ids,
+                side_effect=lambda card, **_kwargs: int(card.id) in self.topic_ids,
             ),
             patch.object(ktp, "get_card_metadata", side_effect=self._card_metadata),
         ]
@@ -89,7 +96,7 @@ class TestKnowledgeTreePostpone:
             patcher.stop()
         _reset_db()
 
-    def _sort_by_priority(self, card_ids, addon_dir=None, lower_is_more_important=True):
+    def _sort_by_priority(self, card_ids, addon_dir=None, lower_is_more_important=True, **_kwargs):
         ids = list(card_ids or [])
         return sorted(
             ids,

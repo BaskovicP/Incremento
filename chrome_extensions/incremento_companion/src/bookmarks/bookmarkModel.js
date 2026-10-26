@@ -81,25 +81,22 @@ function registerBookmark(itemsById, node, pathParts) {
 export function buildBookmarkItems(nodes, pathParts = [], itemsById = {}) {
   let nextItems = itemsById;
   let ownsItems = false;
-  function appendNodes(children, path) {
-    for (const node of children || []) {
-      if (node.url) {
-        if (nextItems[String(node.id)]) continue;
-        // Copy the caller's state once; only this traversal owns the result.
-        if (!ownsItems) {
-          nextItems = { ...itemsById };
-          ownsItems = true;
-        }
-        registerBookmark(nextItems, node, path);
-        continue;
-      }
-      const nextPath = node.id === "0"
-        ? path
-        : [...path, String(node.title || "").trim()].filter(Boolean);
-      appendNodes(node.children || [], nextPath);
+  const stack = [...(nodes || [])].reverse().map(node => ({node, path: null}));
+  while (stack.length) {
+    const {node, path} = stack.pop();
+    if (node.url) {
+      if (Object.hasOwn(nextItems, String(node.id)) && nextItems[String(node.id)]) continue;
+      if (!ownsItems) { nextItems = {...itemsById}; ownsItems = true; }
+      const segments = [];
+      for (let part = path; part; part = part.parent) segments.push(part.title);
+      registerBookmark(nextItems, node, [...pathParts, ...segments.reverse()]);
+    } else {
+      const title = node.id === "0" ? "" : String(node.title || "").trim();
+      const nextPath = title ? {title, parent: path} : path;
+      const children = node.children || [];
+      for (let i = children.length - 1; i >= 0; i--) stack.push({node: children[i], path: nextPath});
     }
   }
-  appendNodes(nodes, pathParts);
   return nextItems;
 }
 
@@ -115,6 +112,34 @@ export function collectBookmarkIds(node, itemsById) {
     out.push(...collectBookmarkIds(child, itemsById));
   }
   return out;
+}
+
+export function buildBookmarkTreeIndex(nodes) {
+  const bookmarkIds = [];
+  const ranges = new Map();
+  const byId = new Map();
+  const stack = [...(nodes || [])].reverse().map(node => ({ node, exit: false }));
+  while (stack.length) {
+    const { node, exit, start } = stack.pop();
+    const id = String(node.id);
+    if (exit) { ranges.set(id, [start, bookmarkIds.length]); continue; }
+    byId.set(id, node);
+    if (node.url) {
+      ranges.set(id, [bookmarkIds.length, bookmarkIds.length + 1]);
+      bookmarkIds.push(id);
+    } else {
+      stack.push({ node, exit: true, start: bookmarkIds.length });
+      const children = node.children || [];
+      for (let i = children.length - 1; i >= 0; i--) stack.push({ node: children[i], exit: false });
+    }
+  }
+  return { bookmarkIds, ranges, nodes: byId };
+}
+
+export function bookmarkSelectionPrefix(index, itemsById) {
+  const prefix = new Uint32Array(index.bookmarkIds.length + 1);
+  index.bookmarkIds.forEach((id, i) => { prefix[i + 1] = prefix[i] + (itemsById[id]?.selected ? 1 : 0); });
+  return prefix;
 }
 
 export function countSelected(ids, itemsById) {

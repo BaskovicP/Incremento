@@ -10,10 +10,15 @@ import sys
 import threading
 import unicodedata
 from collections import Counter, defaultdict, deque
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from itertools import combinations
 from pathlib import Path
+try:
+    from .bounded_cache import ByteLRU, thumbnail_window
+except ImportError:
+    from bounded_cache import ByteLRU, thumbnail_window
 
 from aqt import mw
 from aqt.qt import (
@@ -552,9 +557,40 @@ def _duplicate_channel_matches(
     )
 
 
+class _DuplicateMatches(Mapping):
+    """Exact-origin groups share one tuple; fuzzy edges remain direct edges."""
+
+    def __init__(self, entries, fuzzy, groups):
+        self.entries = entries
+        self.fuzzy = fuzzy
+        self.groups = groups
+        self.members = {
+            entries[index].card_id: index for index in set(fuzzy) | set(groups)
+        }
+
+    @property
+    def stored_reference_count(self):
+        distinct = {id(group): group for group in self.groups.values()}
+        return (sum(len(group) for group in distinct.values()) + len(self.groups)
+                + sum(len(edges) for edges in self.fuzzy.values()))
+
+    def __iter__(self):
+        return iter(self.members)
+
+    def __len__(self):
+        return len(self.members)
+
+    def __getitem__(self, card_id):
+        index = self.members[card_id]
+        peers = set(self.fuzzy.get(index, ()))
+        peers.update(self.groups.get(index, ()))
+        peers.discard(index)
+        return tuple(self.entries[peer] for peer in sorted(peers))
+
+
 def _bookshelf_duplicate_matches(
     entries: list[_BookshelfEntry],
-) -> dict[int, tuple[_BookshelfEntry, ...]]:
+) -> Mapping[int, tuple[_BookshelfEntry, ...]]:
     """Return direct fuzzy matches using rare words and character trigrams."""
     if len(entries) < 2:
         return {}
@@ -607,19 +643,23 @@ def _bookshelf_duplicate_matches(
                 feature_buckets[fingerprint.kind, channel, f"g:{trigram}"].append(index)
 
     matches: defaultdict[int, set[int]] = defaultdict(set)
+    origin_groups: dict[int, tuple[int, ...]] = {}
+    for indexes in exact_origins.values():
+        by_numbers = defaultdict(list)
+        for index in indexes:
+            by_numbers[fingerprints[index].origin_numbers].append(index)
+        for group in by_numbers.values():
+            if len(group) > 1:
+                shared = tuple(group)
+                origin_groups.update((index, shared) for index in group)
 
     def link(left_index: int, right_index: int) -> None:
         if left_index == right_index:
             return
+        if left_index in origin_groups and origin_groups[left_index] is origin_groups.get(right_index):
+            return
         matches[left_index].add(right_index)
         matches[right_index].add(left_index)
-
-    for indexes in exact_origins.values():
-        for left_index, right_index in combinations(indexes, 2):
-            left = fingerprints[left_index]
-            right = fingerprints[right_index]
-            if left.origin_numbers == right.origin_numbers:
-                link(left_index, right_index)
 
     for indexes in exact_titles.values():
         if len(indexes) > _MAX_EXACT_TITLE_BUCKET:
@@ -669,6 +709,8 @@ def _bookshelf_duplicate_matches(
         candidate_pairs.update(combinations(unique_indexes, 2))
 
     for left_index, right_index in candidate_pairs:
+        if left_index in origin_groups and origin_groups[left_index] is origin_groups.get(right_index):
+            continue
         if right_index in matches.get(left_index, set()):
             continue
         left = fingerprints[left_index]
@@ -715,11 +757,7 @@ def _bookshelf_duplicate_matches(
         if title_match or origin_match or metadata_match:
             link(left_index, right_index)
 
-    return {
-        entries[index].card_id: tuple(entries[match] for match in sorted(indexes))
-        for index, indexes in matches.items()
-        if indexes
-    }
+    return _DuplicateMatches(entries, matches, origin_groups)
 
 
 def _bookshelf_duplicate_groups(
@@ -1220,7 +1258,9 @@ def _render_pdf_first_page(pdf_path: str, render_width: int = _PREVIEW_WIDTH):
         page_height = float(page_size.height() or 0)
         render_height = int(render_width * 1.414)
         if page_width > 0 and page_height > 0:
-            render_height = max(1, int(render_width * page_height / page_width))
+            scale = min(render_width / page_width, render_width * 2 / page_height)
+            render_width = max(1, int(page_width * scale))
+            render_height = max(1, int(page_height * scale))
         image = doc.render(0, QSize(render_width, render_height))
         return image if image is not None and not image.isNull() else None
     except Exception:
@@ -1258,7 +1298,10 @@ class _DocumentBookshelfDialog(QDialog):
         self._last_opened_card_id = last_opened_card_id
         self._thumbnail_generation = 0
         self._thumbnail_queue: deque[tuple[QListWidgetItem, _BookshelfEntry]] = deque()
-        self._thumbnail_cache: dict[tuple[str, int], QIcon] = {}
+        self._thumbnail_cache = ByteLRU(24 * 1024 * 1024)
+        self._thumbnail_visible = set()
+        self._thumbnail_attempted = set()
+        self._thumbnail_busy = False
         self._duplicate_matches: dict[int, tuple[_BookshelfEntry, ...]] = {}
         self._attachment_counts = {
             int(card_id): max(0, int(count or 0))
@@ -1377,6 +1420,7 @@ class _DocumentBookshelfDialog(QDialog):
         self._list.setWrapping(True)
         self._list.setWordWrap(True)
         self._list.setUniformItemSizes(True)
+        self._list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self._list.setSpacing(8)
         self._list.setIconSize(QSize(_PREVIEW_WIDTH, _PREVIEW_HEIGHT))
         self._list.setGridSize(QSize(_TILE_WIDTH, _TILE_HEIGHT))
@@ -1416,13 +1460,22 @@ class _DocumentBookshelfDialog(QDialog):
         footer.addWidget(cancel_button)
         layout.addLayout(footer)
 
-        qconnect(self._search.textChanged, self._refresh)
+        self._filter_timer = QTimer(self)
+        self._filter_timer.setSingleShot(True)
+        self._filter_timer.setInterval(160)
+        qconnect(self._filter_timer.timeout, self._refresh)
+        self._thumbnail_timer = QTimer(self)
+        self._thumbnail_timer.setSingleShot(True)
+        self._thumbnail_timer.setInterval(80)
+        qconnect(self._thumbnail_timer.timeout, self._prioritize_thumbnails)
+        qconnect(self._list.verticalScrollBar().valueChanged, lambda _value: self._thumbnail_timer.start())
+        qconnect(self._search.textChanged, lambda _text: self._filter_timer.start())
         qconnect(self._kind_combo.currentIndexChanged, self._refresh)
         qconnect(
             self._duplicates_only_cb.stateChanged,
             self._duplicates_filter_changed,
         )
-        qconnect(self._tag_search.textChanged, self._refresh)
+        qconnect(self._tag_search.textChanged, lambda _text: self._filter_timer.start())
         qconnect(self._tag_mode_combo.currentIndexChanged, self._refresh)
         qconnect(self._browse_tags_button.clicked, self._show_tag_suggestions)
         qconnect(self._search.returnPressed, self._accept_current)
@@ -1658,6 +1711,8 @@ class _DocumentBookshelfDialog(QDialog):
         self._thumbnail_generation += 1
         generation = self._thumbnail_generation
         self._thumbnail_queue.clear()
+        self._thumbnail_visible.clear()
+        self._thumbnail_attempted.clear()
         self._list.clear()
 
         placeholder = self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
@@ -1719,13 +1774,8 @@ class _DocumentBookshelfDialog(QDialog):
                     else 0,
                 )
                 item.setToolTip(item_tooltip)
-                cache_key = (entry.kind, entry.card_id)
-                cached = self._thumbnail_cache.get(cache_key)
-                base_icon = cached or placeholder
-                item.setIcon(base_icon)
+                item.setIcon(placeholder)
                 self._list.addItem(item)
-                if cached is None:
-                    self._thumbnail_queue.append((item, entry))
                 if entry.card_id == preferred_card_id:
                     selected_item = item
             if offset + 40 < len(visible_entries):
@@ -1741,7 +1791,7 @@ class _DocumentBookshelfDialog(QDialog):
                 self._list.scrollToItem(selected_item)
             self._update_option_availability()
 
-            QTimer.singleShot(0, lambda current=generation: self._load_next_thumbnail(current))
+            self._thumbnail_timer.start()
 
         self._count_label.setText(
             _bookshelf_count_text(self._entries, visible_entries, kind)
@@ -1904,11 +1954,9 @@ class _DocumentBookshelfDialog(QDialog):
             entry.card_id for entry in self._entries if entry.note_id in deleted
         }
         self._entries = _without_bookshelf_notes(self._entries, note_ids)
-        self._thumbnail_cache = {
-            key: icon
-            for key, icon in self._thumbnail_cache.items()
-            if key[1] not in deleted_card_ids
-        }
+        for card_id in deleted_card_ids:
+            for kind in (_KIND_PDF, _KIND_EPUB):
+                self._thumbnail_cache.discard((kind, card_id))
         self._attachment_checked_card_ids.difference_update(deleted_card_ids)
         for card_id in deleted_card_ids:
             self._attachment_counts.pop(card_id, None)
@@ -1925,12 +1973,50 @@ class _DocumentBookshelfDialog(QDialog):
         except RuntimeError:
             return
 
+    def _prioritize_thumbnails(self) -> None:
+        if not self.isVisible() or self._pdf_metadata_cancelled.is_set() or self._profile != str(_active_profile() or ""):
+            return
+        viewport = self._list.viewport()
+        # QListView's grid already includes spacing; adding it again drifts
+        # away from the actual visible rows in a long library.
+        columns = max(1, viewport.width() // _TILE_WIDTH)
+        first_row = self._list.verticalScrollBar().value() // _TILE_HEIGHT
+        rows = max(1, math.ceil(viewport.height() / _TILE_HEIGHT))
+        window = set(thumbnail_window(self._list.count(), columns=columns, first_row=first_row, visible_rows=rows))
+        placeholder = self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+        for index in self._thumbnail_visible - window:
+            item = self._list.item(index)
+            if item is not None:
+                item.setIcon(placeholder)
+        self._thumbnail_visible = window
+        self._thumbnail_queue.clear()
+        for index in sorted(window):
+            item = self._list.item(index)
+            if item is None:
+                continue
+            entry = item.data(Qt.ItemDataRole.UserRole)
+            key = (entry.kind, entry.card_id)
+            cached = self._thumbnail_cache.get(key)
+            if cached is not None:
+                item.setIcon(cached)
+            elif key not in self._thumbnail_attempted:
+                self._thumbnail_queue.append((item, entry))
+        self._load_next_thumbnail(self._thumbnail_generation)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "_thumbnail_timer"):
+            self._thumbnail_timer.start()
+
     def _load_next_thumbnail(self, generation: int) -> None:
         if generation != self._thumbnail_generation or not self.isVisible():
+            return
+        if self._thumbnail_busy or self._profile != str(_active_profile() or ""):
             return
 
         while self._thumbnail_queue:
             item, entry = self._thumbnail_queue.popleft()
+            self._thumbnail_attempted.add((entry.kind, entry.card_id))
             cover_path = _existing_media_preview_path(
                 self._media_dir,
                 entry.cover_filename,
@@ -1959,7 +2045,11 @@ class _DocumentBookshelfDialog(QDialog):
                 return _render_pdf_first_page(path)
 
             def finished(future, current_item=item, current_entry=entry, current=generation):
-                if current != self._thumbnail_generation or not self.isVisible():
+                self._thumbnail_busy = False
+                if current != self._thumbnail_generation:
+                    self._thumbnail_timer.start()
+                    return
+                if not self.isVisible() or self._profile != str(_active_profile() or ""):
                     return
                 try:
                     image = future.result()
@@ -1979,7 +2069,8 @@ class _DocumentBookshelfDialog(QDialog):
 
             taskman = getattr(mw, "taskman", None)
             if taskman is not None and hasattr(taskman, "run_in_background"):
-                taskman.run_in_background(render, finished)
+                self._thumbnail_busy = True
+                taskman.run_in_background(render, finished, uses_collection=False)
                 return
 
             # Never fall back to synchronous image decoding on the UI thread.
@@ -2004,8 +2095,10 @@ class _DocumentBookshelfDialog(QDialog):
             entry.card_id,
         ):
             return
-        self._thumbnail_cache[(entry.kind, entry.card_id)] = icon
-        item.setIcon(icon)
+        self._thumbnail_cache.put((entry.kind, entry.card_id), icon, _PREVIEW_WIDTH * _PREVIEW_WIDTH * 2 * 4)
+        self._thumbnail_attempted.discard((entry.kind, entry.card_id))
+        if self._list.row(item) in self._thumbnail_visible:
+            item.setIcon(icon)
 
     def _accept_reference(self, *, beside: bool, new_window: bool = False) -> None:
         entry = self._selected_entry()

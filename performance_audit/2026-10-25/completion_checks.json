@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-26",
+  "status": "passed",
+  "shared_working_tree_release": {
+    "command": ".venv/bin/python scripts/package_addon.py --release --clean-staging --name incremento-addon-20261026-performance-complete.ankiaddon",
+    "python": {
+      "passed": 4090,
+      "warnings": 73,
+      "seconds": 174.18,
+      "failed": 0,
+      "skipped": 0
+    },
+    "viewer_tests": 249,
+    "companion_tests": 236,
+    "translation_catalogs": 21,
+    "checks": [
+      "catalog compilation parity",
+      "translation spreadsheet parity",
+      "UI literal inventory",
+      "reader build",
+      "companion build",
+      "Python compilation",
+      "Ruff",
+      "configured mypy",
+      "ESLint",
+      "4 mutation guards",
+      "full pytest",
+      "viewer Node tests",
+      "companion Node tests",
+      "archive allowlist/corruption check"
+    ]
+  },
+  "extra_checks": {
+    "deterministic_repair_eval": {
+      "failed": 0,
+      "passed": 7,
+      "results": [
+        {
+          "case_id": "absolute-path-rejection",
+          "evidence": "Report appears to contain local absolute path; replace it with a non-sensitive placeholder.",
+          "outcome": "rejected",
+          "passed": true
+        },
+        {
+          "case_id": "credential-rejection",
+          "evidence": "Report appears to contain credential-like text; replace it with a non-sensitive placeholder.",
+          "outcome": "rejected",
+          "passed": true
+        },
+        {
+          "case_id": "email-rejection",
+          "evidence": "Report appears to contain email-like text; replace it with a non-sensitive placeholder.",
+          "outcome": "rejected",
+          "passed": true
+        },
+        {
+          "case_id": "naked-credential-rejection",
+          "evidence": "Report appears to contain credential-like text; replace it with a non-sensitive placeholder.",
+          "outcome": "rejected",
+          "passed": true
+        },
+        {
+          "case_id": "path-traversal-protection",
+          "evidence": "observed=True",
+          "outcome": "protected",
+          "passed": true
+        },
+        {
+          "case_id": "prompt-injection-framing",
+          "evidence": "required escaped marker present",
+          "outcome": "accepted",
+          "passed": true
+        },
+        {
+          "case_id": "url-rejection",
+          "evidence": "Report appears to contain URL; replace it with a non-sensitive placeholder.",
+          "outcome": "rejected",
+          "passed": true
+        }
+      ],
+      "schema_version": 1,
+      "skipped": 0
+    },
+    "npm_audit": "0 vulnerabilities",
+    "pip_check": "No broken requirements found",
+    "git_diff_check": "passed",
+    "generated_assets_reproducibility": {
+      "identical": true,
+      "files": {
+        "web/dist/pdf_viewer.js.map": "317ea35c6966af65c9d256a85901f6b5399e00a917c6ede0594f9b19a88b5736",
+        "web/dist/pdf_viewer.js": "ab80c7e265aa5b9ed1d440a33be7ca3b01294930ebc3f74006cd86740543ed59",
+        "chrome_extensions/incremento_companion/dist/popup.js": "1f6461fe1f9c149d9cac440faa93fdda2431222a6e8f118562d0264a8e899b69",
+        "chrome_extensions/incremento_companion/dist/background.js": "ab99193a1ee6cd9f3845f2d8255e9631fa5ad71c43060529e0ec61f0bd65a211",
+        "chrome_extensions/incremento_companion/dist/bookmarks.js": "4a3fe0f555c616dbf83adb7fad014dc0ca096ade5d59e56e94653c0eb6c6b41b",
+        "chrome_extensions/incremento_companion/dist/offscreen.js": "42a902c0a38d3511194cff62e13901a64715c22117dcf7b876da264195ab55be",
+        "chrome_extensions/incremento_companion/dist/content.js": "c89bad20e1d92e461f65778706189946463ebb9c9592d70c8ab5cc3ee17b0151",
+        "chrome_extensions/incremento_companion/dist/assets/extension-vendor.js": "901d6eeb41086fd07accdae7e184e88a419ff785379fea09c6fd320fb3e56810",
+        "chrome_extensions/incremento_companion/dist/assets/builtin_translation_packs.js": "ad8214345421a6a949073289a5c5f809324bd8f77de66d298e2addd2a5e9b15b",
+        "chrome_extensions/incremento_companion/dist/assets/extension-shared.js": "3602716f49fc845531080c8c5b950fa7c028dd50309534fb6f4e2d7c3002e36c",
+        "chrome_extensions/incremento_companion/dist/assets/extension-ui.js": "9e3d8d9d74b2c99d19c7d0bbbdc516e07e6a9d010ed2d2a42b6aa2b464e1a24e",
+        "chrome_extensions/incremento_companion/dist/assets/extension-language-packs.js": "42145a4995f9a20f512b35b6ef652fd4640c9d4e94680d6cf770fcae309d1eee"
+      }
+    }
+  },
+  "shared_working_tree_archive": {
+    "path": "/Users/paulobaskovic/Library/Application Support/Anki2/addons21/incremento/dist/incremento-addon-20261026-shared-worktree.ankiaddon",
+    "sha256": "a285b8d7fa2d113e90e527dc9f0e112c2500603f1acefca5ddf5e24b2a029964",
+    "bytes": 3375161,
+    "source_equal_files": 285,
+    "runtime_data_and_meta_excluded": true,
+    "scope": "Includes the preserved concurrent startup/focus work; performance-only commit/package is verified separately."
+  },
+  "execution_notes": [
+    "Offscreen Qt, isolated headless Chromium and temporary native Anki collections were used.",
+    "Initial restricted browser/socket launches needed isolated-process permissions; reruns used the same assertions.",
+    "No live profile/runtime data was inspected or changed.",
+    "Documentation was repackaged after the full runtime release gate; all packaged files match this shared source snapshot.",
+    "The initial isolated snapshot verification hit a temporary parent-directory package-name error; the scratch layout was corrected and the complete gate then passed unchanged."
+  ],
+  "git": {
+    "scope": "performance-only changes; concurrent work preserved unstaged",
+    "branch": "master",
+    "remote": "origin/master",
+    "account": "BaskovicP",
+    "commit_email": "pbaskovi@gmail.com"
+  },
+  "performance_only_commit_release": {
+    "command": ".venv/bin/python scripts/package_addon.py --release --clean-staging --name incremento-addon-20261026-performance-complete.ankiaddon",
+    "scope": "Export of the staged performance source, with concurrent startup/focus changes excluded. Generated catalogs and runtime assets rebuilt in this snapshot.",
+    "python": {
+      "passed": 4075,
+      "warnings": 61,
+      "seconds": 176.71,
+      "failed": 0,
+      "skipped": 0
+    },
+    "viewer_tests": 249,
+    "companion_tests": 236,
+    "all_release_gates": "passed",
+    "archive": {
+      "path": "/Users/paulobaskovic/Library/Application Support/Anki2/addons21/incremento/dist/incremento-addon-20261026-performance-complete.ankiaddon",
+      "sha256": "405617b6931f2f7d1f52a221ea2404b3f8c66cd3ce3c502b217162e8ad1f6883",
+      "bytes": 3369833,
+      "source_equal_files": 283,
+      "source_comparison": "Every packaged source file equals the staged Git index; generated package manifest checked by packager.",
+      "runtime_data_and_meta_excluded": true
+    }
+  }
+}

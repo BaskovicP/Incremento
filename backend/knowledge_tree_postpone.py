@@ -18,6 +18,8 @@ try:
         get_knowledge_tree_postpone_preset,
         get_knowledge_tree_postpone_presets,
         get_topic_schedule,
+        get_topic_schedules,
+        set_topic_schedules,
         save_knowledge_tree_postpone_preset,
         set_default_knowledge_tree_postpone_preset,
         set_topic_schedule,
@@ -33,9 +35,10 @@ try:
     from .priority_manager import (
         configured_priority_lower_is_more_important,
         get_priority,
+        get_priorities,
     )
     from .scheduler_config import build_ready_filter
-    from .topic_scheduler import is_topic_card
+    from .topic_scheduler import is_topic_card, resolve_topic_card_classifier
 except ImportError:
     from cards import sort_cards_for_priority_mode  # type: ignore
     from db import (  # type: ignore
@@ -45,6 +48,8 @@ except ImportError:
         get_knowledge_tree_postpone_preset,
         get_knowledge_tree_postpone_presets,
         get_topic_schedule,
+        get_topic_schedules,
+        set_topic_schedules,
         save_knowledge_tree_postpone_preset,
         set_default_knowledge_tree_postpone_preset,
         set_topic_schedule,
@@ -60,9 +65,10 @@ except ImportError:
     from priority_manager import (  # type: ignore
         configured_priority_lower_is_more_important,
         get_priority,
+        get_priorities,
     )
     from scheduler_config import build_ready_filter  # type: ignore
-    from topic_scheduler import is_topic_card  # type: ignore
+    from topic_scheduler import is_topic_card, resolve_topic_card_classifier  # type: ignore
 
 
 SCOPE_ALL_OUTSTANDING = "all_outstanding"
@@ -379,8 +385,8 @@ def list_subbranch_presets(
     return results
 
 
-def _collection_available() -> bool:
-    return bool(mw is not None and getattr(mw, "col", None) is not None)
+def _collection_available(col=None) -> bool:
+    return (col if col is not None else getattr(mw, "col", None)) is not None
 
 
 def _group_rows(rows: list[dict]) -> dict[int | None, list[dict]]:
@@ -407,11 +413,12 @@ def _cid_clause(card_ids: Iterable[int]) -> str:
     return "(" + " OR ".join(f"cid:{card_id}" for card_id in ids) + ")"
 
 
-def _search_card_ids(search: str) -> list[int]:
-    if not _collection_available():
+def _search_card_ids(search: str, *, col=None) -> list[int]:
+    col = col if col is not None else getattr(mw, "col", None)
+    if not _collection_available(col):
         return []
     try:
-        return [int(card_id) for card_id in mw.col.find_cards(str(search or "").strip())]
+        return [int(card_id) for card_id in col.find_cards(str(search or "").strip())]
     except Exception:
         return []
 
@@ -435,6 +442,7 @@ def _eligible_scope_ids(
     candidate_card_ids: Iterable[int] | None,
     *,
     include_non_outstanding: bool,
+    col=None,
 ) -> list[int]:
     base_filter = "-is:suspended"
     if not include_non_outstanding:
@@ -445,8 +453,8 @@ def _eligible_scope_ids(
         )
     ids = _normalize_browser_card_ids(candidate_card_ids)
     if not ids:
-        return _search_card_ids(base_filter)
-    return _search_card_ids(f"{base_filter} {_cid_clause(ids)}")
+        return _search_card_ids(base_filter, col=col)
+    return _search_card_ids(f"{base_filter} {_cid_clause(ids)}", col=col)
 
 
 def _resolve_scope_card_ids(
@@ -456,18 +464,19 @@ def _resolve_scope_card_ids(
     *,
     branch_root_card_id: int | None = None,
     browser_card_ids: Iterable[int] | None = None,
+    col=None,
 ) -> tuple[list[int], int | None]:
     scope = config["scope"]
     include_non_outstanding = bool(config["adjust"]["include_non_outstanding"])
 
     if scope == SCOPE_ALL_OUTSTANDING:
-        return _eligible_scope_ids(None, include_non_outstanding=include_non_outstanding), None
+        return _eligible_scope_ids(None, include_non_outstanding=include_non_outstanding, col=col), None
 
     if scope == SCOPE_CURRENT_BROWSER:
         return (
             _eligible_scope_ids(
                 _normalize_browser_card_ids(browser_card_ids),
-                include_non_outstanding=include_non_outstanding,
+                include_non_outstanding=include_non_outstanding, col=col,
             ),
             None,
         )
@@ -484,18 +493,18 @@ def _resolve_scope_card_ids(
     return (
         _eligible_scope_ids(
             subtree_ids,
-            include_non_outstanding=include_non_outstanding,
+            include_non_outstanding=include_non_outstanding, col=col,
         ),
         root_card_id,
     )
 
 
-def _classify_card_kind(tree_row_by_card_id: dict[int, dict], card) -> str:
+def _classify_card_kind(tree_row_by_card_id: dict[int, dict], card, *, classifier=None, col=None) -> str:
     tree_row = tree_row_by_card_id.get(int(card.id))
     if tree_row is not None:
         return normalize_node_kind(tree_row.get("node_kind") or NODE_KIND_TOPIC)
     try:
-        return NODE_KIND_TOPIC if is_topic_card(card) else NODE_KIND_ITEM
+        return NODE_KIND_TOPIC if (is_topic_card(card, classifier=classifier, col=col) if classifier is not None else is_topic_card(card)) else NODE_KIND_ITEM
     except Exception:
         return NODE_KIND_ITEM
 
@@ -504,25 +513,41 @@ def _card_info_map(
     addon_dir: str,
     profile: str,
     card_ids: Iterable[int],
+    *, col=None,
 ) -> dict[int, dict]:
-    if not _collection_available():
+    explicit_col = col
+    col = col if col is not None else getattr(mw, "col", None)
+    if not _collection_available(col):
         return {}
     rows = get_knowledge_tree_nodes(addon_dir, profile)
     tree_row_by_card_id = {int(row["card_id"]): row for row in rows}
 
+    card_ids = list(card_ids)
+    classifier = None
+    if explicit_col is not None:
+        try:
+            from .card_projection import ReadCollection, supports_projection
+        except ImportError:
+            from card_projection import ReadCollection, supports_projection
+        if supports_projection(col):
+            col = ReadCollection(col)
+            col.load(card_ids)
+        classifier = resolve_topic_card_classifier()
+    priorities = get_priorities(addon_dir, profile, card_ids)
+    schedules = get_topic_schedules(addon_dir, profile, card_ids)
     info_map: dict[int, dict] = {}
     for raw_card_id in card_ids:
         try:
             card_id = int(raw_card_id)
-            card = mw.col.get_card(card_id)
+            card = col.get_card(card_id)
         except Exception:
             continue
-        kind = _classify_card_kind(tree_row_by_card_id, card)
-        priority = float(get_priority(addon_dir, profile, card_id))
+        kind = _classify_card_kind(tree_row_by_card_id, card, classifier=classifier, col=col)
+        priority = float(priorities.get(card_id, 50.0))
         current_interval = max(1, _to_int(getattr(card, "ivl", 1), 1))
         a_factor = None
         if kind == NODE_KIND_TOPIC:
-            a_factor, scheduled_interval = get_topic_schedule(addon_dir, profile, card_id)
+            a_factor, scheduled_interval = schedules.get(card_id, (3.5, 1))
             current_interval = max(current_interval, max(1, int(scheduled_interval or 1)))
         info_map[card_id] = {
             "card_id": card_id,
@@ -804,13 +829,14 @@ def _segment_apply_infos(
     info_map: dict[int, dict],
     *,
     lower_is_more_important: bool,
+    col=None,
 ) -> list[dict]:
     card_ids = [
         int(card_id)
         for card_id in sort_cards_for_priority_mode(
             list(segment["card_ids"]),
             addon_dir=addon_dir,
-            lower_is_more_important=lower_is_more_important,
+            lower_is_more_important=lower_is_more_important, col=col, profile=profile,
         )
         if int(card_id) in info_map
     ]
@@ -908,6 +934,7 @@ def simulate_postpone_plan(
     *,
     branch_root_card_id: int | None = None,
     browser_card_ids: Iterable[int] | None = None,
+    col=None,
 ) -> dict:
     normalized = normalize_postpone_preset(
         config,
@@ -918,9 +945,9 @@ def simulate_postpone_plan(
         profile,
         normalized,
         branch_root_card_id=branch_root_card_id,
-        browser_card_ids=browser_card_ids,
+        browser_card_ids=browser_card_ids, col=col,
     )
-    info_map = _card_info_map(addon_dir, profile, candidate_ids)
+    info_map = _card_info_map(addon_dir, profile, candidate_ids, col=col)
     all_candidates = [info_map[card_id] for card_id in candidate_ids if int(card_id) in info_map]
     lower_is_more_important = configured_priority_lower_is_more_important()
     segments = _build_segments(
@@ -938,7 +965,7 @@ def simulate_postpone_plan(
             profile,
             segment,
             info_map,
-            lower_is_more_important=lower_is_more_important,
+            lower_is_more_important=lower_is_more_important, col=col,
         ):
             apply_infos_by_id[int(info["card_id"])] = info
 
@@ -947,7 +974,7 @@ def simulate_postpone_plan(
         for card_id in sort_cards_for_priority_mode(
             list(apply_infos_by_id.keys()),
             addon_dir=addon_dir,
-            lower_is_more_important=lower_is_more_important,
+            lower_is_more_important=lower_is_more_important, col=col, profile=profile,
         )
     ]
     summary = _summary_dict(all_candidates, ordered_apply_infos)
@@ -965,23 +992,29 @@ def apply_postpone_plan(
     *,
     branch_root_card_id: int | None = None,
     browser_card_ids: Iterable[int] | None = None,
+    col=None, changes=None,
 ) -> dict:
-    if not _collection_available():
+    col = col if col is not None else getattr(mw, "col", None)
+    if not _collection_available(col):
         raise RuntimeError("Anki collection is not available.")
     summary = simulate_postpone_plan(
         addon_dir,
         profile,
         config,
         branch_root_card_id=branch_root_card_id,
-        browser_card_ids=browser_card_ids,
+        browser_card_ids=browser_card_ids, col=col,
     )
-    for info in summary.get("details", []):
-        card_id = int(info["card_id"])
-        new_interval = int(info["new_interval"])
-        mw.col.sched.set_due_date([card_id], str(new_interval))
-        if info["node_kind"] == NODE_KIND_TOPIC:
-            a_factor, _current_interval = get_topic_schedule(addon_dir, profile, card_id)
-            set_topic_schedule(addon_dir, profile, card_id, float(a_factor), new_interval)
+    updates = []
+    try:
+        for info in summary.get("details", []):
+            card_id, new_interval = int(info["card_id"]), int(info["new_interval"])
+            change = col.sched.set_due_date([card_id], str(new_interval))
+            if changes is not None and change is not None:
+                changes.append(getattr(change, "changes", change))
+            if info["node_kind"] == NODE_KIND_TOPIC:
+                updates.append((card_id, float(info.get("a_factor") or 3.5), new_interval, None))
+    finally:
+        set_topic_schedules(addon_dir, profile, updates)
     summary["applied_count"] = int(summary.get("elements_to_postpone") or 0)
     return summary
 

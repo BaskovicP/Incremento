@@ -1,6 +1,34 @@
 import current_document_search_dialog as dialog
 
 
+def test_reader_results_capture_profile_for_workers_and_keep_open_hit_arguments():
+    import ast
+    from pathlib import Path
+    from types import SimpleNamespace
+    source = (Path(__file__).resolve().parents[1] / "__init__.py").read_text()
+    function = next(node for node in ast.parse(source).body if isinstance(node, ast.FunctionDef)
+                    and node.name == "_open_current_document_search_results")
+    options, searches, opened = [], [], []
+    pdf = SimpleNamespace(
+        current_pdf_search_context=lambda: {"cardId": 7, "documentLabel": "Synthetic", "query": ""},
+        current_pdf_card_id=lambda: 7,
+        current_card_pdf_search_hits=lambda *args, **kwargs: searches.append((args, kwargs)) or [],
+        open_current_pdf_search_hit=lambda *args: opened.append(args),
+    )
+    class Picker:
+        def __init__(self, parent, **kwargs): options.append(kwargs)
+        def exec(self): return 0
+    namespace = {"_active_profile": lambda: "Captured", "_pdf_dock_mod": pdf,
+                 "_CurrentDocumentSearchDialog": Picker, "mw": object(), "_open_search_all": lambda query: None}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "<reader search wiring>", "exec"), namespace)
+    assert namespace[function.name]() is True
+    cancel = object()
+    options[0]["search_hits_fn"]("query", cancel=cancel)
+    assert searches == [((7, "query"), {"profile": "Captured", "cancel": cancel})]
+    options[0]["open_hit_fn"]({"page": 3}, 0, "query")
+    assert opened == [({"page": 3}, 0, "query")]
+
+
 def test_document_hit_titles_translate_locations_without_changing_snippets(monkeypatch):
     monkeypatch.setattr(dialog, "t", lambda key, **values: {
         "reader_page_number": "Stranica {page}",

@@ -415,6 +415,27 @@ def test_prepare_add_content_request_decodes_pdf_base64_off_main(monkeypatch):
     assert not pdf_path.exists()
 
 
+def test_webpage_pdf_is_rendered_then_extracted_before_collection_mutation(monkeypatch):
+    calls = []
+    def render(item, path):
+        calls.append(("render", item["capture_opened_page"]))
+        Path(path).write_bytes(b"%PDF-1.7\nsynthetic")
+    def extract(path):
+        assert Path(path).read_bytes().startswith(b"%PDF-")
+        calls.append(("extract", True))
+        return []
+    monkeypatch.setattr(browser_bridge, "_extract_pdf_pages_text_off_main", extract)
+    prepared = browser_bridge.prepare_add_content_request_off_main({
+        "kind": "pdf", "url": "https://example.test/article", "html": "<p>Article</p>",
+        "captureOpenedPage": True,
+    }, render_webpage=render)
+    path = prepared["items"][0][browser_bridge._PREPARED_PDF_PATH_KEY]
+    assert calls == [("render", True), ("extract", True)]
+    assert prepared["items"][0][browser_bridge._PREPARED_PDF_PAGE_TEXTS_KEY] == []
+    browser_bridge.cleanup_prepared_add_content_request(prepared)
+    assert not Path(path).exists()
+
+
 @pytest.mark.parametrize("use_browser_bytes", [True, False])
 def test_prepared_textless_pdf_keeps_completed_empty_extraction(monkeypatch, use_browser_bytes):
     """An empty preparation is final input, not a request to extract on Qt."""

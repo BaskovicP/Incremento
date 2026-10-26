@@ -1,0 +1,16 @@
+{
+  "baseline_commit": "6a371c732fc6c7d65bb4468fdb5853a2926ec097",
+  "F16_find": {
+    "before": {
+      "render_callbacks": 10,
+      "highlight_work_ms": 89.10000014305115,
+      "matched_fragments": 1001
+    },
+    "after": {
+      "render_callbacks": 2,
+      "highlight_work_ms": 5.200000047683716,
+      "matched_fragments": 1001
+    }
+  },
+  "scope": "1000 text spans plus one external update; 10 animation frames; actual production style functions and equivalent observer lifecycle; one browser sample"
+}

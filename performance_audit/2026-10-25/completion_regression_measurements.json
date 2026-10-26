@@ -1,0 +1,473 @@
+{
+  "environment": {
+    "python": "3.14.5",
+    "platform": "Darwin",
+    "machine": "arm64",
+    "sqlite": "3.53.2"
+  },
+  "scope": "Synthetic local inputs; medians of three samples unless a measurement lists five; no live Anki or GUI latency measured",
+  "source_sha256": {
+    "backend/db.py": "e8dfe4e803d838201cd325d1228a5d86756d718da5fab4307e282fead4b2d09b",
+    "backend/statistics.py": "a09728e968b6e8c4a8969bef360a529a69c52337c15c23760e692685ae768960",
+    "backend/config_service.py": "17e2650bc60894fcf4ad92c20b843a8bf6df44fa1ea12252944261902a4a764a",
+    "backend/priority_manager.py": "cbfe77f53d46ad8a10d1b8019ff0af1d7ce0a4709f1db195ee5b184a77423a5c",
+    "backend/db_connection.py": "b5356c346c8b478812ae6d3237950588fa5550cb9e6ba189babbe62b6f6a3c9d",
+    "frontend/pdf_bookshelf.py": "239540f7ba16ab59f2cb74a9e9f6c0d42e33366945df8b939c1316678092fe7a",
+    "frontend/database_entries_dialog.py": "ac8c5f8069a072f95affb34a4779b4ef248f2881cbebe4be30dc10562f121d10",
+    "backend/epub_manager.py": "65906e2068a9993241aa3dc02382ea893dd8e06df526723487bffee2c0d30a81",
+    "backend/answer_schedule.py": "0de6336d1d7872ba130b552d2153788d97094b0bbf50dc36c31d330993f81f9a"
+  },
+  "tree_structure": [
+    {
+      "shape": "star",
+      "nodes": 1000,
+      "median_ms": 1.279,
+      "samples_ms": [
+        1.382,
+        1.279,
+        1.265
+      ]
+    },
+    {
+      "shape": "star",
+      "nodes": 2000,
+      "median_ms": 2.623,
+      "samples_ms": [
+        2.882,
+        2.623,
+        2.57
+      ]
+    },
+    {
+      "shape": "star",
+      "nodes": 4000,
+      "median_ms": 5.983,
+      "samples_ms": [
+        6.512,
+        5.983,
+        5.586
+      ]
+    },
+    {
+      "shape": "chain",
+      "nodes": 1000,
+      "median_ms": 1.459,
+      "samples_ms": [
+        1.532,
+        1.452,
+        1.459
+      ]
+    },
+    {
+      "shape": "chain",
+      "nodes": 2000,
+      "median_ms": 3.185,
+      "samples_ms": [
+        3.389,
+        2.998,
+        3.185
+      ]
+    },
+    {
+      "shape": "chain",
+      "nodes": 4000,
+      "median_ms": 6.276,
+      "samples_ms": [
+        6.864,
+        6.259,
+        6.276
+      ]
+    }
+  ],
+  "priority_reads": {
+    "rows": 4000,
+    "public_helper": {
+      "median_ms": 144.82,
+      "samples_ms": [
+        144.82,
+        149.61,
+        144.196
+      ]
+    },
+    "same_connection_per_row": {
+      "median_ms": 6.579,
+      "samples_ms": [
+        6.598,
+        6.579,
+        6.468
+      ]
+    },
+    "batched_900": {
+      "median_ms": 1.254,
+      "samples_ms": [
+        1.217,
+        1.304,
+        1.254
+      ]
+    }
+  },
+  "statistics": [
+    {
+      "tags_per_populated_group": 1,
+      "atomic_file_writes_per_cycle": 2,
+      "combined_event_api": true,
+      "fixture_bytes": 604,
+      "median_ms": 2.404,
+      "samples_ms": [
+        2.668,
+        2.424,
+        2.332,
+        2.305,
+        2.404
+      ]
+    },
+    {
+      "tags_per_populated_group": 128,
+      "atomic_file_writes_per_cycle": 2,
+      "combined_event_api": true,
+      "fixture_bytes": 19120,
+      "median_ms": 15.887,
+      "samples_ms": [
+        15.887,
+        15.957,
+        17.103,
+        15.397,
+        15.315
+      ]
+    },
+    {
+      "tags_per_populated_group": 512,
+      "atomic_file_writes_per_cycle": 2,
+      "combined_event_api": true,
+      "fixture_bytes": 79024,
+      "median_ms": 58.59,
+      "samples_ms": [
+        62.527,
+        59.221,
+        57.344,
+        58.0,
+        58.59
+      ]
+    }
+  ],
+  "search": {
+    "pages": 12000,
+    "page_chars": 1380,
+    "fts5_active": true,
+    "search": [
+      {
+        "requested_results": 120,
+        "candidate_limit": 3000,
+        "median_ms": 147.585,
+        "samples_ms": [
+          128.79,
+          147.585,
+          154.735
+        ]
+      },
+      {
+        "requested_results": 1200,
+        "candidate_limit": 30000,
+        "median_ms": 433.001,
+        "samples_ms": [
+          440.405,
+          433.001,
+          420.391
+        ]
+      }
+    ],
+    "highlight_like_plan": [
+      [
+        5,
+        0,
+        223,
+        "SCAN pdf_highlights USING INDEX idx_pdf_highlights_card_page"
+      ]
+    ]
+  },
+  "fts_replacement": {
+    "available": true,
+    "replace_existing": [
+      {
+        "pages": 500,
+        "indexed_fts_key_lookup": true,
+        "fts_delete_plan": [
+          [
+            3,
+            0,
+            46,
+            "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:="
+          ],
+          [
+            6,
+            0,
+            0,
+            "SCALAR SUBQUERY 1"
+          ],
+          [
+            10,
+            6,
+            39,
+            "SEARCH pdf_text_fts_keys USING COVERING INDEX sqlite_autoindex_pdf_text_fts_keys_1 (card_id=? AND page=?)"
+          ]
+        ],
+        "median_ms": 14.516,
+        "samples_ms": [
+          14.278,
+          14.712,
+          14.516
+        ]
+      },
+      {
+        "pages": 1000,
+        "indexed_fts_key_lookup": true,
+        "fts_delete_plan": [
+          [
+            3,
+            0,
+            46,
+            "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:="
+          ],
+          [
+            6,
+            0,
+            0,
+            "SCALAR SUBQUERY 1"
+          ],
+          [
+            10,
+            6,
+            39,
+            "SEARCH pdf_text_fts_keys USING COVERING INDEX sqlite_autoindex_pdf_text_fts_keys_1 (card_id=? AND page=?)"
+          ]
+        ],
+        "median_ms": 29.002,
+        "samples_ms": [
+          29.002,
+          28.366,
+          29.028
+        ]
+      },
+      {
+        "pages": 2000,
+        "indexed_fts_key_lookup": true,
+        "fts_delete_plan": [
+          [
+            3,
+            0,
+            46,
+            "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:="
+          ],
+          [
+            6,
+            0,
+            0,
+            "SCALAR SUBQUERY 1"
+          ],
+          [
+            10,
+            6,
+            39,
+            "SEARCH pdf_text_fts_keys USING COVERING INDEX sqlite_autoindex_pdf_text_fts_keys_1 (card_id=? AND page=?)"
+          ]
+        ],
+        "median_ms": 62.788,
+        "samples_ms": [
+          62.295,
+          62.788,
+          69.49
+        ]
+      },
+      {
+        "pages": 4000,
+        "indexed_fts_key_lookup": true,
+        "fts_delete_plan": [
+          [
+            3,
+            0,
+            46,
+            "SCAN pdf_text_fts VIRTUAL TABLE INDEX 0:="
+          ],
+          [
+            6,
+            0,
+            0,
+            "SCALAR SUBQUERY 1"
+          ],
+          [
+            10,
+            6,
+            39,
+            "SEARCH pdf_text_fts_keys USING COVERING INDEX sqlite_autoindex_pdf_text_fts_keys_1 (card_id=? AND page=?)"
+          ]
+        ],
+        "median_ms": 147.269,
+        "samples_ms": [
+          139.454,
+          147.269,
+          147.592
+        ]
+      }
+    ]
+  },
+  "database_text_offsets": [
+    {
+      "chars": 128000,
+      "matches": 2000,
+      "median_ms": 49.31,
+      "samples_ms": [
+        49.31,
+        50.792,
+        47.099
+      ]
+    },
+    {
+      "chars": 256000,
+      "matches": 4000,
+      "median_ms": 180.99,
+      "samples_ms": [
+        178.622,
+        180.99,
+        181.789
+      ]
+    },
+    {
+      "chars": 512000,
+      "matches": 8000,
+      "median_ms": 658.048,
+      "samples_ms": [
+        629.155,
+        658.048,
+        690.253
+      ]
+    }
+  ],
+  "bookshelf_duplicates": [
+    {
+      "documents_with_same_normalized_origin": 200,
+      "expanded_peer_references": 39800,
+      "stored_peer_references": 400,
+      "median_ms": 3.824,
+      "samples_ms": [
+        3.824,
+        3.826,
+        3.814
+      ]
+    },
+    {
+      "documents_with_same_normalized_origin": 400,
+      "expanded_peer_references": 159600,
+      "stored_peer_references": 800,
+      "median_ms": 7.843,
+      "samples_ms": [
+        7.843,
+        7.615,
+        8.136
+      ]
+    },
+    {
+      "documents_with_same_normalized_origin": 800,
+      "expanded_peer_references": 639200,
+      "stored_peer_references": 1600,
+      "median_ms": 16.09,
+      "samples_ms": [
+        16.172,
+        16.09,
+        15.758
+      ]
+    }
+  ],
+  "config": [
+    {
+      "presets": 1,
+      "median_ms": 1.676,
+      "samples_ms": [
+        1.676,
+        1.652,
+        1.696
+      ],
+      "normalizations_per_sample": 50
+    },
+    {
+      "presets": 25,
+      "median_ms": 4.616,
+      "samples_ms": [
+        4.616,
+        4.513,
+        4.717
+      ],
+      "normalizations_per_sample": 50
+    },
+    {
+      "presets": 100,
+      "median_ms": 17.16,
+      "samples_ms": [
+        14.354,
+        17.22,
+        17.16
+      ],
+      "normalizations_per_sample": 50
+    }
+  ],
+  "undo_tracker": [
+    {
+      "tracked_cards": 1000,
+      "case": "Undo one answer then clear Redo without a revlog delta",
+      "revlog_lookup": "boundary fake; SQL cost excluded",
+      "median_ms": 0.723,
+      "samples_ms": [
+        0.745,
+        0.71,
+        0.723
+      ]
+    },
+    {
+      "tracked_cards": 2000,
+      "case": "Undo one answer then clear Redo without a revlog delta",
+      "revlog_lookup": "boundary fake; SQL cost excluded",
+      "median_ms": 1.428,
+      "samples_ms": [
+        1.401,
+        1.428,
+        1.457
+      ]
+    },
+    {
+      "tracked_cards": 4000,
+      "case": "Undo one answer then clear Redo without a revlog delta",
+      "revlog_lookup": "boundary fake; SQL cost excluded",
+      "median_ms": 2.985,
+      "samples_ms": [
+        3.369,
+        2.916,
+        2.985
+      ]
+    }
+  ],
+  "epub_metadata": [
+    {
+      "sections": 50,
+      "bytes": 1001980,
+      "median_ms": 0.738,
+      "samples_ms": [
+        0.743,
+        0.664,
+        0.666,
+        0.738,
+        0.774
+      ]
+    },
+    {
+      "sections": 200,
+      "bytes": 10007930,
+      "median_ms": 7.366,
+      "samples_ms": [
+        7.322,
+        7.326,
+        7.366,
+        7.532,
+        7.534
+      ]
+    }
+  ]
+}

@@ -1,0 +1,186 @@
+{
+  "baseline_commit": "6a371c732fc6c7d65bb4468fdb5853a2926ec097",
+  "scope": "Offscreen native measurements with disposable PDFs, Anki collections and DBs.\n\nRun with QT_QPA_PLATFORM=offscreen .venv/bin/python and --output. Timings are\ncomponent results, not claims about total Anki startup or every real document.\n",
+  "F10_writing_preview": {
+    "characters": 105000,
+    "keystrokes_per_burst": 20,
+    "before": {
+      "median_ms": 142.126,
+      "samples_ms": [
+        155.972,
+        142.126,
+        139.313
+      ],
+      "markdown_parses": 20
+    },
+    "after_visible": {
+      "median_ms": 6.904,
+      "samples_ms": [
+        7.026,
+        6.904,
+        6.294
+      ],
+      "markdown_parses": 1
+    },
+    "after_hidden": {
+      "markdown_parses": 0
+    },
+    "scope": "Qt markdown parsing only; writing handler debounce/ordered saves verified separately"
+  },
+  "F18_qt_rows": {
+    "before": {
+      "total_ms": 28.805,
+      "max_construction_callback_ms": 28.8,
+      "callbacks": 1,
+      "rows": 5000,
+      "cells": 40000
+    },
+    "after": {
+      "total_ms": 55.652,
+      "max_construction_callback_ms": 22.064,
+      "callbacks": 126,
+      "rows": 5000,
+      "cells": 40000
+    },
+    "scope": "actual Qt item construction; excludes DB reads, layout/paint and upfront empty table allocation"
+  },
+  "F19_thumbnails": {
+    "library_tiles": 2000,
+    "viewport_columns": 3,
+    "visible_rows": 2,
+    "before": {
+      "median_ms": 918.018,
+      "samples_ms": [
+        901.143,
+        931.303,
+        918.018
+      ],
+      "images_decoded": 2000,
+      "accounted_raster_budget_bytes": 409600000
+    },
+    "after": {
+      "median_ms": 4.108,
+      "samples_ms": [
+        4.108,
+        4.093,
+        4.114
+      ],
+      "images_decoded": 9,
+      "accounted_raster_budget_bytes": 1843200
+    },
+    "scope": "same native Qt decoder and warm filesystem; work before idling at the first viewport; all later tiles remain reachable by scrolling; byte values are conservative raster accounting, not process RSS"
+  },
+  "F17_extraction": {
+    "before": {
+      "median_ms": 48.389,
+      "samples_ms": [
+        54.229,
+        47.994,
+        48.389
+      ],
+      "loaded_pages": 1000,
+      "document_closed": true
+    },
+    "after": {
+      "median_ms": 2.925,
+      "samples_ms": [
+        2.925,
+        2.964,
+        2.736
+      ],
+      "loaded_pages": 2,
+      "document_closed": true
+    },
+    "scope": "cancellation requested after two pages; baseline could only finish the whole file"
+  },
+  "F22_supermemo": {
+    "before": {
+      "elapsed_ms": 119.694,
+      "element_id_reads": 36992,
+      "topic_commits": 256,
+      "created": 256
+    },
+    "after": {
+      "elapsed_ms": 97.644,
+      "element_id_reads": 4352,
+      "topic_commits": 1,
+      "created": 256
+    },
+    "scope": "one native Anki import per stage; journals retain their per-item durability boundaries"
+  },
+  "F08_pdf_import": {
+    "before": {
+      "elapsed_ms": 63.061,
+      "ui_event_pumps": 0,
+      "max_ui_pump_gap_ms": 63.06
+    },
+    "after": {
+      "elapsed_ms": 44.237,
+      "ui_event_pumps": 14,
+      "max_ui_pump_gap_ms": 13.815
+    },
+    "scope": "same 200-page import on UI thread versus worker; throughput is not the optimization; QWebEngine webpage rendering remains asynchronous UI-owned"
+  },
+  "F23_imports": {
+    "optional_dialog_modules_deferred": 6,
+    "factory_definition_compile_ms": 0.097,
+    "before_optional_import_group": {
+      "kind": "isolated optional-dialog import group, after Qt and DB preload; not total Anki startup",
+      "runs_ms": [
+        {
+          "frontend.stats_dialog": 23.239500005729496,
+          "frontend.pdf_quick_jump": 2.0477919606491923,
+          "frontend.pdf_bookshelf": 3.363250056281686,
+          "frontend.current_document_search_dialog": 0.331666087731719,
+          "frontend.search_all": 4.252332961186767,
+          "frontend.database_entries_dialog": 0.7237090030685067
+        },
+        {
+          "frontend.stats_dialog": 14.443166088312864,
+          "frontend.pdf_quick_jump": 1.3227090239524841,
+          "frontend.pdf_bookshelf": 2.343708067201078,
+          "frontend.current_document_search_dialog": 0.11345907114446163,
+          "frontend.search_all": 3.199417027644813,
+          "frontend.database_entries_dialog": 0.3137079766020179
+        },
+        {
+          "frontend.stats_dialog": 14.361707959324121,
+          "frontend.pdf_quick_jump": 1.1764159426093102,
+          "frontend.pdf_bookshelf": 2.4144999915733933,
+          "frontend.current_document_search_dialog": 0.11433300096541643,
+          "frontend.search_all": 2.7403749991208315,
+          "frontend.database_entries_dialog": 0.35212503280490637
+        }
+      ],
+      "median_group_ms": 21.73616725485772
+    },
+    "scope": "21.7 ms measured optional-module import group moves to first use; no end-to-end Anki startup speed claim"
+  },
+  "F23_database": {
+    "before": {
+      "first_schema_open_ms": 6.976,
+      "warm_1000_lookups": {
+        "median_ms": 0.43,
+        "samples_ms": [
+          0.455,
+          0.43,
+          0.429
+        ]
+      },
+      "cached_lookup_during_controlled_100ms_initializer_ms": 110.114
+    },
+    "after": {
+      "first_schema_open_ms": 6.693,
+      "warm_1000_lookups": {
+        "median_ms": 0.269,
+        "samples_ms": [
+          0.273,
+          0.268,
+          0.269
+        ]
+      },
+      "cached_lookup_during_controlled_100ms_initializer_ms": 0.002
+    },
+    "scope": "real temporary SQLite schema; the 100 ms initializer stall is controlled, not measured production migration latency"
+  }
+}

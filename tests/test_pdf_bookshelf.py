@@ -10,6 +10,21 @@ from types import SimpleNamespace
 import pytest
 
 
+def test_tall_pdf_preview_keeps_page_aspect_ratio_within_raster_budget(tmp_path, monkeypatch):
+    import pdf_bookshelf as shelf
+    dimensions = []
+    document = SimpleNamespace(load=lambda path: None, pageCount=lambda: 1,
+        pagePointSize=lambda page: SimpleNamespace(width=lambda: 100, height=lambda: 1000),
+        render=lambda page, size: dimensions.append(size) or SimpleNamespace(isNull=lambda: False),
+        close=lambda: None)
+    path = tmp_path / "synthetic.pdf"
+    path.write_bytes(b"test fixture")
+    monkeypatch.setattr(shelf, "QPdfDocument", lambda parent: document)
+    monkeypatch.setattr(shelf, "QSize", lambda width, height: (width, height))
+    assert shelf._render_pdf_first_page(str(path)) is not None
+    assert dimensions == [(32, 320)]
+
+
 # Some older dialog tests replace the shared aqt.qt test double during
 # collection. Supply only the names needed to import this dialog module so the
 # pure loader/path regressions remain order-independent.
@@ -58,6 +73,17 @@ with pytest.MonkeyPatch.context() as _imports:
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_large_exact_origin_duplicate_group_is_compact_and_peers_stay_direct():
+    entries = [pdf_bookshelf._BookshelfEntry(
+        f"Different title {index}", index + 1, "PDF", source_filename="same-origin.pdf",
+    ) for index in range(800)]
+    matches = pdf_bookshelf._bookshelf_duplicate_matches(entries)
+    assert set(matches) == set(range(1, 801))
+    assert len(matches[1]) == 799
+    assert matches[1][0].card_id == 2
+    assert matches.stored_reference_count < 5_000
 
 
 def test_bookshelf_reference_choice_accepts_dialog_with_a_distinct_open_mode(monkeypatch):

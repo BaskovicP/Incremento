@@ -42,9 +42,11 @@ from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QDesktopServices, QFont, QFontDatabase, QColor, QTextCharFormat, QKeySequence
 
 try:
+    from ..backend.snapshot_writer import OrderedWriter
     from ..backend.i18n import format_date, t
     from .selection_search import install_selection_search_menu
 except ImportError:
+    from snapshot_writer import OrderedWriter
     from backend.i18n import format_date, t  # type: ignore
     from frontend.selection_search import install_selection_search_menu
 
@@ -114,6 +116,11 @@ _autosave_timer = None
 _state_save_timer = None
 _writing_session_baseline_words = 0
 _writing_current_word_count = 0
+_writing_writer = None
+_writing_save_serial = 0
+_writing_saved_snapshot = None
+_writing_saved_progress = None
+_writing_persisted_state = {}
 
 _DEFAULT_FONT_SCALE = 1.0
 _MIN_FONT_SCALE = 0.7
@@ -300,6 +307,8 @@ def current_writing_card_id() -> int | None:
 def _refresh_markdown_preview(text: str | None = None) -> None:
     if _writing_dock is None:
         return
+    if not bool(getattr(_writing_dock, "_preview_visible", True)):
+        return
     preview = getattr(_writing_dock, "_preview", None)
     editor = getattr(_writing_dock, "_editor", None)
     if preview is None or editor is None:
@@ -448,6 +457,7 @@ def _apply_preview_visibility(visible: bool) -> None:
         _writing_dock._preview_host.setVisible(preview_visible)
         if preview_visible:
             _apply_focus_mode(bool(getattr(_writing_dock, "_focus_mode", False)))
+            _refresh_markdown_preview()
         else:
             _writing_dock._split.setSizes([1, 0])
     except Exception:
@@ -517,27 +527,22 @@ def _schedule_state_save() -> None:
         _state_save_timer.start()
 
 
+def _capture_writing_progress() -> dict | None:
+    if _writing_dock is None or _current_writing_card_id is None:
+        return None
+    cursor = _writing_dock._editor.textCursor()
+    return dict(cursor_position=int(cursor.position()), scroll_ratio=_current_scroll_ratio(),
+        font_scale=float(getattr(_writing_dock, "_font_scale", _DEFAULT_FONT_SCALE)),
+        wrap_enabled=bool(getattr(_writing_dock, "_wrap_enabled", True)),
+        focus_mode=bool(getattr(_writing_dock, "_focus_mode", False)),
+        preview_visible=bool(getattr(_writing_dock, "_preview_visible", True)),
+        highlight_current_line=bool(getattr(_writing_dock, "_highlight_current_line", True)),
+        bookmark_block_number=int(getattr(_writing_dock, "_bookmark_block_number", -1)))
+
+
 def _save_writing_progress() -> None:
-    if (_writing_dock is None or _loading_editor or _current_writing_card_id is None
-            or _writing_profile != _active_profile()):
-        return
-    try:
-        cursor = _writing_dock._editor.textCursor()
-        set_writing_progress(
-            _ADDON_DIR,
-            _active_profile(),
-            int(_current_writing_card_id),
-            cursor_position=int(cursor.position()),
-            scroll_ratio=_current_scroll_ratio(),
-            font_scale=float(getattr(_writing_dock, "_font_scale", _DEFAULT_FONT_SCALE)),
-            wrap_enabled=bool(getattr(_writing_dock, "_wrap_enabled", True)),
-            focus_mode=bool(getattr(_writing_dock, "_focus_mode", False)),
-            preview_visible=bool(getattr(_writing_dock, "_preview_visible", True)),
-            highlight_current_line=bool(getattr(_writing_dock, "_highlight_current_line", True)),
-            bookmark_block_number=int(getattr(_writing_dock, "_bookmark_block_number", -1)),
-        )
-    except Exception:
-        pass
+    if not _loading_editor:
+        _autosave_from_editor()
 
 
 def _sync_writing_word_stats(*, text: str | None = None) -> None:
@@ -571,37 +576,91 @@ def _sync_writing_word_stats(*, text: str | None = None) -> None:
     _update_progress_display()
 
 
-def _autosave_from_editor() -> bool:
+def _write_writing_snapshot(snapshot):
+    global _writing_persisted_state
+    profile, card_id, relpath, text, cfg, today, baseline_day, baseline, progress, serial = snapshot
+    identity = (profile, card_id, relpath)
+    previous = _writing_persisted_state if _writing_persisted_state.get("identity") == identity else {}
+    changed_text = previous.get("text") != text
+    if changed_text:
+        write_writing_text(_ADDON_DIR, relpath, text, profile=profile,
+                           backups_enabled=configured_writing_backups_enabled(cfg),
+                           backup_tiers=configured_writing_backup_tiers(cfg))
+    word_mode = configured_writing_word_count_mode(cfg)
+    changed_count = changed_text or previous.get("word_mode") != word_mode
+    words = _count_words(text, word_mode) if changed_count else previous["words"]
+    if previous.get("day") == today:
+        baseline = previous["baseline"]
+    elif today != baseline_day:
+        baseline = words
+    if card_id is not None and (changed_count or previous.get("day") != today):
+        set_writing_word_stats(_ADDON_DIR, profile, int(card_id), current_word_count=words,
+                               daily_logical_date=today, daily_baseline_words=baseline)
+    if card_id is not None and progress is not None and previous.get("progress") != progress:
+        set_writing_progress(_ADDON_DIR, profile, int(card_id), **progress)
+    _writing_persisted_state = {"identity": identity, "text": text, "words": words,
+                                "day": today, "baseline": baseline, "word_mode": word_mode, "progress": progress}
+    return words, today, baseline
+
+
+def _publish_writing_save(snapshot, result, error):
+    def show():
+        global _writing_saved_snapshot, _writing_current_word_count
+        profile, card_id, relpath, text, *_ = snapshot
+        if (_writing_dock is None or snapshot[-1] != _writing_save_serial
+                or profile != _writing_profile or profile != _active_profile()
+                or card_id != _current_writing_card_id or relpath != _current_writing_relpath):
+            return
+        if error is not None:
+            _set_status(t("writing_autosave_failed"))
+            return
+        _writing_saved_snapshot = (profile, card_id, relpath, text)
+        words, today, baseline = result
+        _writing_current_word_count = words
+        _writing_dock._current_word_count = words
+        _writing_dock._daily_logical_date = today
+        _writing_dock._daily_baseline_words = baseline
+        _set_status(t("writing_autosave_on_typing"))
+        _set_saved_time()
+        _update_progress_display()
+    taskman = getattr(mw, "taskman", None)
+    if taskman is not None and hasattr(taskman, "run_on_main"):
+        taskman.run_on_main(show)
+
+
+def _autosave_from_editor(*, wait: bool = False, captured_profile: bool = False) -> bool:
+    global _writing_writer, _writing_save_serial
     if (_writing_dock is None or not _current_writing_relpath
-            or _writing_profile != _active_profile()):
+            or (not captured_profile and _writing_profile != _active_profile())):
         return False
+    text = _writing_dock._editor.toPlainText()
+    identity = (_writing_profile, _current_writing_card_id, _current_writing_relpath, text)
+    if _writing_writer is None:
+        _writing_writer = OrderedWriter(_write_writing_snapshot, _publish_writing_save)
+    _writing_save_serial += 1
     try:
-        text = _writing_dock._editor.toPlainText()
-        write_writing_text(
-            _ADDON_DIR,
-            _current_writing_relpath,
-            text,
-            backups_enabled=configured_writing_backups_enabled(),
-            backup_tiers=configured_writing_backup_tiers(),
-        )
+        progress = _capture_writing_progress()
     except Exception:
-        _set_status(t("writing_autosave_failed"))
-        return False
-    _set_status(t("writing_autosave_on_typing"))
-    _set_saved_time()
-    _sync_writing_word_stats(text=text)
-    _save_writing_progress()
+        progress = None
+    snapshot = (*identity, _config(), _logical_today_text(),
+                str(getattr(_writing_dock, "_daily_logical_date", "")),
+                int(getattr(_writing_dock, "_daily_baseline_words", 0)), progress, _writing_save_serial)
+    _writing_writer.submit(snapshot)
+    if wait:
+        try:
+            _writing_writer.flush()
+        except Exception:
+            _set_status(t("writing_autosave_failed"))
+            return False
     return True
 
 
-def _flush_editor_state() -> bool:
+def _flush_editor_state(*, captured_profile: bool = False) -> bool:
     if _autosave_timer is not None:
         _autosave_timer.stop()
     if _state_save_timer is not None:
         _state_save_timer.stop()
-    saved = _autosave_from_editor()
-    _save_writing_progress()
-    return saved
+    return _autosave_from_editor(wait=True, captured_profile=captured_profile)
 
 
 def _restore_editor_progress(progress: dict) -> None:
@@ -877,18 +936,22 @@ def _toggle_line_highlight() -> None:
     _schedule_state_save()
 
 
+def _refresh_writing_preview_snapshot() -> None:
+    if _writing_dock is None or _loading_editor:
+        return
+    text = _writing_dock._editor.toPlainText()
+    _writing_dock._current_word_count = _count_words(text)
+    _refresh_markdown_preview(text)
+    _update_progress_display()
+
+
 def _on_editor_text_changed() -> None:
     if _writing_dock is None or _loading_editor or not _current_writing_relpath:
         return
-    _refresh_markdown_preview()
+    _writing_dock._preview_timer.start()
     _set_status(t("writing_saving"))
     if _autosave_timer is not None:
         _autosave_timer.start()
-    try:
-        current_words = _count_words(_writing_dock._editor.toPlainText())
-        _writing_dock._current_word_count = current_words
-    except Exception:
-        pass
     _update_editor_highlights()
     _schedule_state_save()
 
@@ -931,10 +994,11 @@ def _open_writing_folder() -> None:
 
 
 def _reload_current_writing_from_disk() -> None:
-    global _loading_editor, _writing_session_baseline_words, _writing_current_word_count
+    global _loading_editor, _writing_session_baseline_words, _writing_current_word_count, _writing_persisted_state
     if _writing_dock is None or _current_writing_card_id is None or not _current_writing_relpath:
         return
     text = read_writing_text(_ADDON_DIR, _current_writing_relpath)
+    _writing_persisted_state = {}
     current_words = _count_words(text)
     today_key = _logical_today_text()
     _writing_session_baseline_words = current_words
@@ -996,7 +1060,8 @@ def _open_backup_restore_dialog() -> None:
     if _current_writing_card_id is None or not _current_writing_relpath:
         tooltip(t("writing_no_card_open"))
         return
-    _flush_editor_state()
+    if not _flush_editor_state():
+        return
     backups = list_writing_backups(_ADDON_DIR, _current_writing_relpath)
     if not backups:
         showInfo(t("writing_no_backups"))
@@ -1053,7 +1118,9 @@ def _add_editor_shortcuts(dock) -> None:
 
 class _WritingDock(QDockWidget):
     def closeEvent(self, event):
-        _flush_editor_state()
+        if _current_writing_relpath and not _flush_editor_state():
+            event.ignore()
+            return
         set_keep_open(False)
         super().closeEvent(event)
 
@@ -1258,6 +1325,10 @@ def _build_writing_dock():
     _autosave_timer.setSingleShot(True)
     _autosave_timer.setInterval(180)
     qconnect(_autosave_timer.timeout, _autosave_from_editor)
+    dock._preview_timer = QTimer(dock)
+    dock._preview_timer.setSingleShot(True)
+    dock._preview_timer.setInterval(220)
+    qconnect(dock._preview_timer.timeout, _refresh_writing_preview_snapshot)
 
     _state_save_timer = QTimer(dock)
     _state_save_timer.setSingleShot(True)
@@ -1293,8 +1364,17 @@ def _on_writing_visibility_changed(visible: bool) -> None:
 def reset_for_profile_switch() -> None:
     global _writing_dock, _current_writing_card_id, _current_writing_relpath, _writing_profile
     global _autosave_timer, _state_save_timer
-    if _writing_profile == _active_profile():
-        _flush_editor_state()
+    global _writing_writer, _writing_saved_snapshot, _writing_saved_progress, _writing_persisted_state
+    if _writing_profile is not None:
+        _flush_editor_state(captured_profile=True)
+    if _writing_writer is not None:
+        try:
+            _writing_writer.close()
+        except Exception:
+            _set_status(t("writing_autosave_failed"))
+        _writing_writer = None
+    _writing_saved_snapshot = _writing_saved_progress = None
+    _writing_persisted_state = {}
     for timer in (_autosave_timer, _state_save_timer):
         if timer is not None:
             timer.stop()
@@ -1320,16 +1400,17 @@ def show_writing_in_dock(card_id: int, title: str, relpath: str, *, keep_open: b
     if (_writing_dock is not None and _current_writing_card_id == int(card_id)
             and _current_writing_relpath == relpath):
         try:
-            if _writing_dock.isVisible():
-                if keep_open:
-                    set_keep_open(True)
-                _writing_dock.show()
-                _writing_dock.raise_()
-                return
+            _writing_dock.widget()
+            if keep_open:
+                set_keep_open(True)
+            _writing_dock.show()
+            _writing_dock.raise_()
+            return
         except RuntimeError:
             _writing_dock = None
     if _current_writing_card_id is not None and int(card_id) != int(_current_writing_card_id):
-        _flush_editor_state()
+        if not _flush_editor_state():
+            return
 
     _writing_profile = _active_profile()
     _current_writing_card_id = int(card_id)

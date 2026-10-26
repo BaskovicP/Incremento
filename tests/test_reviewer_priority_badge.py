@@ -154,7 +154,7 @@ def test_reviewer_hides_existing_badge_when_next_card_type_is_disabled():
                 models=SimpleNamespace(get=lambda _mid: {"name": "Basic"}),
             ),
         ),
-        "_is_topic_card": lambda _card: False,
+        "_is_topic_card": lambda _card, **_kwargs: False,
         "should_show_reviewer_priority_badge": should_show_reviewer_priority_badge,
         "_load_addon_config": lambda _manager, _package: config,
         "get_priority": lambda _addon_dir, _profile, card_id: (
@@ -166,7 +166,8 @@ def test_reviewer_hides_existing_badge_when_next_card_type_is_disabled():
         "_active_profile": lambda: "TestProfile",
         "_ADDON_DIR": "/tmp/incremento-badge-test",
         "WEB_NOTE_TYPE": "Incremento Web",
-        "configured_priority_lower_is_more_important": lambda: True,
+        "configured_priority_lower_is_more_important": lambda config=None: True,
+        "_resolve_topic_card_classifier": lambda config: object(),
         "build_reviewer_priority_badge_js": build_reviewer_priority_badge_js,
     }
     exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), "exec"), namespace)
@@ -175,14 +176,14 @@ def test_reviewer_hides_existing_badge_when_next_card_type_is_disabled():
     assert fetched_priorities == [17]
     assert "var enabled = true;" in scripts[-1]
 
-    namespace["_is_topic_card"] = lambda _card: True
+    namespace["_is_topic_card"] = lambda _card, **_kwargs: True
     namespace["_sync_reviewer_priority_badge"]()
     assert fetched_priorities == [17]
     assert "var enabled = false;" in scripts[-1]
     assert "badge.remove();" in scripts[-1]
     assert "spacer.remove();" in scripts[-1]
 
-    namespace["_is_topic_card"] = lambda _card: False
+    namespace["_is_topic_card"] = lambda _card, **_kwargs: False
     namespace["_load_addon_config"] = lambda *_args: (_ for _ in ()).throw(
         RuntimeError("config unavailable")
     )

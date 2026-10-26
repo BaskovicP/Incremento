@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+try:
+    from .card_projection import ReadCollection, supports_projection
+except ImportError:
+    from card_projection import ReadCollection, supports_projection
+
 import math
 import random
 import re
@@ -609,6 +614,9 @@ def linked_media_attachment_card_ids(
             )
         )
 
+    if supports_projection(col):
+        col = ReadCollection(col)
+        col.load(_positive_unique(candidate_card_ids))
     live_card_ids: list[int] = []
     for card_id in _positive_unique(candidate_card_ids):
         if card_id == source_card_id:
@@ -697,6 +705,9 @@ def inspect_linked_media_review_rows(
         for index, (note_id, info) in enumerate(note_info.items())
     }
     note_card_ids = _card_ids_for_note_ids(col, note_ids)
+    if supports_projection(col):
+        col = ReadCollection(col)
+        col.load(note_card_ids)
     note_cards: list[tuple[int, int, int]] = []
     for card_id in note_card_ids:
         try:
@@ -786,6 +797,8 @@ def inspect_linked_media_review_rows(
             tree_kind=str(link.get("node_kind") or ""),
         )
 
+    if isinstance(col, ReadCollection):
+        col.load(candidate_info)
     cards: dict[int, object] = {}
     notes: dict[int, object] = {}
     for card_id, info in candidate_info.items():

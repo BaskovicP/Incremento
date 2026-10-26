@@ -3,6 +3,7 @@ import os
 import re
 import copy
 import math
+from concurrent.futures import CancelledError
 from html import escape, unescape
 
 from aqt import mw
@@ -15,6 +16,11 @@ from aqt.qt import (
     QTextBrowser, QTableWidget, QTableWidgetItem, QHeaderView, QTimer, QColor,
 )
 from aqt.utils import showInfo, tooltip
+
+try:
+    from .latest_query import LatestQuery
+except ImportError:
+    from latest_query import LatestQuery
 
 try:
     from ..backend.i18n import t, tn
@@ -97,6 +103,59 @@ except ImportError:
 # Addon root: one level above this file (frontend/)
 _ADDON_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 _ADDON_PKG = __name__.split(".")[0]
+
+
+def _session_count_snapshot(col, *, topics_filter, items_filter, ready, tags,
+                            content_queries, classifier, cancel):
+    def check():
+        if cancel.is_set():
+            raise CancelledError()
+    check()
+    _card_utils.clear_topic_item_cache()
+    topics = set(_card_utils.get_all_topic_cards(
+        topics_filter=topics_filter, ready_filter=ready, col=col, topic_classifier=classifier,
+    ))
+    check()
+    items = set(_card_utils.get_all_item_cards(
+        items_filter=items_filter, ready_filter=ready, col=col, topic_classifier=classifier,
+    ))
+    tag_counts = {}
+    for tag in dict.fromkeys(tags):
+        check()
+        tagged = set(col.find_cards(f"tag:{tag}"))
+        tag_counts[tag] = (len(topics & tagged), len(items & tagged))
+    content = {}
+    for kind, query in content_queries.items():
+        check()
+        content[kind] = len(col.find_cards(query))
+    return {"topics": len(topics), "items": len(items), "tags": tag_counts, "content": content}
+
+
+def _pdf_limit_target_snapshot(col, addon_dir, profile, cancel):
+    try:
+        from ..backend.search_repository import SearchCollection
+        from ..backend.db import get_connection
+    except ImportError:
+        from search_repository import SearchCollection
+        from db import get_connection
+    ids = list(col.find_cards(f'note:"{PDF_NOTE_TYPE}"'))
+    metadata = SearchCollection(col, cancel=cancel)
+    metadata.load_document_titles(ids)
+    pages = {}
+    conn = get_connection(addon_dir, profile)
+    for start in range(0, len(ids), 900):
+        metadata.check_cancelled()
+        batch = ids[start:start + 900]
+        marks = ",".join("?" for _ in batch)
+        pages.update(conn.execute(f"SELECT card_id, page FROM pdf_progress WHERE card_id IN ({marks})", batch))
+    targets = []
+    for cid in ids:
+        metadata.check_cancelled()
+        title = _compact_text(metadata.document_title(cid) or "", max_len=110) or f"PDF {cid}"
+        targets.append({"card_id": int(cid), "title": title,
+                        "label": t("session_preview_pdf_target", title=title, page=int(pages.get(cid, 1) or 1), card_id=cid),
+                        "search": f"{title} {cid}".lower()})
+    return sorted(targets, key=lambda item: (item["title"].lower(), item["card_id"]))
 
 
 def _write_named_scheduler_profile(name: str, profile_data: dict, profiles: dict[str, dict]) -> dict[str, dict]:
@@ -1242,6 +1301,20 @@ class SchedulerConfigDialog(QDialog):
         self._mix_preview_closed = False
         self._mix_preview_running = False
         self._mix_preview_generation = 0
+        self._counts_query = LatestQuery(
+            dispatch=self._dispatch_counts, success=self._render_counts,
+            failure=lambda _payload, _error: self._counts_lbl.setText(t("command_palette_unavailable")),
+            accept=self._read_request_is_current,
+        )
+        self._pdf_targets_query = LatestQuery(
+            dispatch=self._dispatch_pdf_targets, success=self._render_pdf_targets,
+            failure=lambda _payload, _error: self._render_pdf_targets(None, []),
+            accept=self._read_request_is_current,
+        )
+        self._counts_timer = QTimer(self)
+        self._counts_timer.setSingleShot(True)
+        self._counts_timer.setInterval(180)
+        qconnect(self._counts_timer.timeout, self._start_counts_query)
         self._mix_preview_timer = QTimer(self)
         self._mix_preview_timer.setSingleShot(True)
         self._mix_preview_timer.setInterval(180)
@@ -2981,29 +3054,24 @@ class SchedulerConfigDialog(QDialog):
         self._pdf_limit_combo.blockSignals(False)
         self._load_main_pdf_limit_editor()
 
+    def _read_request_is_current(self, payload) -> bool:
+        return (not self._mix_preview_closed and payload["profile"] == _active_profile()
+                and payload["collection"] is mw.col)
+
     def _refresh_pdf_limit_targets(self) -> None:
-        targets: list[dict] = []
-        try:
-            for cid in mw.col.find_cards(f'note:"{PDF_NOTE_TYPE}"'):
-                try:
-                    card = mw.col.get_card(cid)
-                    note = mw.col.get_note(card.nid)
-                    title = _compact_text((getattr(note, "fields", []) or [""])[0], max_len=110) or f"PDF {cid}"
-                    current_page = int(get_page(_ADDON_DIR, _active_profile(), cid))
-                    label = t("session_preview_pdf_target", title=title, page=current_page, card_id=cid)
-                    targets.append(
-                        {
-                            "card_id": int(cid),
-                            "title": title,
-                            "label": label,
-                            "search": f"{title} {cid}".lower(),
-                        }
-                    )
-                except Exception:
-                    continue
-        except Exception:
-            targets = []
-        targets.sort(key=lambda item: (item["title"].lower(), item["card_id"]))
+        if self._mix_preview_closed:
+            return
+        self._pdf_targets_query.submit({"profile": _active_profile(), "collection": mw.col})
+
+    def _dispatch_pdf_targets(self, ticket, success, failure, _progress) -> None:
+        profile = ticket.payload["profile"]
+        def read(col):
+            if col is not ticket.payload["collection"]:
+                raise CancelledError()
+            return _pdf_limit_target_snapshot(col, _ADDON_DIR, profile, ticket.cancel)
+        _run_session_preview_query(parent=self, op=read, success=success, failure=failure)
+
+    def _render_pdf_targets(self, _payload, targets) -> None:
         self._pdf_limit_targets = targets
         self._refresh_pdf_limit_combo()
 
@@ -3348,6 +3416,9 @@ class SchedulerConfigDialog(QDialog):
         self._mix_preview_generation += 1
         self._mix_preview_timer.stop()
         self._preview_refresh_timer.stop()
+        self._counts_timer.stop()
+        self._counts_query.close()
+        self._pdf_targets_query.close()
 
     def _refresh_available_mix(self) -> None:
         if self._mix_preview_closed or self._mix_preview_running:
@@ -3551,84 +3622,86 @@ class SchedulerConfigDialog(QDialog):
         return value
 
     def _refresh_tag_count(self, row_dict: dict) -> None:
-        """Update the count annotation on one tag row."""
-        tag = row_dict["tag"]
-        if tag == NO_TAGS_KEY:
+        if row_dict["tag"] == NO_TAGS_KEY:
             row_dict["name_label"].setText(t("session_other_tag_label"))
-            return
-        ready = self._ready_filter_from_checks()
-        tf_widget = getattr(self, "_topics_filter_edit", None)
-        itf_widget = getattr(self, "_items_filter_edit", None)
-        tf = tf_widget.text().strip() if tf_widget else ""
-        itf = itf_widget.text().strip() if itf_widget else ""
-        _card_utils.clear_topic_item_cache()
-        n_topics = _card_utils.count_ready_topic_cards_by_tag(
-            tag,
-            topics_filter=self._apply_branch_scope_query(tf),
-            ready_filter=ready,
-        )
-        n_items = _card_utils.count_ready_item_cards_by_tag(
-            tag,
-            items_filter=self._apply_branch_scope_query(itf),
-            ready_filter=ready,
-        )
-        color = "#e0a020" if (n_topics == 0 or n_items == 0) else "gray"
-        row_dict["name_label"].setText(t("session_tag_counts", tag=tag, color=color, topics=n_topics, items=n_items))
+        else:
+            self._refresh_counts()
 
     def _refresh_counts(self) -> None:
-        """Refresh the global topics/items count label and all tag-row counts."""
-        ready = self._ready_filter_from_checks()
-        tf = self._topics_filter_edit.text().strip()
-        itf = self._items_filter_edit.text().strip()
-        _card_utils.clear_topic_item_cache()
-        n_topics = _card_utils.count_ready_topic_cards(
-            topics_filter=self._apply_branch_scope_query(tf),
-            ready_filter=ready,
-        )
-        n_items = _card_utils.count_ready_item_cards(
-            items_filter=self._apply_branch_scope_query(itf),
-            ready_filter=ready,
-        )
-        t_color = "#e0a020" if n_topics == 0 else "#c8a800"
-        i_color = "#e0a020" if n_items  == 0 else "gray"
+        if self._mix_preview_closed:
+            return
+        self._counts_query.invalidate()
+        self._counts_lbl.setText("…")
+        self._counts_timer.start()
+
+    def _start_counts_query(self) -> None:
+        if self._mix_preview_closed:
+            return
+        self._counts_query.submit({
+            "profile": _active_profile(), "collection": mw.col,
+            "topics_filter": self._apply_branch_scope_query(self._topics_filter_edit.text().strip()),
+            "items_filter": self._apply_branch_scope_query(self._items_filter_edit.text().strip()),
+            "ready": self._ready_filter_from_checks(),
+            "tags": [row["tag"] for row in self._linked_rows if row["tag"] != NO_TAGS_KEY],
+            "content_queries": {kind: self._apply_branch_scope_query(query) for kind, query in {
+                "pdf": '(note:"Incremento PDF" OR note:"Incremento EPUB") -is:suspended',
+                "youtube": 'note:"Incremento Video" -is:suspended',
+                "webpage": 'note:"Incremento Web" -is:suspended',
+            }.items()},
+            "classifier": _card_utils.resolve_topic_card_classifier(
+                load_addon_config(mw.addonManager, _ADDON_PKG), scheduler_config=self.to_config()),
+        })
+
+    def _dispatch_counts(self, ticket, success, failure, _progress) -> None:
+        request = dict(ticket.payload)
+        collection = request.pop("collection")
+        request.pop("profile")
+        def read(col):
+            if col is not collection:
+                raise CancelledError()
+            return _session_count_snapshot(col, **request, cancel=ticket.cancel)
+        _run_session_preview_query(parent=self, op=read, success=success, failure=failure)
+
+    def _render_counts(self, _payload, result) -> None:
+        n_topics, n_items = result["topics"], result["items"]
         scope = t("session_ready_in_branch") if self._branch_scope else t("session_ready")
-        self._counts_lbl.setText(t("session_topic_item_counts", topic_color=t_color, item_color=i_color, topics=n_topics, items=n_items, scope=scope))
+        self._counts_lbl.setText(t("session_topic_item_counts",
+            topic_color="#e0a020" if n_topics == 0 else "#c8a800",
+            item_color="#e0a020" if n_items == 0 else "gray",
+            topics=n_topics, items=n_items, scope=scope))
         for row in self._linked_rows:
-            self._refresh_tag_count(row)
+            tag = row["tag"]
+            if tag == NO_TAGS_KEY:
+                row["name_label"].setText(t("session_other_tag_label"))
+            elif tag in result["tags"]:
+                topics, items = result["tags"][tag]
+                row["name_label"].setText(t("session_tag_counts", tag=tag,
+                    color="#e0a020" if not topics or not items else "gray", topics=topics, items=items))
+        for row in getattr(self, "_ct_rows", []):
+            row["count_label"].setText(t("session_available_count", count=result["content"].get(row["type"], 0)))
 
     def _refresh_ct_counts(self) -> None:
-        """Update available-card counts on all content type rows."""
-        _ct_filter_map = {
-            "pdf":     '(note:"Incremento PDF" OR note:"Incremento EPUB") -is:suspended',
-            "youtube": 'note:"Incremento Video" -is:suspended',
-            "webpage": 'note:"Incremento Web" -is:suspended',
-        }
-        for row in getattr(self, "_ct_rows", []):
-            try:
-                n = len(mw.col.find_cards(self._apply_branch_scope_query(_ct_filter_map[row["type"]])))
-                row["count_label"].setText(t("session_available_count", count=n))
-            except Exception:
-                row["count_label"].setText("")
+        self._refresh_counts()
 
     def _test_filter(self, kind: str, query: str) -> None:
-        """Show the classified card count for a narrowing filter string."""
-        ready = self._ready_filter_from_checks()
-        _card_utils.clear_topic_item_cache()
-        scoped_query = self._apply_branch_scope_query(query)
-        if kind == "topics":
-            count = _card_utils.count_ready_topic_cards(
-                topics_filter=scoped_query,
-                ready_filter=ready,
-            )
-        else:
-            count = _card_utils.count_ready_item_cards(
-                items_filter=scoped_query,
-                ready_filter=ready,
-            )
-        scope_note = t("session_active_branch") if self._branch_scope else ""
-        label = t("knowledge_tree_topic") if kind == "topics" else t("knowledge_tree_item")
-        query_label = query or t("session_no_extra_filter")
-        showInfo(t("session_filter_result", label=label, query=query_label, count=count, scope=scope_note))
+        profile, collection = _active_profile(), mw.col
+        ready, scoped = self._ready_filter_from_checks(), self._apply_branch_scope_query(query)
+        classifier = _card_utils.resolve_topic_card_classifier(load_addon_config(mw.addonManager, _ADDON_PKG))
+        def read(col):
+            _card_utils.clear_topic_item_cache()
+            if kind == "topics":
+                return _card_utils.count_ready_topic_cards(topics_filter=scoped, ready_filter=ready,
+                                                         col=col, topic_classifier=classifier)
+            return _card_utils.count_ready_item_cards(items_filter=scoped, ready_filter=ready,
+                                                     col=col, topic_classifier=classifier)
+        def done(count):
+            if self._mix_preview_closed or profile != _active_profile() or collection is not mw.col:
+                return
+            showInfo(t("session_filter_result",
+                label=t("knowledge_tree_topic") if kind == "topics" else t("knowledge_tree_item"),
+                query=query or t("session_no_extra_filter"), count=count,
+                scope=t("session_active_branch") if self._branch_scope else ""))
+        _run_session_preview_query(parent=self, op=read, success=done, failure=lambda _error: None)
 
     def accept(self) -> None:
         """Validate preview state, then let background session construction run."""

@@ -7046,6 +7046,49 @@
       }
     };
   }
+  function observeSearchText(target, {
+    render,
+    clear,
+    createObserver = (callback) => new MutationObserver(callback),
+    requestFrame = (callback) => window.requestAnimationFrame(callback),
+    cancelFrame = (id) => window.cancelAnimationFrame(id)
+  }) {
+    let frame = 0;
+    let closed = false;
+    const refresh = () => {
+      frame = 0;
+      if (closed) return;
+      observer.disconnect();
+      try {
+        render();
+      } finally {
+        if (!closed) observer.observe(target, { childList: true, subtree: true, characterData: true });
+      }
+    };
+    const observer = createObserver(() => {
+      if (!closed && !frame) frame = requestFrame(refresh);
+    });
+    refresh();
+    return () => {
+      closed = true;
+      if (frame) cancelFrame(frame);
+      observer.disconnect();
+      clear();
+    };
+  }
+  function pageWindow(length, offset = 0, size = 50) {
+    const pageSize = Math.max(1, Math.floor(size));
+    const count = Math.max(0, Math.floor(length));
+    const last = Math.max(0, Math.floor((count - 1) / pageSize) * pageSize);
+    const start = Math.min(last, Math.max(0, Math.floor(offset / pageSize) * pageSize));
+    return {
+      start,
+      end: Math.min(count, start + pageSize),
+      previous: Math.max(0, start - pageSize),
+      next: Math.min(last, start + pageSize),
+      count
+    };
+  }
   function cropPdfSnapshot(canvas, rect, createCanvas) {
     const size = canvas.getBoundingClientRect();
     if (![canvas.width, canvas.height, size.width, size.height, rect.w, rect.h].every((value) => Number.isFinite(value) && value > 0) || ![rect.x, rect.y].every(Number.isFinite)) return null;
@@ -11898,10 +11941,13 @@
     textLayer.querySelectorAll("span").forEach((span) => {
       if (span.dataset.incSearchHit === "1") {
         if (typeof span.dataset.incSearchOriginalText === "string") {
-          span.textContent = span.dataset.incSearchOriginalText;
+          if (span.textContent === span.dataset.incSearchOriginalText) {
+            span.textContent = span.dataset.incSearchOriginalText;
+          }
           delete span.dataset.incSearchOriginalText;
         }
         span.dataset.incSearchHit = "0";
+        delete span.dataset.incSearchQuery;
       }
     });
   }
@@ -11916,11 +11962,11 @@
   }
   function highlightSpanText(span, regex) {
     if (!span || !regex) return false;
-    const originalText = typeof span.dataset.incSearchOriginalText === "string" ? span.dataset.incSearchOriginalText : String(span.textContent || "");
+    const originalText = String(span.textContent || "");
     if (!originalText) return false;
     regex.lastIndex = 0;
     if (!regex.test(originalText)) {
-      span.textContent = originalText;
+      if (span.textContent !== originalText) span.textContent = originalText;
       delete span.dataset.incSearchOriginalText;
       return false;
     }
@@ -11934,18 +11980,29 @@
   }
   function applySearchHitStyles(textLayer, query) {
     if (!textLayer) return null;
-    clearSearchHitStyles(textLayer);
     const q = String(query || "").trim().toLowerCase();
-    if (!q) return null;
+    if (!q) {
+      clearSearchHitStyles(textLayer);
+      return null;
+    }
     const spans = Array.from(textLayer.querySelectorAll("span")).filter(
       (span) => span.dataset.incSearchFragment !== "1"
     );
     const regex = buildSearchHighlightRegex(query);
     let firstHit = null;
     for (const span of spans) {
+      if (span.dataset.incSearchQuery === q && span.textContent === span.dataset.incSearchOriginalText) {
+        if (!firstHit) firstHit = span;
+        continue;
+      }
       const hit = highlightSpanText(span, regex);
-      if (!hit) continue;
+      if (!hit) {
+        span.dataset.incSearchHit = "0";
+        delete span.dataset.incSearchQuery;
+        continue;
+      }
       span.dataset.incSearchHit = "1";
+      span.dataset.incSearchQuery = q;
       if (!firstHit) firstHit = span;
     }
     return firstHit;
@@ -12072,6 +12129,7 @@
     const snapStartRef = reactExports.useRef(null);
     const [pageCards, setPageCards] = reactExports.useState([]);
     const [showHighlightsPanel, setShowHighlightsPanel] = reactExports.useState(false);
+    const [highlightPanelOffset, setHighlightPanelOffset] = reactExports.useState(0);
     const [bookmarks, setBookmarks] = reactExports.useState([]);
     const [showBookmarksPanel, setShowBookmarksPanel] = reactExports.useState(false);
     const [findOpen, setFindOpen] = reactExports.useState(false);
@@ -12210,6 +12268,14 @@
     const scopedHighlightsForPanel = highlightsScope === "page" ? highlightIndex.sortedByPage.get(page) || NO_HIGHLIGHTS : sortedHighlights;
     const highlightsForPanel = reactExports.useMemo(() => highlightsNotesOnly ? scopedHighlightsForPanel.filter((h) => String(h.note || "").trim()) : scopedHighlightsForPanel, [scopedHighlightsForPanel, highlightsNotesOnly]);
     const missingCardHighlightCount = highlightIndex.missingCards;
+    const highlightPanelPage = pageWindow(highlightsForPanel.length, highlightPanelOffset);
+    reactExports.useEffect(() => {
+      setHighlightPanelOffset(0);
+    }, [page, highlightsScope, highlightsNotesOnly]);
+    reactExports.useEffect(() => {
+      const index = highlightsForPanel.findIndex((highlight) => String(highlight.id) === String(activeHighlightId));
+      if (index >= 0) setHighlightPanelOffset(Math.floor(index / 50) * 50);
+    }, [activeHighlightId]);
     const currentHighlightIndex = highlightIndex.byId.get(String(activeHighlightId || "")) ?? -1;
     const limitEnabled = !!(limitStatus == null ? void 0 : limitStatus.enabled);
     const limitMode = String((limitStatus == null ? void 0 : limitStatus.enforcement_mode) || "warning");
@@ -12480,7 +12546,6 @@
       const tl = textLayerRef.current;
       if (!tl) return;
       let didScroll = false;
-      let rafId = 0;
       const renderSearchHits = () => {
         const firstHit = applySearchHitStyles(tl, searchQuery);
         if (!firstHit || didScroll) return;
@@ -12492,17 +12557,10 @@
         } catch (_) {
         }
       };
-      renderSearchHits();
-      const observer = new MutationObserver(() => {
-        if (rafId) window.cancelAnimationFrame(rafId);
-        rafId = window.requestAnimationFrame(renderSearchHits);
+      return observeSearchText(tl, {
+        render: renderSearchHits,
+        clear: () => clearSearchHitStyles(tl)
       });
-      observer.observe(tl, { childList: true, subtree: true, characterData: true });
-      return () => {
-        if (rafId) window.cancelAnimationFrame(rafId);
-        observer.disconnect();
-        clearSearchHitStyles(tl);
-      };
     }, [searchQuery, page, renderInfo, textLayerRef, clearPendingResumeScroll, suppressScrollPersistence, searchJumpNonce]);
     reactExports.useEffect(() => {
       if (String(searchQuery || "").trim()) {
@@ -14843,7 +14901,34 @@
                     children: tr(showHighlightControls ? "reader_hide_highlight_controls" : "reader_show_highlight_controls")
                   }
                 ),
-                highlightsForPanel.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, opacity: 0.75 }, children: highlightsNotesOnly ? highlightsScope === "page" ? tr("reader_no_highlight_notes_page") : tr("reader_no_highlight_notes") : tr("reader_no_highlights") }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: highlightsForPanel.map((hl) => {
+                highlightsForPanel.length > 50 && /* @__PURE__ */ jsxRuntimeExports.jsxs("nav", { style: { display: "flex", gap: 12, marginBottom: 8 }, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      disabled: highlightPanelPage.start === 0,
+                      onClick: () => setHighlightPanelOffset(highlightPanelPage.previous),
+                      children: tr("reader_previous_page")
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { role: "status", "aria-live": "polite", children: [
+                    highlightPanelPage.start + 1,
+                    "–",
+                    highlightPanelPage.end,
+                    " / ",
+                    highlightsForPanel.length
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      disabled: highlightPanelPage.end === highlightsForPanel.length,
+                      onClick: () => setHighlightPanelOffset(highlightPanelPage.next),
+                      children: tr("reader_next_page")
+                    }
+                  )
+                ] }),
+                highlightsForPanel.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, opacity: 0.75 }, children: highlightsNotesOnly ? highlightsScope === "page" ? tr("reader_no_highlight_notes_page") : tr("reader_no_highlight_notes") : tr("reader_no_highlights") }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: highlightsForPanel.slice(highlightPanelPage.start, highlightPanelPage.end).map((hl) => {
                   const note = String(hl.note || "").trim();
                   const excerpt = String(hl.text || tr("reader_no_text")).trim();
                   const linkedNoteId = Number(hl.linked_note_id || 0);
