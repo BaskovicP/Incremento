@@ -4204,3 +4204,30 @@ msgstr "Ova kartica još nema povezan odlomak iz udžbenika. Odaberite ga pomoć
 
 msgid "study_no_recordings"
 msgstr "Ovdje još nema povezane snimke. Odaberite video ili zvučnu datoteku pomoću Poveži snimku…"
+
+msgid "study_review_card"
+msgstr "Kartica za ponavljanje"
+
+msgid "study_question_side"
+msgstr "Pitanje još nije odgovoreno"
+
+msgid "study_answer_revealed"
+msgstr "Odgovor je prikazan"
+
+msgid "study_card_hint"
+msgstr "Otvorite odlomak ili snimku bez napuštanja ponavljanja."
+
+msgid "study_read_hint"
+msgstr "Pročitajte povezani odlomak za širi kontekst ili povežite udžbenik."
+
+msgid "study_recording_hint"
+msgstr "Otvorite povezano objašnjenje ili povežite video ili zvučnu snimku."
+
+msgid "study_read_passage"
+msgstr "Pročitaj odlomak"
+
+msgid "study_open_recording"
+msgstr "Otvori snimku"
+
+msgid "study_other_resources"
+msgstr "Ostali izvori"

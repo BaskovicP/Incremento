@@ -4128,3 +4128,30 @@ msgstr "此卡片尚未关联教材段落。请使用关联 PDF…选择段落�
 
 msgid "study_no_recordings"
 msgstr "此处尚未关联录音或视频。请使用关联录音或视频…选择文件。"
+
+msgid "study_review_card"
+msgstr "复习卡片"
+
+msgid "study_question_side"
+msgstr "尚未回答"
+
+msgid "study_answer_revealed"
+msgstr "已显示答案"
+
+msgid "study_card_hint"
+msgstr "在当前复习中打开教材段落或录音视频。"
+
+msgid "study_read_hint"
+msgstr "阅读关联段落了解上下文，或关联教材。"
+
+msgid "study_recording_hint"
+msgstr "打开关联讲解，或关联视频或录音。"
+
+msgid "study_read_passage"
+msgstr "阅读段落"
+
+msgid "study_open_recording"
+msgstr "打开录音或视频"
+
+msgid "study_other_resources"
+msgstr "其他资料"

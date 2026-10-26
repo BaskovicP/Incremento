@@ -8,8 +8,8 @@ except ImportError:
 
 
 NAVIGATION_COLORS = {
-    'light': dict(surface='#f1f3f6', border='#dce1e8', foreground='#4b5563', selected='#e5effd', accent='#1e5ca8'),
-    'dark': dict(surface='#25272b', border='#464a51', foreground='#c0c5ce', selected='#2b405e', accent='#c4dbff'),
+    'light': dict(surface='#f1f3f6', border='#dce1e8', foreground='#4b5563', selected='#e5effd', accent='#1e5ca8', paper='#ffffff', ink='#25272c'),
+    'dark': dict(surface='#25272b', border='#464a51', foreground='#c0c5ce', selected='#2b405e', accent='#c4dbff', paper='#303236', ink='#f1f2f4'),
 }
 NAVIGATION_ICONS = {
     'card': 'M7 4h12v14H7z M4 7v14h12 M10 8h6 M10 12h4',
@@ -26,6 +26,43 @@ _NAVIGATION_CSS = ''.join(
         ('.night-mode #incremento-study-navigation', NAVIGATION_COLORS['dark']),
     )
 ) + """
+body[data-study-canvas] { background: var(--study-workspace-canvas) !important; }
+#incremento-study-navigation[data-workspace] { max-width: 1200px; margin: 0 auto 28px; }
+#qa[data-study-panel] {
+  box-sizing: border-box; width: calc(100% - 32px) !important; max-width: 780px !important;
+  margin: 0 auto !important; padding: 28px 32px !important; min-height: 190px;
+  background: var(--study-card-paper); border: 1px solid var(--study-card-border);
+  border-radius: 12px 12px 0 0; overflow-wrap: anywhere;
+}
+#qa[data-study-panel]::before {
+  content: attr(data-study-heading) " · " attr(data-study-state); display: block;
+  margin-bottom: 24px; font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  opacity: .7; text-align: start;
+}
+#qa[data-study-panel] :is(img, video, iframe, svg) { max-width: 100%; }
+#incremento-study-card-resources {
+  box-sizing: border-box; width: calc(100% - 32px); max-width: 780px; margin: 0 auto 32px;
+  padding: 20px 32px 28px; background: var(--study-card-paper); color: var(--study-card-ink);
+  border: 1px solid var(--study-card-border); border-top: 0; border-radius: 0 0 12px 12px;
+  text-align: start; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+#incremento-study-card-resources h2 { margin: 0 0 3px; font-size: 14px; font-weight: 600; }
+#incremento-study-card-resources p { margin: 0 0 16px; font-size: 12px; color: var(--study-card-muted); }
+#incremento-study-card-resources .study-resource-tile {
+  display: flex; align-items: center; gap: 14px; padding: 14px; margin-top: 10px;
+  background: var(--study-workspace-canvas); border: 1px solid var(--study-card-border); border-radius: 8px;
+}
+#incremento-study-card-resources .study-resource-copy { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+#incremento-study-card-resources .study-resource-title { font-weight: 500; }
+#incremento-study-card-resources .study-resource-detail { font-size: 12px; color: var(--study-card-muted); margin-top: 3px; }
+#incremento-study-card-resources svg { width: 22px; height: 22px; flex: none; color: var(--study-card-accent); }
+#incremento-study-card-resources button { flex: none; cursor: pointer; }
+@media (max-width: 520px) {
+  #qa[data-study-panel], #incremento-study-card-resources { width: 100% !important; padding: 20px !important; }
+  #incremento-study-card-resources .study-resource-tile { flex-wrap: wrap; gap: 10px; }
+  #incremento-study-card-resources .study-resource-copy { flex-basis: calc(100% - 40px); }
+  #incremento-study-card-resources button { margin-inline-start: 32px; }
+}
 #incremento-study-navigation {
   display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px;
   box-sizing: border-box; margin: 0 0 24px; padding: 12px 0 16px;
@@ -105,13 +142,15 @@ def style_stage_bar(container, buttons):
     return colors
 
 
-def reviewer_navigation_script(routes, label):
-    payload = json.dumps(dict(routes=routes, label=label, icons=NAVIGATION_ICONS, css=_NAVIGATION_CSS))
+def reviewer_navigation_script(routes, label, *, workspace=None):
+    payload = json.dumps(dict(routes=routes, label=label, icons=NAVIGATION_ICONS, css=_NAVIGATION_CSS,
+                              workspace=workspace, colors=NAVIGATION_COLORS))
     return build_reviewer_button_style_js() + """
 (() => {
   document.getElementById('incremento-study-resources')?.remove();
   document.getElementById('incremento-study-navigation')?.remove();
   const data = %s;
+  const colors = data.colors[document.documentElement.classList.contains('night-mode') ? 'dark' : 'light'];
   let style = document.getElementById('incremento-study-navigation-style');
   if (!style) {
     style = document.createElement('style');
@@ -123,6 +162,7 @@ def reviewer_navigation_script(routes, label):
   nav.id = 'incremento-study-navigation';
   nav.setAttribute('aria-label', data.label);
   nav.classList.toggle('study-nav-entry', data.routes.length === 1);
+  if (data.workspace) nav.setAttribute('data-workspace', '');
   const label = document.createElement('span');
   label.className = 'study-nav-label';
   label.textContent = data.label;
@@ -158,5 +198,41 @@ def reviewer_navigation_script(routes, label):
   const card = document.getElementById('qa');
   if (card) card.before(nav);
   else document.body.prepend(nav);
+  document.getElementById('incremento-study-card-resources')?.remove();
+  document.body.removeAttribute('data-study-canvas');
+  if (card && data.workspace) {
+    const paper = getComputedStyle(document.body).backgroundColor;
+    const palette = {
+      '--study-workspace-canvas': colors.surface, '--study-card-border': colors.border,
+      '--study-card-paper': paper === 'rgba(0, 0, 0, 0)' ? colors.paper : paper,
+      '--study-card-muted': colors.foreground, '--study-card-ink': colors.ink, '--study-card-accent': colors.accent
+    };
+    for (const [key,value] of Object.entries(palette)) document.body.style.setProperty(key,value);
+    document.body.setAttribute('data-study-canvas','');
+    card.setAttribute('data-study-panel','');
+    card.setAttribute('data-study-heading',data.workspace.heading);
+    card.setAttribute('data-study-state',data.workspace.state);
+    const shelf = document.createElement('section');
+    shelf.id = 'incremento-study-card-resources';
+    shelf.setAttribute('aria-label', data.workspace.resources_label);
+    const heading = document.createElement('h2'); heading.textContent = data.workspace.resources_label;
+    const hint = document.createElement('p'); hint.textContent = data.workspace.hint;
+    shelf.append(heading,hint);
+    for (const resource of data.workspace.tiles) {
+      const tile = document.createElement('div'); tile.className = 'study-resource-tile';
+      const icon = steps.querySelector('[data-study-stage="' + resource.stage + '"] svg');
+      if (icon) tile.appendChild(icon.cloneNode(true));
+      const copy = document.createElement('div'); copy.className = 'study-resource-copy';
+      const title = document.createElement('div'); title.className = 'study-resource-title'; title.textContent = resource.title;
+      const detail = document.createElement('div'); detail.className = 'study-resource-detail'; detail.textContent = resource.detail;
+      copy.append(title,detail);
+      const action = document.createElement('button'); action.type = 'button'; action.textContent = resource.action;
+      action.onclick = () => pycmd(resource.command);
+      tile.append(copy,action); shelf.appendChild(tile);
+    }
+    card.after(shelf);
+  } else if (card) {
+    for (const name of ['data-study-panel','data-study-heading','data-study-state']) card.removeAttribute(name);
+  }
 })();
 """ % payload

@@ -32762,6 +32762,14 @@
     },
     {
       "component": "addon",
+      "key": "study_answer_revealed",
+      "form": "",
+      "source": "Answer revealed",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "study_back_passage",
       "form": "",
       "source": "Back to passage",
@@ -32781,6 +32789,14 @@
       "key": "study_card",
       "form": "",
       "source": "Review card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_card_hint",
+      "form": "",
+      "source": "Open a passage or recording without leaving this review.",
       "tokens": [],
       "markup": []
     },
@@ -32980,6 +32996,22 @@
     },
     {
       "component": "addon",
+      "key": "study_open_recording",
+      "form": "",
+      "source": "Open recording",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_other_resources",
+      "form": "",
+      "source": "Other resources",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "study_pause",
       "form": "",
       "source": "Pause",
@@ -33038,6 +33070,38 @@
     },
     {
       "component": "addon",
+      "key": "study_question_side",
+      "form": "",
+      "source": "Question not answered",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_read_hint",
+      "form": "",
+      "source": "Read a linked passage for more context, or connect a textbook.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_read_passage",
+      "form": "",
+      "source": "Read passage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_recording_hint",
+      "form": "",
+      "source": "Open a linked explanation, or connect a video or audio recording.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "study_recording_unavailable",
       "form": "",
       "source": "The recording cannot be played or has changed. Reopen it, or edit the link to choose another local file.",
@@ -33089,6 +33153,14 @@
       "key": "study_return_card",
       "form": "",
       "source": "Return to card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_review_card",
+      "form": "",
+      "source": "Review card",
       "tokens": [],
       "markup": []
     },

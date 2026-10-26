@@ -4166,3 +4166,30 @@ msgstr "No textbook passage is linked to this card yet. Use Link PDF… to choos
 
 msgid "study_no_recordings"
 msgstr "No recording is linked here yet. Use Link recording… to choose a video or audio file."
+
+msgid "study_review_card"
+msgstr "Review card"
+
+msgid "study_question_side"
+msgstr "Question not answered"
+
+msgid "study_answer_revealed"
+msgstr "Answer revealed"
+
+msgid "study_card_hint"
+msgstr "Open a passage or recording without leaving this review."
+
+msgid "study_read_hint"
+msgstr "Read a linked passage for more context, or connect a textbook."
+
+msgid "study_recording_hint"
+msgstr "Open a linked explanation, or connect a video or audio recording."
+
+msgid "study_read_passage"
+msgstr "Read passage"
+
+msgid "study_open_recording"
+msgstr "Open recording"
+
+msgid "study_other_resources"
+msgstr "Other resources"
