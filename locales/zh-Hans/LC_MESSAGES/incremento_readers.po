@@ -4107,3 +4107,24 @@ msgstr "导入完成后，点击刷新即可选择文件。"
 
 msgid "study_invalid_segment"
 msgstr "请等待预览加载完成，添加名称，并输入录音或视频范围内的有效时间。结束时间必须晚于开始时间。"
+
+msgid "study_tab_card"
+msgstr "卡片"
+
+msgid "study_tab_textbook"
+msgstr "教材"
+
+msgid "study_tab_video"
+msgstr "视频"
+
+msgid "study_tab_audio"
+msgstr "音频"
+
+msgid "study_no_active_card"
+msgstr "开始复习卡片后，即可切换到卡片。"
+
+msgid "study_no_textbooks"
+msgstr "此卡片尚未关联教材段落。请使用关联 PDF…选择段落。"
+
+msgid "study_no_recordings"
+msgstr "此处尚未关联录音或视频。请使用关联录音或视频…选择文件。"

@@ -4145,3 +4145,24 @@ msgstr "When the import finishes, press Refresh to select the recording."
 
 msgid "study_invalid_segment"
 msgstr "Wait for the preview to load, add a label, and enter valid times within the recording. End must be after start."
+
+msgid "study_tab_card"
+msgstr "Card"
+
+msgid "study_tab_textbook"
+msgstr "Textbook"
+
+msgid "study_tab_video"
+msgstr "Video"
+
+msgid "study_tab_audio"
+msgstr "Audio"
+
+msgid "study_no_active_card"
+msgstr "Start a card review to switch to Card."
+
+msgid "study_no_textbooks"
+msgstr "No textbook passage is linked to this card yet. Use Link PDF… to choose one."
+
+msgid "study_no_recordings"
+msgstr "No recording is linked here yet. Use Link recording… to choose a video or audio file."

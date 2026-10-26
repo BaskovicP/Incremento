@@ -6,6 +6,7 @@ import json
 _ACTION_SELECTORS = (
     "#ansbut", "#incremento-postpone-but", "#incremento-item-skip-but",
     "#incremento-topic-done-button", "#incremento-reviewer-extract-button",
+    "#incremento-study-navigation button",
 )
 ACTION_BUTTONS = ":is(" + ", ".join(_ACTION_SELECTORS) + ")"
 ALL_BUTTONS = ":is(" + ", ".join((*_ACTION_SELECTORS, "button[data-ease]")) + ")"

@@ -1,12 +1,11 @@
 """A supplemental study visit over the still-active Anki review card."""
 from pathlib import Path
-import json
 import secrets
 from threading import Event
 
 from aqt import mw
 from aqt.operations import QueryOp
-from aqt.qt import (QDialog, QHBoxLayout, QLabel, QListWidget, QPushButton, QSplitter,
+from aqt.qt import (QButtonGroup, QDialog, QHBoxLayout, QLabel, QListWidget, QPushButton, QSplitter,
                     QTimer, QVBoxLayout, QWidget, Qt)
 
 try:
@@ -18,6 +17,7 @@ try:
                                           resolve_link_rows)
     from .study_visit import StudyVisit
     from .recording_player import RecordingPlayer, timestamp
+    from .study_navigation import reviewer_navigation_script
 except ImportError:
     from backend.anki_compat import pause_reviewer_auto_advance
     from backend.i18n import t
@@ -26,6 +26,7 @@ except ImportError:
     from backend.study_resources import load_card_resources, resolve_document, resolve_recording, resolve_link_rows
     from frontend.study_visit import StudyVisit
     from frontend.recording_player import RecordingPlayer, timestamp
+    from frontend.study_navigation import reviewer_navigation_script
 
 _ADDON_DIR = str(Path(__file__).resolve().parent.parent)
 _window = None
@@ -63,20 +64,35 @@ class StudyWorkspace(QDialog):
         self._requests = {}
         self._disabled = []
         self._items = []
+        self._documents = []
+        self._recordings = []
+        self._last_resource_stage = 'book'
+        self._review_suspended = False
         self._last_location = None
         self._resume_auto_advance = lambda: None
         # Leave the existing web document intact, including the question/answer side.
-        if self.visit.card_id:
-            reviewer = mw.reviewer
-            self._resume_auto_advance = pause_reviewer_auto_advance(reviewer)
-            bottom = getattr(reviewer, 'bottom', None)
-            for widget in (reviewer.web, getattr(bottom, 'web', bottom)):
-                if widget is not None and hasattr(widget, 'isEnabled'):
-                    self._disabled.append((widget, widget.isEnabled()))
-                    widget.setEnabled(False)
+        self._suspend_reviewer()
         layout = QVBoxLayout(self)
         header = QHBoxLayout()
-        self.breadcrumb = QLabel(t('study_journey'), self)
+        self.stage_buttons = {}
+        self.stage_group = QButtonGroup(self)
+        self.stage_group.setExclusive(True)
+        for stage, key in (('card', 'study_tab_card'), ('book', 'study_tab_textbook'), ('video', 'study_tab_video')):
+            if self.stage_buttons:
+                header.addWidget(QLabel('→', self))
+            button = QPushButton(t(key), self)
+            button.setObjectName('study-stage-' + stage)
+            button.setAccessibleName(t(key))
+            button.setCheckable(True)
+            button.setAutoDefault(False)
+            button.clicked.connect(lambda _=False, stage=stage: self.navigate(stage))
+            self.stage_group.addButton(button)
+            self.stage_buttons[stage] = button
+            header.addWidget(button)
+        self.stage_buttons['card'].setEnabled(bool(self.visit.card_id))
+        if not self.visit.card_id:
+            self.stage_buttons['card'].setToolTip(t('study_no_active_card'))
+        self.breadcrumb = QLabel('', self)
         header.addWidget(self.breadcrumb, 1)
         back = QPushButton(t('study_return_card') if self.visit.card_id else t('study_close'), self)
         back.clicked.connect(self.close)
@@ -110,6 +126,8 @@ class StudyWorkspace(QDialog):
             button = QPushButton(t(key), self)
             button.clicked.connect(fn)
             actions.addWidget(button)
+            if key == 'study_link_recording':
+                self.add_recording = button
         side.addLayout(actions)
         self.link_book = QPushButton(t('reader_reference_add'), self)
         self.link_book.clicked.connect(self.link_textbook)
@@ -132,6 +150,7 @@ class StudyWorkspace(QDialog):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll_location)
         self.timer.start(400)
+        self._set_stage('book')
         if self.source['kind'] == 'card':
             self.refresh()
         else:
@@ -139,6 +158,100 @@ class StudyWorkspace(QDialog):
 
     def current(self):
         return self.visit.current(*_context())
+
+    def _suspend_reviewer(self):
+        if not self.visit.card_id or self._review_suspended:
+            return
+        reviewer = mw.reviewer
+        self._review_suspended = True
+        self._resume_auto_advance = pause_reviewer_auto_advance(reviewer)
+        bottom = getattr(reviewer, 'bottom', None)
+        self._disabled = []
+        for widget in (reviewer.web, getattr(bottom, 'web', bottom)):
+            if widget is not None and hasattr(widget, 'isEnabled'):
+                self._disabled.append((widget, widget.isEnabled()))
+                widget.setEnabled(False)
+
+    def _restore_reviewer(self, *, resume):
+        if not self._review_suspended:
+            return
+        self._review_suspended = False
+        for widget, enabled in self._disabled:
+            try:
+                widget.setEnabled(enabled)
+            except RuntimeError:
+                pass
+        self._disabled = []
+        if resume:
+            self._resume_auto_advance()
+        self._resume_auto_advance = lambda: None
+
+    def _set_stage(self, stage):
+        self.visit.navigate(stage)
+        self.stage_buttons[stage].setChecked(True)
+        if stage != 'card':
+            self._last_resource_stage = stage
+        self.play_host.setVisible(stage == 'video' and self.player is not None)
+        self.back_passage.setVisible(stage == 'video' and self.reader is not None)
+        self.book_host.setVisible(self.reader is not None)
+
+    def navigate(self, stage):
+        if not self.current() or stage not in self.stage_buttons:
+            return
+        if stage == 'card' and not self.visit.card_id:
+            return
+        for channel in ('document', 'recording', 'resources'):
+            pending = self._requests.get(channel)
+            if pending:
+                pending.set()
+        if self.player:
+            self.player.pause()
+        self._set_stage(stage)
+        if stage == 'card':
+            self.hide()
+            self._restore_reviewer(resume=True)
+            refresh_reviewer_navigation()
+            mw.activateWindow()
+            mw.reviewer.web.setFocus()
+            return
+        self._suspend_reviewer()
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        if stage == 'book' and self.reader is not None:
+            self.status.setText(t('study_choose_resource'))
+            self.reader.view.setFocus()
+        elif stage == 'video' and self.player is not None:
+            self.status.setText(t('study_player_paused'))
+        elif stage == 'book' and self.source['kind'] != 'card':
+            self.open_document(self.source)
+        else:
+            self.status.setText(t('study_loading'))
+            self.refresh(navigate_to=stage)
+
+    def _choose_stage_resource(self, stage):
+        if self.visit.stage != stage:
+            return
+        choices = self._documents if stage == 'book' else self._recordings
+        available = [item for item in choices if item['available']]
+        if len(available) == 1:
+            if stage == 'book':
+                self.open_document(available[0]['location'])
+            else:
+                self._open_recording_resource(available[0])
+            return
+        self.resources.clear()
+        self._items = []
+        for item in choices:
+            if stage == 'book':
+                self._append_document(item)
+            else:
+                self._append_recording(item)
+        self.link_book.setVisible(stage == 'book' and not choices and self.source['kind'] == 'card')
+        self.status.setText(t('study_choose_resource') if choices else
+                            t('study_no_textbooks' if stage == 'book' else 'study_no_recordings'))
+        if choices:
+            self.resources.setCurrentRow(0)
 
     def submit(self, work, ready, *, channel='resources'):
         previous = self._requests.get(channel)
@@ -159,7 +272,7 @@ class StudyWorkspace(QDialog):
                 self.status.setText(t('study_resource_unavailable'))
         QueryOp(parent=mw, op=run, success=done).failure(failed).run_in_background()
 
-    def refresh(self):
+    def refresh(self, *, navigate_to=None):
         if not self.current():
             return
         source, profile = dict(self.source), self.visit.profile
@@ -169,21 +282,33 @@ class StudyWorkspace(QDialog):
             rows = list_recording_links(_ADDON_DIR, profile, source=source)
             return dict(documents=[], recordings=resolve_link_rows(_ADDON_DIR, profile, col, rows))
         def ready(result):
+            if source['kind'] == 'card':
+                self._documents = result['documents']
+            self._recordings = result['recordings']
             self.resources.clear()
             self._items = []
             for item in result['documents']:
-                text = item['title'] + ' · ' + source_label(item['location'])
-                self._add_item('document', item, text)
+                self._append_document(item)
             for item in result['recordings']:
-                title = item['label'] or (item['recording'] or {}).get('title', '')
-                text = title + ' · ' + timestamp(item['start'])
-                if item['end'] is not None:
-                    text += '–' + timestamp(item['end'])
-                self._add_item('recording', item, text)
-            self.status.setText(t('study_choose_resource') if self._items else t('study_no_resources'))
+                self._append_recording(item)
+            self.status.setText(t('study_choose_resource') if self._items else
+                t('study_no_recordings') if source['kind'] != 'card' or self.visit.stage == 'video'
+                else t('study_no_textbooks'))
             if self._items:
                 self.resources.setCurrentRow(0)
+            if navigate_to:
+                self._choose_stage_resource(navigate_to)
         self.submit(load, ready)
+
+    def _append_document(self, item):
+        self._add_item('document', item, item['title'] + ' · ' + source_label(item['location']))
+
+    def _append_recording(self, item):
+        title = item['label'] or (item['recording'] or {}).get('title', '')
+        text = title + ' · ' + timestamp(item['start'])
+        if item['end'] is not None:
+            text += '–' + timestamp(item['end'])
+        self._add_item('recording', item, text)
 
     def _add_item(self, kind, item, text):
         if not item['available']:
@@ -202,13 +327,16 @@ class StudyWorkspace(QDialog):
         if kind == 'document':
             self.open_document(item['location'])
         else:
-            source = item['source']
-            same_passage = all(source.get(key) == self.source.get(key)
-                               for key in ('kind', 'card_id', 'page', 'section'))
-            if source['kind'] != 'card' and (self.reader is None or not same_passage):
-                self.open_document(source, after=lambda: self.open_recording(item))
-            else:
-                self.open_recording(item)
+            self._open_recording_resource(item)
+
+    def _open_recording_resource(self, item):
+        source = item['source']
+        same_passage = all(source.get(key) == self.source.get(key)
+                           for key in ('kind', 'card_id', 'page', 'section'))
+        if source['kind'] != 'card' and (self.reader is None or not same_passage):
+            self.open_document(source, after=lambda: self.open_recording(item))
+        else:
+            self.open_recording(item)
 
     def open_document(self, source, *, after=None):
         source, profile = normalize_source(source), self.visit.profile
@@ -248,8 +376,8 @@ class StudyWorkspace(QDialog):
             self.reader.show()
             self.book_host.show()
             self.link_book.hide()
-            self.visit.navigate('book')
-            self.breadcrumb.setText(t('study_journey') + ' · ' + source_label(source))
+            self._set_stage('book')
+            self.breadcrumb.setText(source_label(source))
             self.refresh()
             if after:
                 after()
@@ -262,21 +390,15 @@ class StudyWorkspace(QDialog):
                 self.player = RecordingPlayer(self)
                 self.play_layout.addWidget(self.player)
             self.player.load(recording, start=item['start'], end=item['end'])
-            self.play_host.show()
-            self.back_passage.setVisible(self.reader is not None)
-            self.visit.navigate('video')
+            self.stage_buttons['video'].setText(t('study_tab_audio' if recording.get('kind') == 'audio' else 'study_tab_video'))
+            self.stage_buttons['video'].setAccessibleName(self.stage_buttons['video'].text())
+            self._set_stage('video')
             self.status.setText(t('study_player_paused'))
         self.submit(lambda col: resolve_recording(_ADDON_DIR, profile, col, item['recording_card_id']),
                     ready, channel='recording')
 
     def back_to_passage(self):
-        if self.player:
-            self.player.pause()
-        self.play_host.hide()
-        self.back_passage.hide()
-        self.visit.navigate('book')
-        if self.reader:
-            self.reader.view.setFocus()
+        self.navigate('book')
 
     def poll_location(self):
         if not self.current():
@@ -294,7 +416,7 @@ class StudyWorkspace(QDialog):
             self._last_location = key
             self.source.pop('page_y', None)
             self.source['quote'] = ''
-            self.breadcrumb.setText(t('study_journey') + ' · ' + source_label(self.source))
+            self.breadcrumb.setText(source_label(self.source))
             self.refresh()
 
     def link_recording(self, *, existing=None):
@@ -347,9 +469,12 @@ class StudyWorkspace(QDialog):
         choose_pdf(chosen, is_current=self.current)
 
     def finish(self, *_):
+        global _window
         if self.visit.closed:
             return
         valid = self.visit.finish(*_context())
+        if _window is self:
+            _window = None
         self.timer.stop()
         for cancelled in self._requests.values():
             cancelled.set()
@@ -360,18 +485,23 @@ class StudyWorkspace(QDialog):
                 self.reader.close()
             except RuntimeError:
                 pass  # A profile-reset hook may already have destroyed this pane.
-        for widget, enabled in self._disabled:
-            try:
-                widget.setEnabled(enabled)
-            except RuntimeError:
-                pass
+        self._restore_reviewer(resume=valid)
         if valid and self.visit.card_id:
-            self._resume_auto_advance()
+            refresh_reviewer_navigation()
             mw.reviewer.web.setFocus()
+
+    def closeEvent(self, event):
+        # Qt does not always emit QDialog.finished when an already-hidden visit
+        # closes after the reviewer advances. Retire it before native teardown.
+        self.finish()
+        super().closeEvent(event)
 
 
 def show_resources(source=None):
     global _window
+    if source is None and _window is not None and _window.current():
+        _window.navigate(_window._last_resource_stage)
+        return
     if _window is not None:
         _window.close()
     _window = StudyWorkspace(source)
@@ -393,25 +523,41 @@ def reset(*_):
 
 def reviewer_shown(*_):
     global _review_token, _review_context
-    reset()
     context = _context()
+    if (_window is not None and not _window.visit.closed and _window.visit.stage == 'card'
+            and context[0] == _window.visit.profile and context[1] is _window.visit.collection
+            and context[2] == _window.visit.card_id):
+        _window.visit.side = context[3]
+    else:
+        reset()
     if not context[2]:
         return
     _review_context = context
     _review_token = secrets.token_urlsafe(24)
-    # App-created DOM only. No user title/HTML is inserted into this control.
-    payload = json.dumps(dict(label=t('study_resources'), command='incremento_study:' + _review_token))
-    mw.reviewer.web.eval("(() => {document.getElementById('incremento-study-resources')?.remove();"
-        "const d=" + payload + "; const b=document.createElement('button');b.id='incremento-study-resources';"
-        "b.type='button';b.textContent=d.label;b.style.cssText='display:block;margin:18px auto;padding:7px 14px';"
-        "b.onclick=()=>pycmd(d.command);document.body.appendChild(b);})();")
+    refresh_reviewer_navigation()
+
+
+def refresh_reviewer_navigation():
+    if not _review_token or _review_context != _context():
+        return
+    command = 'incremento_study:' + _review_token
+    if _window is not None and _window.current():
+        routes = [dict(stage=stage, label=button.text(), command=command + ':' + stage, current=stage == 'card')
+                  for stage, button in _window.stage_buttons.items()]
+    else:
+        routes = [dict(stage='resources', label=t('study_resources'), command=command, current=False)]
+    mw.reviewer.web.eval(reviewer_navigation_script(routes, t('study_resources')))
 
 
 def on_js_message(handled, message, context):
     if not isinstance(message, str) or not message.startswith('incremento_study:'):
         return handled
-    if (context is getattr(mw, 'reviewer', None) and _review_token
-            and secrets.compare_digest(message, 'incremento_study:' + _review_token)
+    parts = message.removeprefix('incremento_study:').split(':')
+    if (context is getattr(mw, 'reviewer', None) and _review_token and len(parts) in (1, 2)
+            and parts[0].isascii() and secrets.compare_digest(parts[0], _review_token)
             and _review_context == _context()):
-        show_resources()
+        if len(parts) == 1:
+            show_resources()
+        elif parts[1] in ('card', 'book', 'video') and _window is not None:
+            _window.navigate(parts[1])
     return True, None

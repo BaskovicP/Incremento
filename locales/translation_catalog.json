@@ -32940,9 +32940,33 @@
     },
     {
       "component": "addon",
+      "key": "study_no_active_card",
+      "form": "",
+      "source": "Start a card review to switch to Card.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_no_recordings",
+      "form": "",
+      "source": "No recording is linked here yet. Use Link recording… to choose a video or audio file.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "study_no_resources",
       "form": "",
       "source": "No resources linked here yet. Link a textbook passage or a recording to get started.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_no_textbooks",
+      "form": "",
+      "source": "No textbook passage is linked to this card yet. Use Link PDF… to choose one.",
       "tokens": [],
       "markup": []
     },
@@ -33105,6 +33129,38 @@
       "key": "study_start",
       "form": "",
       "source": "Start time",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_tab_audio",
+      "form": "",
+      "source": "Audio",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_tab_card",
+      "form": "",
+      "source": "Card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_tab_textbook",
+      "form": "",
+      "source": "Textbook",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_tab_video",
+      "form": "",
+      "source": "Video",
       "tokens": [],
       "markup": []
     },

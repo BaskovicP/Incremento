@@ -4183,3 +4183,24 @@ msgstr "Kada uvoz završi, pritisnite Osvježi i odaberite snimku."
 
 msgid "study_invalid_segment"
 msgstr "Pričekajte učitavanje pregleda, dodajte naziv i unesite valjana vremena unutar snimke. Kraj mora biti nakon početka."
+
+msgid "study_tab_card"
+msgstr "Kartica"
+
+msgid "study_tab_textbook"
+msgstr "Udžbenik"
+
+msgid "study_tab_video"
+msgstr "Video"
+
+msgid "study_tab_audio"
+msgstr "Zvuk"
+
+msgid "study_no_active_card"
+msgstr "Pokrenite ponavljanje kartice za prelazak na Karticu."
+
+msgid "study_no_textbooks"
+msgstr "Ova kartica još nema povezan odlomak iz udžbenika. Odaberite ga pomoću Poveži PDF…"
+
+msgid "study_no_recordings"
+msgstr "Ovdje još nema povezane snimke. Odaberite video ili zvučnu datoteku pomoću Poveži snimku…"
