@@ -19,6 +19,7 @@ try:
     from .recording_player import RecordingPlayer, timestamp
     from .study_navigation import reviewer_navigation_script, set_stage_icon, style_stage_bar
     from .study_surface import StudySurface
+    from .study_availability import card_availability, resource_availability
 except ImportError:
     from backend.anki_compat import pause_reviewer_auto_advance
     from backend.i18n import t
@@ -29,11 +30,16 @@ except ImportError:
     from frontend.recording_player import RecordingPlayer, timestamp
     from frontend.study_navigation import reviewer_navigation_script, set_stage_icon, style_stage_bar
     from frontend.study_surface import StudySurface
+    from frontend.study_availability import card_availability, resource_availability
 
 _ADDON_DIR = str(Path(__file__).resolve().parent.parent)
 _window = None
 _review_token = ''
 _review_context = None
+_resource_context = None
+_resource_request = None
+_review_resources = None
+_resource_failed = False
 
 
 def _context():
@@ -68,6 +74,9 @@ class StudyWorkspace(QDialog):
         self._items = []
         self._documents = []
         self._recordings = []
+        self._resources_known = False
+        self._resources_failed = False
+        self._resources_source = None
         self._last_resource_stage = 'book'
         self._review_suspended = False
         self._last_location = None
@@ -89,6 +98,7 @@ class StudyWorkspace(QDialog):
         stages.setContentsMargins(5, 5, 5, 5)
         stages.setSpacing(4)
         self.stage_buttons = {}
+        self.stage_status = {}
         self.stage_group = QButtonGroup(self)
         self.stage_group.setExclusive(True)
         for stage, key in (('card', 'study_tab_card'), ('book', 'study_tab_textbook'), ('video', 'study_tab_video')):
@@ -100,7 +110,17 @@ class StudyWorkspace(QDialog):
             button.clicked.connect(lambda _=False, stage=stage: self.navigate(stage))
             self.stage_group.addButton(button)
             self.stage_buttons[stage] = button
-            stages.addWidget(button)
+            group = QVBoxLayout()
+            group.setSpacing(2)
+            group.addWidget(button)
+            status = QLabel('', self.stage_bar)
+            status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            font = status.font()
+            font.setPointSizeF(max(10, font.pointSizeF() * .85))
+            status.setFont(font)
+            self.stage_status[stage] = status
+            group.addWidget(status)
+            stages.addLayout(group)
         self._stage_colors = style_stage_bar(self.stage_bar, self.stage_buttons)
         self._recording_icon = 'video'
         header.addWidget(self.stage_bar)
@@ -293,6 +313,13 @@ class StudyWorkspace(QDialog):
             self.splitter.setSizes([500, 400])
 
     def _sync_panels(self, *_):
+        states = self.availability()
+        for stage, state in states.items():
+            button = self.stage_buttons[stage]
+            button.setEnabled(not state['disabled'])
+            button.setAccessibleDescription(state['status'])
+            button.setToolTip(t('study_no_active_card') if stage == 'card' and state['disabled'] else state['status'])
+            self.stage_status[stage].setText(state['status'])
         video = self.visit.stage == 'video' and self.player is not None
         self.play_host.setVisible(video)
         self.back_passage.setVisible(video and self.reader is not None)
@@ -308,6 +335,13 @@ class StudyWorkspace(QDialog):
         self.open_resource.setEnabled(bool(self._items))
         self.resource_intro.setText(t('study_card_hint') if self._items else
             t('study_no_textbooks' if self.source['kind'] == 'card' and self.visit.stage == 'book' else 'study_no_recordings'))
+
+    def availability(self):
+        return dict(card=card_availability(bool(self.visit.card_id)),
+            book=resource_availability(self._documents if self._resources_known else None,
+                                       present=self.reader is not None, failed=self._resources_failed),
+            video=resource_availability(self._recordings if self._resources_known else None,
+                                        present=self.player is not None, failed=self._resources_failed))
 
     def _suspend_reviewer(self):
         if not self.visit.card_id or self._review_suspended:
@@ -348,6 +382,8 @@ class StudyWorkspace(QDialog):
             return
         if stage == 'card' and not self.visit.card_id:
             return
+        if self.availability()[stage]['disabled'] and self.availability()[stage]['availability'] != 'loading':
+            return
         for channel in ('document', 'recording', 'resources'):
             pending = self._requests.get(channel)
             if pending:
@@ -359,6 +395,7 @@ class StudyWorkspace(QDialog):
             self.surface.leave()
             self._restore_reviewer(resume=True)
             refresh_reviewer_navigation()
+            check_reviewer_resources(force=True)
             mw.activateWindow()
             mw.reviewer.web.setFocus()
             return
@@ -419,18 +456,29 @@ class StudyWorkspace(QDialog):
         def failed(_error):
             if not cancelled.is_set() and self.current():
                 self.status.setText(t('study_resource_unavailable'))
+                if channel == 'resources':
+                    self._resources_failed = True
+                    self._sync_panels()
         QueryOp(parent=mw, op=run, success=done).failure(failed).run_in_background()
 
     def refresh(self, *, navigate_to=None):
         if not self.current():
             return
         source, profile = dict(self.source), self.visit.profile
+        key = (source['kind'], source['card_id'], source.get('page'), source.get('section'))
+        if key != self._resources_source:
+            self._resources_source = key
+            self._resources_known = self._resources_failed = False
+            self._recordings = []
+            self._sync_panels()
         def load(col):
             if source['kind'] == 'card':
                 return load_card_resources(_ADDON_DIR, profile, col, source['card_id'])
             rows = list_recording_links(_ADDON_DIR, profile, source=source)
             return dict(documents=[], recordings=resolve_link_rows(_ADDON_DIR, profile, col, rows))
         def ready(result):
+            self._resources_known = True
+            self._resources_failed = False
             if source['kind'] == 'card':
                 self._documents = result['documents']
             self._recordings = result['recordings']
@@ -619,7 +667,8 @@ class StudyWorkspace(QDialog):
             from ..backend.document_links import add_document_link
         except ImportError:
             from backend.document_links import add_document_link
-        source, profile = dict(self.source), self.visit.profile
+        source = dict(kind='card', card_id=self.visit.card_id) if self.visit.card_id else dict(self.source)
+        profile = self.visit.profile
         def chosen(location):
             target = dict(kind='pdf', card_id=location['card_id'], page=location['page'],
                           scroll=location['scroll_ratio'], page_y=location.get('page_y'))
@@ -667,7 +716,16 @@ class StudyWorkspace(QDialog):
 def show_resources(source=None):
     global _window
     if source is None and _window is not None and _window.current():
-        _window.navigate(_window._last_resource_stage)
+        stage = _window._last_resource_stage
+        if _window.availability()[stage]['disabled']:
+            # Explicit management/linking remains available even when a tab has
+            # no usable destination. Navigation itself stays disabled.
+            _window._suspend_reviewer()
+            _window._set_stage(stage)
+            _window.present()
+            _window.refresh()
+        else:
+            _window.navigate(stage)
         return
     if _window is not None:
         _window.close()
@@ -682,8 +740,11 @@ def show_resources(source=None):
 
 
 def reset(*_):
-    global _review_token, _review_context
+    global _review_token, _review_context, _resource_context, _review_resources, _resource_failed
     _review_token, _review_context = '', None
+    if _resource_request is not None:
+        _resource_request.set()
+    _resource_context, _review_resources, _resource_failed = None, None, False
     if _window is not None:
         _window.close()
 
@@ -695,42 +756,98 @@ def reviewer_shown(*_):
             and context[0] == _window.visit.profile and context[1] is _window.visit.collection
             and context[2] == _window.visit.card_id):
         _window.visit.side = context[3]
-    else:
-        reset()
+    elif _window is not None:
+        _window.close()
     if not context[2]:
+        reset()
         return
     _review_context = context
     _review_token = secrets.token_urlsafe(24)
     refresh_reviewer_navigation()
+    check_reviewer_resources()
+
+
+def check_reviewer_resources(*, force=False):
+    """Inspect only this card's bounded references off the UI thread."""
+    global _resource_context, _resource_request, _review_resources, _resource_failed
+    context = _context()[:3]
+    if not context[2] or _review_context != _context():
+        return
+    if not force and _resource_context == context:
+        return
+    if _resource_request is not None:
+        _resource_request.set()
+    previous = _review_resources if _resource_context == context else None
+    cancelled = _resource_request = Event()
+    _resource_context, _review_resources, _resource_failed = context, previous, False
+    profile, collection, card_id = context
+    refresh_reviewer_navigation()
+    def work(col):
+        if not cancelled.is_set() and col is collection:
+            return load_card_resources(_ADDON_DIR, profile, col, card_id)
+        return None
+    def current():
+        now = _context()
+        return not cancelled.is_set() and now[0] == profile and now[1] is collection and now[2] == card_id
+    def ready(result):
+        global _review_resources, _resource_failed
+        if current():
+            _review_resources, _resource_failed = result, False
+            refresh_reviewer_navigation()
+    def failed(_error):
+        global _resource_failed, _review_resources
+        if current():
+            _review_resources = None
+            _resource_failed = True
+            refresh_reviewer_navigation()
+    QueryOp(parent=mw, op=work, success=ready).failure(failed).run_in_background()
 
 
 def refresh_reviewer_navigation():
     if not _review_token or _review_context != _context():
         return
     command = 'incremento_study:' + _review_token
-    if _window is not None and _window.current():
-        routes = [dict(stage=stage, label=button.text(), command=command + ':' + stage, current=stage == 'card',
-                       icon=_window._recording_icon if stage == 'video' else stage)
-                  for stage, button in _window.stage_buttons.items()]
-    else:
-        routes = [dict(stage=stage, label=t(key), command=command + ':' + stage, current=stage == 'card')
-                  for stage, key in (('card', 'study_tab_card'), ('book', 'study_tab_textbook'), ('video', 'study_tab_video'))]
+    result = _review_resources if _resource_context == _context()[:3] else None
+    documents = result['documents'] if result is not None else None
+    recordings = result['recordings'] if result is not None else None
+    states = dict(card=card_availability(True),
+                  book=resource_availability(documents, failed=_resource_failed),
+                  video=resource_availability(recordings, failed=_resource_failed))
+    available_recordings = [item for item in (recordings or []) if item['available']]
+    audio = bool(available_recordings) and all((item.get('recording') or {}).get('kind') == 'audio' for item in available_recordings)
+    routes = [dict(stage=stage, label=t(key), command=command + ':' + stage, current=stage == 'card', **states[stage],
+                   icon='audio' if stage == 'video' and audio else stage)
+              for stage, key in (('card', 'study_tab_card'), ('book', 'study_tab_textbook'), ('video', 'study_tab_audio' if audio else 'study_tab_video'))]
     book = dict(stage='book', title=t('study_tab_textbook'), detail=t('study_read_hint'),
                 action=t('study_read_passage'), command=command + ':book')
-    video = dict(stage='video', title=t('study_tab_video'), detail=t('study_recording_hint'),
+    video = dict(stage='video', title=t('study_tab_audio' if audio else 'study_tab_video'), detail=t('study_recording_hint'),
                  action=t('study_open_recording'), command=command + ':video')
+    available_documents = [item for item in (documents or []) if item['available']]
+    if available_documents:
+        item = available_documents[0]
+        book.update(title=item['title'] or book['title'], detail=source_label(item['location']))
+    if available_recordings:
+        item = available_recordings[0]
+        video.update(title=item['label'] or (item.get('recording') or {}).get('title') or video['title'],
+                     detail=timestamp(item['start']))
     if _window is not None and _window.current():
-        if _window.reader is not None:
+        if available_documents and _window.reader is not None:
             book.update(title=_window.book_title.text(), detail=source_label(_window.source))
-        elif _window._documents:
-            item = _window._documents[0]
-            book.update(title=item['title'] or book['title'], detail=source_label(item['location']))
-        if _window._recording_summary:
+        if available_recordings and _window.player is not None and _window._recording_summary:
             video.update(_window._recording_summary)
-        elif _window._recordings:
-            item = _window._recordings[0]
-            video.update(title=item['label'] or (item.get('recording') or {}).get('title') or video['title'],
-                         detail=timestamp(item['start']))
+    for tile in (book, video):
+        state = states[tile['stage']]
+        tile.update(status=state['status'], availability=state['availability'], disabled=False)
+        if state['availability'] == 'empty':
+            tile.update(detail=t('study_no_textbooks' if tile['stage'] == 'book' else 'study_no_recordings'),
+                        action=t('reader_reference_add' if tile['stage'] == 'book' else 'study_link_recording'),
+                        command=command + (':link_book' if tile['stage'] == 'book' else ':link_video'))
+        elif state['availability'] == 'unavailable':
+            tile.update(detail=t('study_resource_unavailable'), action=t('study_manage_links'), command=command + ':manage')
+        elif state['availability'] == 'error':
+            tile.update(detail=state['status'], action=t('study_retry'), command=command + ':retry')
+        elif state['availability'] == 'loading':
+            tile.update(detail=state['status'], action=state['status'], disabled=True)
     workspace = dict(heading=t('study_review_card'),
         state=t('study_answer_revealed' if _context()[3] == 'answer' else 'study_question_side'),
         resources_label=t('study_resources'), hint=t('study_card_hint'), tiles=[book, video])
@@ -746,7 +863,19 @@ def on_js_message(handled, message, context):
             and _review_context == _context()):
         if len(parts) == 1:
             show_resources()
+        elif parts[1] == 'retry':
+            check_reviewer_resources(force=True)
+        elif parts[1] in ('link_book', 'link_video', 'manage'):
+            show_resources()
+            if parts[1] == 'link_book':
+                _window.link_textbook()
+            elif parts[1] == 'link_video':
+                _window.link_recording()
         elif parts[1] in ('card', 'book', 'video'):
+            if parts[1] != 'card':
+                items = (_review_resources or {}).get('documents' if parts[1] == 'book' else 'recordings')
+                if resource_availability(items, failed=_resource_failed)['disabled']:
+                    return True, None
             if _window is None and parts[1] != 'card':
                 show_resources()
             if _window is not None:

@@ -4193,3 +4193,30 @@ msgstr "Open recording"
 
 msgid "study_other_resources"
 msgstr "Other resources"
+
+msgid "study_available"
+msgstr "Available"
+
+msgid "study_no_card"
+msgstr "No card"
+
+msgid "study_linked_count"
+msgstr "{count} linked"
+
+msgid "study_not_linked"
+msgstr "Not linked"
+
+msgid "study_unavailable"
+msgstr "Unavailable"
+
+msgid "study_checking"
+msgstr "Checking…"
+
+msgid "study_check_failed"
+msgstr "Could not check"
+
+msgid "study_manage_links"
+msgstr "Manage links…"
+
+msgid "study_retry"
+msgstr "Retry"

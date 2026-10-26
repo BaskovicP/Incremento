@@ -4231,3 +4231,30 @@ msgstr "Otvori snimku"
 
 msgid "study_other_resources"
 msgstr "Ostali izvori"
+
+msgid "study_available"
+msgstr "Dostupno"
+
+msgid "study_no_card"
+msgstr "Nema kartice"
+
+msgid "study_linked_count"
+msgstr "Povezano: {count}"
+
+msgid "study_not_linked"
+msgstr "Nije povezano"
+
+msgid "study_unavailable"
+msgstr "Nedostupno"
+
+msgid "study_checking"
+msgstr "Provjera…"
+
+msgid "study_check_failed"
+msgstr "Provjera nije uspjela"
+
+msgid "study_manage_links"
+msgstr "Upravljaj poveznicama…"
+
+msgid "study_retry"
+msgstr "Pokušaj ponovno"

@@ -32770,6 +32770,14 @@
     },
     {
       "component": "addon",
+      "key": "study_available",
+      "form": "",
+      "source": "Available",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "study_back_passage",
       "form": "",
       "source": "Back to passage",
@@ -32797,6 +32805,22 @@
       "key": "study_card_hint",
       "form": "",
       "source": "Open a passage or recording without leaving this review.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_check_failed",
+      "form": "",
+      "source": "Could not check",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_checking",
+      "form": "",
+      "source": "Checking…",
       "tokens": [],
       "markup": []
     },
@@ -32940,9 +32964,27 @@
     },
     {
       "component": "addon",
+      "key": "study_linked_count",
+      "form": "",
+      "source": "{count} linked",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "study_loading",
       "form": "",
       "source": "Loading…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_manage_links",
+      "form": "",
+      "source": "Manage links…",
       "tokens": [],
       "markup": []
     },
@@ -32959,6 +33001,14 @@
       "key": "study_no_active_card",
       "form": "",
       "source": "Start a card review to switch to Card.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_no_card",
+      "form": "",
+      "source": "No card",
       "tokens": [],
       "markup": []
     },
@@ -32983,6 +33033,14 @@
       "key": "study_no_textbooks",
       "form": "",
       "source": "No textbook passage is linked to this card yet. Use Link PDF… to choose one.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_not_linked",
+      "form": "",
+      "source": "Not linked",
       "tokens": [],
       "markup": []
     },
@@ -33150,6 +33208,14 @@
     },
     {
       "component": "addon",
+      "key": "study_retry",
+      "form": "",
+      "source": "Retry",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "study_return_card",
       "form": "",
       "source": "Return to card",
@@ -33241,6 +33307,14 @@
       "key": "study_time_hint",
       "form": "",
       "source": "m:ss or h:mm:ss",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_unavailable",
+      "form": "",
+      "source": "Unavailable",
       "tokens": [],
       "markup": []
     },

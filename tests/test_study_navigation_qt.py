@@ -78,8 +78,11 @@ ui.reviewer_shown()
 '''
 
 
-def run_scene(body):
-    result = subprocess.run([sys.executable, '-c', dedent(SCENE) + '\n' + dedent(body)],
+def run_scene(body, *, resolve_availability=True):
+    # Navigation tests start after the background availability check; dedicated
+    # loading/race tests opt out to drive that operation explicitly.
+    ready = 'drain()\n' if resolve_availability else ''
+    result = subprocess.run([sys.executable, '-c', dedent(SCENE) + '\n' + ready + dedent(body)],
         cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=25)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -268,15 +271,16 @@ def test_opening_recording_tab_directly_loads_its_textbook_context_and_exact_sta
     ''').replace('KIND', repr(kind)))
 
 
-def test_empty_stages_show_contextual_linking_help_and_keep_navigation_clickable():
+def test_empty_stages_disable_navigation_and_keep_explicit_linking_actions_available():
     run_scene('''
         ui.load_card_resources=lambda *a: dict(documents=[], recordings=[])
         mw.resize(1200,850)
         ui.show_resources(); w=ui._window; drain()
         click(w,'video'); drain()
         app.processEvents()
-        assert w.stage_buttons['video'].isChecked() and w.resources.count()==0
-        assert w.status.text()==ui.t('study_no_recordings')
+        assert w.stage_buttons['book'].isChecked() and w.resources.count()==0
+        assert not w.stage_buttons['video'].isEnabled() and not w.stage_buttons['book'].isEnabled()
+        assert w.stage_status['video'].text()==ui.t('study_not_linked')
         assert w.add_recording.isEnabled()
         assert w.resource_panel.width()<=640 and w.resource_panel.height()<400
         click(w,'book'); drain()

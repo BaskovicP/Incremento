@@ -4155,3 +4155,30 @@ msgstr "打开录音或视频"
 
 msgid "study_other_resources"
 msgstr "其他资料"
+
+msgid "study_available"
+msgstr "可用"
+
+msgid "study_no_card"
+msgstr "无卡片"
+
+msgid "study_linked_count"
+msgstr "已关联 {count} 项"
+
+msgid "study_not_linked"
+msgstr "未关联"
+
+msgid "study_unavailable"
+msgstr "不可用"
+
+msgid "study_checking"
+msgstr "检查中…"
+
+msgid "study_check_failed"
+msgstr "无法检查"
+
+msgid "study_manage_links"
+msgstr "管理关联…"
+
+msgid "study_retry"
+msgstr "重试"

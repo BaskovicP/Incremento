@@ -54,6 +54,7 @@ body[data-study-canvas] { background: var(--study-workspace-canvas) !important; 
 }
 #incremento-study-card-resources .study-resource-copy { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 #incremento-study-card-resources .study-resource-title { font-weight: 500; }
+#incremento-study-card-resources .study-resource-status { margin-inline-start: 8px; font-size: 11px; color: var(--study-card-muted); font-weight: 400; }
 #incremento-study-card-resources .study-resource-detail { font-size: 12px; color: var(--study-card-muted); margin-top: 3px; }
 #incremento-study-card-resources svg { width: 22px; height: 22px; flex: none; color: var(--study-card-accent); }
 #incremento-study-card-resources button { flex: none; cursor: pointer; }
@@ -81,11 +82,16 @@ body[data-study-canvas] { background: var(--study-workspace-canvas) !important; 
   gap: 7px; margin: 0 !important; background: transparent !important; border-color: transparent !important;
   color: var(--study-nav-foreground) !important; cursor: pointer;
 }
+#incremento-study-navigation button[data-availability] { height: auto !important; min-height: 48px !important; }
+#incremento-study-navigation .study-nav-copy { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; white-space: normal; }
+#incremento-study-navigation .study-nav-status { font-size: 11px; font-weight: 400; line-height: 1.4; }
+#incremento-study-navigation button:disabled { opacity: .7 !important; cursor: default; }
+#incremento-study-card-resources button:disabled { cursor: default; }
 #incremento-study-navigation button[aria-current="step"] {
   background: var(--study-nav-selected) !important; color: var(--study-nav-accent) !important;
   font-weight: 600 !important;
 }
-#incremento-study-navigation button:hover:not([aria-current="step"]) {
+#incremento-study-navigation button:hover:not([aria-current="step"]):not(:disabled) {
   background: var(--incremento-button-hover) !important;
 }
 #incremento-study-navigation svg { width: 16px; height: 16px; flex: none; }
@@ -136,6 +142,7 @@ def style_stage_bar(container, buttons):
         QWidget#study-stage-bar QPushButton:hover {{ border-color: {colors['border']}; }}
         QWidget#study-stage-bar QPushButton:focus {{ border-color: {colors['accent']}; }}
         QWidget#study-stage-bar QPushButton:disabled {{ color: {container.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText).name()}; }}
+        QWidget#study-stage-bar QLabel {{ color: {colors['foreground']}; }}
     """)
     for stage, button in buttons.items():
         set_stage_icon(button, stage, colors)
@@ -173,7 +180,17 @@ def reviewer_navigation_script(routes, label, *, workspace=None):
   for (const route of data.routes) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.textContent = route.label;
+    const copy = document.createElement('span'); copy.className = 'study-nav-copy';
+    const title = document.createElement('span'); title.textContent = route.label;
+    copy.appendChild(title);
+    if (route.status) {
+      const status = document.createElement('span'); status.className = 'study-nav-status'; status.textContent = route.status;
+      copy.appendChild(status);
+      button.title = route.status;
+      button.dataset.availability = route.availability;
+    }
+    button.appendChild(copy);
+    button.disabled = Boolean(route.disabled);
     button.dataset.studyStage = route.stage;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
@@ -224,9 +241,14 @@ def reviewer_navigation_script(routes, label, *, workspace=None):
       if (icon) tile.appendChild(icon.cloneNode(true));
       const copy = document.createElement('div'); copy.className = 'study-resource-copy';
       const title = document.createElement('div'); title.className = 'study-resource-title'; title.textContent = resource.title;
+      if (resource.status) {
+        const status = document.createElement('span'); status.className = 'study-resource-status'; status.textContent = resource.status;
+        title.appendChild(status);
+      }
       const detail = document.createElement('div'); detail.className = 'study-resource-detail'; detail.textContent = resource.detail;
       copy.append(title,detail);
       const action = document.createElement('button'); action.type = 'button'; action.textContent = resource.action;
+      action.disabled = Boolean(resource.disabled);
       action.onclick = () => pycmd(resource.command);
       tile.append(copy,action); shelf.appendChild(tile);
     }
