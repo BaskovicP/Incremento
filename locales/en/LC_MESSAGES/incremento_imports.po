@@ -1544,3 +1544,31 @@ msgstr "Opening the page with Incremento Companion. If nothing happens, install 
 
 msgid "imports_companion_browser_unavailable"
 msgstr "Could not open the selected Companion browser. Check Companion browser in Incremento Settings → Review."
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_option"
+msgstr "Preview and remove elements before saving"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_title"
+msgstr "Clean up webpage"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_help"
+msgstr "Click unwanted elements to hide them. Shift-click removes their parent container. Undo restores the last removal; Reset restores everything. Turn Zap off to select text. Only loaded content is included."
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_zap"
+msgstr "Zap elements"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_undo"
+msgstr "Undo removal"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_reset"
+msgstr "Reset"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_save"
+msgstr "Save PDF"

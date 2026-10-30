@@ -598,6 +598,27 @@ def test_pdf_link_preview_zoom_bridge_persists_only_current_profile_and_card(mon
     assert config == {"pdf_link_preview_zoom_by_profile": {"Other profile": 1.75}, "future_key": True}
 
 
+def test_pdf_link_preview_size_bridge_saves_only_current_card_and_preserves_other_profiles(monkeypatch):
+    from copy import deepcopy
+    config = {'pdf_link_preview_size_by_profile': {'Other': {'width': 600, 'height': 400}}, 'future': True}
+    saved = []
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 42)
+    monkeypatch.setattr(pdf_dock, '_active_profile', lambda: 'TestProfile')
+    monkeypatch.setattr(pdf_dock, '_config', lambda config=None: deepcopy(config if config is not None else configured))
+    configured = config
+    monkeypatch.setattr(pdf_dock, 'save_addon_config', lambda manager, package, value: saved.append(deepcopy(value)))
+    size = {'width': 760, 'height': 500}
+    for payload in [[], None, {'size': size}, {'cardId': 99, 'size': size},
+                    {'cardId': True, 'size': size}, {'cardId': 42, 'size': {'width': False, 'height': 500}},
+                    {'cardId': 42, 'size': {'width': float('nan'), 'height': 500}},
+                    {'cardId': 42, 'size': size}]:
+        pdf_dock._handle_pdf_js_message('incremento_pdf_link_preview_size:' + json.dumps(payload))
+    assert saved == [{'pdf_link_preview_size_by_profile': {
+        'Other': {'width': 600, 'height': 400}, 'TestProfile': size}, 'future': True}]
+    assert config == {'pdf_link_preview_size_by_profile': {'Other': {'width': 600, 'height': 400}}, 'future': True}
+    assert pdf_dock.configured_pdf_link_preview_size(saved[0], 'TestProfile') == size
+
+
 def test_pdf_request_boundary_allows_only_viewer_assets_and_active_pdf(tmp_path):
     viewer_root = tmp_path / "web"
     viewer_root.mkdir()
@@ -1456,6 +1477,9 @@ def test_pdf_context_anchor_rejects_stale_cards_and_clamps_scroll_ratio(monkeypa
 @pytest.mark.parametrize("changed", ["profile", "card", "filename", "load", "closed", "menu"])
 def test_embedded_image_menu_uses_captured_profile_path_and_retires_stale_callbacks(monkeypatch, changed):
     requests, paths = [], []
+    # The recording dialog is a separate UI boundary; this test owns image capture.
+    monkeypatch.setitem(sys.modules, 'recording_link_dialog', types.SimpleNamespace(
+        add_context_actions=lambda *args, **kwargs: None))
     profile = ["A"]
     page = types.SimpleNamespace(_bridge_nonce="load-one")
     view = types.SimpleNamespace(page=lambda: page)
@@ -2142,6 +2166,7 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     monkeypatch.setattr(pdf_dock, "configured_highlight_when_extracting", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "configured_pdf_show_highlight_delete_buttons", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "configured_pdf_link_preview_zoom", lambda *args, **kwargs: 2.5)
+    monkeypatch.setattr(pdf_dock, "configured_pdf_link_preview_size", lambda *args, **kwargs: {'width': 760, 'height': 500})
     monkeypatch.setattr(pdf_dock, "configured_pdf_controls_collapsed", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "configured_scroll_to_top_on_page_change", lambda *args, **kwargs: False)
     monkeypatch.setattr(pdf_dock, "_consume_due_review_prompt_suppression", lambda card_id: False)
@@ -2205,12 +2230,13 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     assert "scrollToTopOnPageChange: false" in js_calls[0]
     assert "showHighlightDeleteButtons: false" in js_calls[0]
     assert "linkPreviewZoom: 2.5" in js_calls[0]
+    assert 'linkPreviewSize: {"width": 760, "height": 500}' in js_calls[0]
     assert "controlsCollapsed: false" in js_calls[0]
     assert f'pageY: {json.dumps(page_y_override)}' in js_calls[0]
     assert f'locale: {json.dumps(reader_locale)}' in js_calls[0]
     assert f'customLanguage: {json.dumps(custom_language)}' in js_calls[0]
     assert (
-        f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}, "night", false, 2.5, {json.dumps(page_y_override)}, false));'
+        f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}, "night", false, 2.5, {json.dumps(page_y_override)}, false, "yellow", {{"width": 760, "height": 500}}));'
         in js_calls[0]
     )
     assert 'appearanceMode: "night"' in js_calls[0]
@@ -2970,12 +2996,14 @@ def test_custom_color_result_is_delivered_only_to_its_current_pdf(monkeypatch, s
     monkeypatch.setattr(pdf_dock, '_pdf_annotation_generation', 10)
     monkeypatch.setattr(pdf_dock, 'current_pdf_card_id', lambda: 42)
     monkeypatch.setattr(pdf_dock, '_active_profile', lambda: 'Profile A')
-    def choose(parent, current, *, addon_dir, profile):
+    def choose(parent, current, *, addon_dir, profile, default_color=False):
+        assert default_color is False
         picks.append((parent, current, addon_dir, profile))
         if switch_context:
             monkeypatch.setattr(pdf_dock, '_active_profile', lambda: 'Profile B')
         return '#123abc'
-    monkeypatch.setitem(sys.modules, 'highlight_color_dialog', types.SimpleNamespace(choose_highlight_color=choose))
+    monkeypatch.setitem(sys.modules, 'highlight_color_dialog', types.SimpleNamespace(choose_highlight_color=choose,
+        refresh_reader_default_highlight_color=lambda *args: pytest.fail('An annotation edit must not change the default')))
     pdf_dock._choose_pdf_highlight_color({'cardId': 999, 'currentColor': 'yellow'})
     assert not picks and not scripts
     pdf_dock._choose_pdf_highlight_color({'cardId': 42, 'currentColor': '#123ABC'})
@@ -2984,6 +3012,45 @@ def test_custom_color_result_is_delivered_only_to_its_current_pdf(monkeypatch, s
         assert not scripts
     else:
         assert len(scripts) == 1 and 'incrementoPickPdfHighlightColor("#123abc")' in scripts[0]
+
+
+@pytest.mark.parametrize('outcome', ['saved', 'cancelled', 'profile-switched', 'card-switched', 'write-failed'])
+def test_default_color_picker_saves_only_an_accepted_current_pdf_choice(monkeypatch, outcome):
+    from copy import deepcopy
+    stored = {'reader_default_highlight_color_by_profile': {'A': 'yellow', 'B': 'purple'}}
+    scripts, refreshed, errors = [], [], []
+    profile, cid = ['A'], [42]
+    def write(_key, config):
+        if outcome == 'write-failed':
+            raise OSError('Synthetic failure')
+        stored.clear()
+        stored.update(deepcopy(config))
+    manager = types.SimpleNamespace(getConfig=lambda _key: deepcopy(stored), writeConfig=write)
+    dock = types.SimpleNamespace(_view=types.SimpleNamespace(page=lambda: types.SimpleNamespace(runJavaScript=scripts.append)))
+    monkeypatch.setattr(pdf_dock, 'mw', types.SimpleNamespace(addonManager=manager))
+    monkeypatch.setattr(pdf_dock, '_pdf_dock', dock)
+    monkeypatch.setattr(pdf_dock, '_current_pdf_filename', 'fixture.pdf')
+    monkeypatch.setattr(pdf_dock, '_active_profile', lambda: profile[0])
+    monkeypatch.setattr(pdf_dock, 'current_pdf_card_id', lambda: cid[0])
+    monkeypatch.setattr(pdf_dock, 'showInfo', errors.append)
+    def choose(*_args, **kwargs):
+        assert kwargs['default_color'] is True and kwargs['profile'] == 'A'
+        if outcome == 'profile-switched':
+            profile[0] = 'B'
+        if outcome == 'card-switched':
+            cid[0] = 99
+        return None if outcome == 'cancelled' else '#123abc'
+    monkeypatch.setitem(sys.modules, 'highlight_color_dialog', types.SimpleNamespace(
+        choose_highlight_color=choose, refresh_reader_default_highlight_color=lambda *args: refreshed.append(args)))
+    pdf_dock._choose_pdf_highlight_color({'cardId': 42, 'currentColor': 'yellow', 'defaultColor': True})
+    assert stored['reader_default_highlight_color_by_profile'] == {
+        'A': '#123abc' if outcome == 'saved' else 'yellow', 'B': 'purple'}
+    assert refreshed == ([('A', '#123abc')] if outcome == 'saved' else [])
+    assert bool(errors) is (outcome == 'write-failed')
+    if outcome in ('cancelled', 'write-failed'):
+        assert scripts == ['window.incrementoPickPdfHighlightColor && window.incrementoPickPdfHighlightColor(null);']
+    elif outcome != 'saved':
+        assert scripts == []
 
 
 @pytest.mark.parametrize('action', ['next_page', 'prev_page', 'zoom_in', 'zoom_out', 'mark_read', 'open_find', 'contents'])

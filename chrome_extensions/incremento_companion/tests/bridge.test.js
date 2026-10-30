@@ -102,6 +102,51 @@ test("importIntoIncremento throws bridge errors from the response body", async (
   }
 });
 
+test("a rejected PDF import retains Anki's reason and HTTP status for the error report", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = withHandshake(async () => Response.json({
+    ok: false, error_code: "invalid_request", error: "HTML payload is too large.",
+    error_stage: "preparation",
+  }, {status: 400}));
+  try {
+    await assert.rejects(() => importIntoIncremento({kind: "pdf"}), (error) => {
+      assert.equal(error.serverMessage, "HTML payload is too large.");
+      assert.equal(error.httpStatus, 400);
+      assert.equal(error.backendStage, "preparation");
+      assert.equal(formatBridgeError(error, "Fallback"),
+        "The request could not be accepted. Check the selected content.");
+      return true;
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("bridge error metadata is bounded and rejects malformed server fields", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = withHandshake(async () => Response.json({
+    ok: false, error_code: "invalid_request", error: "Too large.\n\u0000" + "x".repeat(2000),
+    error_stage: "secret unrecognized stage", payload: "do not copy this",
+  }, {status: 400}));
+  try {
+    await assert.rejects(() => importIntoIncremento({kind: "pdf"}), (error) => {
+      assert.equal(error.serverMessage.length, 1000);
+      assert.doesNotMatch(error.serverMessage, /[\n\u0000]/);
+      assert.equal(error.backendStage, "");
+      assert.equal(error.payload, undefined);
+      return true;
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a webpage verification error explains the opened-page PDF recovery", () => {
+  const error = Object.assign(new Error("Verification required"), {code: "webpage_verification_required"});
+  assert.equal(formatBridgeError(error, "Fallback"),
+    "This site requires a security check or sign-in. Complete it in the original tab, then choose Capture opened page as PDF.");
+});
+
 test("bridge refreshes authorization once after the backend restarts", async () => {
   const calls = [];
   const originalFetch = globalThis.fetch;

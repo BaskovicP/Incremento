@@ -1,9 +1,11 @@
 """Presentation choices for webpage PDFs, independent of the printing engine."""
 
 from html import escape
+import json
+import re
 from urllib.parse import urljoin, urlsplit
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 
 MAX_HTML_BYTES = 16 * 1024 * 1024
 _ARTICLE_CSS = """@page { size: A4; margin: 18mm 17mm; }
@@ -41,6 +43,99 @@ def _target(reference: str, base_url: str) -> str:
     return ""
 
 
+def _materialize_streamed_content(soup) -> None:
+    """Apply only React's inert segment moves, never evaluate captured scripts.
+
+    Next/React streaming leaves completed content in hidden S:* containers.
+    Resolve its explicit RC/RS references before the sanitizer removes scripts
+    and templates. Other hidden elements retain their original visibility.
+    """
+    references = {str(tag["id"]): tag for tag in soup.find_all(id=True)}
+    calls = re.compile(r'''\$(RC|RS)\(\s*["']([BSP]:[\da-f]+)["']\s*,\s*["']([SP]:[\da-f]+)["']\s*\)''')
+    count = 0
+    for script in soup.find_all("script"):
+        for match in calls.finditer(script.get_text()):
+            count += 1
+            if count > 4096:
+                raise ValueError("Webpage has too many streamed segments.")
+            operation, first, second = match.groups()
+            placeholder_id, segment_id = (first, second) if operation == "RC" else (second, first)
+            placeholder, segment = references.get(placeholder_id), references.get(segment_id)
+            if (placeholder is None or segment is None or placeholder.parent is None or segment.parent is None
+                    or placeholder.name != "template" or segment.name != "div" or not segment.has_attr("hidden")
+                    or any(parent is segment for parent in placeholder.parents)):
+                continue
+            fallback = []
+            if operation == "RC":
+                # Match the closing boundary, including nested loading states.
+                depth = 0
+                closing = None
+                for sibling in placeholder.next_siblings:
+                    if isinstance(sibling, Comment):
+                        if str(sibling) == "/$":
+                            if depth == 0:
+                                closing = sibling
+                                break
+                            depth -= 1
+                        elif str(sibling) in {"$", "$?", "$!", "$~"}:
+                            depth += 1
+                    fallback.append(sibling)
+                if closing is None:
+                    continue
+            for child in list(segment.contents):
+                placeholder.insert_before(child.extract())
+            for child in fallback:
+                child.extract()
+            placeholder.extract()
+            segment.extract()
+
+
+def _materialize_embedded_styles(soup) -> None:
+    """Decode LessWrong's literal CSS arguments without running its loader."""
+    marker = soup.find(id="jss-insertion-end")
+    if marker is None or soup.find(id="jss-insertion-start") is None:
+        return
+    decoder = json.JSONDecoder()
+    styles = []
+    existing = {(tag.get("data-name"), str(tag.get("data-priority")))
+                for tag in soup.find_all("style", attrs={"data-name": True})}
+    for script in soup.find_all("script"):
+        text = script.get_text()
+        for match in re.finditer(r"(?:^|[;\n])\s*_embedStyles\(\s*", text):
+            index = match.end()
+            values = []
+            try:
+                for position in range(3):
+                    value, index = decoder.raw_decode(text, index)
+                    values.append(value)
+                    while index < len(text) and text[index].isspace():
+                        index += 1
+                    if position < 2:
+                        if text[index:index+1] != ",":
+                            raise ValueError("Non-literal CSS loader argument")
+                        index += 1
+                        while index < len(text) and text[index].isspace():
+                            index += 1
+                name, priority, css = values
+                if (text[index:index+1] != ")" or not isinstance(name, str) or not isinstance(css, str)
+                        or type(priority) is not int or not -10000 <= priority <= 10000):
+                    continue
+            except (ValueError, RecursionError):
+                continue
+            if (name, str(priority)) in existing:
+                continue
+            existing.add((name, str(priority)))
+            if len(styles) >= 4096:
+                raise ValueError("Webpage has too many embedded styles.")
+            styles.append((priority, name, css))
+    for priority, name, css in sorted(styles):
+        style = soup.new_tag("style", attrs={"data-name": name, "data-priority": str(priority)})
+        # JSON may contain escaped HTML delimiters. Keep them inside CSS when
+        # the sanitized document is serialized and loaded by the native browser.
+        style.string = css.replace("<", r"\3c ")
+        marker.insert_before(style)
+
+
 def prepare_export_html(html: str, base_url: str, *, style: str, include_links: bool = False,
                         links_heading: str = "Links") -> str:
     """Keep the site's layout or put its main article in a readable print template."""
@@ -49,6 +144,9 @@ def prepare_export_html(html: str, base_url: str, *, style: str, include_links: 
     if len(html.encode("utf-8")) > MAX_HTML_BYTES:
         raise ValueError("Webpage HTML exceeds the size limit.")
     soup = BeautifulSoup(html, "html.parser")
+    _materialize_streamed_content(soup)
+    if style != "article":
+        _materialize_embedded_styles(soup)
     title = soup.title.get_text(" ", strip=True) if soup.title else ""
     canonical_title = soup.find("meta", attrs={"property": "og:title"})
     canonical_title = str(canonical_title.get("content") or "").strip() if canonical_title else ""

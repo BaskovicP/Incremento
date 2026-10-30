@@ -27,7 +27,7 @@ test('rendering keeps PDF spaces, narrow letters, and compressed OCR spans selec
     pdfPageTextSource,
     textLayerRef: { current: { style: { setProperty() {} }, querySelectorAll: () => spans } },
     cardIdRef: {current: 7},
-    containerRef: { current: { offsetWidth: 600 } }, lastScaleRef: { current: 1 }, setRenderInfo() {},
+    readerWidth: () => 600, lastScaleRef: { current: 1 }, setRenderInfo() {},
     window: { pdfjsLib: { TextLayer: class { render() { return Promise.resolve(); } } } },
   };
   vm.runInNewContext(source.slice(start, end) + '\nglobalThis.render = renderTextLayer;', scope);
@@ -47,7 +47,7 @@ test('rendered PDF font emphasis is attached to selectable text for extraction',
     pdfPageTextSource,
     annotatePdfTextStyles,
     textLayerRef: { current: textLayer }, cardIdRef: {current: 7},
-    containerRef: { current: { offsetWidth: 600 } }, lastScaleRef: { current: 1 }, setRenderInfo() {},
+    readerWidth: () => 600, lastScaleRef: { current: 1 }, setRenderInfo() {},
     window: { pdfjsLib: { TextLayer: class {
       textDivs = spans;
       render() { return Promise.resolve(); }
@@ -243,10 +243,10 @@ function deferred() {
 }
 
 // Run the real hook; only React lifecycle, DOM and PDF.js are boundaries.
-function renderHarness({pixelRatio = 2, width = 600, height = 920} = {}) {
+function renderHarness({pixelRatio = 2, width = 600, height = 920, toolbarHeight = 120, viewportWidth} = {}) {
   const source = readFileSync(new URL('../src/usePdfRender.js', import.meta.url), 'utf8')
     .replace(/^import .*;\n/gm, '').replace('export function usePdfRender', 'function usePdfRender');
-  const slots = [], effects = [], renders = [], commands = [], textPages = [];
+  const slots = [], effects = [], renders = [], commands = [], textPages = [], scrolls = [];
   let cursor = 0;
   const useState = initial => {
     const index = cursor++;
@@ -265,7 +265,9 @@ function renderHarness({pixelRatio = 2, width = 600, height = 920} = {}) {
     setTimeout: callback => {timers.push(callback); return timers.length;}, clearTimeout() {},
     setInterval() {}, clearInterval() {},
     ResizeObserver: class { constructor(callback) { resize = callback; } observe() {} disconnect() {} },
-    window: {innerHeight: height, devicePixelRatio: pixelRatio, location: {href: 'http://localhost/'},
+    window: {innerWidth: viewportWidth, innerHeight: height, devicePixelRatio: pixelRatio, location: {href: 'http://localhost/'},
+      document: {getElementById: () => ({getBoundingClientRect: () => ({height: toolbarHeight})})},
+      scrollTo: options => scrolls.push(options),
       pycmd: command => commands.push(command), pdfjsLib: {
         GlobalWorkerOptions: {},
         TextLayer: class {
@@ -286,7 +288,7 @@ function renderHarness({pixelRatio = 2, width = 600, height = 920} = {}) {
   api.containerRef.current = {offsetWidth: width, style: {}};
   api.textLayerRef.current = {style: {setProperty() {}}, addEventListener() {}, removeEventListener() {}};
   const cleanups = effects.map(effect => effect()).filter(Boolean);
-  function document(id, {delayedPage = false, numPages = 20} = {}) {
+  function document(id, {delayedPage = false, numPages = 20, pageWidth = 600, pageHeight = 800} = {}) {
     const pages = [], pageCache = new Map();
     const doc = {numPages, getPageLabels: async () => null, getOutline: async () => [],
       getPage: number => {
@@ -294,7 +296,7 @@ function renderHarness({pixelRatio = 2, width = 600, height = 920} = {}) {
         const page = {pageNumber: number, streamTextContent: () => `${id}:${number}`,
           cleaned: 0, cleanup() {this.cleaned++; return true;},
           getTextContent: async () => ({items: [], tag: `${id}:${number}`}), getAnnotations: async () => [],
-          getViewport: ({scale}) => ({width: 600 * scale, height: 800 * scale, scale}),
+          getViewport: ({scale}) => ({width: pageWidth * scale, height: pageHeight * scale, scale}),
           render: options => {
             const completion = deferred();
             const job = {id, number, ...options, ...completion, cancelled: false,
@@ -309,10 +311,66 @@ function renderHarness({pixelRatio = 2, width = 600, height = 920} = {}) {
     documents.push(doc);
     return {doc, pages};
   }
-  return {api, state, document, renders, commands, textPages,
+  return {api, state, document, renders, commands, textPages, scrolls,
     resize: width => {api.containerRef.current.offsetWidth = width; resize([{contentRect: {width}}]); timers.splice(0).forEach(run => run());},
+    resizeHeight: (height, controlsHeight) => {
+      scope.window.innerHeight = height; toolbarHeight = controlsHeight;
+      resize([]); timers.splice(0).forEach(run => run());
+    },
     unmount: () => cleanups.forEach(cleanup => cleanup())};
 }
+
+for (const [name, pageWidth, pageHeight, fittedWidth, fittedHeight] of [
+  ['portrait', 600, 800, 600, 800], ['landscape', 1200, 400, 600, 200],
+]) {
+  test(`Fit Width fills the reader with the ${name} page regardless of available height without changing reading progress`, async () => {
+    const h = renderHarness({height: 500, toolbarHeight: 250});
+    h.document('book', {pageWidth, pageHeight});
+    h.api.startViewer(7, 'book.pdf', 3, 2, 8); await setImmediate();
+    h.renders[0].resolve(); await setImmediate();
+    h.commands.length = 0;
+    h.api.fitWidth(); await setImmediate();
+    const fitted = h.renders.at(-1);
+    assert.equal(fitted.number, 3);
+    assert.equal(fitted.viewport.height, fittedHeight);
+    assert.equal(fitted.viewport.width, fittedWidth);
+    fitted.resolve(); await setImmediate();
+    assert.equal(h.state().zoom, 1);
+    assert.equal(h.state().readPage, 8);
+    assert.deepEqual(h.commands, ['incremento_pdf_zoom:7:1']);
+    assert.equal(h.scrolls.at(-1).top, 0);
+  });
+}
+
+test('width fitting stays unchanged when only the pane height or toolbar changes', async () => {
+  const h = renderHarness(); h.document('book');
+  h.api.startViewer(7, 'book.pdf', 1, 1); await setImmediate();
+  h.renders[0].resolve(); await setImmediate();
+  h.resizeHeight(360, 180); await setImmediate();
+  assert.equal(h.renders.length, 1, 'height changes must not shrink or rerender a width-fitted page');
+  assert.equal(h.renders[0].viewport.width, 600);
+  assert.equal(h.renders[0].viewport.height, 800);
+  assert.equal(h.state().zoom, 1);
+});
+
+test('Fit Width before a PDF loads leaves state and storage untouched', () => {
+  const h = renderHarness();
+  h.api.fitWidth();
+  assert.deepEqual(h.commands, []);
+  assert.deepEqual(h.scrolls, []);
+  assert.equal(h.renders.length, 0);
+});
+
+test('Fit Width uses the visible pane width even when the previously zoomed page widened its wrapper', async () => {
+  const h = renderHarness({width: 1200, viewportWidth: 600}); h.document('book');
+  h.api.startViewer(7, 'book.pdf', 1, 2); await setImmediate();
+  assert.equal(h.renders[0].viewport.width, 1200);
+  h.renders[0].resolve(); await setImmediate();
+  h.api.fitWidth(); await setImmediate();
+  assert.equal(h.renders.at(-1).viewport.width, 600);
+  h.renders.at(-1).resolve(); await setImmediate();
+  assert.equal(h.state().renderInfo.tlLeft, 0, 'text must stay aligned when the old wide wrapper shrinks');
+});
 
 test('rapid page and zoom requests render only the latest pending destination at unchanged pixel density', async () => {
   const h = renderHarness(); h.document('first');
@@ -426,12 +484,13 @@ test('high zoom and display density keep the page geometry while bounding canvas
   await setImmediate();
   const first = h.renders[0];
   const canvas = first.canvasContext.canvas;
-  assert.equal(first.viewport.width, 5040, 'preserve CSS geometry for highlights and selection');
-  assert.equal(first.viewport.height, 6720);
+  // Zoom now uses the reader width as its 100% baseline, independent of height.
+  assert.equal(first.viewport.width, 9600, 'preserve CSS geometry for highlights and selection');
+  assert.equal(first.viewport.height, 12800);
   assert.ok(canvas.width * canvas.height <= 8_000_000, 'cap each rendering surface at eight million pixels');
   assert.ok(canvas.width <= 8192 && canvas.height <= 8192);
   assert.ok(first.transform[0] < 1, 'reduce backing resolution, not the reader zoom');
-  assert.equal(canvas.style.width, '5040px');
+  assert.equal(canvas.style.width, '9600px');
   first.resolve(); await setImmediate();
   h.api.nav(1); await setImmediate();
   const second = h.renders[1];

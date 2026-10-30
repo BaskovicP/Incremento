@@ -35,6 +35,7 @@ class AnnotationPreview:
     note: str
     source_text: str
     color: str
+    note_html: str = ''
 
 
 @dataclass(frozen=True)
@@ -245,7 +246,7 @@ class SearchResultsBuilder:
                 html.append(f"<h3>{escape(heading)}</h3>")
                 by_file: dict = {}
                 for cid, page, text, *source in rows:
-                    annotation = AnnotationPreview(text or "", source[0] or "", source[1]) if source else None
+                    annotation = AnnotationPreview(text or "", source[0] or "", source[1], source[2] if len(source) > 2 else '') if source else None
                     by_file.setdefault(cid, []).append((page, text, annotation))
                 for cid, pages in by_file.items():
                     title = escape(self._pdf_title(cid))
@@ -315,7 +316,7 @@ class SearchResultsBuilder:
                 html.append(f"<h3>{escape(heading)}</h3>")
                 by_file: dict = {}
                 for cid, section_index, text, *source in rows:
-                    annotation = AnnotationPreview(text or "", source[0] or "", source[1]) if source else None
+                    annotation = AnnotationPreview(text or "", source[0] or "", source[1], source[2] if len(source) > 2 else '') if source else None
                     by_file.setdefault(cid, []).append((section_index, text, annotation))
                 for cid, entries in by_file.items():
                     title = escape(self._epub_title(cid))

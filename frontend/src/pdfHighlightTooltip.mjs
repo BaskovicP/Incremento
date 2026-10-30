@@ -12,6 +12,7 @@ export function createPdfHighlightTooltip({schedule = run => window.requestAnima
       const note = String(highlight?.note || '').trim();
       if (!note) return;
       stop(); publish({id: String(highlight.id || ''), note,
+        ...(highlight.note_html ? {html: String(highlight.note_html)} : {}),
         x: Number(event?.clientX || 0), y: Number(event?.clientY || 0)});
     },
     move(event) {

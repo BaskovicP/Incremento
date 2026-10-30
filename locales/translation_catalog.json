@@ -7851,6 +7851,62 @@
     },
     {
       "component": "addon",
+      "key": "imports_webpage_cleanup_help",
+      "form": "",
+      "source": "Click unwanted elements to hide them. Shift-click removes their parent container. Undo restores the last removal; Reset restores everything. Turn Zap off to select text. Only loaded content is included.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_cleanup_option",
+      "form": "",
+      "source": "Preview and remove elements before saving",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_cleanup_reset",
+      "form": "",
+      "source": "Reset",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_cleanup_save",
+      "form": "",
+      "source": "Save PDF",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_cleanup_title",
+      "form": "",
+      "source": "Clean up webpage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_cleanup_undo",
+      "form": "",
+      "source": "Undo removal",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_cleanup_zap",
+      "form": "",
+      "source": "Zap elements",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_webpage_dynamic",
       "form": "",
       "source": "Load content added by JavaScript",
@@ -10409,9 +10465,33 @@
     },
     {
       "component": "addon",
+      "key": "reader_annotation_appearance",
+      "form": "",
+      "source": "Annotation appearance",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_annotation_capture",
       "form": "",
       "source": "Annotation & capture",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_annotation_style",
+      "form": "",
+      "source": "Style",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_annotation_style_help",
+      "form": "",
+      "source": "Choose a style and color, then mark selected text.",
       "tokens": [],
       "markup": []
     },
@@ -10621,6 +10701,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_bookshelf_check_files_again",
+      "form": "",
+      "source": "Check files again",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_bookshelf_checking_attached_cards",
       "form": "",
       "source": "Checking for attached cards…",
@@ -10632,6 +10720,22 @@
       "key": "reader_bookshelf_checking_duplicate_attachments",
       "form": "",
       "source": "Checking duplicate candidates for attached Topic or Item cards…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_checking_files",
+      "form": "",
+      "source": "Checking PDF files…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_default_priority",
+      "form": "",
+      "source": "Priority: 50 (default)",
       "tokens": [],
       "markup": []
     },
@@ -10949,6 +11053,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_bookshelf_edit_pdf_name",
+      "form": "",
+      "source": "Edit PDF name…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_bookshelf_epub_count",
       "form": "few",
       "source": "{count} EPUBs",
@@ -11017,6 +11129,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_bookshelf_file_check_failed",
+      "form": "",
+      "source": "Could not check PDF files. Enable the missing-files filter to try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_bookshelf_filter_tags_hint",
       "form": "",
       "source": "Start typing any part of a tag name, or browse tags used by these documents. Matching ignores uppercase/lowercase.",
@@ -11050,6 +11170,60 @@
         "{tags}",
         "{title}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_metric_annotations",
+      "form": "",
+      "source": "Annotations: {count}",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_metric_due",
+      "form": "",
+      "source": "Due linked cards: {count}",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_metric_reviews",
+      "form": "",
+      "source": "Reviews done: {count}",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_missing_files_hint",
+      "form": "",
+      "source": "Check actual PDF files in this profile, even when a saved cover is available. Missing, empty, or unsafe file references are included. Other filters still apply.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_missing_files_only",
+      "form": "",
+      "source": "PDFs with missing files only",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_missing_pdf_status",
+      "form": "",
+      "source": "PDF file missing or unavailable",
+      "tokens": [],
       "markup": []
     },
     {
@@ -11174,6 +11348,30 @@
     },
     {
       "component": "addon",
+      "key": "reader_bookshelf_pdf_name_failed",
+      "form": "",
+      "source": "Could not update the PDF name. Refresh the bookshelf and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_pdf_name_invalid",
+      "form": "",
+      "source": "Enter a PDF name between 1 and 2,000 characters, without control characters.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_pdf_name_prompt",
+      "form": "",
+      "source": "PDF name:",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_bookshelf_pdf_only_hint",
       "form": "",
       "source": "This option applies only to PDF documents.",
@@ -11224,6 +11422,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_bookshelf_reverse_order",
+      "form": "",
+      "source": "Reverse order",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_bookshelf_search_titles",
       "form": "",
       "source": "Search document titles…",
@@ -11239,6 +11445,94 @@
         "{total}",
         "{visible}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_shuffle_again",
+      "form": "",
+      "source": "Shuffle again",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_sort_annotations",
+      "form": "",
+      "source": "Annotations (most first)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_sort_by",
+      "form": "",
+      "source": "Sort by:",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_sort_due",
+      "form": "",
+      "source": "Due cards (most first)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_sort_hint",
+      "form": "",
+      "source": "Due cards counts live linked cards due now. Reviews done adds Anki review counts for the document and all linked cards. Annotations counts saved highlights, PDF annotations, and snapshots. Priority follows your configured direction; unset priorities use 50. Random stays in the same order while filtering.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_sort_priority",
+      "form": "",
+      "source": "Priority (most important first)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_sort_random",
+      "form": "",
+      "source": "Random",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_sort_reviews",
+      "form": "",
+      "source": "Reviews done (most first)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_sort_title",
+      "form": "",
+      "source": "Title (A–Z)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_statistics_failed",
+      "form": "",
+      "source": "Statistics could not be loaded. The shelf has returned to title order; choose a sort again to retry.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_statistics_loading",
+      "form": "",
+      "source": "Loading statistics…",
+      "tokens": [],
       "markup": []
     },
     {
@@ -11891,6 +12185,22 @@
       "key": "reader_decrease_text_size",
       "form": "",
       "source": "Decrease text size",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_default_annotation_color",
+      "form": "",
+      "source": "Default color",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_default_annotation_color_help",
+      "form": "",
+      "source": "Choose the saved color for new highlights (Ctrl/Cmd+H). Other color choices do not change this default.",
       "tokens": [],
       "markup": []
     },
@@ -13584,6 +13894,317 @@
     },
     {
       "component": "addon",
+      "key": "reader_library_add_epub",
+      "form": "",
+      "source": "+ Add EPUB",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_add_pdf",
+      "form": "",
+      "source": "+ Add PDF",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_add_reason",
+      "form": "",
+      "source": "+ Add why you saved it",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_all_books",
+      "form": "",
+      "source": "All books",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_choose_lists",
+      "form": "",
+      "source": "Lists for this book",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_cover_view",
+      "form": "",
+      "source": "Covers",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_delete_confirmation",
+      "form": "",
+      "source": "Delete list “{name}”? Books, saved reasons, and sources will be kept.",
+      "tokens": [
+        "{name}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_delete_list",
+      "form": "",
+      "source": "Delete list…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_edit_lists",
+      "form": "",
+      "source": "Edit lists",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_import_hint",
+      "form": "",
+      "source": "Lists, reason, and source are optional and saved separately for each selected file.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_intro",
+      "form": "",
+      "source": "Select a book to view its lists and saved reason. Double-click or choose Open book to read.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_invalid_details",
+      "form": "",
+      "source": "Book details are too long or contain unsupported characters.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_list_error",
+      "form": "",
+      "source": "Could not save the list. Use a unique name of 1–80 characters and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_list_name",
+      "form": "",
+      "source": "List name:",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_lists",
+      "form": "",
+      "source": "Lists",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_lists_hint",
+      "form": "",
+      "source": "A book can belong to several lists.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_more_filters",
+      "form": "",
+      "source": "More filters",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_new_list",
+      "form": "",
+      "source": "New list…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_no_reason",
+      "form": "",
+      "source": "No saved reason",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_open_book",
+      "form": "",
+      "source": "Open book",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_reason",
+      "form": "",
+      "source": "Why I saved this book",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_reason_count",
+      "form": "",
+      "source": "{count} / {maximum}",
+      "tokens": [
+        "{count}",
+        "{maximum}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_reason_limit",
+      "form": "",
+      "source": "Up to {count} characters.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_reason_placeholder",
+      "form": "",
+      "source": "What made you want to read it? A recommendation, a question, a project…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_reason_view",
+      "form": "",
+      "source": "Reason-first list",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_reload_error",
+      "form": "",
+      "source": "Could not refresh the bookshelf. Close and reopen it to try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_rename_list",
+      "form": "",
+      "source": "Rename list…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_save_changes",
+      "form": "",
+      "source": "Save changes",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_save_error",
+      "form": "",
+      "source": "Could not save book details. Your edits are still available.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_saved",
+      "form": "",
+      "source": "Saved",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_search",
+      "form": "",
+      "source": "Search titles, reasons, sources…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_select_book",
+      "form": "",
+      "source": "Select a book",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_source",
+      "form": "",
+      "source": "Where I found it (optional)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_source_placeholder",
+      "form": "",
+      "source": "ChatGPT, a blog, a friend, or a link",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_unlisted",
+      "form": "",
+      "source": "Not in a list",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_unsaved",
+      "form": "",
+      "source": "Unsaved changes",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_unsaved_prompt",
+      "form": "",
+      "source": "Save your changes to book lists, reasons, and sources before closing?",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_view",
+      "form": "",
+      "source": "Bookshelf view",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_limit",
       "form": "",
       "source": "Limit:",
@@ -13700,6 +14321,14 @@
       "key": "reader_mark_read_to_here",
       "form": "",
       "source": "Mark pages as read up to here without placing an exact marker",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_mark_selection",
+      "form": "",
+      "source": "Mark selection",
       "tokens": [],
       "markup": []
     },
@@ -15567,6 +16196,22 @@
     },
     {
       "component": "addon",
+      "key": "reader_note_bold",
+      "form": "",
+      "source": "Bold",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_bullets",
+      "form": "",
+      "source": "Bulleted list",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_note_cards",
       "form": "few",
       "source": "{count} cards",
@@ -15627,6 +16272,22 @@
     },
     {
       "component": "addon",
+      "key": "reader_note_clear",
+      "form": "",
+      "source": "Clear formatting",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_formatting",
+      "form": "",
+      "source": "Note formatting",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_note_id",
       "form": "",
       "source": "Note ID {number}",
@@ -15637,9 +16298,41 @@
     },
     {
       "component": "addon",
+      "key": "reader_note_italic",
+      "form": "",
+      "source": "Italic",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_note_label",
       "form": "",
       "source": "Note",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_link",
+      "form": "",
+      "source": "Insert or edit link",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_link_invalid",
+      "form": "",
+      "source": "Enter a valid http:// or https:// URL without credentials.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_link_prompt",
+      "form": "",
+      "source": "URL (http:// or https://). Leave empty to remove the selected link.",
       "tokens": [],
       "markup": []
     },
@@ -15663,6 +16356,38 @@
     },
     {
       "component": "addon",
+      "key": "reader_note_numbers",
+      "form": "",
+      "source": "Numbered list",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_redo",
+      "form": "",
+      "source": "Redo",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_strike",
+      "form": "",
+      "source": "Strikethrough",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_too_long",
+      "form": "",
+      "source": "This note is too long. Shorten the text or simplify its formatting, then try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_note_type_label",
       "form": "",
       "source": "Note type:",
@@ -15677,6 +16402,22 @@
       "tokens": [
         "{name}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_underline",
+      "form": "",
+      "source": "Underline",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_undo",
+      "form": "",
+      "source": "Undo",
+      "tokens": [],
       "markup": []
     },
     {
@@ -18768,6 +19509,54 @@
       "key": "reader_stopping_point",
       "form": "",
       "source": "You marked this as your current stopping point",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_style_dashed",
+      "form": "",
+      "source": "Dashed",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_style_dotted",
+      "form": "",
+      "source": "Dotted",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_style_highlight",
+      "form": "",
+      "source": "Highlight",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_style_squiggly",
+      "form": "",
+      "source": "Squiggly",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_style_strikeout",
+      "form": "",
+      "source": "Strikethrough",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_style_underline",
+      "form": "",
+      "source": "Underline",
       "tokens": [],
       "markup": []
     },
@@ -30128,6 +30917,22 @@
     },
     {
       "component": "addon",
+      "key": "settings_study_workspace_enabled",
+      "form": "",
+      "source": "Use study workspace during review",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_study_workspace_hint",
+      "form": "",
+      "source": "Show Card, Documents, and Videos views during review. Turn off to use Anki's normal card layout. Saved links remain available from the card's Study resources menu. Applies when you save Settings.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "settings_tags",
       "form": "",
       "source": "Tags:",
@@ -32762,6 +33567,1115 @@
     },
     {
       "component": "addon",
+      "key": "study_answer_revealed",
+      "form": "",
+      "source": "Answer revealed",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_available",
+      "form": "",
+      "source": "Available",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_back_passage",
+      "form": "",
+      "source": "Back to passage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_batch_failed",
+      "form": "",
+      "source": "Could not load or save resources. A failed save leaves the entire batch unchanged. Refresh and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_batch_invalid",
+      "form": "",
+      "source": "Enter valid pages and start/end times for every selected resource.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_batch_limit",
+      "form": "",
+      "source": "Select up to {count} resources at a time.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_cancel",
+      "form": "",
+      "source": "Cancel",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_card",
+      "form": "",
+      "source": "Review card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_card_hint",
+      "form": "",
+      "source": "Open a passage or recording without leaving this review.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_card_target",
+      "form": "",
+      "source": "Current card only\n{question}",
+      "tokens": [
+        "{question}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_check_failed",
+      "form": "",
+      "source": "Could not check",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_checking",
+      "form": "",
+      "source": "Checking…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_choose_another",
+      "form": "",
+      "source": "Choose another recording",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_choose_library",
+      "form": "",
+      "source": "Choose from your library",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_choose_recording",
+      "form": "",
+      "source": "1. Choose a recording",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_choose_resource",
+      "form": "",
+      "source": "Choose a resource above. Each resource keeps its own reading or playback position.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_choose_resource_title",
+      "form": "",
+      "source": "Choose a resource",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_choose_resources",
+      "form": "",
+      "source": "Select resources, then choose a row to set its linked location.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_close",
+      "form": "",
+      "source": "Close",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_continue",
+      "form": "",
+      "source": "Continue recording",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_current_card_only",
+      "form": "",
+      "source": "Current card only",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_current_card_state",
+      "form": "",
+      "source": "Current card · {state}",
+      "tokens": [
+        "{state}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_edit",
+      "form": "",
+      "source": "Edit link…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_end",
+      "form": "",
+      "source": "End time (optional)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_epub_section",
+      "form": "",
+      "source": "EPUB · section {section}",
+      "tokens": [
+        "{section}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_exit_focus",
+      "form": "",
+      "source": "Exit focus (Esc)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_files_kept",
+      "form": "",
+      "source": "Unlinking keeps the original files.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_focus_hint",
+      "form": "",
+      "source": "Show only this view in full screen. Esc returns to the workspace.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_focus_textbook",
+      "form": "",
+      "source": "Focus textbook",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_focus_video",
+      "form": "",
+      "source": "Focus video",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_import_audio",
+      "form": "",
+      "source": "Import audio…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_import_files",
+      "form": "",
+      "source": "Import files…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_import_help",
+      "form": "",
+      "source": "Import a downloaded video or lecture recording, then refresh this list.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_import_pdf",
+      "form": "",
+      "source": "Import PDFs…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_import_refresh",
+      "form": "",
+      "source": "When the import finishes, press Refresh to select the recording.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_import_video",
+      "form": "",
+      "source": "Import video…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_inherited_resource",
+      "form": "",
+      "source": "This resource comes from card content or a document passage. Edit the link at its source.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_invalid_segment",
+      "form": "",
+      "source": "Wait for the preview to load, add a label, and enter valid times within the recording. End must be after start.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_journey",
+      "form": "",
+      "source": "Card → Textbook → Recording",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_kind_audio",
+      "form": "",
+      "source": "Audio",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_kind_pdf",
+      "form": "",
+      "source": "PDF",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_kind_video",
+      "form": "",
+      "source": "Video",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_label",
+      "form": "",
+      "source": "Link label",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_layout_save_failed",
+      "form": "",
+      "source": "This layout will be kept for this visit, but your preference could not be saved.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_library_empty",
+      "form": "",
+      "source": "No imported resources found. Import files to link them to this card.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_library_limited",
+      "form": "",
+      "source": "Showing the 500 most recent recordings. Search within these or import another recording.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_link_action",
+      "form": "",
+      "source": "Link resources",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_link_recording",
+      "form": "",
+      "source": "Link recording…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_link_resource_count",
+      "form": "",
+      "source": "Link selected resources ({count})",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_link_resources",
+      "form": "",
+      "source": "+ Link resources…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_link_selection",
+      "form": "few",
+      "source": "Link {count} resources",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_link_selection",
+      "form": "many",
+      "source": "Link {count} resources",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_link_selection",
+      "form": "one",
+      "source": "Link {count} resource",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_link_selection",
+      "form": "other",
+      "source": "Link {count} resources",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_link_selection",
+      "form": "two",
+      "source": "Link {count} resources",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_link_selection",
+      "form": "zero",
+      "source": "Link {count} resources",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_link_to_card",
+      "form": "",
+      "source": "Link resources to this card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_linked_count",
+      "form": "",
+      "source": "{count} linked",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_linked_summary",
+      "form": "",
+      "source": "{documents} documents · {recordings} recordings linked",
+      "tokens": [
+        "{documents}",
+        "{recordings}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_links_saved",
+      "form": "",
+      "source": "Links saved to this card.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_loading",
+      "form": "",
+      "source": "Loading…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_manage_done",
+      "form": "",
+      "source": "Done",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_manage_links",
+      "form": "",
+      "source": "Manage links…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_managed_title",
+      "form": "",
+      "source": "Resources linked to this card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_missing",
+      "form": "",
+      "source": "Local file unavailable",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_no_active_card",
+      "form": "",
+      "source": "Start a card review to switch to Card.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_no_card",
+      "form": "",
+      "source": "No card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_no_recordings",
+      "form": "",
+      "source": "No recording is linked here yet. Use Link recording… to choose a video or audio file.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_no_resources",
+      "form": "",
+      "source": "No resources linked here yet. Link a textbook passage or a recording to get started.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_no_textbooks",
+      "form": "",
+      "source": "No documents linked to this card. Use Link resources… to choose PDFs.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_not_linked",
+      "form": "",
+      "source": "Not linked",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_open",
+      "form": "",
+      "source": "Open selected resource",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_open_recording",
+      "form": "",
+      "source": "Open recording",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_optional_label",
+      "form": "",
+      "source": "Label (optional)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_other_resources",
+      "form": "",
+      "source": "Other resources",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_own_position",
+      "form": "",
+      "source": "Each resource keeps its own place.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_pause",
+      "form": "",
+      "source": "Pause",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_pdf_page",
+      "form": "",
+      "source": "PDF · page {page}",
+      "tokens": [
+        "{page}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_picker_page",
+      "form": "",
+      "source": "Page {page}",
+      "tokens": [
+        "{page}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_play",
+      "form": "",
+      "source": "Play",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_player_paused",
+      "form": "",
+      "source": "Ready at the linked time. Press Play when you are ready.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_player_unavailable",
+      "form": "",
+      "source": "Playback is unavailable in this Anki installation.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_position",
+      "form": "",
+      "source": "Recording position",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_choose_spot",
+      "form": "",
+      "source": "Choose exact spot in PDF…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_connection",
+      "form": "",
+      "source": "This card will open:",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_empty",
+      "form": "",
+      "source": "Choose a file from the library to see your link here.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_help",
+      "form": "",
+      "source": "2. Preview the recording and set the linked time. The original file stays intact.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_instructions",
+      "form": "",
+      "source": "Choose files and where each one opens. See the result before saving.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_links_heading",
+      "form": "",
+      "source": "Links you’re creating",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_not_saved",
+      "form": "",
+      "source": "Preview only. Links are saved when you click Link resources.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_page_error",
+      "form": "",
+      "source": "Choose a page between 1 and {maximum}.",
+      "tokens": [
+        "{maximum}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_pdf_location",
+      "form": "",
+      "source": "PDF · page {page}",
+      "tokens": [
+        "{page}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_pdf_named",
+      "form": "",
+      "source": "{title}, page {page}. Choose an exact spot.",
+      "tokens": [
+        "{page}",
+        "{title}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_remove",
+      "form": "",
+      "source": "Remove",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_remove_named",
+      "form": "",
+      "source": "Remove {title} from this draft",
+      "tokens": [
+        "{title}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_resource",
+      "form": "",
+      "source": "Preview selected resource",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_segment",
+      "form": "",
+      "source": "Play {start}–{end}",
+      "tokens": [
+        "{end}",
+        "{start}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_short",
+      "form": "",
+      "source": "Preview",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_start",
+      "form": "",
+      "source": "Play from {start}",
+      "tokens": [
+        "{start}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_time_error",
+      "form": "",
+      "source": "Enter a valid start time and an end time after it, within the recording.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_preview_unavailable",
+      "form": "",
+      "source": "Preview unavailable. Check that the original file is available, then try Preview again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_question_side",
+      "form": "",
+      "source": "Question not answered",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_read_hint",
+      "form": "",
+      "source": "Read a linked passage for more context, or connect a textbook.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_read_passage",
+      "form": "",
+      "source": "Read passage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_recording_hint",
+      "form": "",
+      "source": "Open a linked explanation, or connect a video or audio recording.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_recording_unavailable",
+      "form": "",
+      "source": "The recording cannot be played or has changed. Reopen it, or edit the link to choose another local file.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_refresh",
+      "form": "",
+      "source": "Refresh",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_remove",
+      "form": "",
+      "source": "Remove link",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_replay",
+      "form": "",
+      "source": "Replay segment",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_resource_library_limited",
+      "form": "",
+      "source": "Showing the 500 most recent PDFs and recordings. Search within this list or import another resource.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_resource_page",
+      "form": "",
+      "source": "PDF page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_resource_unavailable",
+      "form": "",
+      "source": "This resource is unavailable, changed, or beyond its reading limit. Refresh or edit its link and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_resources",
+      "form": "",
+      "source": "Study resources",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_retry",
+      "form": "",
+      "source": "Retry",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_return_card",
+      "form": "",
+      "source": "Return to card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_review_card",
+      "form": "",
+      "source": "Review card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_save_link",
+      "form": "",
+      "source": "Save link",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_search_recordings",
+      "form": "",
+      "source": "Search imported recordings…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_search_resources",
+      "form": "",
+      "source": "Search imported resources…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_segment_finished",
+      "form": "",
+      "source": "Segment finished. Return to the passage, replay, or continue.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_speed",
+      "form": "",
+      "source": "Playback speed",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_start",
+      "form": "",
+      "source": "Start time",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_tab_audio",
+      "form": "",
+      "source": "Audio",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_tab_card",
+      "form": "",
+      "source": "Card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_tab_pdfs",
+      "form": "",
+      "source": "PDFs",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_tab_textbook",
+      "form": "",
+      "source": "Documents",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_tab_video",
+      "form": "",
+      "source": "Videos",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_time_hint",
+      "form": "",
+      "source": "m:ss or h:mm:ss",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_unavailable",
+      "form": "",
+      "source": "Unavailable",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_undo_unlink",
+      "form": "",
+      "source": "Undo unlink",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_unlink",
+      "form": "",
+      "source": "Unlink",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_use_position",
+      "form": "",
+      "source": "Use current position",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_volume",
+      "form": "",
+      "source": "Volume",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "ui_type_local_file",
       "form": "",
       "source": "Local file",
@@ -34337,6 +36251,14 @@
     },
     {
       "component": "extension",
+      "key": "bridge_error_webpage_verification_required",
+      "form": "",
+      "source": "This site requires a security check or sign-in. Complete it in the original tab, then choose Capture opened page as PDF.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "bridge_handshake_failed",
       "form": "",
       "source": "Incremento bridge handshake failed.",
@@ -34953,6 +36875,46 @@
     },
     {
       "component": "extension",
+      "key": "error_anki_creation",
+      "form": "",
+      "source": "Creating card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_anki_detail",
+      "form": "",
+      "source": "Anki detail",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_anki_preparation",
+      "form": "",
+      "source": "Preparing content",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_anki_stage",
+      "form": "",
+      "source": "Anki stage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_anki_validation",
+      "form": "",
+      "source": "Validating request",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "error_code",
       "form": "",
       "source": "Error code",
@@ -35001,9 +36963,33 @@
     },
     {
       "component": "extension",
+      "key": "error_http_status",
+      "form": "",
+      "source": "HTTP status",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "error_max_chars",
       "form": "",
       "source": "Maximum characters",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_no",
+      "form": "",
+      "source": "No",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_pdf_layout",
+      "form": "",
+      "source": "PDF layout",
       "tokens": [],
       "markup": []
     },
@@ -35028,6 +37014,14 @@
       "key": "error_stage",
       "form": "",
       "source": "Stage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "error_yes",
+      "form": "",
+      "source": "Yes",
       "tokens": [],
       "markup": []
     },
@@ -37304,9 +39298,33 @@
     },
     {
       "component": "reader",
+      "key": "reader_annotation_appearance",
+      "form": "",
+      "source": "Annotation appearance",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_annotation_capture",
       "form": "",
       "source": "Annotation & capture",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_annotation_style",
+      "form": "",
+      "source": "Style",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_annotation_style_help",
+      "form": "",
+      "source": "Choose a style and color, then mark selected text.",
       "tokens": [],
       "markup": []
     },
@@ -37608,6 +39626,22 @@
     },
     {
       "component": "reader",
+      "key": "reader_default_annotation_color",
+      "form": "",
+      "source": "Default color",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_default_annotation_color_help",
+      "form": "",
+      "source": "Choose the saved color for new highlights (Ctrl/Cmd+H). Other color choices do not change this default.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_delete",
       "form": "",
       "source": "Delete",
@@ -37755,6 +39789,22 @@
       "key": "reader_finished_tooltip",
       "form": "",
       "source": "Mark this PDF as finished reading — suspends the card so it won't appear again",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_fit_width",
+      "form": "",
+      "source": "Fit Width",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_fit_width_hint",
+      "form": "",
+      "source": "Fit the page to the reader width; scroll vertically to read",
       "tokens": [],
       "markup": []
     },
@@ -38022,6 +40072,14 @@
       "key": "reader_mark_read_to_here",
       "form": "",
       "source": "Mark pages as read up to here without placing an exact marker",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_mark_selection",
+      "form": "",
+      "source": "Mark selection",
       "tokens": [],
       "markup": []
     },
@@ -39033,6 +41091,54 @@
     },
     {
       "component": "reader",
+      "key": "reader_style_dashed",
+      "form": "",
+      "source": "Dashed",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_style_dotted",
+      "form": "",
+      "source": "Dotted",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_style_highlight",
+      "form": "",
+      "source": "Highlight",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_style_squiggly",
+      "form": "",
+      "source": "Squiggly",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_style_strikeout",
+      "form": "",
+      "source": "Strikethrough",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_style_underline",
+      "form": "",
+      "source": "Underline",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_this_page",
       "form": "",
       "source": "This page",
@@ -39105,6 +41211,22 @@
       "key": "reader_zoom_out",
       "form": "",
       "source": "Zoom out",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "study_link_recording",
+      "form": "",
+      "source": "Link recording…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "study_resources",
+      "form": "",
+      "source": "Study resources",
       "tokens": [],
       "markup": []
     }

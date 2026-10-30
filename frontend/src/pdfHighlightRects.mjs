@@ -66,8 +66,8 @@ export function normalizePdfHighlightRects(rects) {
   }).sort((a, b) => a.y - b.y || a.x - b.x);
 }
 
-/** Resolve a saved highlight from a click that occurred over the PDF text layer. */
-export function pdfHighlightAtClientPoint(highlights, renderInfo, wrapperRect, clientX, clientY) {
+/** Resolve a highlight at a text-layer point; hover can reuse normalized display rects. */
+export function pdfHighlightAtClientPoint(highlights, renderInfo, wrapperRect, clientX, clientY, {normalizedRects = false} = {}) {
   const scale = Number(renderInfo?.scale);
   const left = Number(renderInfo?.tlLeft);
   const wrapperLeft = Number(wrapperRect?.left);
@@ -80,7 +80,8 @@ export function pdfHighlightAtClientPoint(highlights, renderInfo, wrapperRect, c
   const candidates = Array.isArray(highlights) ? highlights : [];
   for (let index = candidates.length - 1; index >= 0; index -= 1) {
     const highlight = candidates[index];
-    const hit = normalizePdfHighlightRects(highlight?.rects).some(rect => (
+    const rects = normalizedRects ? highlight?.rects || [] : normalizePdfHighlightRects(highlight?.rects);
+    const hit = rects.some(rect => (
       pdfX >= rect.x && pdfX <= rect.x + rect.w
       && pdfY >= rect.y && pdfY <= rect.y + rect.h
     ));

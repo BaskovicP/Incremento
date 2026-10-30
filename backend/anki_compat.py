@@ -247,3 +247,39 @@ def show_reviewer_question(reviewer) -> None:
     if not callable(method):
         raise AnkiCompatibilityError("Reviewer._showQuestion is unavailable")
     method()
+
+
+def pause_reviewer_auto_advance(reviewer):
+    """Suspend automatic answers during a reference visit; return one-shot resume.
+
+    Current Anki exposes a public timer refresh. Older unsupported variants stay
+    paused rather than risking a delayed automatic answer after the visit.
+    """
+    if getattr(reviewer, 'auto_advance_enabled', False) is not True:
+        return lambda: None
+    card_id = getattr(getattr(reviewer, 'card', None), 'id', None)
+    side = getattr(reviewer, 'state', None)
+    refresh = getattr(reviewer, 'auto_advance_if_enabled', None)
+    reviewer.auto_advance_enabled = False
+    if not callable(refresh):
+        return lambda: None
+    try:
+        refresh()
+    except Exception:
+        return lambda: None
+    restored = False
+    def restore():
+        nonlocal restored
+        if restored:
+            return
+        restored = True
+        if (getattr(getattr(reviewer, 'card', None), 'id', None) != card_id
+                or getattr(reviewer, 'state', None) != side
+                or getattr(reviewer, 'auto_advance_enabled', False)):
+            return
+        reviewer.auto_advance_enabled = True
+        try:
+            refresh()
+        except Exception:
+            reviewer.auto_advance_enabled = False
+    return restore

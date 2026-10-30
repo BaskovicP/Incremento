@@ -7042,7 +7042,9 @@
         scrollToTopOnPageChange: config.scroll_to_top !== false,
         showHighlightDeleteButtons: config.show_delete !== false,
         linkPreviewZoom: config.link_preview_zoom,
-        controlsCollapsed: config.controls_collapsed
+        linkPreviewSize: config.link_preview_size,
+        controlsCollapsed: config.controls_collapsed,
+        defaultHighlightColor: config.default_highlight_color
       }
     };
   }
@@ -7205,7 +7207,7 @@
       return merged;
     }).sort((a, b) => a.y - b.y || a.x - b.x);
   }
-  function pdfHighlightAtClientPoint(highlights, renderInfo, wrapperRect, clientX, clientY) {
+  function pdfHighlightAtClientPoint(highlights, renderInfo, wrapperRect, clientX, clientY, { normalizedRects = false } = {}) {
     const scale = Number(renderInfo == null ? void 0 : renderInfo.scale);
     const left = Number(renderInfo == null ? void 0 : renderInfo.tlLeft);
     const wrapperLeft = Number(wrapperRect == null ? void 0 : wrapperRect.left);
@@ -7218,7 +7220,8 @@
     const candidates = Array.isArray(highlights) ? highlights : [];
     for (let index = candidates.length - 1; index >= 0; index -= 1) {
       const highlight = candidates[index];
-      const hit = normalizePdfHighlightRects(highlight == null ? void 0 : highlight.rects).some((rect) => pdfX >= rect.x && pdfX <= rect.x + rect.w && pdfY >= rect.y && pdfY <= rect.y + rect.h);
+      const rects = normalizedRects ? (highlight == null ? void 0 : highlight.rects) || [] : normalizePdfHighlightRects(highlight == null ? void 0 : highlight.rects);
+      const hit = rects.some((rect) => pdfX >= rect.x && pdfX <= rect.x + rect.w && pdfY >= rect.y && pdfY <= rect.y + rect.h);
       if (hit) return highlight;
     }
     return null;
@@ -7276,6 +7279,7 @@
         publish({
           id: String(highlight.id || ""),
           note,
+          ...highlight.note_html ? { html: String(highlight.note_html) } : {},
           x: Number((event == null ? void 0 : event.clientX) || 0),
           y: Number((event == null ? void 0 : event.clientY) || 0)
         });
@@ -7293,45 +7297,6 @@
         stop();
         if (value) publish(null);
       }
-    };
-  }
-  function PdfHighlightTooltip({ tooltip }) {
-    const note = reactExports.useSyncExternalStore(tooltip.subscribe, tooltip.getSnapshot);
-    if (!note) return null;
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
-      position: "fixed",
-      left: note.x + 14,
-      top: note.y + 16,
-      maxWidth: 280,
-      padding: "8px 10px",
-      background: "rgba(20,20,20,0.96)",
-      border: "1px solid rgba(147,197,253,0.45)",
-      borderRadius: 6,
-      color: "rgb(219,234,254)",
-      fontSize: 12,
-      lineHeight: 1.4,
-      boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
-      pointerEvents: "none",
-      zIndex: 120,
-      whiteSpace: "pre-wrap"
-    }, children: note.note });
-  }
-  function pdfCanvasPlan(viewport, pixelRatio) {
-    const { width, height } = viewport;
-    if (![width, height].every((value) => Number.isFinite(value) && value > 0)) {
-      throw new RangeError("Invalid PDF page geometry");
-    }
-    const density = Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1;
-    const pixels = Math.min(
-      density,
-      8192 / width,
-      8192 / height,
-      Math.sqrt((8e6 - 32768) / (width * height))
-    );
-    return {
-      pixels,
-      canvasWidth: Math.max(1, Math.ceil(width * pixels)),
-      canvasHeight: Math.max(1, Math.ceil(height * pixels))
     };
   }
   const MAX_EXTERNAL_URL_CHARS = 4096;
@@ -7407,6 +7372,105 @@
       ...target,
       label: String((annotation == null ? void 0 : annotation.title) || (annotation == null ? void 0 : annotation.contents) || "").slice(0, 240),
       ...rect
+    };
+  }
+  const tags = /* @__PURE__ */ new Set(["p", "br", "b", "i", "u", "s", "ul", "ol", "li", "a"]);
+  const entities = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#x27;": "'" };
+  const decode = (text) => text.replace(/&(?:amp|lt|gt|quot|#x27);/g, (value) => entities[value]);
+  function annotationNoteTree(note, html) {
+    const markup = String(html || "");
+    if (!markup || markup.length > 262144) return null;
+    const root = { children: [] }, stack = [root];
+    let plain = "";
+    for (const token of markup.match(/<[^>]*>|[^<]+|</g) || []) {
+      if (!token.startsWith("<")) {
+        const text = decode(token);
+        stack.at(-1).children.push(text);
+        plain += text;
+        continue;
+      }
+      const closing = /^<\/(\w+)>$/.exec(token);
+      if (closing) {
+        if (stack.length === 1 || stack.at(-1).tag !== closing[1]) return null;
+        if (closing[1] === "p" || closing[1] === "li") plain += "\n";
+        stack.pop();
+        continue;
+      }
+      const opening = /^<(\w+)(?: href="([^"]*)")?>$/.exec(token);
+      if (!opening || !tags.has(opening[1]) || stack.length > 64) return null;
+      const tag = opening[1], node = { tag, children: [] };
+      if (tag === "a") {
+        node.href = normalizeExternalHttpUrl(decode(opening[2] || ""));
+        if (!node.href) return null;
+      } else if (opening[2] !== void 0) return null;
+      stack.at(-1).children.push(node);
+      if (tag === "br") plain += "\n";
+      else stack.push(node);
+    }
+    if (stack.length !== 1 || plain.replace(/\u00a0/g, " ").trim() !== String(note || "").trim()) return null;
+    return root.children;
+  }
+  function AnnotationNote({ note, html, onOpenLink }) {
+    const tree = annotationNoteTree(note, html);
+    if (!tree) return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { whiteSpace: "pre-wrap" }, children: note });
+    const render = (node, key) => {
+      if (typeof node === "string") return node;
+      const props = { key };
+      let tag = node.tag;
+      if (tag === "p") props.style = { margin: "0 0 4px", whiteSpace: "pre-wrap" };
+      if (tag === "ul" || tag === "ol") props.style = { margin: "4px 0", paddingLeft: 22 };
+      if (tag === "a") {
+        props.style = { color: "inherit", textDecoration: "underline" };
+        props.title = node.href;
+        if (onOpenLink) {
+          props.href = node.href;
+          props.onClick = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.nativeEvent.isTrusted) onOpenLink(node.href);
+          };
+        } else tag = "span";
+      }
+      return reactExports.createElement(tag, props, tag === "br" ? void 0 : node.children.map(render));
+    };
+    return tree.map(render);
+  }
+  function PdfHighlightTooltip({ tooltip }) {
+    const note = reactExports.useSyncExternalStore(tooltip.subscribe, tooltip.getSnapshot);
+    if (!note) return null;
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { role: "tooltip", style: {
+      position: "fixed",
+      left: note.x + 14,
+      top: note.y + 16,
+      maxWidth: 280,
+      padding: "8px 10px",
+      background: "rgba(20,20,20,0.96)",
+      border: "1px solid rgba(147,197,253,0.45)",
+      borderRadius: 6,
+      color: "rgb(219,234,254)",
+      fontSize: 12,
+      lineHeight: 1.4,
+      boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
+      pointerEvents: "none",
+      zIndex: 120
+    }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AnnotationNote, { note: note.note, html: note.html }) });
+  }
+  function pdfCanvasPlan(viewport, pixelRatio) {
+    const { width, height } = viewport;
+    if (![width, height].every((value) => Number.isFinite(value) && value > 0)) {
+      throw new RangeError("Invalid PDF page geometry");
+    }
+    const density = Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1;
+    const pixels = Math.min(
+      density,
+      8192 / width,
+      8192 / height,
+      Math.sqrt((8e6 - 32768) / (width * height))
+    );
+    return {
+      pixels,
+      canvasWidth: Math.max(1, Math.ceil(width * pixels)),
+      canvasHeight: Math.max(1, Math.ceil(height * pixels))
     };
   }
   function normalizePdfPageLabels(labels, totalPages) {
@@ -7619,13 +7683,13 @@
     }
     return { page: entry.page, pageFraction };
   }
-  function decodePdfByteRange(encoded, target, decode = atob) {
+  function decodePdfByteRange(encoded, target, decode2 = atob) {
     if (typeof target.setFromBase64 === "function") {
       const result = target.setFromBase64(encoded, { lastChunkHandling: "strict" });
       if (result.read !== encoded.length || result.written !== target.length) throw new Error("Invalid PDF byte count");
       return;
     }
-    const text = decode(encoded);
+    const text = decode2(encoded);
     if (text.length !== target.length) throw new Error("Invalid PDF byte count");
     for (let index = 0; index < text.length; index++) target[index] = text.charCodeAt(index);
   }
@@ -8025,8 +8089,12 @@
       document2.addEventListener("visibilitychange", changed);
       return () => document2.removeEventListener("visibilitychange", changed);
     }, []);
+    const readerWidth = reactExports.useCallback(() => {
+      var _a, _b, _c;
+      return ((_b = (_a = window.document) == null ? void 0 : _a.documentElement) == null ? void 0 : _b.clientWidth) || window.innerWidth || ((_c = containerRef.current) == null ? void 0 : _c.offsetWidth) || 800;
+    }, []);
     const renderTextLayer = reactExports.useCallback((pg, viewport) => {
-      var _a, _b;
+      var _a;
       const tl = textLayerRef.current;
       const lib = window.pdfjsLib;
       if (!tl || !lib) return;
@@ -8035,7 +8103,7 @@
       tl.style.width = viewport.width + "px";
       tl.style.height = viewport.height + "px";
       tl.style.clipPath = "inset(0)";
-      const wrapperW = ((_a = containerRef.current) == null ? void 0 : _a.offsetWidth) ?? viewport.width;
+      const wrapperW = Math.max(readerWidth(), viewport.width);
       const tlLeft = Math.round((wrapperW - viewport.width) / 2);
       tl.style.left = tlLeft + "px";
       tl.style.top = "0px";
@@ -8071,12 +8139,12 @@
           }).catch(() => {
           });
         };
-        if (typeof ((_b = text.source) == null ? void 0 : _b.then) === "function") text.source.then(show).catch(() => {
+        if (typeof ((_a = text.source) == null ? void 0 : _a.then) === "function") text.source.then(show).catch(() => {
         });
         else show(text.source);
       } catch (_) {
       }
-    }, []);
+    }, [readerWidth]);
     const renderLinkAnnotations = reactExports.useCallback(async (pg, viewport, sequence, pageNumber) => {
       try {
         const annotations = await pg.getAnnotations({ intent: "display" });
@@ -8119,7 +8187,7 @@
       }
       busyRef.current = true;
       const drain = async () => {
-        var _a2, _b2;
+        var _a2;
         try {
           while (pendingRenderRef.current) {
             const request = pendingRenderRef.current;
@@ -8136,11 +8204,10 @@
               backCvs = backId === "a" ? canvasARef.current : canvasBRef.current;
               const frontCvs = backId === "a" ? canvasBRef.current : canvasARef.current;
               if (!backCvs) continue;
-              const colW = ((_a2 = containerRef.current) == null ? void 0 : _a2.offsetWidth) || 800;
+              const colW = readerWidth();
               lastRenderWidthRef.current = colW;
-              const maxH = Math.max(window.innerHeight - 120, 300);
               const base = pg.getViewport({ scale: 1 });
-              let scale = Math.min(colW / base.width, maxH / base.height) * request.zoom;
+              let scale = colW / base.width * request.zoom;
               if (!scale || scale <= 0) scale = 1;
               const viewport = pg.getViewport({ scale });
               const dpr = window.devicePixelRatio || 1;
@@ -8166,7 +8233,7 @@
               }
               activeCvsRef.current = backId;
               displayed = true;
-              (_b2 = pageWindowRef.current) == null ? void 0 : _b2.display(pg);
+              (_a2 = pageWindowRef.current) == null ? void 0 : _a2.display(pg);
               setError("");
               setPage(request.num);
               if (containerRef.current) containerRef.current.style.height = viewport.height + "px";
@@ -8185,7 +8252,7 @@
         }
       };
       void drain();
-    }, [renderLinkAnnotations, renderTextLayer]);
+    }, [readerWidth, renderLinkAnnotations, renderTextLayer]);
     const doStart = reactExports.useCallback(() => {
       var _a, _b, _c;
       const sequence = ++loadSequenceRef.current;
@@ -8317,6 +8384,14 @@
       renderPage(pageRef.current);
       window.pycmd("incremento_pdf_zoom:" + cardIdRef.current + ":" + clamped);
     }, [renderPage]);
+    const fitWidth = reactExports.useCallback(() => {
+      if (!pdfDocRef.current) return;
+      zoomRef.current = 1;
+      setZoom(1);
+      renderPage(pageRef.current);
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      window.pycmd("incremento_pdf_zoom:" + cardIdRef.current + ":1");
+    }, [renderPage]);
     const setReadProgress = reactExports.useCallback((readPageValue, anchor = null, notify = true) => {
       const newRp = Math.max(0, parseInt(readPageValue, 10) || 0);
       readPageRef.current = newRp;
@@ -8348,24 +8423,28 @@
       };
     }, []);
     reactExports.useEffect(() => {
+      var _a;
       const container2 = containerRef.current;
       if (!container2) return;
       let timer;
-      const observer = new ResizeObserver((entries) => {
-        var _a;
-        const newW = Math.round(((_a = entries[0]) == null ? void 0 : _a.contentRect.width) ?? 0);
+      const resized = () => {
+        const newW = Math.round(readerWidth());
         if (Math.abs(newW - lastRenderWidthRef.current) < 5) return;
         clearTimeout(timer);
         timer = setTimeout(() => {
           if (pdfDocRef.current) renderPage(pageRef.current);
         }, 150);
-      });
+      };
+      const observer = new ResizeObserver(resized);
       observer.observe(container2);
+      (_a = window.addEventListener) == null ? void 0 : _a.call(window, "resize", resized);
       return () => {
+        var _a2;
         clearTimeout(timer);
         observer.disconnect();
+        (_a2 = window.removeEventListener) == null ? void 0 : _a2.call(window, "resize", resized);
       };
-    }, [renderPage]);
+    }, [readerWidth, renderPage]);
     return {
       // State (read-only)
       page,
@@ -8394,6 +8473,7 @@
       startViewer,
       nav,
       adjustZoom,
+      fitWidth,
       markRead,
       setReadProgress
     };
@@ -8432,6 +8512,8 @@
   const reader_pdf_page_number$2 = "PDF page number";
   const reader_zoom_out$2 = "Zoom out";
   const reader_zoom_in$2 = "Zoom in";
+  const reader_fit_width$2 = "Fit Width";
+  const reader_fit_width_hint$2 = "Fit the page to the reader width; scroll vertically to read";
   const reader_links_enable$2 = "Enable clickable links in this PDF";
   const reader_link_preview$2 = "Footnote / link preview";
   const reader_link_preview_zoom$2 = "Footnote preview zoom";
@@ -8611,6 +8693,20 @@
   const reader_marked_read$2 = "Marked read {percent}%";
   const reader_read_sections$2 = "Sections 1–{count}";
   const reader_exact_read_marker$2 = "Exact read marker";
+  const study_resources$2 = "Study resources";
+  const study_link_recording$2 = "Link recording…";
+  const reader_default_annotation_color$2 = "Default color";
+  const reader_default_annotation_color_help$2 = "Choose the saved color for new highlights (Ctrl/Cmd+H). Other color choices do not change this default.";
+  const reader_annotation_style$2 = "Style";
+  const reader_annotation_appearance$2 = "Annotation appearance";
+  const reader_annotation_style_help$2 = "Choose a style and color, then mark selected text.";
+  const reader_mark_selection$2 = "Mark selection";
+  const reader_style_highlight$2 = "Highlight";
+  const reader_style_underline$2 = "Underline";
+  const reader_style_squiggly$2 = "Squiggly";
+  const reader_style_dashed$2 = "Dashed";
+  const reader_style_dotted$2 = "Dotted";
+  const reader_style_strikeout$2 = "Strikethrough";
   const en = {
     reader_pdf_focus_mode_hint: reader_pdf_focus_mode_hint$2,
     reader_pdf_focus_mode: reader_pdf_focus_mode$2,
@@ -8646,6 +8742,8 @@
     reader_pdf_page_number: reader_pdf_page_number$2,
     reader_zoom_out: reader_zoom_out$2,
     reader_zoom_in: reader_zoom_in$2,
+    reader_fit_width: reader_fit_width$2,
+    reader_fit_width_hint: reader_fit_width_hint$2,
     reader_links_enable: reader_links_enable$2,
     reader_link_preview: reader_link_preview$2,
     reader_link_preview_zoom: reader_link_preview_zoom$2,
@@ -8824,7 +8922,21 @@
     reader_more: reader_more$2,
     reader_marked_read: reader_marked_read$2,
     reader_read_sections: reader_read_sections$2,
-    reader_exact_read_marker: reader_exact_read_marker$2
+    reader_exact_read_marker: reader_exact_read_marker$2,
+    study_resources: study_resources$2,
+    study_link_recording: study_link_recording$2,
+    reader_default_annotation_color: reader_default_annotation_color$2,
+    reader_default_annotation_color_help: reader_default_annotation_color_help$2,
+    reader_annotation_style: reader_annotation_style$2,
+    reader_annotation_appearance: reader_annotation_appearance$2,
+    reader_annotation_style_help: reader_annotation_style_help$2,
+    reader_mark_selection: reader_mark_selection$2,
+    reader_style_highlight: reader_style_highlight$2,
+    reader_style_underline: reader_style_underline$2,
+    reader_style_squiggly: reader_style_squiggly$2,
+    reader_style_dashed: reader_style_dashed$2,
+    reader_style_dotted: reader_style_dotted$2,
+    reader_style_strikeout: reader_style_strikeout$2
   };
   const reader_pdf_focus_mode_hint$1 = "Sakrijte lijevi Anki prikaz i proširite PDF preko pune raspoložive širine. Radi na zaslonima Špilovi i Pregled te tijekom ponavljanja. Gumbi za odgovore ostaju vidljivi, a odabir se sprema.";
   const reader_pdf_focus_mode$1 = "Fokus na PDF";
@@ -8861,6 +8973,8 @@
   const reader_pdf_page_number$1 = "Broj stranice PDF-a";
   const reader_zoom_out$1 = "Smanji prikaz";
   const reader_zoom_in$1 = "Povećaj prikaz";
+  const reader_fit_width$1 = "Prilagodi širini";
+  const reader_fit_width_hint$1 = "Prilagodi stranicu širini čitača; za čitanje pomiči okomito";
   const reader_links_enable$1 = "Uključi poveznice u ovom PDF-u";
   const reader_link_preview$1 = "Pregled fusnote / poveznice";
   const reader_link_preview_zoom$1 = "Povećanje pregleda fusnote";
@@ -9041,6 +9155,20 @@
   const reader_marked_read$1 = "Označeno pročitano {percent}%";
   const reader_read_sections$1 = "Odjeljci 1–{count}";
   const reader_exact_read_marker$1 = "Točna oznaka čitanja";
+  const study_resources$1 = "Materijali za učenje";
+  const study_link_recording$1 = "Poveži snimku…";
+  const reader_default_annotation_color$1 = "Zadana boja";
+  const reader_default_annotation_color_help$1 = "Odaberite spremljenu boju za nova označavanja (Ctrl/Cmd+H). Odabir drugih boja ne mijenja ovu zadanu boju.";
+  const reader_annotation_style$1 = "Stil";
+  const reader_annotation_appearance$1 = "Izgled oznake";
+  const reader_annotation_style_help$1 = "Odaberite stil i boju, zatim označite odabrani tekst.";
+  const reader_mark_selection$1 = "Označi odabir";
+  const reader_style_highlight$1 = "Isticanje";
+  const reader_style_underline$1 = "Podcrtano";
+  const reader_style_squiggly$1 = "Valovito";
+  const reader_style_dashed$1 = "Isprekidano";
+  const reader_style_dotted$1 = "Točkasto";
+  const reader_style_strikeout$1 = "Precrtano";
   const hr = {
     reader_pdf_focus_mode_hint: reader_pdf_focus_mode_hint$1,
     reader_pdf_focus_mode: reader_pdf_focus_mode$1,
@@ -9077,6 +9205,8 @@
     reader_pdf_page_number: reader_pdf_page_number$1,
     reader_zoom_out: reader_zoom_out$1,
     reader_zoom_in: reader_zoom_in$1,
+    reader_fit_width: reader_fit_width$1,
+    reader_fit_width_hint: reader_fit_width_hint$1,
     reader_links_enable: reader_links_enable$1,
     reader_link_preview: reader_link_preview$1,
     reader_link_preview_zoom: reader_link_preview_zoom$1,
@@ -9256,7 +9386,21 @@
     reader_more: reader_more$1,
     reader_marked_read: reader_marked_read$1,
     reader_read_sections: reader_read_sections$1,
-    reader_exact_read_marker: reader_exact_read_marker$1
+    reader_exact_read_marker: reader_exact_read_marker$1,
+    study_resources: study_resources$1,
+    study_link_recording: study_link_recording$1,
+    reader_default_annotation_color: reader_default_annotation_color$1,
+    reader_default_annotation_color_help: reader_default_annotation_color_help$1,
+    reader_annotation_style: reader_annotation_style$1,
+    reader_annotation_appearance: reader_annotation_appearance$1,
+    reader_annotation_style_help: reader_annotation_style_help$1,
+    reader_mark_selection: reader_mark_selection$1,
+    reader_style_highlight: reader_style_highlight$1,
+    reader_style_underline: reader_style_underline$1,
+    reader_style_squiggly: reader_style_squiggly$1,
+    reader_style_dashed: reader_style_dashed$1,
+    reader_style_dotted: reader_style_dotted$1,
+    reader_style_strikeout: reader_style_strikeout$1
   };
   const reader_pdf_focus_mode_hint = "隐藏左侧 Anki 区域，让 PDF 占满可用宽度。可在牌组列表、概览和复习时使用。回答按钮仍保持可见，您的选择会自动保存。";
   const reader_pdf_focus_mode = "PDF 专注模式";
@@ -9291,6 +9435,8 @@
   const reader_pdf_page_number = "PDF 页码";
   const reader_zoom_out = "缩小";
   const reader_zoom_in = "放大";
+  const reader_fit_width = "适合宽度";
+  const reader_fit_width_hint = "将页面缩放至阅读器宽度；垂直滚动以阅读";
   const reader_links_enable = "启用此 PDF 中的可点击链接";
   const reader_link_preview = "脚注／链接预览";
   const reader_link_preview_zoom = "脚注预览缩放";
@@ -9469,6 +9615,20 @@
   const reader_marked_read = "已标记读完 {percent}%";
   const reader_read_sections = "第 1–{count} 节";
   const reader_exact_read_marker = "精确阅读标记";
+  const study_resources = "学习资源";
+  const study_link_recording = "关联录音或视频…";
+  const reader_default_annotation_color = "默认颜色";
+  const reader_default_annotation_color_help = "选择新高亮的默认颜色（Ctrl/Cmd+H）。选择其他颜色不会更改此默认值。";
+  const reader_annotation_style = "样式";
+  const reader_annotation_appearance = "标注外观";
+  const reader_annotation_style_help = "选择样式和颜色，然后标记所选文字。";
+  const reader_mark_selection = "标记所选文字";
+  const reader_style_highlight = "高亮";
+  const reader_style_underline = "下划线";
+  const reader_style_squiggly = "波浪线";
+  const reader_style_dashed = "虚线";
+  const reader_style_dotted = "点线";
+  const reader_style_strikeout = "删除线";
   const zhHans = {
     reader_pdf_focus_mode_hint,
     reader_pdf_focus_mode,
@@ -9503,6 +9663,8 @@
     reader_pdf_page_number,
     reader_zoom_out,
     reader_zoom_in,
+    reader_fit_width,
+    reader_fit_width_hint,
     reader_links_enable,
     reader_link_preview,
     reader_link_preview_zoom,
@@ -9680,7 +9842,21 @@
     reader_more,
     reader_marked_read,
     reader_read_sections,
-    reader_exact_read_marker
+    reader_exact_read_marker,
+    study_resources,
+    study_link_recording,
+    reader_default_annotation_color,
+    reader_default_annotation_color_help,
+    reader_annotation_style,
+    reader_annotation_appearance,
+    reader_annotation_style_help,
+    reader_mark_selection,
+    reader_style_highlight,
+    reader_style_underline,
+    reader_style_squiggly,
+    reader_style_dashed,
+    reader_style_dotted,
+    reader_style_strikeout
   };
   const CATALOGS = { en, hr, "zh-Hans": zhHans };
   function normalizeReaderLocale(value) {
@@ -9828,14 +10004,61 @@
     if (HL_COLORS[color]) return HL_COLORS[color];
     return `rgba(${[1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16)).join(",")},0.42)`;
   }
+  const ANNOTATION_STYLES = ["highlight", "underline", "squiggly", "dashed", "dotted", "strikeout"];
+  const kinds = {
+    highlight: "Highlight",
+    underline: "Underline",
+    squiggly: "Squiggly",
+    dashed: "Underline",
+    dotted: "Underline",
+    strikeout: "StrikeOut"
+  };
+  function annotationStyle(mark) {
+    if ((mark == null ? void 0 : mark.color) === "snapshot") return null;
+    const native = mark == null ? void 0 : mark.pdf_annotation;
+    if ((native == null ? void 0 : native.kind) && !Object.values(kinds).includes(native.kind)) return null;
+    if (ANNOTATION_STYLES.includes(native == null ? void 0 : native.incremento_style) && kinds[native.incremento_style] === native.kind) {
+      return native.incremento_style;
+    }
+    if (native == null ? void 0 : native.kind) return Object.keys(kinds).find((key) => kinds[key] === native.kind);
+    return ANNOTATION_STYLES.includes(mark == null ? void 0 : mark.style) ? mark.style : "highlight";
+  }
+  function withAnnotationStyle(mark, style) {
+    if (!ANNOTATION_STYLES.includes(style) || annotationStyle(mark) === null) return null;
+    const native = {
+      ...mark.pdf_annotation,
+      kind: kinds[style],
+      incremento_style: style,
+      opacity: style === "highlight" ? 0.42 : 1
+    };
+    delete native.quads;
+    delete native.xref;
+    return { ...mark, pdf_annotation: native };
+  }
+  function annotationLine(style, width, height) {
+    if (!ANNOTATION_STYLES.includes(style) || style === "highlight" || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+    const y = style === "strikeout" ? height / 2 : Math.max(1, height - 2);
+    let path = `M0 ${y} L${width} ${y}`;
+    if (style === "squiggly") {
+      path = `M0 ${y}`;
+      const step = Math.max(4, width / 2e3);
+      for (let x = 0, i = 0; x < width; x += step, i++) {
+        const end = Math.min(width, x + step);
+        path += ` Q${(x + end) / 2} ${y + (i % 2 ? 2 : -2)} ${end} ${y}`;
+      }
+    }
+    return {
+      path,
+      dash: style === "dashed" ? "4 3" : style === "dotted" ? "0 3" : void 0,
+      cap: style === "dotted" ? "round" : "butt"
+    };
+  }
   const DEFAULT_LANGUAGE$1 = createReaderLanguage("en");
   function isSnapshotHighlight(highlight) {
     return String((highlight == null ? void 0 : highlight.color) || "") === "snapshot";
   }
   function isResizableTextHighlight(highlight) {
-    var _a;
-    const kind = String(((_a = highlight == null ? void 0 : highlight.pdf_annotation) == null ? void 0 : _a.kind) || "Highlight");
-    return !isSnapshotHighlight(highlight) && kind === "Highlight" && Array.isArray(highlight == null ? void 0 : highlight.rects) && highlight.rects.length > 0;
+    return !isSnapshotHighlight(highlight) && annotationStyle(highlight) !== null && Array.isArray(highlight == null ? void 0 : highlight.rects) && highlight.rects.length > 0;
   }
   function highlightBackground(highlight, nativeHighlightsVisible) {
     if (isSnapshotHighlight(highlight)) return "rgba(37,99,235,0.12)";
@@ -9855,7 +10078,7 @@
     renderInfo,
     deleteHighlight,
     editHighlightNote,
-    showHighlightColorPopover,
+    editHighlightColor,
     activateHighlightResize,
     resizingHighlightId,
     beginHighlightResize,
@@ -9912,52 +10135,66 @@
     );
     return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `
-        .incremento-pdf-color-action {
-          opacity: 0;
-        }
-        .incremento-pdf-note-action {
-          opacity: 0;
-        }
-        .incremento-pdf-resize-action {
+        .incremento-pdf-highlight-actions > button {
           opacity: 0;
           pointer-events: none;
         }
-        .incremento-pdf-highlight-actions:hover .incremento-pdf-note-action,
-        .incremento-pdf-note-action:focus-visible {
-          opacity: 1;
-        }
-        .incremento-pdf-highlight-actions:hover .incremento-pdf-color-action,
-        .incremento-pdf-highlight-actions:focus-within .incremento-pdf-color-action {
-          opacity: 1;
-        }
-        .incremento-pdf-highlight-actions:hover .incremento-pdf-resize-action,
-        .incremento-pdf-resize-action:focus-visible {
+        .incremento-pdf-highlight-actions[data-highlight-hovered] > button,
+        .incremento-pdf-highlight-actions:hover > button,
+        .incremento-pdf-highlight-actions:focus-within > button {
           opacity: 1;
           pointer-events: auto;
         }
       ` }),
       displayHighlights.map(
-        (h) => h.rects.map((r, ri) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "div",
-          {
-            style: {
-              position: "absolute",
-              left: renderInfo.tlLeft + r.x * renderInfo.scale,
-              top: r.y * renderInfo.scale,
-              width: r.w * renderInfo.scale,
-              height: r.h * renderInfo.scale,
-              background: highlightBackground(h, nativeHighlightsVisible),
-              border: isSnapshotHighlight(h) ? "2px solid rgba(37,99,235,0.95)" : "none",
-              boxSizing: "border-box",
-              mixBlendMode: isSnapshotHighlight(h) ? "normal" : "multiply",
-              outline: showHighlightControls && h.id === focusedHighlightId ? "2px solid rgba(255,255,255,0.95)" : "none",
-              boxShadow: showHighlightControls && h.id === focusedHighlightId ? "0 0 0 3px rgba(56,189,248,0.55)" : "none",
-              pointerEvents: "none",
-              zIndex: 1
-            }
-          },
-          `${h.id}-${ri}`
-        ))
+        (h) => h.rects.map((r, ri) => {
+          var _a;
+          const line = !nativeHighlightsVisible || !((_a = h.pdf_annotation) == null ? void 0 : _a.xref) ? annotationLine(annotationStyle(h), r.w, r.h) : null;
+          return /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              "data-annotation-style": annotationStyle(h) || void 0,
+              style: {
+                position: "absolute",
+                left: renderInfo.tlLeft + r.x * renderInfo.scale,
+                top: r.y * renderInfo.scale,
+                width: r.w * renderInfo.scale,
+                height: r.h * renderInfo.scale,
+                background: highlightBackground(h, nativeHighlightsVisible),
+                border: isSnapshotHighlight(h) ? "2px solid rgba(37,99,235,0.95)" : "none",
+                boxSizing: "border-box",
+                mixBlendMode: isSnapshotHighlight(h) ? "normal" : "multiply",
+                outline: showHighlightControls && h.id === focusedHighlightId ? "2px solid rgba(255,255,255,0.95)" : "none",
+                boxShadow: showHighlightControls && h.id === focusedHighlightId ? "0 0 0 3px rgba(56,189,248,0.55)" : "none",
+                pointerEvents: "none",
+                zIndex: 1
+              },
+              children: line && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "svg",
+                {
+                  "aria-hidden": "true",
+                  viewBox: `0 0 ${r.w} ${r.h}`,
+                  preserveAspectRatio: "none",
+                  width: "100%",
+                  height: "100%",
+                  style: { display: "block", overflow: "visible" },
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "path",
+                    {
+                      d: line.path,
+                      fill: "none",
+                      stroke: highlightSolidColor(h.color),
+                      strokeWidth: "1.4",
+                      strokeDasharray: line.dash,
+                      strokeLinecap: line.cap
+                    }
+                  )
+                }
+              )
+            },
+            `${h.id}-${ri}`
+          );
+        })
       ),
       showHighlightControls && displayHighlights.map(
         (h) => !String(h.note || "").trim() ? null : h.rects.map((r, ri) => /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -9988,6 +10225,7 @@
           "div",
           {
             className: "incremento-pdf-highlight-actions",
+            "data-highlight-id": String(h.id ?? ""),
             style: {
               position: "absolute",
               left: renderInfo.tlLeft + (r.x + r.w) * renderInfo.scale - (isSnapshotHighlight(h) ? 28 : 48),
@@ -10006,10 +10244,7 @@
                   "aria-label": language.tr("reader_choose_annotation_color"),
                   title: language.tr("reader_choose_annotation_color"),
                   "aria-haspopup": "dialog",
-                  onClick: (event) => {
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    showHighlightColorPopover == null ? void 0 : showHighlightColorPopover(h, { clientX: rect.left + rect.width / 2, clientY: rect.bottom });
-                  },
+                  onClick: () => editHighlightColor == null ? void 0 : editHighlightColor(h),
                   style: {
                     width: 16,
                     height: 16,
@@ -10875,6 +11110,28 @@
     const value = typeof raw === "number" || typeof raw === "string" && raw.trim() ? Number(raw) : NaN;
     return Number.isFinite(value) ? Math.round(Math.max(1, Math.min(4, value)) * 4) / 4 : DEFAULT_PDF_LINK_PREVIEW_ZOOM;
   }
+  function normalizePdfLinkPreviewSize(raw) {
+    if (!raw || !["width", "height"].every((key) => typeof raw[key] === "number" && Number.isFinite(raw[key]) && raw[key] > 0)) return null;
+    return {
+      width: Math.round(Math.min(4096, Math.max(280, raw.width))),
+      height: Math.round(Math.min(4096, Math.max(160, raw.height)))
+    };
+  }
+  function pdfLinkPreviewLayout(size, anchor, viewportWidth, viewportHeight) {
+    const preferred = normalizePdfLinkPreviewSize(size) || { width: 560, height: 360 };
+    const width = Math.max(1, Math.min(preferred.width, viewportWidth - 24));
+    const height = Math.max(1, Math.min(preferred.height, viewportHeight - 24));
+    const left = Math.max(12, Math.min(anchor.x - 24, viewportWidth - width - 12));
+    const top = anchor.y + height + 20 < viewportHeight ? anchor.y + 20 : Math.max(12, anchor.y - height - 20);
+    return {
+      width,
+      height,
+      left,
+      top,
+      maxWidth: Math.max(1, viewportWidth - left - 12),
+      maxHeight: Math.max(1, viewportHeight - top - 12)
+    };
+  }
   function pdfLinkAtPoint(links, x, y) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
     return links.find((link) => link.kind === "internal" && x >= link.left && x <= link.left + link.width && y >= link.top && y <= link.top + link.height) || null;
@@ -11040,8 +11297,8 @@
     };
     return renderer;
   }
-  function attachPdfLinkPreview({ container: container2, popup, host, links, tlLeft, doc, preview, maxPage = null }) {
-    let active = null, dismissed = null, timer = null;
+  function attachPdfLinkPreview({ container: container2, popup, host, links, tlLeft, doc, preview, maxPage = null, onResize }) {
+    let active = null, dismissed = null, timer = null, interacting = false, initialSize = null;
     const cancelClose = () => {
       if (timer != null) host.clearTimeout(timer);
       timer = null;
@@ -11049,10 +11306,12 @@
     const close = () => {
       cancelClose();
       active = null;
+      interacting = false;
+      initialSize = null;
       preview.clear();
     };
     const scheduleClose = () => {
-      if (timer == null) timer = host.setTimeout(close, 180);
+      if (!interacting && timer == null) timer = host.setTimeout(close, 180);
     };
     const leave = () => {
       dismissed = null;
@@ -11066,6 +11325,7 @@
       void preview.show(doc, link, { x, y }, maxPage);
     };
     const move = (event) => {
+      if (interacting) return;
       if (event.buttons || event.pointerType === "touch") {
         if (active) close();
         return;
@@ -11096,7 +11356,28 @@
       if (!popup.contains(event.target)) close();
     };
     const pointerDown = (event) => {
-      if (!popup.contains(event.target)) close();
+      if (!popup.contains(event.target)) {
+        close();
+        return;
+      }
+      interacting = true;
+      initialSize = popup.getBoundingClientRect();
+      cancelClose();
+    };
+    const pointerUp = (event) => {
+      if (!interacting) return;
+      interacting = false;
+      const rect = popup.getBoundingClientRect();
+      const size = normalizePdfLinkPreviewSize(rect);
+      if (size && initialSize && (rect.width !== initialSize.width || rect.height !== initialSize.height)) {
+        onResize == null ? void 0 : onResize(size);
+      }
+      initialSize = null;
+      if (!popup.contains(event.target)) scheduleClose();
+    };
+    const pointerCancel = (event) => {
+      initialSize = null;
+      pointerUp(event);
     };
     const listeners = [
       [container2, "pointermove", move],
@@ -11111,7 +11392,9 @@
       [host, "scroll", scroll],
       [host, "resize", close],
       [host, "blur", close],
-      [host, "pointerdown", pointerDown]
+      [host, "pointerdown", pointerDown],
+      [host, "pointerup", pointerUp],
+      [host, "pointercancel", pointerCancel]
     ];
     const capture = (name) => !["pointerenter", "pointerleave", "blur"].includes(name);
     for (const [target, name, callback] of listeners) target.addEventListener(name, callback, capture(name));
@@ -11135,7 +11418,9 @@
     appearance,
     tr,
     zoom,
-    onZoom
+    onZoom,
+    size = null,
+    onResize
   }) {
     var _a;
     const capturing = reactExports.useSyncExternalStore(snapshotMode.subscribe, snapshotMode.getSnapshot);
@@ -11146,6 +11431,8 @@
     const rendererRef = reactExports.useRef(null);
     const zoomRef = reactExports.useRef(zoom);
     zoomRef.current = zoom;
+    const onResizeRef = reactExports.useRef(onResize);
+    onResizeRef.current = onResize;
     reactExports.useEffect(() => {
       const container2 = containerRef.current, popup = popupRef.current;
       const doc = pdfDocRef.current;
@@ -11165,7 +11452,11 @@
         tlLeft,
         doc,
         preview: renderer,
-        maxPage
+        maxPage,
+        onResize: (value) => {
+          var _a2;
+          return (_a2 = onResizeRef.current) == null ? void 0 : _a2.call(onResizeRef, value);
+        }
       });
       return () => {
         detach();
@@ -11192,12 +11483,12 @@
       canvas.setAttribute("aria-label", preview.text || tr("reader_link_preview"));
       canvas.style.filter = appearance.filter;
     }, [canvas, preview == null ? void 0 : preview.text, appearance.filter, tr]);
-    const width = Math.max(1, Math.min(560, window.innerWidth - 24));
-    const bodyHeight = Math.max(40, Math.min(260, window.innerHeight - 120));
-    const height = bodyHeight + 100;
-    const anchor = (preview == null ? void 0 : preview.anchor) || { x: 0, y: 0 };
-    const left = Math.max(12, Math.min(anchor.x - 24, window.innerWidth - width - 12));
-    const top = anchor.y + height + 20 < window.innerHeight ? anchor.y + 20 : Math.max(12, anchor.y - height - 20);
+    const { width, height, left, top, maxWidth, maxHeight } = pdfLinkPreviewLayout(
+      size,
+      (preview == null ? void 0 : preview.anchor) || { x: 0, y: 0 },
+      window.innerWidth,
+      window.innerHeight
+    );
     const targetPage = (_a = preview == null ? void 0 : preview.link) == null ? void 0 : _a.targetPage;
     const pageLabel = (pageLabels == null ? void 0 : pageLabels[targetPage - 1]) || targetPage;
     return /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -11215,7 +11506,13 @@
           left,
           top,
           width,
-          maxHeight: Math.max(40, window.innerHeight - top - 12),
+          height,
+          minWidth: Math.min(280, maxWidth),
+          minHeight: Math.min(160, maxHeight),
+          maxWidth,
+          maxHeight,
+          resize: "both",
+          boxSizing: "border-box",
           zIndex: 180,
           textAlign: "left",
           background: "#252525",
@@ -11226,7 +11523,7 @@
           overflow: "hidden"
         },
         children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", fontSize: 13 }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", flexShrink: 0, alignItems: "center", gap: 12, padding: "8px 12px", fontSize: 13 }, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { style: { flex: 1 }, children: tr("reader_link_preview") }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: targetPage ? tr("reader_page_number", { page: pageLabel }) : "" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -11246,8 +11543,7 @@
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
             position: "relative",
             minHeight: 48,
-            height: bodyHeight,
-            flexShrink: 1,
+            flex: 1,
             background: appearance.background,
             color: "#f4f4f5"
           }, children: [
@@ -11276,10 +11572,11 @@
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
             display: "flex",
+            flexShrink: 0,
             flexWrap: "wrap",
             alignItems: "center",
             gap: 10,
-            padding: "7px 12px",
+            padding: "7px 20px 12px 12px",
             fontSize: 11,
             color: "#d4d4d8"
           }, children: [
@@ -11395,6 +11692,12 @@
       manage() {
         command("manage");
       },
+      recordings() {
+        command("recordings");
+      },
+      linkRecording() {
+        command("link_recording");
+      },
       close() {
         current = null;
         links = [];
@@ -11430,12 +11733,14 @@
       error: current && view.error,
       create: () => model.current.create(),
       manage: () => model.current.manage(),
+      recordings: () => model.current.recordings(),
+      linkRecording: () => model.current.linkRecording(),
       remove: (row) => model.current.remove(row),
       jump: (row, mode) => model.current.jump(row, mode)
     };
   }
   function PdfPageLinks({ linksState, tr }) {
-    const { cardId, page, generation, enabled, links, loading, error, create, manage, jump, remove } = linksState;
+    const { cardId, page, generation, enabled, links, loading, error, create, manage, jump, remove, recordings, linkRecording } = linksState;
     const [openedFor, setOpenedFor] = reactExports.useState(null);
     const root = reactExports.useRef(null), trigger = reactExports.useRef(null), panel = reactExports.useRef(null);
     const key = `${cardId}:${page}:${generation}`;
@@ -11522,6 +11827,8 @@
               /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { style: { whiteSpace: "nowrap" }, children: tr("reader_page_links") }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => act(create), children: tr("reader_link_this_page") }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => act(manage), children: tr("reader_reference_links") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => act(linkRecording), children: tr("study_link_recording") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => act(recordings), children: tr("study_resources") }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", "aria-label": tr("reader_close"), onClick: close, style: { marginLeft: "auto" }, children: "×" })
             ] }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, "aria-live": "polite", children: [
@@ -12083,6 +12390,7 @@
       startViewer,
       nav: rawNav,
       adjustZoom,
+      fitWidth,
       setReadProgress: rawSetReadProgress
     } = usePdfRender();
     const pageLinksState = usePdfPageLinks({
@@ -12106,10 +12414,21 @@
     const [showHighlightControls, setShowHighlightControls] = reactExports.useState(true);
     const [showHighlightDeleteButtons, setShowHighlightDeleteButtons] = reactExports.useState(true);
     const [hlColor, setHlColor] = reactExports.useState("yellow");
+    const [defaultHighlightColor, setDefaultHighlightColor] = reactExports.useState("yellow");
+    const defaultHighlightColorRef = reactExports.useRef("yellow");
+    const applyDefaultHighlightColor = reactExports.useCallback((value) => {
+      const color = normalizeHighlightColor(value) || "yellow";
+      defaultHighlightColorRef.current = color;
+      setDefaultHighlightColor(color);
+    }, []);
     const [autoHighlight, setAutoHighlight] = reactExports.useState(false);
+    const [markStyle, setMarkStyle] = reactExports.useState("highlight");
+    const markStyleRef = reactExports.useRef("highlight");
     const [resizingHighlightId, setResizingHighlightId] = reactExports.useState(null);
     const [highlightColorPopover, setHighlightColorPopover] = reactExports.useState(null);
     const highlightColorPopoverRef = reactExports.useRef(null);
+    const hoveredHighlightActionRef = reactExports.useRef(null);
+    const hoveredHighlightPointRef = reactExports.useRef(null);
     const resizeHighlightRef = reactExports.useRef(null);
     const highlightRangeCacheRef = reactExports.useRef(/* @__PURE__ */ new Map());
     const scrollToTopOnPageChangeRef = reactExports.useRef(true);
@@ -12207,6 +12526,14 @@
     const [controlVisibility, setControlVisibility] = reactExports.useState(DEFAULT_CONTROL_VISIBILITY);
     const [clickableLinks, setClickableLinks] = reactExports.useState(false);
     const [linkPreviewZoom, setLinkPreviewZoom] = reactExports.useState(DEFAULT_PDF_LINK_PREVIEW_ZOOM);
+    const [linkPreviewSize, setLinkPreviewSize] = reactExports.useState(null);
+    const applyLinkPreviewSize = reactExports.useCallback((value) => {
+      const size = normalizePdfLinkPreviewSize(value);
+      if (!size) return;
+      setLinkPreviewSize(size);
+      const cardId = Number(cardIdRef.current || 0);
+      if (cardId > 0) window.pycmd("incremento_pdf_link_preview_size:" + JSON.stringify({ cardId, size }));
+    }, []);
     const applyLinkPreviewZoom = reactExports.useCallback((value) => {
       const zoom2 = normalizePdfLinkPreviewZoom(value);
       setLinkPreviewZoom(zoom2);
@@ -12253,6 +12580,50 @@
     }, []);
     const highlightIndex = reactExports.useMemo(() => buildPdfHighlightIndex(highlights, compareHighlights), [highlights]);
     const pageHighlights = highlightIndex.byPage.get(page) || NO_HIGHLIGHTS;
+    const clearHoveredHighlight = reactExports.useCallback(() => {
+      var _a;
+      (_a = hoveredHighlightActionRef.current) == null ? void 0 : _a.removeAttribute("data-highlight-hovered");
+      hoveredHighlightActionRef.current = null;
+    }, []);
+    const hoverHighlightAtClientPoint = reactExports.useCallback((event) => {
+      var _a, _b, _c;
+      hoveredHighlightPointRef.current = { clientX: event.clientX, clientY: event.clientY, buttons: event.buttons || 0 };
+      const wrapper = containerRef.current;
+      if (!showHighlightControls || !wrapper || snapshotMode.getSnapshot()) {
+        clearHoveredHighlight();
+        return;
+      }
+      const actions = (_b = (_a = event.target) == null ? void 0 : _a.closest) == null ? void 0 : _b.call(_a, ".incremento-pdf-highlight-actions");
+      if (actions && actions === hoveredHighlightActionRef.current) return;
+      if (event.buttons) {
+        clearHoveredHighlight();
+        return;
+      }
+      const highlight = pdfHighlightAtClientPoint(
+        pdfDisplayHighlights(pageHighlights),
+        renderInfo,
+        wrapper.getBoundingClientRect(),
+        event.clientX,
+        event.clientY,
+        { normalizedRects: true }
+      );
+      const id = highlight && highlight.color !== "snapshot" ? String(highlight.id ?? "") : null;
+      if (id !== null && ((_c = hoveredHighlightActionRef.current) == null ? void 0 : _c.dataset.highlightId) === id) return;
+      clearHoveredHighlight();
+      if (id === null) return;
+      const target = Array.from(wrapper.querySelectorAll(".incremento-pdf-highlight-actions")).find((node) => node.dataset.highlightId === id);
+      target == null ? void 0 : target.setAttribute("data-highlight-hovered", "true");
+      hoveredHighlightActionRef.current = target || null;
+    }, [clearHoveredHighlight, containerRef, pageHighlights, renderInfo, showHighlightControls, snapshotMode]);
+    const leaveHighlightHover = reactExports.useCallback(() => {
+      hoveredHighlightPointRef.current = null;
+      clearHoveredHighlight();
+    }, [clearHoveredHighlight]);
+    reactExports.useEffect(() => {
+      clearHoveredHighlight();
+      if (hoveredHighlightPointRef.current) hoverHighlightAtClientPoint(hoveredHighlightPointRef.current);
+      return clearHoveredHighlight;
+    }, [clearHoveredHighlight, hoverHighlightAtClientPoint]);
     const minViewerWidth = (renderInfo == null ? void 0 : renderInfo.pageWidth) ? Math.ceil(renderInfo.pageWidth) : 0;
     const showReadMarker = readAnchor && readPage > 0 && page === readPage && Number(readAnchor.page || 0) === page;
     const readMarkerRect = showReadMarker && Number.isFinite(Number(readAnchor.x)) && Number.isFinite(Number(readAnchor.y)) && Number.isFinite(Number(readAnchor.w)) && Number.isFinite(Number(readAnchor.h)) ? {
@@ -12736,8 +13107,8 @@
     const editHighlightNote = reactExports.useCallback((id) => {
       window.pycmd("incremento_pdf_hl_note:" + JSON.stringify({ id }));
     }, []);
-    const updateHighlightNote = reactExports.useCallback((id, note) => {
-      setHighlights((prev) => prev.map((h) => h.id === id ? { ...h, note: String(note || "") } : h));
+    const updateHighlightNote = reactExports.useCallback((id, note, noteHtml) => {
+      setHighlights((prev) => prev.map((h) => h.id === id ? { ...h, note: String(note || ""), note_html: String(noteHtml || "") } : h));
     }, []);
     const activateHighlightResize = reactExports.useCallback((highlight) => {
       const tl = textLayerRef.current;
@@ -12966,6 +13337,18 @@
       setHighlights((previous) => previous.map((h) => h.id === id ? highlight : h));
       window.pycmd("incremento_pdf_hl_update:" + JSON.stringify({ cardId: cardIdRef.current, highlight }));
     }, [highlights, cardIdRef]);
+    const restyleHighlight = reactExports.useCallback((id, style) => {
+      const original = highlights.find((h) => h.id === id);
+      if (!original) return;
+      const highlight = withAnnotationStyle(original, style);
+      if (!highlight) return;
+      setHighlights((previous) => previous.map((h) => h.id === id ? highlight : h));
+      deactivateHighlightResize();
+      window.pycmd("incremento_pdf_hl_update:" + JSON.stringify({
+        cardId: cardIdRef.current,
+        highlight: { ...highlight, style }
+      }));
+    }, [highlights, cardIdRef, deactivateHighlightResize]);
     const makeHighlight = reactExports.useCallback((sel, forcedColor = null) => {
       var _a;
       if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
@@ -12982,13 +13365,14 @@
       }))).filter((r) => r.w > 0 && r.h > 0);
       if (!rects.length) return false;
       const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-      const hl = {
+      let hl = {
         id,
         page: pageRef.current,
-        color: forcedColor || hlColorRef.current,
+        color: forcedColor || defaultHighlightColorRef.current,
         text: selectionCleaned(sel, tl),
         rects
       };
+      if (markStyleRef.current !== "highlight") hl = withAnnotationStyle(hl, markStyleRef.current);
       setHighlights((prev) => [...prev, hl]);
       highlightRangeCacheRef.current.set(
         id,
@@ -13011,14 +13395,15 @@
         sel.removeAllRanges();
       }
     }, [makeHighlight]);
-    const openHighlightColorPicker = reactExports.useCallback((highlight = null) => {
+    const openHighlightColorPicker = reactExports.useCallback((highlight = null, chooseDefault = false) => {
       var _a;
       const sel = window.getSelection();
       const range = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null;
-      pendingHighlightSelectionRef.current = highlight ? { id: highlight.id, page: pageRef.current, cardId: cardIdRef.current } : range && ((_a = textLayerRef.current) == null ? void 0 : _a.contains(range.commonAncestorContainer)) ? { range: range.cloneRange(), page: pageRef.current, cardId: cardIdRef.current } : null;
+      pendingHighlightSelectionRef.current = chooseDefault ? { defaultColor: true, page: pageRef.current, cardId: cardIdRef.current } : highlight ? { id: highlight.id, page: pageRef.current, cardId: cardIdRef.current } : range && ((_a = textLayerRef.current) == null ? void 0 : _a.contains(range.commonAncestorContainer)) ? { range: range.cloneRange(), page: pageRef.current, cardId: cardIdRef.current } : null;
       window.pycmd("incremento_pdf_hl_color:" + JSON.stringify({
         cardId: cardIdRef.current,
-        currentColor: (highlight == null ? void 0 : highlight.color) || hlColorRef.current
+        currentColor: chooseDefault ? defaultHighlightColorRef.current : (highlight == null ? void 0 : highlight.color) || hlColorRef.current,
+        ...chooseDefault ? { defaultColor: true } : {}
       }));
     }, [cardIdRef, textLayerRef, pageRef]);
     const finishHighlightColorPicker = reactExports.useCallback((value) => {
@@ -13027,6 +13412,10 @@
       pendingHighlightSelectionRef.current = null;
       const color = normalizeHighlightColor(value);
       if (!color) return;
+      if (pending == null ? void 0 : pending.defaultColor) {
+        if (pending.page === pageRef.current && pending.cardId === cardIdRef.current) applyDefaultHighlightColor(color);
+        return;
+      }
       pickHighlightColor(color);
       if (!pending || pending.page !== pageRef.current || pending.cardId !== cardIdRef.current) return;
       if (pending.id) {
@@ -13040,7 +13429,7 @@
         getRangeAt: () => range,
         toString: () => range.toString()
       }, color)) (_a = window.getSelection()) == null ? void 0 : _a.removeAllRanges();
-    }, [pickHighlightColor, makeHighlight, recolorHighlight, pageRef, cardIdRef]);
+    }, [applyDefaultHighlightColor, pickHighlightColor, makeHighlight, recolorHighlight, pageRef, cardIdRef]);
     const limitAwareNav = reactExports.useCallback((delta, options = {}) => {
       const scrollToTop = options.scrollToTop !== void 0 ? !!options.scrollToTop : delta > 0;
       if (delta > 0) {
@@ -13276,7 +13665,7 @@
       rawSetReadProgress(currentPage, anchor);
     }, [buildReadAnchor, canMarkReadAtPage, clearReadAnchor, pageRef, rawSetReadProgress]);
     reactExports.useEffect(() => {
-      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null, startLocale = "en", startCustomLanguage = null, startAppearanceMode = "original", startShowHighlightDeleteButtons = true, startLinkPreviewZoom = DEFAULT_PDF_LINK_PREVIEW_ZOOM, startPageY = null, startControlsCollapsed = null) => {
+      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null, startLocale = "en", startCustomLanguage = null, startAppearanceMode = "original", startShowHighlightDeleteButtons = true, startLinkPreviewZoom = DEFAULT_PDF_LINK_PREVIEW_ZOOM, startPageY = null, startControlsCollapsed = null, startDefaultHighlightColor = "yellow", startLinkPreviewSize = null) => {
         var _a, _b;
         setPageLinksDocument((current) => ({ cardId: Number(cardId), generation: current.generation + 1 }));
         contentsGenerationRef.current += 1;
@@ -13294,8 +13683,10 @@
         setPdfFocusState(window._incPdfFocusState);
         setControlsCollapsed(typeof startControlsCollapsed === "boolean" ? startControlsCollapsed : true);
         setCompactPanel(null);
+        applyDefaultHighlightColor(startDefaultHighlightColor);
         setShowHighlightDeleteButtons(startShowHighlightDeleteButtons !== false);
         setLinkPreviewZoom(normalizePdfLinkPreviewZoom(startLinkPreviewZoom));
+        setLinkPreviewSize(normalizePdfLinkPreviewSize(startLinkPreviewSize));
         setLinkBackHistory([]);
         setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
         resizeHighlightRef.current = null;
@@ -13338,6 +13729,7 @@
         }
       };
       window.incrementoPickPdfHighlightColor = finishHighlightColorPicker;
+      window.incrementoSetDefaultHighlightColor = applyDefaultHighlightColor;
       window.incrementoPdfStart = startWithHighlights;
       window.incrementoSetPdfFocusState = setPdfFocusState;
       window.incrementoSetPdfLinkPreviewZoom = (value) => setLinkPreviewZoom(normalizePdfLinkPreviewZoom(value));
@@ -13375,8 +13767,8 @@
       window.incrementoReceivePdfBookmarks = (items) => {
         setBookmarks(Array.isArray(items) ? items : []);
       };
-      window.incrementoUpdatePdfHighlightNote = (id, note) => {
-        updateHighlightNote(String(id || ""), String(note || ""));
+      window.incrementoUpdatePdfHighlightNote = (id, note, noteHtml) => {
+        updateHighlightNote(String(id || ""), String(note || ""), String(noteHtml || ""));
       };
       window.incrementoReceivePdfSearchState = (state) => {
         const payload = state && typeof state === "object" ? state : {};
@@ -13421,11 +13813,14 @@
           pending.showHighlightDeleteButtons,
           pending.linkPreviewZoom,
           pending.pageY,
-          pending.controlsCollapsed
+          pending.controlsCollapsed,
+          pending.defaultHighlightColor,
+          pending.linkPreviewSize
         );
       }
       return () => {
         delete window.incrementoPickPdfHighlightColor;
+        delete window.incrementoSetDefaultHighlightColor;
         delete window.incrementoPdfStart;
         delete window.incrementoSetPdfFocusState;
         delete window.incrementoSetPdfLinkPreviewZoom;
@@ -13448,6 +13843,7 @@
     }, [
       startViewer,
       finishHighlightColorPicker,
+      applyDefaultHighlightColor,
       limitAwareNav,
       adjustZoom,
       limitAwareMarkRead,
@@ -13731,7 +14127,18 @@
                         Math.round(zoom * 100),
                         "%"
                       ] }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "aria-label": tr("reader_zoom_in"), onClick: () => adjustZoom(1), children: "+" })
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "aria-label": tr("reader_zoom_in"), onClick: () => adjustZoom(1), children: "+" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "button",
+                        {
+                          type: "button",
+                          "aria-label": tr("reader_fit_width"),
+                          title: tr("reader_fit_width_hint"),
+                          disabled: !totalPages,
+                          onClick: fitWidth,
+                          children: tr("reader_fit_width")
+                        }
+                      )
                     ] })
                   ] }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "reader-control-row reader-primary-actions", children: [
@@ -14155,7 +14562,18 @@
                                 Math.round(zoom * 100),
                                 "%"
                               ] }),
-                              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "aria-label": tr("reader_zoom_in"), onClick: () => adjustZoom(1), children: "+" })
+                              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "aria-label": tr("reader_zoom_in"), onClick: () => adjustZoom(1), children: "+" }),
+                              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                "button",
+                                {
+                                  type: "button",
+                                  "aria-label": tr("reader_fit_width"),
+                                  title: tr("reader_fit_width_hint"),
+                                  disabled: !totalPages,
+                                  onClick: fitWidth,
+                                  children: tr("reader_fit_width")
+                                }
+                              )
                             ] })
                           ] }),
                           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: TOOLBAR_SEPARATOR_STYLE }),
@@ -14329,6 +14747,60 @@
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "reader-expanded-heading", children: tr("reader_annotation_capture") }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "reader-expanded-body", children: [
                         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: TOOLBAR_STACK_STYLE, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }, children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { style: { display: "inline-flex", alignItems: "center", gap: 6 }, children: [
+                            tr("reader_annotation_style"),
+                            /* @__PURE__ */ jsxRuntimeExports.jsx(
+                              "select",
+                              {
+                                "aria-label": tr("reader_annotation_style"),
+                                value: markStyle,
+                                title: tr("reader_annotation_style_help"),
+                                onChange: (event) => {
+                                  markStyleRef.current = event.target.value;
+                                  setMarkStyle(event.target.value);
+                                },
+                                children: ANNOTATION_STYLES.map((style) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: style, children: tr(`reader_style_${style}`) }, style))
+                              }
+                            )
+                          ] }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            "button",
+                            {
+                              type: "button",
+                              onMouseDown: (event) => event.preventDefault(),
+                              title: tr("reader_annotation_style_help"),
+                              onClick: () => makeHighlight(window.getSelection(), hlColorRef.current),
+                              children: tr("reader_mark_selection")
+                            }
+                          ),
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                            "button",
+                            {
+                              "aria-label": tr("reader_default_annotation_color"),
+                              title: tr("reader_default_annotation_color_help"),
+                              onMouseDown: (e) => e.preventDefault(),
+                              onClick: () => openHighlightColorPicker(null, true),
+                              style: {
+                                background: "transparent",
+                                border: "1px solid rgba(138,138,138,0.4)",
+                                color: "#ddd",
+                                borderRadius: 6,
+                                padding: "5px 8px",
+                                cursor: "pointer"
+                              },
+                              children: [
+                                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "aria-hidden": "true", style: {
+                                  display: "inline-block",
+                                  width: 12,
+                                  height: 12,
+                                  background: highlightSolidColor(defaultHighlightColor),
+                                  borderRadius: 3,
+                                  marginRight: 6
+                                } }),
+                                tr("reader_default_annotation_color")
+                              ]
+                            }
+                          ),
                           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, padding: "2px 4px" }, children: Object.keys(HL_COLORS).map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "button",
                             {
@@ -14337,9 +14809,8 @@
                               title: tr("reader_highlight_color", { color: tr(`reader_color_${c}`) }),
                               onMouseDown: (e) => {
                                 e.preventDefault();
-                                pickHighlightColor(c, true);
                               },
-                              onClick: () => pickHighlightColor(c, false),
+                              onClick: () => pickHighlightColor(c, true),
                               style: {
                                 background: HL_SOLID[c],
                                 border: hlColor === c ? "2px solid white" : "2px solid transparent",
@@ -15064,14 +15535,15 @@
                           )
                         ] }),
                         note && highlightsNotesOnly ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(191,219,254)" }, children: note }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(191,219,254)" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AnnotationNote, { note, html: hl.note_html, onOpenLink: (url) => window.pycmd(
+                            "incremento_pdf_open_link:" + JSON.stringify({ cardId: cardIdRef.current, url })
+                          ) }) }),
                           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 11, lineHeight: 1.35, color: "rgba(229,231,235,0.72)", marginTop: 6 }, children: tr("reader_highlight_excerpt", { excerpt }) })
                         ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35 }, children: excerpt }),
-                          note && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(147,197,253)", marginTop: 6 }, children: [
-                            "Note: ",
-                            note
-                          ] })
+                          note && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(147,197,253)", marginTop: 6 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AnnotationNote, { note, html: hl.note_html, onOpenLink: (url) => window.pycmd(
+                            "incremento_pdf_open_link:" + JSON.stringify({ cardId: cardIdRef.current, url })
+                          ) }) })
                         ] })
                       ]
                     },
@@ -15096,15 +15568,17 @@
               ref: highlightColorPopoverRef,
               className: "incremento-pdf-highlight-color-popover",
               role: "dialog",
-              "aria-label": tr("reader_choose_annotation_color"),
+              "aria-label": tr("reader_annotation_appearance"),
               style: {
                 position: "fixed",
                 zIndex: 130,
                 left: Math.max(8, Math.min(highlightColorPopover.x - 124, window.innerWidth - 256)),
-                top: Math.max(8, Math.min(highlightColorPopover.y + 16, window.innerHeight - 116)),
+                top: Math.max(8, Math.min(highlightColorPopover.y + 16, window.innerHeight - 310)),
                 width: 248,
                 maxWidth: "calc(100vw - 16px)",
                 boxSizing: "border-box",
+                maxHeight: "calc(100vh - 16px)",
+                overflowY: "auto",
                 padding: 10,
                 borderRadius: 10,
                 background: "#1f2937",
@@ -15116,6 +15590,54 @@
                 /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `.incremento-pdf-highlight-color-popover button:focus-visible {
             outline: 2px solid #fff; outline-offset: 2px;
           }` }),
+                annotationStyle(colorPopoverHighlight) !== null && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, marginBottom: 6 }, children: tr("reader_annotation_style") }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "div",
+                    {
+                      role: "group",
+                      "aria-label": tr("reader_annotation_style"),
+                      style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 10 },
+                      children: ANNOTATION_STYLES.map((style) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                        "button",
+                        {
+                          type: "button",
+                          "aria-label": tr(`reader_style_${style}`),
+                          title: tr(`reader_style_${style}`),
+                          "aria-pressed": annotationStyle(colorPopoverHighlight) === style,
+                          onClick: () => restyleHighlight(colorPopoverHighlight.id, style),
+                          style: {
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            minHeight: 34,
+                            padding: "5px 6px",
+                            fontSize: 12,
+                            cursor: "pointer",
+                            color: "inherit",
+                            borderRadius: 5,
+                            background: annotationStyle(colorPopoverHighlight) === style ? "#334155" : "transparent",
+                            border: annotationStyle(colorPopoverHighlight) === style ? "1px solid #93c5fd" : "1px solid #64748b"
+                          },
+                          children: [
+                            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "aria-hidden": "true", style: {
+                              fontSize: 16,
+                              lineHeight: "22px",
+                              background: style === "highlight" ? highlightSolidColor(colorPopoverHighlight.color) : "transparent",
+                              color: style === "highlight" ? "#111827" : "inherit",
+                              textDecorationLine: style === "highlight" ? "none" : style === "strikeout" ? "line-through" : "underline",
+                              textDecorationStyle: style === "squiggly" ? "wavy" : ["dashed", "dotted"].includes(style) ? style : "solid",
+                              textDecorationColor: highlightSolidColor(colorPopoverHighlight.color),
+                              textUnderlineOffset: 3
+                            }, children: "Aa" }),
+                            tr(`reader_style_${style}`)
+                          ]
+                        },
+                        style
+                      ))
+                    }
+                  )
+                ] }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, marginBottom: 8 }, children: tr("reader_choose_annotation_color") }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexWrap: "wrap", gap: 4 }, children: Object.keys(HL_COLORS).map((color) => /* @__PURE__ */ jsxRuntimeExports.jsx(
                   "button",
@@ -15178,7 +15700,9 @@
               appearance: pageAppearance,
               tr,
               zoom: linkPreviewZoom,
-              onZoom: applyLinkPreviewZoom
+              onZoom: applyLinkPreviewZoom,
+              size: linkPreviewSize,
+              onResize: applyLinkPreviewSize
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -15187,6 +15711,8 @@
               id: "pdf-canvas-wrapper",
               ref: containerRef,
               onClick: activateHighlightFromPageClick,
+              onMouseMove: hoverHighlightAtClientPoint,
+              onMouseLeave: leaveHighlightHover,
               style: {
                 position: "relative",
                 display: "block",
@@ -15345,7 +15871,7 @@
                     renderInfo,
                     deleteHighlight,
                     editHighlightNote,
-                    showHighlightColorPopover,
+                    editHighlightColor: openHighlightColorPicker,
                     activateHighlightResize,
                     resizingHighlightId,
                     beginHighlightResize,

@@ -3,9 +3,10 @@ import {observeSearchText} from './pdfSearchObserver.mjs';
 import {pageWindow} from './pagedRows.mjs';
 import { createPdfSnapshotMode, cropPdfSnapshot, encodePdfSnapshot, paintPdfSnapshotPreview } from './pdfSnapshot.mjs';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {buildPdfHighlightIndex} from './pdfHighlightIndex.mjs';
+import {buildPdfHighlightIndex, pdfDisplayHighlights} from './pdfHighlightIndex.mjs';
 import {createPdfHighlightTooltip} from './pdfHighlightTooltip.mjs';
 import PdfHighlightTooltip from './PdfHighlightTooltip.jsx';
+import AnnotationNote from './AnnotationNote.jsx';
 import { usePdfRender } from './usePdfRender.js';
 import HighlightLayer, { isResizableTextHighlight } from './HighlightLayer.jsx';
 import PdfSelectionLayer from './PdfSelectionLayer.jsx';
@@ -14,9 +15,10 @@ import PdfLinkPreview from './PdfLinkPreview.jsx';
 import PdfPageLinks, {usePdfPageLinks} from './PdfPageLinks.jsx';
 import {observePdfToolbarHeight, pdfPageLinksViewport} from './pdfPageLinks.mjs';
 import {pdfDestinationScrollRatio} from './pdfDestination.mjs';
-import {DEFAULT_PDF_LINK_PREVIEW_ZOOM, normalizePdfLinkPreviewZoom} from './pdfLinkPreview.mjs';
+import {DEFAULT_PDF_LINK_PREVIEW_ZOOM, normalizePdfLinkPreviewZoom, normalizePdfLinkPreviewSize} from './pdfLinkPreview.mjs';
 import { normalizePdfHighlightRects, pdfHighlightAtClientPoint } from './pdfHighlightRects.mjs';
 import { HL_COLORS, HL_SOLID, highlightSolidColor, normalizeHighlightColor } from './highlightColors.mjs';
+import {ANNOTATION_STYLES, annotationStyle, withAnnotationStyle} from './annotationStyles.mjs';
 import { pushPdfLinkHistory, takePdfLinkHistory } from './pdfLinkHistory.mjs';
 import { capturePdfFindStartPage, pdfFindReturnDelta } from './pdfFindHistory.mjs';
 import { pdfAnchorScrollRatio } from './pdfAnchorLocation.mjs';
@@ -442,7 +444,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     page, totalPages, pageLabels, zoom, error, renderInfo, readPage, linkAnnotations, contents, contentsReady,
     canvasARef, canvasBRef, containerRef, textLayerRef,
     pdfDocRef, busyRef, activeCvsRef, cardIdRef, pageRef, lastScaleRef,
-    startViewer, nav: rawNav, adjustZoom, setReadProgress: rawSetReadProgress,
+    startViewer, nav: rawNav, adjustZoom, fitWidth, setReadProgress: rawSetReadProgress,
   } = usePdfRender();
   const pageLinksState = usePdfPageLinks({cardId: pageLinksDocument.cardId, page,
     generation: pageLinksDocument.generation,
@@ -463,10 +465,21 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
   const [showHighlightControls, setShowHighlightControls] = useState(true);
   const [showHighlightDeleteButtons, setShowHighlightDeleteButtons] = useState(true);
   const [hlColor,       setHlColor]       = useState('yellow');
+  const [defaultHighlightColor, setDefaultHighlightColor] = useState('yellow');
+  const defaultHighlightColorRef = useRef('yellow');
+  const applyDefaultHighlightColor = useCallback(value => {
+    const color = normalizeHighlightColor(value) || 'yellow';
+    defaultHighlightColorRef.current = color;
+    setDefaultHighlightColor(color);
+  }, []);
   const [autoHighlight, setAutoHighlight] = useState(false);
+  const [markStyle, setMarkStyle] = useState('highlight');
+  const markStyleRef = useRef('highlight');
   const [resizingHighlightId, setResizingHighlightId] = useState(null);
   const [highlightColorPopover, setHighlightColorPopover] = useState(null);
   const highlightColorPopoverRef = useRef(null);
+  const hoveredHighlightActionRef = useRef(null);
+  const hoveredHighlightPointRef = useRef(null);
   const resizeHighlightRef = useRef(null);
   const highlightRangeCacheRef = useRef(new Map());
   const scrollToTopOnPageChangeRef = useRef(true);
@@ -568,6 +581,14 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
   const [controlVisibility, setControlVisibility] = useState(DEFAULT_CONTROL_VISIBILITY);
   const [clickableLinks, setClickableLinks] = useState(false);
   const [linkPreviewZoom, setLinkPreviewZoom] = useState(DEFAULT_PDF_LINK_PREVIEW_ZOOM);
+  const [linkPreviewSize, setLinkPreviewSize] = useState(null);
+  const applyLinkPreviewSize = useCallback((value) => {
+    const size = normalizePdfLinkPreviewSize(value);
+    if (!size) return;
+    setLinkPreviewSize(size);
+    const cardId = Number(cardIdRef.current || 0);
+    if (cardId > 0) window.pycmd('incremento_pdf_link_preview_size:' + JSON.stringify({cardId, size}));
+  }, []);
   const applyLinkPreviewZoom = useCallback((value) => {
     const zoom = normalizePdfLinkPreviewZoom(value);
     setLinkPreviewZoom(zoom);
@@ -620,6 +641,44 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
   // ── Highlights for the current page ───────────────────────────────────────
   const highlightIndex = useMemo(() => buildPdfHighlightIndex(highlights, compareHighlights), [highlights]);
   const pageHighlights = highlightIndex.byPage.get(page) || NO_HIGHLIGHTS;
+  const clearHoveredHighlight = useCallback(() => {
+    hoveredHighlightActionRef.current?.removeAttribute('data-highlight-hovered');
+    hoveredHighlightActionRef.current = null;
+  }, []);
+  const hoverHighlightAtClientPoint = useCallback(event => {
+    hoveredHighlightPointRef.current = {clientX: event.clientX, clientY: event.clientY, buttons: event.buttons || 0};
+    const wrapper = containerRef.current;
+    if (!showHighlightControls || !wrapper || snapshotMode.getSnapshot()) {
+      clearHoveredHighlight();
+      return;
+    }
+    const actions = event.target?.closest?.('.incremento-pdf-highlight-actions');
+    if (actions && actions === hoveredHighlightActionRef.current) return;
+    if (event.buttons) {
+      clearHoveredHighlight();
+      return;
+    }
+    const highlight = pdfHighlightAtClientPoint(pdfDisplayHighlights(pageHighlights), renderInfo,
+      wrapper.getBoundingClientRect(), event.clientX, event.clientY, {normalizedRects: true});
+    const id = highlight && highlight.color !== 'snapshot' ? String(highlight.id ?? '') : null;
+    if (id !== null && hoveredHighlightActionRef.current?.dataset.highlightId === id) return;
+    clearHoveredHighlight();
+    if (id === null) return;
+    const target = Array.from(wrapper.querySelectorAll('.incremento-pdf-highlight-actions'))
+      .find(node => node.dataset.highlightId === id);
+    // Pointer movement updates only the action cluster, not the full reader.
+    target?.setAttribute('data-highlight-hovered', 'true');
+    hoveredHighlightActionRef.current = target || null;
+  }, [clearHoveredHighlight, containerRef, pageHighlights, renderInfo, showHighlightControls, snapshotMode]);
+  const leaveHighlightHover = useCallback(() => {
+    hoveredHighlightPointRef.current = null;
+    clearHoveredHighlight();
+  }, [clearHoveredHighlight]);
+  useEffect(() => {
+    clearHoveredHighlight();
+    if (hoveredHighlightPointRef.current) hoverHighlightAtClientPoint(hoveredHighlightPointRef.current);
+    return clearHoveredHighlight;
+  }, [clearHoveredHighlight, hoverHighlightAtClientPoint]);
   const minViewerWidth = renderInfo?.pageWidth ? Math.ceil(renderInfo.pageWidth) : 0;
   const showReadMarker = (
     readAnchor
@@ -1163,9 +1222,9 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     window.pycmd('incremento_pdf_hl_note:' + JSON.stringify({ id }));
   }, []);
 
-  const updateHighlightNote = useCallback((id, note) => {
+  const updateHighlightNote = useCallback((id, note, noteHtml) => {
     setHighlights(prev => prev.map((h) => (
-      h.id === id ? { ...h, note: String(note || '') } : h
+      h.id === id ? { ...h, note: String(note || ''), note_html: String(noteHtml || '') } : h
     )));
   }, []);
 
@@ -1410,6 +1469,18 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     window.pycmd('incremento_pdf_hl_update:' + JSON.stringify({ cardId: cardIdRef.current, highlight }));
   }, [highlights, cardIdRef]);
 
+  const restyleHighlight = useCallback((id, style) => {
+    const original = highlights.find(h => h.id === id);
+    if (!original) return;
+    const highlight = withAnnotationStyle(original, style);
+    if (!highlight) return;
+    setHighlights(previous => previous.map(h => h.id === id ? highlight : h));
+    deactivateHighlightResize();
+    window.pycmd('incremento_pdf_hl_update:' + JSON.stringify({
+      cardId: cardIdRef.current, highlight: {...highlight, style},
+    }));
+  }, [highlights, cardIdRef, deactivateHighlightResize]);
+
   const makeHighlight = useCallback((sel, forcedColor = null) => {
     if (!sel || sel.isCollapsed || !sel.rangeCount) return false;
     const tl = textLayerRef.current;
@@ -1430,13 +1501,14 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       .filter(r => r.w > 0 && r.h > 0);
     if (!rects.length) return false;
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-    const hl = {
+    let hl = {
       id,
       page: pageRef.current,
-      color: forcedColor || hlColorRef.current,
+      color: forcedColor || defaultHighlightColorRef.current,
       text: selectionCleaned(sel, tl),
       rects,
     };
+    if (markStyleRef.current !== 'highlight') hl = withAnnotationStyle(hl, markStyleRef.current);
     setHighlights(prev => [...prev, hl]);
     highlightRangeCacheRef.current.set(
       id,
@@ -1461,13 +1533,17 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     }
   }, [makeHighlight]);
 
-  const openHighlightColorPicker = useCallback((highlight = null) => {
+  const openHighlightColorPicker = useCallback((highlight = null, chooseDefault = false) => {
     const sel = window.getSelection();
     const range = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null;
-    pendingHighlightSelectionRef.current = highlight ? { id: highlight.id, page: pageRef.current, cardId: cardIdRef.current } : range && textLayerRef.current?.contains(range.commonAncestorContainer)
+    pendingHighlightSelectionRef.current = chooseDefault
+      ? { defaultColor: true, page: pageRef.current, cardId: cardIdRef.current }
+      : highlight ? { id: highlight.id, page: pageRef.current, cardId: cardIdRef.current } : range && textLayerRef.current?.contains(range.commonAncestorContainer)
       ? { range: range.cloneRange(), page: pageRef.current, cardId: cardIdRef.current } : null;
     window.pycmd('incremento_pdf_hl_color:' + JSON.stringify({
-      cardId: cardIdRef.current, currentColor: highlight?.color || hlColorRef.current,
+      cardId: cardIdRef.current,
+      currentColor: chooseDefault ? defaultHighlightColorRef.current : highlight?.color || hlColorRef.current,
+      ...(chooseDefault ? {defaultColor: true} : {}),
     }));
   }, [cardIdRef, textLayerRef, pageRef]);
 
@@ -1476,6 +1552,10 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     pendingHighlightSelectionRef.current = null;
     const color = normalizeHighlightColor(value);
     if (!color) return;
+    if (pending?.defaultColor) {
+      if (pending.page === pageRef.current && pending.cardId === cardIdRef.current) applyDefaultHighlightColor(color);
+      return;
+    }
     pickHighlightColor(color);
     if (!pending || pending.page !== pageRef.current || pending.cardId !== cardIdRef.current) return;
     if (pending.id) {
@@ -1487,7 +1567,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       rangeCount: 1, isCollapsed: range.collapsed,
       getRangeAt: () => range, toString: () => range.toString(),
     }, color)) window.getSelection()?.removeAllRanges();
-  }, [pickHighlightColor, makeHighlight, recolorHighlight, pageRef, cardIdRef]);
+  }, [applyDefaultHighlightColor, pickHighlightColor, makeHighlight, recolorHighlight, pageRef, cardIdRef]);
 
   const limitAwareNav = useCallback((delta, options = {}) => {
     const scrollToTop = options.scrollToTop !== undefined
@@ -1775,6 +1855,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       startLinkPreviewZoom = DEFAULT_PDF_LINK_PREVIEW_ZOOM,
       startPageY = null,
       startControlsCollapsed = null,
+      startDefaultHighlightColor = 'yellow',
+      startLinkPreviewSize = null,
     ) => {
       setPageLinksDocument(current => ({cardId: Number(cardId), generation: current.generation + 1}));
       contentsGenerationRef.current += 1;
@@ -1793,8 +1875,10 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       setPdfFocusState(window._incPdfFocusState);
       setControlsCollapsed(typeof startControlsCollapsed === 'boolean' ? startControlsCollapsed : true);
       setCompactPanel(null);
+      applyDefaultHighlightColor(startDefaultHighlightColor);
       setShowHighlightDeleteButtons(startShowHighlightDeleteButtons !== false);
       setLinkPreviewZoom(normalizePdfLinkPreviewZoom(startLinkPreviewZoom));
+      setLinkPreviewSize(normalizePdfLinkPreviewSize(startLinkPreviewSize));
       setLinkBackHistory([]);
       setHighlights(Array.isArray(window._incPdfHighlights) ? window._incPdfHighlights.slice().sort(compareHighlights) : []);
       resizeHighlightRef.current = null;
@@ -1838,6 +1922,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     };
 
     window.incrementoPickPdfHighlightColor = finishHighlightColorPicker;
+    window.incrementoSetDefaultHighlightColor = applyDefaultHighlightColor;
     window.incrementoPdfStart = startWithHighlights;
     window.incrementoSetPdfFocusState = setPdfFocusState;
     window.incrementoSetPdfLinkPreviewZoom = value => setLinkPreviewZoom(normalizePdfLinkPreviewZoom(value));
@@ -1876,8 +1961,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     window.incrementoReceivePdfBookmarks = (items) => {
       setBookmarks(Array.isArray(items) ? items : []);
     };
-    window.incrementoUpdatePdfHighlightNote = (id, note) => {
-      updateHighlightNote(String(id || ''), String(note || ''));
+    window.incrementoUpdatePdfHighlightNote = (id, note, noteHtml) => {
+      updateHighlightNote(String(id || ''), String(note || ''), String(noteHtml || ''));
     };
     window.incrementoReceivePdfSearchState = (state) => {
       const payload = state && typeof state === 'object' ? state : {};
@@ -1924,10 +2009,13 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
         pending.linkPreviewZoom,
         pending.pageY,
         pending.controlsCollapsed,
+        pending.defaultHighlightColor,
+        pending.linkPreviewSize,
       );
     }
     return () => {
       delete window.incrementoPickPdfHighlightColor;
+      delete window.incrementoSetDefaultHighlightColor;
       delete window.incrementoPdfStart;
       delete window.incrementoSetPdfFocusState;
       delete window.incrementoSetPdfLinkPreviewZoom;
@@ -1950,6 +2038,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
   }, [
     startViewer,
     finishHighlightColorPicker,
+    applyDefaultHighlightColor,
     limitAwareNav,
     adjustZoom,
     limitAwareMarkRead,
@@ -2205,6 +2294,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                 <button aria-label={tr('reader_zoom_out')} onClick={() => adjustZoom(-1)}>−</button>
                 <span>{Math.round(zoom * 100)}%</span>
                 <button aria-label={tr('reader_zoom_in')} onClick={() => adjustZoom(1)}>+</button>
+                <button type="button" aria-label={tr('reader_fit_width')} title={tr('reader_fit_width_hint')}
+                  disabled={!totalPages} onClick={fitWidth}>{tr('reader_fit_width')}</button>
               </span>
             </div>
             <div className="reader-control-row reader-primary-actions">
@@ -2534,6 +2625,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                 <button aria-label={tr("reader_zoom_in")} onClick={() => adjustZoom(1)}>
                   &#43;
                 </button>
+                <button type="button" aria-label={tr('reader_fit_width')} title={tr('reader_fit_width_hint')}
+                  disabled={!totalPages} onClick={fitWidth}>{tr('reader_fit_width')}</button>
               </span>
             </div>
             <span style={TOOLBAR_SEPARATOR_STYLE} />
@@ -2701,6 +2794,36 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
             <div className="reader-expanded-body">
               <div style={TOOLBAR_STACK_STYLE}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <label style={{display: 'inline-flex', alignItems: 'center', gap: 6}}>
+                    {tr('reader_annotation_style')}
+                    <select aria-label={tr('reader_annotation_style')} value={markStyle}
+                      title={tr('reader_annotation_style_help')}
+                      onChange={event => {
+                        markStyleRef.current = event.target.value;
+                        setMarkStyle(event.target.value);
+                      }}>
+                      {ANNOTATION_STYLES.map(style => <option key={style} value={style}>
+                        {tr(`reader_style_${style}`)}
+                      </option>)}
+                    </select>
+                  </label>
+                  <button type="button" onMouseDown={event => event.preventDefault()}
+                    title={tr('reader_annotation_style_help')}
+                    onClick={() => makeHighlight(window.getSelection(), hlColorRef.current)}>
+                    {tr('reader_mark_selection')}
+                  </button>
+                  <button
+                    aria-label={tr('reader_default_annotation_color')}
+                    title={tr('reader_default_annotation_color_help')}
+                    onMouseDown={e => e.preventDefault()}
+                    onClick={() => openHighlightColorPicker(null, true)}
+                    style={{ background: 'transparent', border: '1px solid rgba(138,138,138,0.4)',
+                      color: '#ddd', borderRadius: 6, padding: '5px 8px', cursor: 'pointer' }}
+                  >
+                    <span aria-hidden="true" style={{ display: 'inline-block', width: 12, height: 12,
+                      background: highlightSolidColor(defaultHighlightColor), borderRadius: 3, marginRight: 6 }} />
+                    {tr('reader_default_annotation_color')}
+                  </button>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '2px 4px' }}>
                     {Object.keys(HL_COLORS).map(c => (
                       <button
@@ -2710,9 +2833,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                         title={tr('reader_highlight_color', { color: tr(`reader_color_${c}`) })}
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          pickHighlightColor(c, true);
                         }}
-                        onClick={() => pickHighlightColor(c, false)}
+                        onClick={() => pickHighlightColor(c, true)}
                         style={{
                           background:  HL_SOLID[c],
                           border:      hlColor === c ? '2px solid white' : '2px solid transparent',
@@ -3345,7 +3467,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                     {note && highlightsNotesOnly ? (
                       <>
                         <div style={{ fontSize: 12, lineHeight: 1.35, color: 'rgb(191,219,254)' }}>
-                          {note}
+                          <AnnotationNote note={note} html={hl.note_html} onOpenLink={url => window.pycmd(
+                            'incremento_pdf_open_link:' + JSON.stringify({cardId: cardIdRef.current, url}))} />
                         </div>
                         <div style={{ fontSize: 11, lineHeight: 1.35, color: 'rgba(229,231,235,0.72)', marginTop: 6 }}>
                           {tr('reader_highlight_excerpt', { excerpt })}
@@ -3358,7 +3481,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                         </div>
                         {note && (
                           <div style={{ fontSize: 12, lineHeight: 1.35, color: 'rgb(147,197,253)', marginTop: 6 }}>
-                            Note: {note}
+                            <AnnotationNote note={note} html={hl.note_html} onOpenLink={url => window.pycmd(
+                              'incremento_pdf_open_link:' + JSON.stringify({cardId: cardIdRef.current, url}))} />
                           </div>
                         )}
                       </>
@@ -3386,17 +3510,39 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
           ref={highlightColorPopoverRef}
           className="incremento-pdf-highlight-color-popover"
           role="dialog"
-          aria-label={tr('reader_choose_annotation_color')}
+          aria-label={tr('reader_annotation_appearance')}
           style={{ position: 'fixed', zIndex: 130,
             left: Math.max(8, Math.min(highlightColorPopover.x - 124, window.innerWidth - 256)),
-            top: Math.max(8, Math.min(highlightColorPopover.y + 16, window.innerHeight - 116)),
+            top: Math.max(8, Math.min(highlightColorPopover.y + 16, window.innerHeight - 310)),
             width: 248, maxWidth: 'calc(100vw - 16px)', boxSizing: 'border-box',
+            maxHeight: 'calc(100vh - 16px)', overflowY: 'auto',
             padding: 10, borderRadius: 10, background: '#1f2937', color: '#f9fafb',
             border: '1px solid #64748b', boxShadow: '0 4px 16px rgba(0,0,0,0.35)' }}
         >
           <style>{`.incremento-pdf-highlight-color-popover button:focus-visible {
             outline: 2px solid #fff; outline-offset: 2px;
           }`}</style>
+          {annotationStyle(colorPopoverHighlight) !== null && <>
+            <div style={{fontSize: 12, marginBottom: 6}}>{tr('reader_annotation_style')}</div>
+            <div role="group" aria-label={tr('reader_annotation_style')}
+              style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 10}}>
+              {ANNOTATION_STYLES.map(style => <button key={style} type="button"
+                aria-label={tr(`reader_style_${style}`)} title={tr(`reader_style_${style}`)} aria-pressed={annotationStyle(colorPopoverHighlight) === style}
+                onClick={() => restyleHighlight(colorPopoverHighlight.id, style)}
+                style={{display: 'flex', alignItems: 'center', gap: 6, minHeight: 34,
+                  padding: '5px 6px', fontSize: 12, cursor: 'pointer', color: 'inherit', borderRadius: 5,
+                  background: annotationStyle(colorPopoverHighlight) === style ? '#334155' : 'transparent',
+                  border: annotationStyle(colorPopoverHighlight) === style ? '1px solid #93c5fd' : '1px solid #64748b'}}>
+                <span aria-hidden="true" style={{fontSize: 16, lineHeight: '22px',
+                  background: style === 'highlight' ? highlightSolidColor(colorPopoverHighlight.color) : 'transparent',
+                  color: style === 'highlight' ? '#111827' : 'inherit',
+                  textDecorationLine: style === 'highlight' ? 'none' : style === 'strikeout' ? 'line-through' : 'underline',
+                  textDecorationStyle: style === 'squiggly' ? 'wavy' : ['dashed', 'dotted'].includes(style) ? style : 'solid',
+                  textDecorationColor: highlightSolidColor(colorPopoverHighlight.color), textUnderlineOffset: 3}}>Aa</span>
+                {tr(`reader_style_${style}`)}
+              </button>)}
+            </div>
+          </>}
           <div style={{ fontSize: 12, marginBottom: 8 }}>{tr('reader_choose_annotation_color')}</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {Object.keys(HL_COLORS).map(color => (
@@ -3436,13 +3582,16 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
         maxPage={limitEnabled && limitMode !== 'warning' && !overrideEnabled && allowedMaxPage != null
           ? Math.max(page, allowedMaxPage) : null}
         pageLabels={pageLabels} appearance={pageAppearance} tr={tr}
-        zoom={linkPreviewZoom} onZoom={applyLinkPreviewZoom} />
+        zoom={linkPreviewZoom} onZoom={applyLinkPreviewZoom}
+        size={linkPreviewSize} onResize={applyLinkPreviewSize} />
 
       {/* Canvas wrapper */}
       <div
         id="pdf-canvas-wrapper"
         ref={containerRef}
         onClick={activateHighlightFromPageClick}
+        onMouseMove={hoverHighlightAtClientPoint}
+        onMouseLeave={leaveHighlightHover}
         style={{
           position: 'relative',
           display: 'block',
@@ -3576,7 +3725,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
           renderInfo={renderInfo}
           deleteHighlight={deleteHighlight}
           editHighlightNote={editHighlightNote}
-          showHighlightColorPopover={showHighlightColorPopover}
+          editHighlightColor={openHighlightColorPicker}
           activateHighlightResize={activateHighlightResize}
           resizingHighlightId={resizingHighlightId}
           beginHighlightResize={beginHighlightResize}

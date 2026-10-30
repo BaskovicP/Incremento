@@ -1538,3 +1538,31 @@ msgstr "正在通过 Incremento Companion 打开网页。如果没有响应，�
 
 msgid "imports_companion_browser_unavailable"
 msgstr "无法打开所选的 Companion 浏览器。请检查 Incremento 设置 → 复习中的浏览器选择。"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_option"
+msgstr "保存前预览并移除元素"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_title"
+msgstr "清理网页"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_help"
+msgstr "点击不需要的元素将其隐藏。按住 Shift 点击可移除其父容器。撤销可恢复上次移除的元素，重置可恢复全部。关闭移除模式可选择文本。仅包含已加载的内容。"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_zap"
+msgstr "移除元素"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_undo"
+msgstr "撤销移除"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_reset"
+msgstr "重置"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_save"
+msgstr "保存 PDF"

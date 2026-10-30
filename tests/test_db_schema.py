@@ -30,7 +30,7 @@ def test_search_fts_upgrade_preserves_text_and_uses_stable_lookup_ids(prefix, ke
 
         for _ in range(2):
             assert initialize_schema(conn, bootstrap=db._create_tables,
-                                     migrations=db._SCHEMA_MIGRATIONS) == 19
+                                     migrations=db._SCHEMA_MIGRATIONS) == 23
 
         order = ",".join(keys)
         assert conn.execute(f"SELECT * FROM {prefix}_index ORDER BY {order}").fetchall() == rows
@@ -152,7 +152,7 @@ def test_search_fts_key_migration_keeps_the_plain_table_fallback_without_fts():
         conn.execute("INSERT INTO pdf_text_index VALUES (7,1,'alpha')")
         conn.commit()
         assert initialize_schema(conn, bootstrap=db._create_tables,
-                                 migrations=db._SCHEMA_MIGRATIONS) == 19
+                                 migrations=db._SCHEMA_MIGRATIONS) == 23
         assert conn.execute("SELECT text FROM pdf_text_index WHERE text LIKE '%alpha%'").fetchall() == [("alpha",)]
         assert conn.execute("SELECT name FROM sqlite_master WHERE name LIKE '%_fts%'").fetchall() == []
 
@@ -168,7 +168,7 @@ def test_highlight_document_indexes_upgrade_existing_rows_and_are_reused():
             conn.execute(f"INSERT INTO {table}(id, card_id, text) VALUES('same', 8, 'other')")
         conn.commit()
         for _ in range(2):
-            assert initialize_schema(conn, bootstrap=db._create_tables, migrations=db._SCHEMA_MIGRATIONS) == 19
+            assert initialize_schema(conn, bootstrap=db._create_tables, migrations=db._SCHEMA_MIGRATIONS) == 23
         for table in ("pdf_highlights", "epub_highlights"):
             assert conn.execute(f"SELECT text FROM {table} WHERE card_id=7").fetchall() == [("kept",)]
             plan = conn.execute(f"EXPLAIN QUERY PLAN SELECT * FROM {table} WHERE card_id=7").fetchall()
@@ -351,7 +351,7 @@ def test_statistics_history_schema_rejects_invalid_rows(tmp_path):
     db.close_connection()
     conn = db.get_connection(str(tmp_path), "TestProfile")
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 19
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 23
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 "INSERT INTO reading_page_history "

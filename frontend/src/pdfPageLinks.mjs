@@ -57,6 +57,8 @@ export function createPdfPageLinks(send, changed) {
     },
     create() {command('create');},
     manage() {command('manage');},
+    recordings() {command('recordings');},
+    linkRecording() {command('link_recording');},
     close() {current = null; links = [];},
   };
 }

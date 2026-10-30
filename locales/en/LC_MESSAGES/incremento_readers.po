@@ -4007,3 +4007,679 @@ msgstr "Open in new window"
 
 msgid "workspace_pdf_window_limit"
 msgstr "Up to {count} PDF windows can be open at once. Close one before opening another."
+
+msgid "study_resources"
+msgstr "Study resources"
+
+msgid "study_player_paused"
+msgstr "Ready at the linked time. Press Play when you are ready."
+
+msgid "study_player_unavailable"
+msgstr "Playback is unavailable in this Anki installation."
+
+msgid "study_recording_unavailable"
+msgstr "The recording cannot be played or has changed. Reopen it, or edit the link to choose another local file."
+
+msgid "study_loading"
+msgstr "Loading…"
+
+msgid "study_position"
+msgstr "Recording position"
+
+msgid "study_play"
+msgstr "Play"
+
+msgid "study_pause"
+msgstr "Pause"
+
+msgid "study_speed"
+msgstr "Playback speed"
+
+msgid "study_volume"
+msgstr "Volume"
+
+msgid "study_replay"
+msgstr "Replay segment"
+
+msgid "study_continue"
+msgstr "Continue recording"
+
+msgid "study_segment_finished"
+msgstr "Segment finished. Return to the passage, replay, or continue."
+
+msgid "study_pdf_page"
+msgstr "PDF · page {page}"
+
+msgid "study_epub_section"
+msgstr "EPUB · section {section}"
+
+msgid "study_card"
+msgstr "Review card"
+
+msgid "study_journey"
+msgstr "Card → Textbook → Recording"
+
+msgid "study_return_card"
+msgstr "Return to card"
+
+msgid "study_close"
+msgstr "Close"
+
+msgid "study_open"
+msgstr "Open selected resource"
+
+msgid "study_refresh"
+msgstr "Refresh"
+
+msgid "study_link_recording"
+msgstr "Link recording…"
+
+msgid "study_edit"
+msgstr "Edit link…"
+
+msgid "study_remove"
+msgstr "Remove link"
+
+msgid "study_back_passage"
+msgstr "Back to passage"
+
+msgid "study_resource_unavailable"
+msgstr "This resource is unavailable, changed, or beyond its reading limit. Refresh or edit its link and try again."
+
+msgid "study_choose_resource"
+msgstr "Choose a resource above. Each resource keeps its own reading or playback position."
+
+msgid "study_no_resources"
+msgstr "No resources linked here yet. Link a textbook passage or a recording to get started."
+
+msgid "study_missing"
+msgstr "Local file unavailable"
+
+msgid "study_search_recordings"
+msgstr "Search imported recordings…"
+
+msgid "study_choose_recording"
+msgstr "1. Choose a recording"
+
+msgid "study_import_video"
+msgstr "Import video…"
+
+msgid "study_import_audio"
+msgstr "Import audio…"
+
+msgid "study_label"
+msgstr "Link label"
+
+msgid "study_start"
+msgstr "Start time"
+
+msgid "study_end"
+msgstr "End time (optional)"
+
+msgid "study_time_hint"
+msgstr "m:ss or h:mm:ss"
+
+msgid "study_use_position"
+msgstr "Use current position"
+
+msgid "study_choose_another"
+msgstr "Choose another recording"
+
+msgid "study_save_link"
+msgstr "Save link"
+
+msgid "study_cancel"
+msgstr "Cancel"
+
+msgid "study_library_limited"
+msgstr "Showing the 500 most recent recordings. Search within these or import another recording."
+
+msgid "study_import_help"
+msgstr "Import a downloaded video or lecture recording, then refresh this list."
+
+msgid "study_preview_help"
+msgstr "2. Preview the recording and set the linked time. The original file stays intact."
+
+msgid "study_import_refresh"
+msgstr "When the import finishes, press Refresh to select the recording."
+
+msgid "study_invalid_segment"
+msgstr "Wait for the preview to load, add a label, and enter valid times within the recording. End must be after start."
+
+msgid "study_tab_card"
+msgstr "Card"
+
+msgid "study_tab_textbook"
+msgstr "Documents"
+
+msgid "study_tab_video"
+msgstr "Videos"
+
+msgid "study_tab_audio"
+msgstr "Audio"
+
+msgid "study_no_active_card"
+msgstr "Start a card review to switch to Card."
+
+msgid "study_no_textbooks"
+msgstr "No documents linked to this card. Use Link resources… to choose PDFs."
+
+msgid "study_no_recordings"
+msgstr "No recording is linked here yet. Use Link recording… to choose a video or audio file."
+
+msgid "study_review_card"
+msgstr "Review card"
+
+msgid "study_question_side"
+msgstr "Question not answered"
+
+msgid "study_answer_revealed"
+msgstr "Answer revealed"
+
+msgid "study_card_hint"
+msgstr "Open a passage or recording without leaving this review."
+
+msgid "study_read_hint"
+msgstr "Read a linked passage for more context, or connect a textbook."
+
+msgid "study_recording_hint"
+msgstr "Open a linked explanation, or connect a video or audio recording."
+
+msgid "study_read_passage"
+msgstr "Read passage"
+
+msgid "study_open_recording"
+msgstr "Open recording"
+
+msgid "study_other_resources"
+msgstr "Other resources"
+
+msgid "study_available"
+msgstr "Available"
+
+msgid "study_no_card"
+msgstr "No card"
+
+msgid "study_linked_count"
+msgstr "{count} linked"
+
+msgid "study_not_linked"
+msgstr "Not linked"
+
+msgid "study_unavailable"
+msgstr "Unavailable"
+
+msgid "study_checking"
+msgstr "Checking…"
+
+msgid "study_check_failed"
+msgstr "Could not check"
+
+msgid "study_manage_links"
+msgstr "Manage links…"
+
+msgid "study_retry"
+msgstr "Retry"
+
+msgid "study_focus_textbook"
+msgstr "Focus textbook"
+
+msgid "study_focus_video"
+msgstr "Focus video"
+
+msgid "study_exit_focus"
+msgstr "Exit focus (Esc)"
+
+msgid "study_focus_hint"
+msgstr "Show only this view in full screen. Esc returns to the workspace."
+
+msgid "study_layout_save_failed"
+msgstr "This layout will be kept for this visit, but your preference could not be saved."
+
+msgid "reader_default_annotation_color"
+msgstr "Default color"
+
+msgid "reader_default_annotation_color_help"
+msgstr "Choose the saved color for new highlights (Ctrl/Cmd+H). Other color choices do not change this default."
+
+msgid "reader_bookshelf_sort_by"
+msgstr "Sort by:"
+
+msgid "reader_bookshelf_sort_title"
+msgstr "Title (A–Z)"
+
+msgid "reader_bookshelf_sort_priority"
+msgstr "Priority (most important first)"
+
+msgid "reader_bookshelf_sort_due"
+msgstr "Due cards (most first)"
+
+msgid "reader_bookshelf_sort_reviews"
+msgstr "Reviews done (most first)"
+
+msgid "reader_bookshelf_sort_annotations"
+msgstr "Annotations (most first)"
+
+msgid "reader_bookshelf_sort_random"
+msgstr "Random"
+
+msgid "reader_bookshelf_reverse_order"
+msgstr "Reverse order"
+
+msgid "reader_bookshelf_shuffle_again"
+msgstr "Shuffle again"
+
+msgid "reader_bookshelf_default_priority"
+msgstr "Priority: 50 (default)"
+
+msgid "reader_bookshelf_metric_due"
+msgstr "Due linked cards: {count}"
+
+msgid "reader_bookshelf_metric_reviews"
+msgstr "Reviews done: {count}"
+
+msgid "reader_bookshelf_metric_annotations"
+msgstr "Annotations: {count}"
+
+msgid "reader_bookshelf_statistics_loading"
+msgstr "Loading statistics…"
+
+msgid "reader_bookshelf_statistics_failed"
+msgstr "Statistics could not be loaded. The shelf has returned to title order; choose a sort again to retry."
+
+msgid "reader_bookshelf_sort_hint"
+msgstr "Due cards counts live linked cards due now. Reviews done adds Anki review counts for the document and all linked cards. Annotations counts saved highlights, PDF annotations, and snapshots. Priority follows your configured direction; unset priorities use 50. Random stays in the same order while filtering."
+
+#. Annotation note editor toolbar.
+msgid "reader_note_formatting"
+msgstr "Note formatting"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_bold"
+msgstr "Bold"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_italic"
+msgstr "Italic"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_underline"
+msgstr "Underline"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_strike"
+msgstr "Strikethrough"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_link"
+msgstr "Insert or edit link"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_bullets"
+msgstr "Bulleted list"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_numbers"
+msgstr "Numbered list"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_clear"
+msgstr "Clear formatting"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_undo"
+msgstr "Undo"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_redo"
+msgstr "Redo"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_link_prompt"
+msgstr "URL (http:// or https://). Leave empty to remove the selected link."
+
+#. Annotation note editor toolbar.
+msgid "reader_note_link_invalid"
+msgstr "Enter a valid http:// or https:// URL without credentials."
+
+#. Annotation note editor validation.
+msgid "reader_note_too_long"
+msgstr "This note is too long. Shorten the text or simplify its formatting, then try again."
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_missing_files_only"
+msgstr "PDFs with missing files only"
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_missing_files_hint"
+msgstr "Check actual PDF files in this profile, even when a saved cover is available. Missing, empty, or unsafe file references are included. Other filters still apply."
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_check_files_again"
+msgstr "Check files again"
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_file_check_failed"
+msgstr "Could not check PDF files. Enable the missing-files filter to try again."
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_missing_pdf_status"
+msgstr "PDF file missing or unavailable"
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_checking_files"
+msgstr "Checking PDF files…"
+
+msgid "reader_annotation_style"
+msgstr "Style"
+
+msgid "reader_annotation_appearance"
+msgstr "Annotation appearance"
+
+msgid "reader_annotation_style_help"
+msgstr "Choose a style and color, then mark selected text."
+
+msgid "reader_mark_selection"
+msgstr "Mark selection"
+
+msgid "reader_style_highlight"
+msgstr "Highlight"
+
+msgid "reader_style_underline"
+msgstr "Underline"
+
+msgid "reader_style_squiggly"
+msgstr "Squiggly"
+
+msgid "reader_style_dashed"
+msgstr "Dashed"
+
+msgid "reader_style_dotted"
+msgstr "Dotted"
+
+msgid "reader_style_strikeout"
+msgstr "Strikethrough"
+
+msgid "study_link_resources"
+msgstr "+ Link resources…"
+
+msgid "study_current_card_only"
+msgstr "Current card only"
+
+msgid "study_card_target"
+msgstr "Current card only\n{question}"
+
+msgid "study_search_resources"
+msgstr "Search imported resources…"
+
+msgid "study_choose_resources"
+msgstr "Select resources, then choose a row to set its linked location."
+
+msgid "study_import_pdf"
+msgstr "Import PDFs…"
+
+msgid "study_resource_page"
+msgstr "PDF page"
+
+msgid "study_optional_label"
+msgstr "Label (optional)"
+
+msgid "study_unlink"
+msgstr "Unlink"
+
+msgid "study_undo_unlink"
+msgstr "Undo unlink"
+
+msgid "study_resource_library_limited"
+msgstr "Showing the 500 most recent PDFs and recordings. Search within this list or import another resource."
+
+msgid "study_batch_limit"
+msgstr "Select up to {count} resources at a time."
+
+msgid "study_batch_failed"
+msgstr "Could not load or save resources. A failed save leaves the entire batch unchanged. Refresh and try again."
+
+msgid "study_batch_invalid"
+msgstr "Enter valid pages and start/end times for every selected resource."
+
+msgid "study_link_resource_count"
+msgstr "Link selected resources ({count})"
+
+msgid "study_kind_pdf"
+msgstr "PDF"
+
+msgid "study_kind_video"
+msgstr "Video"
+
+msgid "study_kind_audio"
+msgstr "Audio"
+
+msgid "study_inherited_resource"
+msgstr "This resource comes from card content or a document passage. Edit the link at its source."
+
+msgid "study_preview_resource"
+msgstr "Preview selected resource"
+
+msgid "study_choose_resource_title"
+msgstr "Choose a resource"
+
+msgid "study_tab_pdfs"
+msgstr "PDFs"
+
+msgid "study_picker_page"
+msgstr "Page {page}"
+
+msgid "study_current_card_state"
+msgstr "Current card · {state}"
+
+msgid "study_link_to_card"
+msgstr "Link resources to this card"
+
+msgid "study_choose_library"
+msgstr "Choose from your library"
+
+msgid "study_import_files"
+msgstr "Import files…"
+
+msgid "study_link_action"
+msgstr "Link resources"
+
+msgid "study_managed_title"
+msgstr "Resources linked to this card"
+
+msgid "study_manage_done"
+msgstr "Done"
+
+msgid "study_files_kept"
+msgstr "Unlinking keeps the original files."
+
+msgid "study_own_position"
+msgstr "Each resource keeps its own place."
+
+msgid "study_library_empty"
+msgstr "No imported resources found. Import files to link them to this card."
+
+msgid "study_links_saved"
+msgstr "Links saved to this card."
+
+msgid "study_link_selection"
+msgid_plural "study_link_selection_plural"
+msgstr[0] "Link {count} resource"
+msgstr[1] "Link {count} resources"
+
+msgid "study_preview_short"
+msgstr "Preview"
+
+msgid "study_linked_summary"
+msgstr "{documents} documents · {recordings} recordings linked"
+
+msgid "study_preview_links_heading"
+msgstr "Links you’re creating"
+
+msgid "study_preview_connection"
+msgstr "This card will open:"
+
+msgid "study_preview_empty"
+msgstr "Choose a file from the library to see your link here."
+
+msgid "study_preview_choose_spot"
+msgstr "Choose exact spot in PDF…"
+
+msgid "study_preview_not_saved"
+msgstr "Preview only. Links are saved when you click Link resources."
+
+msgid "study_preview_remove"
+msgstr "Remove"
+
+msgid "study_preview_remove_named"
+msgstr "Remove {title} from this draft"
+
+msgid "study_preview_instructions"
+msgstr "Choose files and where each one opens. See the result before saving."
+
+msgid "study_preview_page_error"
+msgstr "Choose a page between 1 and {maximum}."
+
+msgid "study_preview_time_error"
+msgstr "Enter a valid start time and an end time after it, within the recording."
+
+msgid "study_preview_pdf_location"
+msgstr "PDF · page {page}"
+
+msgid "study_preview_segment"
+msgstr "Play {start}–{end}"
+
+msgid "study_preview_start"
+msgstr "Play from {start}"
+
+msgid "study_preview_pdf_named"
+msgstr "{title}, page {page}. Choose an exact spot."
+
+msgid "study_preview_unavailable"
+msgstr "Preview unavailable. Check that the original file is available, then try Preview again."
+
+msgid "reader_bookshelf_edit_pdf_name"
+msgstr "Edit PDF name…"
+
+msgid "reader_bookshelf_pdf_name_prompt"
+msgstr "PDF name:"
+
+msgid "reader_bookshelf_pdf_name_invalid"
+msgstr "Enter a PDF name between 1 and 2,000 characters, without control characters."
+
+msgid "reader_bookshelf_pdf_name_failed"
+msgstr "Could not update the PDF name. Refresh the bookshelf and try again."
+
+msgid "reader_library_lists"
+msgstr "Lists"
+
+msgid "reader_library_edit_lists"
+msgstr "Edit lists"
+
+msgid "reader_library_choose_lists"
+msgstr "Lists for this book"
+
+msgid "reader_library_new_list"
+msgstr "New list…"
+
+msgid "reader_library_lists_hint"
+msgstr "A book can belong to several lists."
+
+msgid "reader_library_reason"
+msgstr "Why I saved this book"
+
+msgid "reader_library_reason_placeholder"
+msgstr "What made you want to read it? A recommendation, a question, a project…"
+
+msgid "reader_library_reason_limit"
+msgstr "Up to {count} characters."
+
+msgid "reader_library_reason_count"
+msgstr "{count} / {maximum}"
+
+msgid "reader_library_source"
+msgstr "Where I found it (optional)"
+
+msgid "reader_library_source_placeholder"
+msgstr "ChatGPT, a blog, a friend, or a link"
+
+msgid "reader_library_unlisted"
+msgstr "Not in a list"
+
+msgid "reader_library_select_book"
+msgstr "Select a book"
+
+msgid "reader_library_list_name"
+msgstr "List name:"
+
+msgid "reader_library_list_error"
+msgstr "Could not save the list. Use a unique name of 1–80 characters and try again."
+
+msgid "reader_library_import_hint"
+msgstr "Lists, reason, and source are optional and saved separately for each selected file."
+
+msgid "reader_library_add_pdf"
+msgstr "+ Add PDF"
+
+msgid "reader_library_add_epub"
+msgstr "+ Add EPUB"
+
+msgid "reader_library_intro"
+msgstr "Select a book to view its lists and saved reason. Double-click or choose Open book to read."
+
+msgid "reader_library_cover_view"
+msgstr "Covers"
+
+msgid "reader_library_reason_view"
+msgstr "Reason-first list"
+
+msgid "reader_library_view"
+msgstr "Bookshelf view"
+
+msgid "reader_library_search"
+msgstr "Search titles, reasons, sources…"
+
+msgid "reader_library_open_book"
+msgstr "Open book"
+
+msgid "reader_library_save_changes"
+msgstr "Save changes"
+
+msgid "reader_library_all_books"
+msgstr "All books"
+
+msgid "reader_library_no_reason"
+msgstr "No saved reason"
+
+msgid "reader_library_rename_list"
+msgstr "Rename list…"
+
+msgid "reader_library_delete_list"
+msgstr "Delete list…"
+
+msgid "reader_library_delete_confirmation"
+msgstr "Delete list “{name}”? Books, saved reasons, and sources will be kept."
+
+msgid "reader_library_invalid_details"
+msgstr "Book details are too long or contain unsupported characters."
+
+msgid "reader_library_unsaved"
+msgstr "Unsaved changes"
+
+msgid "reader_library_saved"
+msgstr "Saved"
+
+msgid "reader_library_save_error"
+msgstr "Could not save book details. Your edits are still available."
+
+msgid "reader_library_unsaved_prompt"
+msgstr "Save your changes to book lists, reasons, and sources before closing?"
+
+msgid "reader_library_reload_error"
+msgstr "Could not refresh the bookshelf. Close and reopen it to try again."
+
+msgid "reader_library_more_filters"
+msgstr "More filters"
+
+msgid "reader_library_add_reason"
+msgstr "+ Add why you saved it"

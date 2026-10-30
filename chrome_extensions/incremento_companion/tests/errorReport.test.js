@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildErrorReport,
+  buildImportErrorReport,
   copyErrorReport,
   normalizeErrorCode,
   safePositiveInteger,
@@ -33,6 +34,31 @@ test("copyable error report is verbose, line-oriented, and omits unavailable fie
     "Captured characters: 2450123",
     "Maximum characters: 2000000",
   ].join("\n"));
+});
+
+test("the popup report includes Anki's rejection, status, backend stage, and PDF choices", () => {
+  const report = buildImportErrorReport({
+    action: "Add as PDF", stage: "Step 3 of 3 — Sending the PDF card to Incremento",
+    reason: "The request could not be accepted. Check the selected content.", code: "invalid_request",
+    serverMessage: "The remote host resolves to a private or special address.",
+    httpStatus: 400, backendStage: "preparation",
+    pdfOptions: {style: "article", dynamic: true, includeLinks: false},
+  }, "0.2.0");
+  assert.match(report, /Anki detail: The remote host resolves to a private or special address\./);
+  assert.match(report, /HTTP status: 400/);
+  assert.match(report, /Anki stage: Preparing content/);
+  assert.match(report, /PDF layout: Clean article/);
+  assert.match(report, /Load content added by JavaScript: Yes/);
+  assert.match(report, /Include a list of link destinations: No/);
+});
+
+test("unavailable connection diagnostics are omitted and report metadata cannot add payload fields", () => {
+  const report = buildImportErrorReport({
+    action: "Add as PDF", stage: "Reading", reason: "Offline", code: "unexpected_error",
+    serverMessage: {token: "secret"}, httpStatus: 0, backendStage: "unknown secret",
+    pdfOptions: {style: "unexpected secret"}, payload: "private page content",
+  });
+  assert.doesNotMatch(report, /Anki detail|HTTP status|Anki stage|PDF layout|secret|private page content/);
 });
 
 test("error report helpers whitelist stable codes and bounded numeric diagnostics", () => {

@@ -7,6 +7,7 @@
 import { createReaderLanguage } from './i18n.mjs';
 import {pdfDisplayHighlights} from './pdfHighlightIndex.mjs';
 import { highlightBackgroundColor, highlightSolidColor } from './highlightColors.mjs';
+import {annotationStyle, annotationLine} from './annotationStyles.mjs';
 
 const DEFAULT_LANGUAGE = createReaderLanguage('en');
 
@@ -16,9 +17,8 @@ function isSnapshotHighlight(highlight) {
 }
 
 export function isResizableTextHighlight(highlight) {
-  const kind = String(highlight?.pdf_annotation?.kind || 'Highlight');
   return !isSnapshotHighlight(highlight)
-    && kind === 'Highlight'
+    && annotationStyle(highlight) !== null
     && Array.isArray(highlight?.rects)
     && highlight.rects.length > 0;
 }
@@ -44,7 +44,7 @@ export default function HighlightLayer({
   renderInfo,
   deleteHighlight,
   editHighlightNote,
-  showHighlightColorPopover,
+  editHighlightColor,
   activateHighlightResize,
   resizingHighlightId,
   beginHighlightResize,
@@ -92,35 +92,26 @@ export default function HighlightLayer({
   return (
     <>
       <style>{`
-        .incremento-pdf-color-action {
-          opacity: 0;
-        }
-        .incremento-pdf-note-action {
-          opacity: 0;
-        }
-        .incremento-pdf-resize-action {
+        .incremento-pdf-highlight-actions > button {
           opacity: 0;
           pointer-events: none;
         }
-        .incremento-pdf-highlight-actions:hover .incremento-pdf-note-action,
-        .incremento-pdf-note-action:focus-visible {
-          opacity: 1;
-        }
-        .incremento-pdf-highlight-actions:hover .incremento-pdf-color-action,
-        .incremento-pdf-highlight-actions:focus-within .incremento-pdf-color-action {
-          opacity: 1;
-        }
-        .incremento-pdf-highlight-actions:hover .incremento-pdf-resize-action,
-        .incremento-pdf-resize-action:focus-visible {
+        .incremento-pdf-highlight-actions[data-highlight-hovered] > button,
+        .incremento-pdf-highlight-actions:hover > button,
+        .incremento-pdf-highlight-actions:focus-within > button {
           opacity: 1;
           pointer-events: auto;
         }
       `}</style>
       {/* ── Highlight rects — below text layer (z:1), non-blocking ── */}
       {displayHighlights.map(h =>
-        h.rects.map((r, ri) => (
+        h.rects.map((r, ri) => {
+          const line = (!nativeHighlightsVisible || !h.pdf_annotation?.xref)
+            ? annotationLine(annotationStyle(h), r.w, r.h) : null;
+          return (
           <div
             key={`${h.id}-${ri}`}
+            data-annotation-style={annotationStyle(h) || undefined}
             style={{
               position:      'absolute',
               left:          renderInfo.tlLeft + r.x * renderInfo.scale,
@@ -136,8 +127,14 @@ export default function HighlightLayer({
               pointerEvents: 'none',
               zIndex:        1,
             }}
-          />
-        ))
+          >
+            {line && <svg aria-hidden="true" viewBox={`0 0 ${r.w} ${r.h}`}
+              preserveAspectRatio="none" width="100%" height="100%" style={{display: 'block', overflow: 'visible'}}>
+              <path d={line.path} fill="none" stroke={highlightSolidColor(h.color)}
+                strokeWidth="1.4" strokeDasharray={line.dash} strokeLinecap={line.cap} />
+            </svg>}
+          </div>
+        );})
       )}
 
       {/* ── Hover targets for note-bearing highlights — above text layer ── */}
@@ -173,6 +170,7 @@ export default function HighlightLayer({
           <div
             key={`actions-${h.id}`}
             className="incremento-pdf-highlight-actions"
+            data-highlight-id={String(h.id ?? '')}
             style={{
               position: 'absolute',
               left: renderInfo.tlLeft + (r.x + r.w) * renderInfo.scale - (isSnapshotHighlight(h) ? 28 : 48),
@@ -189,10 +187,7 @@ export default function HighlightLayer({
               aria-label={language.tr('reader_choose_annotation_color')}
               title={language.tr('reader_choose_annotation_color')}
               aria-haspopup="dialog"
-              onClick={event => {
-                const rect = event.currentTarget.getBoundingClientRect();
-                showHighlightColorPopover?.(h, { clientX: rect.left + rect.width / 2, clientY: rect.bottom });
-              }}
+              onClick={() => editHighlightColor?.(h)}
               style={{ width: 16, height: 16, padding: 0, borderRadius: '50%',
                 border: '1px solid #64748b', background: highlightSolidColor(h.color), cursor: 'pointer' }}
             />}

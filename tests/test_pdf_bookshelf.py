@@ -75,6 +75,313 @@ with pytest.MonkeyPatch.context() as _imports:
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_missing_pdf_scan_checks_profile_files_instead_of_covers(bookshelf_reveal_menu, monkeypatch, tmp_path):
+    shelf = bookshelf_reveal_menu
+    (shelf.roots["PDF"] / "present.pdf").write_bytes(b"synthetic PDF")
+    (shelf.roots["PDF"] / "directory.pdf").mkdir()
+    outside = tmp_path / "outside.pdf"
+    outside.write_bytes(b"outside profile")
+    (shelf.roots["PDF"] / "escape.pdf").symlink_to(outside)
+    monkeypatch.setattr(pdf_bookshelf, "_active_profile", lambda: "OtherProfile")
+    entries = [
+        pdf_bookshelf._BookshelfEntry("Present", 1, "PDF", source_filename="present.pdf"),
+        pdf_bookshelf._BookshelfEntry("Missing with cover", 2, "PDF", source_filename="missing.pdf",
+                                     cover_filename="saved-cover.png"),
+        pdf_bookshelf._BookshelfEntry("Empty filename", 3, "PDF"),
+        pdf_bookshelf._BookshelfEntry("Directory", 4, "PDF", source_filename="directory.pdf"),
+        pdf_bookshelf._BookshelfEntry("Traversal", 5, "PDF", source_filename="../outside.pdf"),
+        pdf_bookshelf._BookshelfEntry("Absolute", 6, "PDF", source_filename=str(outside)),
+        pdf_bookshelf._BookshelfEntry("Escaping symlink", 7, "PDF", source_filename="escape.pdf"),
+        pdf_bookshelf._BookshelfEntry("Missing EPUB", 8, "EPUB", source_filename="missing.epub"),
+    ]
+
+    assert pdf_bookshelf._load_missing_pdf_card_ids(entries, profile=shelf.profile) == {2, 3, 4, 5, 6, 7}
+    assert outside.read_bytes() == b"outside profile"
+
+
+def test_missing_pdf_scan_stops_between_files_and_before_start(monkeypatch):
+    cancelled = threading.Event()
+    inspected = []
+    entries = [pdf_bookshelf._BookshelfEntry(f"PDF {cid}", cid, "PDF") for cid in (1, 2)]
+
+    def source_path(entry, *, profile):
+        inspected.append((entry.card_id, profile))
+        cancelled.set()
+        return ""
+
+    monkeypatch.setattr(pdf_bookshelf, "_bookshelf_source_path", source_path)
+    assert pdf_bookshelf._load_missing_pdf_card_ids(entries, profile="Captured", cancelled=cancelled) == {1}
+    assert inspected == [(1, "Captured")]
+    inspected.clear()
+    assert pdf_bookshelf._load_missing_pdf_card_ids(entries, profile="Captured", cancelled=cancelled) == set()
+    assert inspected == []
+
+
+def test_missing_pdf_filter_intersects_title_kind_tags_and_duplicates():
+    entries = [
+        pdf_bookshelf._BookshelfEntry("Study available", 1, "PDF", tags=("Read", "Work")),
+        pdf_bookshelf._BookshelfEntry("Study missing", 2, "PDF", tags=("Read", "Work")),
+        pdf_bookshelf._BookshelfEntry("Other missing", 3, "PDF", tags=("Read",)),
+        pdf_bookshelf._BookshelfEntry("Study EPUB", 4, "EPUB", tags=("Read", "Work")),
+    ]
+    filter_entries = pdf_bookshelf._filter_bookshelf_entries
+    assert filter_entries(entries, "", missing_files_only=True, missing_pdf_card_ids={2, 3, 4}) == entries[1:3]
+    assert filter_entries(entries, "STUDY", "PDF", tag_query="read work", tag_mode="AND",
+                          duplicates_only=True, duplicate_card_ids={1, 2, 4},
+                          missing_files_only=True, missing_pdf_card_ids={2, 3}) == [entries[1]]
+    assert filter_entries(entries, "", "EPUB", missing_files_only=True, missing_pdf_card_ids={2, 3}) == []
+    assert filter_entries(entries, "", missing_files_only=True) == []  # Unknown until checked.
+    assert filter_entries(entries, "", missing_pdf_card_ids={2, 3}) == entries
+
+
+def test_missing_pdf_controls_check_in_background_refresh_and_reject_stale_results():
+    script = dedent("""
+        import os, sys, types
+        from concurrent.futures import Future
+        from aqt.qt import QApplication
+        package = types.ModuleType('incremento')
+        package.__path__ = [os.getcwd()]
+        sys.modules['incremento'] = package
+        from incremento.frontend import pdf_bookshelf as shelf
+        app = QApplication([])
+        pending, requests, notices = [], [], []
+        profile = ['Captured']
+        shelf._active_profile = lambda: profile[0]
+        def run(worker, done, *, uses_collection):
+            assert uses_collection is False
+            pending.append((worker, done))
+        shelf.mw = types.SimpleNamespace(
+            col=types.SimpleNamespace(media=types.SimpleNamespace(dir=lambda: '')),
+            taskman=types.SimpleNamespace(run_in_background=run),
+        )
+        shelf.tooltip = lambda message, **kw: notices.append(message)
+        shelf.configured_priority_lower_is_more_important = lambda: True
+        shelf._DocumentBookshelfDialog._start_pdf_metadata_scan = lambda self: None
+        def scan(entries, *, profile, cancelled):
+            requests.append((tuple(e.card_id for e in entries), profile, cancelled))
+            return {2, 3}
+        shelf._load_missing_pdf_card_ids = scan
+        entries = [shelf._BookshelfEntry(title, cid, kind, tags=('Read',)) for title, cid, kind in [
+            ('Alpha', 1, 'PDF'), ('Beta', 2, 'PDF'), ('Gamma', 3, 'PDF'), ('EPUB', 4, 'EPUB'),
+        ]]
+        dialog = shelf._DocumentBookshelfDialog(addon_dir='/synthetic', entries=entries)
+        def ids():
+            return [dialog._list.item(i).data(shelf.Qt.ItemDataRole.UserRole).card_id
+                    for i in range(dialog._list.count())]
+        def finish(task, *, result=None, error=None):
+            future = Future()
+            if error: future.set_exception(error)
+            else: future.set_result(result)
+            task[1](future)
+        assert pending == [] and ids() == [1, 2, 4, 3]
+        dialog._missing_files_only_cb.setChecked(True)
+        assert len(pending) == 1 and requests == [] and ids() == []
+        assert 'Checking PDF files' in dialog._count_label.text()
+        assert not dialog._check_files_button.isEnabled()
+        result = pending[-1][0]()
+        assert requests[0][:2] == ((1, 2, 3, 4), 'Captured')
+        finish(pending[-1], result=result)
+        assert ids() == [2, 3] and dialog._check_files_button.isEnabled()
+        assert 'PDF file missing' in dialog._list.item(0).toolTip()
+        dialog._search.setText('BETA')
+        dialog._filter_timer.timeout.emit()
+        assert ids() == [2]
+        dialog._search.clear()
+        dialog._filter_timer.timeout.emit()
+        dialog._missing_files_only_cb.setChecked(False)
+        assert ids() == [1, 2, 4, 3]
+        dialog._missing_files_only_cb.setChecked(True)
+        assert len(pending) == 1 and ids() == [2, 3]  # Reuse the completed check.
+        dialog._check_files_button.click()
+        finish(pending[-1], result={3})
+        assert ids() == [3]  # A restored file disappears after checking again.
+        dialog._check_files_button.click()
+        finish(pending[-1], result=set())
+        assert ids() == [] and 'Showing 0' in dialog._count_label.text()
+        dialog._check_files_button.click()
+        stale = pending[-1]
+        dialog._missing_files_only_cb.setChecked(False)
+        dialog._missing_files_only_cb.setChecked(True)
+        finish(stale, result={1})
+        assert ids() == []  # Superseded check must not replace the current one.
+        finish(pending[-1], error=RuntimeError('synthetic failure'))
+        assert not dialog._missing_files_only_cb.isChecked() and ids() == [1, 2, 4, 3]
+        assert notices
+        dialog._missing_files_only_cb.setChecked(True)
+        profile[0] = 'Other'
+        finish(pending[-1], result={1})
+        assert ids() == []
+        profile[0] = 'Captured'
+        dialog._missing_files_only_cb.setChecked(False)
+        dialog._missing_files_only_cb.setChecked(True)
+        collection = shelf.mw.col
+        shelf.mw.col = object()
+        finish(pending[-1], result={1})
+        assert ids() == []
+        shelf.mw.col = collection
+        dialog.reject()
+        finish(pending[-1], result={1})
+        assert ids() == []
+        dialog = shelf._DocumentBookshelfDialog(addon_dir='/synthetic', entries=entries)
+        def cannot_start(*args, **kwargs):
+            raise RuntimeError('synthetic dispatch failure')
+        shelf.mw.taskman.run_in_background = cannot_start
+        dialog._missing_files_only_cb.setChecked(True)
+        assert not dialog._missing_files_only_cb.isChecked() and ids() == [1, 2, 4, 3]
+        assert not dialog._missing_files_pending
+        dialog.reject()
+    """)
+    result = subprocess.run([sys.executable, "-c", script], cwd=ROOT,
+                            env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_bookshelf_priority_order_uses_configured_direction_and_neutral_default():
+    entries = [
+        pdf_bookshelf._BookshelfEntry("Low", 1, "PDF", priority=10),
+        pdf_bookshelf._BookshelfEntry("Unset", 2, "EPUB"),
+        pdf_bookshelf._BookshelfEntry("High", 3, "PDF", priority=90),
+    ]
+    sort = pdf_bookshelf._sort_bookshelf_entries
+    assert [e.card_id for e in sort(entries, "priority", priority_lower_is_more_important=True)] == [1, 2, 3]
+    assert [e.card_id for e in sort(entries, "priority", priority_lower_is_more_important=False)] == [3, 2, 1]
+    assert [e.card_id for e in sort(entries, "title")] == [3, 1, 2]
+    assert [e.card_id for e in sort(entries, "title", reverse=True)] == [2, 1, 3]
+    assert [e.card_id for e in entries] == [1, 2, 3]
+
+
+@pytest.mark.parametrize("mode", ["due", "reviews", "annotations"])
+def test_bookshelf_metric_order_is_numeric_with_stable_title_ties(mode):
+    entries = [pdf_bookshelf._BookshelfEntry(title, cid, kind) for title, cid, kind in [
+        ("Zulu", 1, "PDF"), ("Alpha", 2, "EPUB"), ("Beta", 3, "PDF"), ("Empty", 4, "EPUB"),
+    ]]
+    counts = {1: 12, 2: 12, 3: 3}
+    assert [e.card_id for e in pdf_bookshelf._sort_bookshelf_entries(entries, mode, counts=counts)] == [2, 1, 3, 4]
+    assert [e.card_id for e in pdf_bookshelf._sort_bookshelf_entries(
+        entries, mode, counts=counts, reverse=True,
+    )] == [4, 3, 2, 1]
+
+
+def test_bookshelf_random_order_is_stable_across_combined_filters_until_reshuffled():
+    import random
+
+    entries = [pdf_bookshelf._BookshelfEntry(f"Book {cid}", cid, "PDF" if cid % 2 else "EPUB",
+                                          tags=("Read",)) for cid in range(1, 21)]
+    order = pdf_bookshelf._shuffled_bookshelf_order(entries, rng=random.Random(8))
+    shuffled = pdf_bookshelf._sort_bookshelf_entries(entries, "random", random_order=order)
+    assert sorted(e.card_id for e in shuffled) == list(range(1, 21))
+    assert shuffled != entries
+    visible = pdf_bookshelf._filter_bookshelf_entries(entries, "Book", "PDF", tag_query="READ")
+    assert pdf_bookshelf._sort_bookshelf_entries(visible, "random", random_order=order) == [
+        e for e in shuffled if e.kind == "PDF"
+    ]
+    assert pdf_bookshelf._shuffled_bookshelf_order(entries, rng=random.Random(9)) != order
+
+
+def test_bookshelf_sort_controls_apply_background_results_and_ignore_stale_callbacks():
+    script = dedent("""
+        import os, sys, types
+        from aqt.qt import QApplication
+        package = types.ModuleType('incremento')
+        package.__path__ = [os.getcwd()]
+        sys.modules['incremento'] = package
+        from incremento.frontend import pdf_bookshelf as shelf
+        app = QApplication([])
+        pending, requests = [], []
+        profile = ['Captured']
+        shelf._active_profile = lambda: profile[0]
+        shelf.mw = types.SimpleNamespace(col=types.SimpleNamespace(media=types.SimpleNamespace(dir=lambda: '')))
+        shelf.tooltip = lambda *a, **kw: None
+        class Query:
+            def __init__(self, **kwargs):
+                self.options = kwargs
+                pending.append(self)
+            def failure(self, callback):
+                self.failed = callback
+                return self
+            def run_in_background(self): pass
+        import aqt.operations
+        aqt.operations.QueryOp = Query
+        def load(addon, captured, documents, *, col, metric, cancelled):
+            requests.append((addon, captured, documents, col, metric))
+            return {1: 0, 2: 10, 3: 2}
+        shelf.load_document_statistics = load
+        shelf.configured_priority_lower_is_more_important = lambda: True
+        entries = [shelf._BookshelfEntry(title, cid, kind, priority=priority) for title, cid, kind, priority in [
+            ('Alpha', 1, 'PDF', 90), ('Beta', 2, 'EPUB', 10), ('Gamma', 3, 'PDF', None),
+        ]]
+        dialog = shelf._DocumentBookshelfDialog(addon_dir='/synthetic', entries=entries)
+        assert dialog._sort_combo.isVisibleTo(dialog), 'Sort by must be visible without opening More filters'
+        assert dialog._reverse_sort_cb.isVisibleTo(dialog), 'Reverse order must stay beside Sort by'
+        assert dialog._shuffle_button.isVisibleTo(dialog), 'Shuffle again must stay beside Sort by'
+        def choose(mode):
+            dialog._sort_combo.setCurrentIndex(dialog._sort_combo.findData(mode))
+        def ids():
+            return [dialog._list.item(i).data(shelf.Qt.ItemDataRole.UserRole).card_id
+                    for i in range(dialog._list.count())]
+        assert pending == []
+        choose('priority')
+        assert ids() == [2, 3, 1]
+        dialog._reverse_sort_cb.setChecked(True)
+        assert ids() == [1, 3, 2]
+        dialog._reverse_sort_cb.setChecked(False)
+        choose('due')
+        assert len(pending) == 1
+        collection = object()
+        result = pending[-1].options['op'](collection)
+        assert requests == [('/synthetic', 'Captured', [(1, 'PDF'), (2, 'EPUB'), (3, 'PDF')], collection, 'due')]
+        pending[-1].options['success'](result)
+        assert ids() == [2, 3, 1]
+        assert 'Due linked cards: 10' in dialog._list.item(0).toolTip()
+        assert 'Due linked cards: 10' in dialog._list.item(0).text()
+        dialog._kind_combo.setCurrentIndex(dialog._kind_combo.findData('PDF'))
+        assert ids() == [3, 1]
+        choose('title')
+        choose('due')
+        assert len(pending) == 1  # Cached for this dialog.
+        choose('random')
+        dialog._kind_combo.setCurrentIndex(dialog._kind_combo.findData('ALL'))
+        shelf.random.seed(8)
+        dialog._shuffle_button.click()
+        random_ids = ids()
+        dialog._kind_combo.setCurrentIndex(dialog._kind_combo.findData('PDF'))
+        assert ids() == [cid for cid in random_ids if cid in {1, 3}]
+        dialog._kind_combo.setCurrentIndex(dialog._kind_combo.findData('ALL'))
+        assert ids() == random_ids
+        dialog._shuffle_button.click()
+        assert ids() != random_ids
+        assert sorted(ids()) == [1, 2, 3]
+        dialog._kind_combo.setCurrentIndex(dialog._kind_combo.findData('PDF'))
+        choose('reviews')
+        old = pending[-1]
+        choose('annotations')
+        old.options['success']({1: 100})
+        assert ids() == [1, 3]  # Superseded callback must not apply.
+        pending[-1].failed(RuntimeError('synthetic failure'))
+        assert dialog._sort_combo.currentData() == 'title'
+        choose('reviews')
+        profile[0] = 'Other'
+        pending[-1].options['success']({3: 100})
+        assert ids() == [1, 3]
+        profile[0] = 'Captured'
+        choose('title')
+        choose('reviews')
+        original_collection = shelf.mw.col
+        shelf.mw.col = object()
+        pending[-1].options['success']({3: 100})
+        assert ids() == [1, 3]
+        shelf.mw.col = original_collection
+        dialog.reject()
+        pending[-1].options['success']({3: 100})
+        assert ids() == [1, 3]
+    """)
+    result = subprocess.run([sys.executable, "-c", script], cwd=ROOT,
+                            env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_large_exact_origin_duplicate_group_is_compact_and_peers_stay_direct():
     entries = [pdf_bookshelf._BookshelfEntry(
         f"Different title {index}", index + 1, "PDF", source_filename="same-origin.pdf",
@@ -129,6 +436,8 @@ def test_bookshelf_root_opens_reference_only_after_modal_picker_exits(monkeypatc
         _last_opened_document_cid=7, _DocumentBookshelfDialog=Dialog, _t=lambda key, **kw: key,
         _open_pdf_card=lambda *a, **kw: calls.append("primary replaced"),
         _open_epub_card=lambda *a, **kw: calls.append("epub"),
+        addPdfFunction=lambda: calls.append("import pdf"),
+        addEpubFunction=lambda: calls.append("import epub"),
         start_quick_open_review=lambda *a: calls.append("study started"),
         _pdf_dock_mod=SimpleNamespace(_pdf_dock="primary"),
         _pdf_reference_workspace_mod=SimpleNamespace(open_reference=lambda *a, **kw: calls.append((a, kw))),
@@ -1163,6 +1472,79 @@ def test_bookshelf_reveal_rechecks_file_and_profile_when_triggered(bookshelf_rev
 
     assert shelf.calls == []
     assert shelf.notices == [pdf_bookshelf.t("admin_file_reveal_failed")]
+
+
+@pytest.mark.parametrize("scale", ["1", "2"], ids=["standard", "retina"])
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_bookshelf_captions_stay_below_white_and_colored_covers(tmp_path, scale, theme):
+    script = dedent('''
+        import os, sys, types
+        from pathlib import Path
+        from aqt.qt import (QApplication, QColor, QFont, QIcon, QListView, QListWidget,
+                            QListWidgetItem, QPainter, QPalette, QPixmap, QSize, Qt)
+        package = types.ModuleType('incremento')
+        package.__path__ = [os.getcwd()]
+        sys.modules['incremento'] = package
+        from incremento.frontend import pdf_bookshelf as shelf
+
+        app = QApplication([])
+        app.setStyle('Fusion')
+        view = QListWidget()
+        view.resize(390, 330)
+        view.setViewMode(QListView.ViewMode.IconMode)
+        view.setIconSize(QSize(160, 220))
+        view.setGridSize(QSize(shelf._TILE_WIDTH, shelf._TILE_HEIGHT))
+        view.setItemDelegate(shelf._BookshelfItemDelegate(view))
+        font = QFont()
+        font.setPixelSize(13)
+        view.setFont(font)
+        palette = view.palette()
+        palette.setColor(QPalette.ColorRole.Base, QColor('#252525' if sys.argv[1]=='dark' else '#f4f4f4'))
+        palette.setColor(QPalette.ColorRole.Text, QColor('#f4b900'))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor('#377bc1'))
+        view.setPalette(palette)
+
+        items = []
+        for index, color in enumerate(('#ffffff', '#176a94')):
+            cover = QPixmap(400, 600)
+            cover.fill(QColor(color))
+            painter = QPainter(cover)
+            painter.fillRect(0, 552, 400, 48, QColor('#d92d6f'))
+            painter.end()
+            entry = shelf._BookshelfEntry('A long textbook title that wraps onto two lines',
+                index+1, 'PDF', list_names=('Reference',), saved_reason='Recommended for my course.')
+            item = QListWidgetItem(entry.title)
+            item.setData(Qt.ItemDataRole.UserRole, entry)
+            item.setIcon(QIcon(cover))
+            item.setSizeHint(QSize(shelf._TILE_WIDTH, shelf._TILE_HEIGHT))
+            view.addItem(item)
+            items.append(item)
+        view.show()
+        for selected in items:
+            view.setCurrentItem(selected)
+            app.processEvents()
+            image = view.viewport().grab().toImage()
+            image.save(str(Path(sys.argv[2]) / ('tile-'+str(view.row(selected))+'.png')))
+            ratio = image.devicePixelRatio()
+            for item in items:
+                rect = view.visualItemRect(item)
+                cover_rows, title_rows = [], []
+                for y in range(max(0,int(rect.top()*ratio)), min(image.height(),int((rect.bottom()+1)*ratio))):
+                    for x in range(max(0,int(rect.left()*ratio)), min(image.width(),int((rect.right()+1)*ratio))):
+                        color = image.pixelColor(x,y)
+                        if abs(color.red()-217)<3 and abs(color.green()-45)<3 and abs(color.blue()-111)<3:
+                            cover_rows.append(y)
+                        if abs(color.red()-244)<3 and abs(color.green()-185)<3 and color.blue()<3:
+                            title_rows.append(y)
+                assert cover_rows and title_rows, 'The actual cover and caption must both render'
+                assert min(title_rows)-max(cover_rows) >= 6*ratio, (
+                    'Cover overlaps its caption', ratio, min(title_rows), max(cover_rows))
+        view.close()
+    ''')
+    result = subprocess.run([sys.executable, "-c", script, theme, str(tmp_path)], cwd=ROOT,
+        env={**os.environ,"QT_QPA_PLATFORM":"offscreen","QT_SCALE_FACTOR":scale},
+        capture_output=True,text=True,timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_bookshelf_attachment_badge_renders_above_normal_and_selected_cover():

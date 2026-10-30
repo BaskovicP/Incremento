@@ -68,6 +68,8 @@ _MAX_PDF_HOVER_PAGE_TEXT_CHARS = 250_000
 _MAX_PDF_HOVER_PREVIEW_CHARS = 12_000
 _MAX_CARD_HOVER_SOURCE_HTML_CHARS = 32_768
 _MAX_CARD_HOVER_EXCERPT_CHARS = 2_000
+_PDF_PREVIEW_CLASSES = {"incremento-pdf-snapshot-details", "incremento-pdf-context-details"}
+_PDF_PREVIEW_CLICK_GUARD = "event.stopPropagation();"
 _PDF_HOVER_STYLE = """
 <style id="incremento-pdf-hover-preview-style">
 .incremento-pdf-hover-link {
@@ -799,6 +801,7 @@ def prepare_pdf_previews_for_editor(editor) -> None:
                 for (const preview of previews) {
                     if (!preview.closest('[contenteditable="true"]')) continue;
                     preview.contentEditable = 'false';
+                    preview.setAttribute('onclick', 'event.stopPropagation();');
                     let tail = preview.closest(
                         '[data-incremento-pdf-snapshot="1"], [data-incremento-pdf-text-preview="1"]'
                     ) || preview;
@@ -829,8 +832,10 @@ def _pdf_preview_details_html(content: str, preview_label: object, class_name: s
         return ""
     # Enter inside an editable summary clones the button instead of making a
     # normal paragraph. The reference helpers provide a separate typing line.
+    # Keep the native reveal action, but do not bubble into a surrounding
+    # citation whose handler opens the PDF reader and cancels that action.
     return (
-        f'<details class="{class_name}" contenteditable="false">'
+        f'<details class="{class_name}" contenteditable="false" onclick="{_PDF_PREVIEW_CLICK_GUARD}">'
         '<summary style="display:inline-block;cursor:pointer;padding:.35em .65em;'
         'border:1px solid #64748b;border-radius:.4em;color:inherit;'
         'background:rgba(100,116,139,.12);">'
@@ -909,13 +914,65 @@ class _SnapshotImageParser(HTMLParser):
             self.label = str(attributes.get("alt") or "").strip()
 
 
+class _PdfPreviewClickGuardParser(HTMLParser):
+    """Change only owned preview start tags, preserving the rest of the card."""
+
+    def __init__(self, html: str) -> None:
+        super().__init__(convert_charrefs=False)
+        self.html = html
+        self.edits: list[tuple[int, int, str]] = []
+        self._line = 1
+        self._line_start = 0
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "details":
+            return
+        classes = next((value or "" for name, value in attrs if name == "class"), "")
+        if not _PDF_PREVIEW_CLASSES.intersection(classes.split()):
+            return
+        if [value for name, value in attrs if name == "onclick"] == [_PDF_PREVIEW_CLICK_GUARD]:
+            return
+        raw = self.get_starttag_text()
+        if raw is None:
+            return
+        attributes = "".join(
+            " " + name + (f'="{_escape_html(value, quote=True)}"' if value is not None else "")
+            for name, value in attrs if name != "onclick"
+        )
+        replacement = f'<details{attributes} onclick="{_PDF_PREVIEW_CLICK_GUARD}">'
+        line, column = self.getpos()
+        while self._line < line:
+            self._line_start = self.html.index("\n", self._line_start) + 1
+            self._line += 1
+        start = self._line_start + column
+        self.edits.append((start, start + len(raw), replacement))
+
+
+def _isolate_pdf_preview_clicks(html: str) -> str:
+    if not any(class_name in html for class_name in _PDF_PREVIEW_CLASSES):
+        return html
+    parser = _PdfPreviewClickGuardParser(html)
+    parser.feed(html)
+    parser.close()
+    pieces = []
+    cursor = 0
+    for start, end, replacement in parser.edits:
+        pieces.extend((html[cursor:start], replacement))
+        cursor = end
+    pieces.append(html[cursor:])
+    return "".join(pieces)
+
+
 def collapsible_pdf_snapshot_previews(html: object) -> str:
-    """Give saved hover or inline snapshots a reveal control without editing notes."""
+    """Reveal saved previews inline and isolate their clicks without editing notes."""
     rendered = str(html or "")
+    if len(rendered) > _MAX_PDF_CONTEXT_FIELD_HTML_CHARS:
+        return rendered
+    rendered = _isolate_pdf_preview_clicks(rendered)
     if (
         "incremento-pdf-snapshot-popover" not in rendered
         and "incremento-pdf-snapshot-inline" not in rendered
-    ) or len(rendered) > _MAX_PDF_CONTEXT_FIELD_HTML_CHARS:
+    ):
         return rendered
     converted = 0
 

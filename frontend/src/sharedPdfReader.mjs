@@ -21,7 +21,9 @@ export function sharedPdfReaderStartup(config) {
       scrollToTopOnPageChange: config.scroll_to_top !== false,
       showHighlightDeleteButtons: config.show_delete !== false,
       linkPreviewZoom: config.link_preview_zoom,
+      linkPreviewSize: config.link_preview_size,
       controlsCollapsed: config.controls_collapsed,
+      defaultHighlightColor: config.default_highlight_color,
     },
   };
 }

@@ -25,7 +25,7 @@ try:
     from .browser_capture import capture_fingerprint, capture_source_html, capture_source_url, legacy_capture_matches, selection_html
     from .network_safety import copy_response_limited, open_public_http
     from .webpage_markdown import convert_webpage_html_to_markdown
-    from .webpage_handoff import HANDOFF_PATH, HANDOFF_RPC_PATH, browser_pdf_handoffs
+    from .webpage_handoff import HANDOFF_PATH, HANDOFF_RPC_PATH, WebpageVerificationRequired, browser_pdf_handoffs
     from .note_metadata import (
         apply_incremento_metadata,
         build_incremento_metadata,
@@ -42,7 +42,7 @@ except ImportError:
     from browser_capture import capture_fingerprint, capture_source_html, capture_source_url, legacy_capture_matches, selection_html
     from network_safety import copy_response_limited, open_public_http  # type: ignore
     from webpage_markdown import convert_webpage_html_to_markdown
-    from webpage_handoff import HANDOFF_PATH, HANDOFF_RPC_PATH, browser_pdf_handoffs
+    from webpage_handoff import HANDOFF_PATH, HANDOFF_RPC_PATH, WebpageVerificationRequired, browser_pdf_handoffs
     from note_metadata import (  # type: ignore
         apply_incremento_metadata,
         build_incremento_metadata,
@@ -2202,6 +2202,7 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"ok": False, "error": "Invalid JSON.", "error_code": "invalid_json"})
             return
 
+        error_context = {}
         try:
             if request_path == WEBSITE_TAGS_PATH:
                 token = str(self.headers.get("X-Incremento-Token") or "")
@@ -2223,10 +2224,14 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
                 else:
                     raise ValueError("Invalid browser PDF handoff action.")
             elif request_path == BRIDGE_PATH:
-                prepared_request = prepare_add_content_request_off_main(payload,
+                error_context["error_stage"] = "validation"
+                request = normalize_add_content_request(payload)
+                error_context["error_stage"] = "preparation"
+                prepared_request = prepare_add_content_request_off_main(request,
                     render_webpage=lambda item, path: _render_prepared_webpage_pdf(
                         item, path, require_authorized=self._require_current_authorization))
                 try:
+                    error_context["error_stage"] = "card_creation"
                     if prepared_request.get("browser_capture"):
                         result = _run_browser_capture_and_wait(
                             prepared_request["items"][0], require_authorized=self._require_current_authorization,
@@ -2242,11 +2247,18 @@ class _IncrementoBridgeHandler(BaseHTTPRequestHandler):
                 result = self._run_authorized_on_main_and_wait(lambda: _update_web_card_on_main(payload))
             else:
                 result = self._run_authorized_on_main_and_wait(lambda: _save_browser_media_ref_on_main(payload))
+        except WebpageVerificationRequired:
+            self._send_json(400, {
+                "ok": False,
+                "error": "This site requires verification. Complete the security check or sign-in in your browser, then use Capture opened page as PDF.",
+                "error_code": "webpage_verification_required", **error_context,
+            })
+            return
         except ValueError as exc:
-            self._send_json(400, {"ok": False, "error": str(exc), "error_code": "invalid_request"})
+            self._send_json(400, {"ok": False, "error": str(exc), "error_code": "invalid_request", **error_context})
             return
         except Exception:
-            self._send_json(500, {"ok": False, "error": "Bridge operation failed.", "error_code": "operation_failed"})
+            self._send_json(500, {"ok": False, "error": "Bridge operation failed.", "error_code": "operation_failed", **error_context})
             return
 
         self._send_json(200, result)

@@ -187,6 +187,9 @@ from .frontend import epub_dock as _epub_dock_mod
 from .frontend import reader_links as _reader_links_mod
 from .frontend import selection_search as _selection_search_mod
 from .frontend import document_link_ui as _document_link_ui_mod
+from .frontend import study_workspace as _study_workspace_mod
+from .frontend import recording_link_dialog as _recording_link_dialog_mod
+from .frontend import card_resource_dialog as _card_resource_dialog_mod
 from .frontend import pdf_reference_workspace as _pdf_reference_workspace_mod
 from .frontend import video_dock as _video_dock_mod
 from .frontend import web_dock as _web_dock_mod
@@ -2698,6 +2701,7 @@ def _add_document_link_context_actions(view, menu):
         active = getattr(getattr(mw, "reviewer", None), "card", None)
         return _active_profile() == profile and active is not None and int(active.id) == card_id
     source = {"card_id": card_id, "kind": "card", "quote": str(view.selectedText() or "")[:2000]}
+    _recording_link_dialog_mod.add_context_actions(menu, source, is_current=current)
     for key, callback in (("reader_reference_add", _document_link_ui_mod.link_pdf),
                            ("reader_reference_links", _document_link_ui_mod.show_links)):
         action = menu.addAction(_t(key))
@@ -2705,6 +2709,14 @@ def _add_document_link_context_actions(view, menu):
 
 
 _register_selection_search_hooks()
+
+gui_hooks.reviewer_did_show_question.append(_study_workspace_mod.reviewer_shown)
+gui_hooks.reviewer_did_show_answer.append(_study_workspace_mod.reviewer_shown)
+gui_hooks.reviewer_will_end.append(_study_workspace_mod.reset)
+gui_hooks.profile_will_close.append(_study_workspace_mod.reset)
+gui_hooks.profile_will_close.append(_recording_link_dialog_mod.reset)
+gui_hooks.profile_will_close.append(_card_resource_dialog_mod.reset)
+gui_hooks.webview_did_receive_js_message.append(_study_workspace_mod.on_js_message)
 
 
 def _close_website_browsers() -> None:
@@ -3782,6 +3794,8 @@ def _open_document_bookshelf(*, new_window: bool = False) -> None:
             entries=list(entries or []),
             attachment_counts=dict(attachment_counts or {}),
             selection_only=new_window,
+            import_pdf=addPdfFunction,
+            import_epub=addEpubFunction,
         )
         if new_window:
             dlg.setWindowTitle(_t('workspace_open_pdf_window'))
@@ -5722,7 +5736,7 @@ def addLocalFileFunction() -> None:
 
 
 def addWebpageFunction() -> None:
-    from .frontend.webpage_dialog import WebpageToPdfDialog
+    from .frontend.webpage_dialog import WebpagePdfResultDialog, WebpageToPdfDialog
     from .backend.pdf_manager import add_pdf_card
     from .frontend.file_shell import activate_anki_window
 
@@ -5734,7 +5748,7 @@ def addWebpageFunction() -> None:
     try:
         if _active_profile() != profile:
             return
-        add_pdf_card(
+        card_id = add_pdf_card(
             _ADDON_DIR,
             mw.col,
             pdf_path,
@@ -5748,9 +5762,8 @@ def addWebpageFunction() -> None:
         )
         if dlg.browser_handoff_completed:
             activate_anki_window(mw)
-            tooltip(_t("root_webpage_pdf_added", title=dlg.title_text), period=5000)
-        else:
-            showInfo(_t("root_webpage_pdf_added", title=dlg.title_text))
+        result = WebpagePdfResultDialog(mw, dlg.title_text, profile, lambda: _open_pdf_card(card_id))
+        result.show()
     except Exception as e:
         showInfo(_t("root_webpage_pdf_failed", error=e))
     finally:
@@ -7215,6 +7228,7 @@ def openSettingsFunction() -> None:
         current_extract_copy_source_tags=_add_card_dock_mod.configured_extract_copy_source_tags(cfg),
         current_extract_highlight_when_extracting=_pdf_dock_mod.configured_highlight_when_extracting(cfg),
         current_pdf_show_highlight_delete_buttons=_pdf_dock_mod.configured_pdf_show_highlight_delete_buttons(cfg),
+        current_reader_default_highlight_color=_pdf_dock_mod.configured_reader_default_highlight_color(cfg, settings_profile),
         current_pdf_highlight_extract_field=_pdf_dock_mod.configured_pdf_highlight_extract_field(cfg),
         current_pdf_snapshot_auto_field_enabled=_pdf_dock_mod.configured_pdf_snapshot_auto_field_enabled(cfg),
         current_pdf_link_hover_preview_enabled=bool(cfg.get("pdf_link_hover_preview_enabled", True)),
@@ -7226,6 +7240,7 @@ def openSettingsFunction() -> None:
         current_reviewer_priority_badge_card_types=configured_reviewer_priority_badge_card_types(cfg),
         current_reviewer_button_visibility=configured_reviewer_button_visibility(cfg),
         current_reviewer_button_group_visible=configured_reviewer_button_group_visible(cfg),
+        current_study_workspace_enabled=cfg['study_workspace_enabled'],
         current_show_incremento_fields=configured_show_incremento_fields(cfg),
         current_day_end_time=cfg.get("day_end_time", "04:00"),
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
@@ -7288,10 +7303,14 @@ def openSettingsFunction() -> None:
         showInfo(_t("settings_language_profile_changed"))
         return
 
-    # Toolbar visibility is saved directly by each reader, independently of Settings.
+    # Reader controls and study layouts are saved directly, independently of Settings.
     latest_reader_config = _load_addon_config(mw.addonManager, __name__)
-    for reader_preference in ('pdf_controls_collapsed_by_profile', 'epub_controls_collapsed_by_profile', 'workspace_layouts'):
+    for reader_preference in ('pdf_controls_collapsed_by_profile', 'epub_controls_collapsed_by_profile',
+                              'study_layout_by_profile', 'workspace_layouts',
+                              'reader_default_highlight_color_by_profile', 'pdf_link_preview_size_by_profile'):
         cfg[reader_preference] = copy.deepcopy(latest_reader_config.get(reader_preference, {}))
+    if dlg.reader_default_highlight_color_changed:
+        cfg['reader_default_highlight_color_by_profile'][settings_profile] = dlg.reader_default_highlight_color
     cfg["ui_language"] = dlg.ui_language
     cfg["shortcuts"] = dlg.shortcuts_map
     cfg["extract_notetype"] = dlg.extract_notetype_name
@@ -7318,6 +7337,7 @@ def openSettingsFunction() -> None:
     visibility.update(dlg.reviewer_button_visibility)
     cfg["reviewer_button_visibility"] = visibility
     cfg["reviewer_button_group_visible"] = dlg.reviewer_button_group_visible
+    cfg['study_workspace_enabled'] = dlg.study_workspace_enabled
     cfg["show_incremento_fields"] = dlg.show_incremento_fields
     cfg["day_end_time"] = dlg.day_end_time
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
@@ -7374,6 +7394,10 @@ def openSettingsFunction() -> None:
     except Exception:
         showInfo(_t("settings_save_failed"))
         return
+    default_color = _pdf_dock_mod.configured_reader_default_highlight_color(cfg, settings_profile)
+    _study_workspace_mod.apply_settings(cfg)
+    _pdf_dock_mod.refresh_default_highlight_color(settings_profile, default_color)
+    _epub_dock_mod.refresh_default_highlight_color(settings_profile, default_color)
     _configure_companion_browser(cfg)
     _selection_search_mod.configure_search(cfg)
     if extract_default_type_changed:
@@ -7915,3 +7939,7 @@ gui_hooks.browser_menus_did_init.append(
         _ADDON_DIR,
     )
 )
+
+# Reuse the existing journaled import paths from the recording-link picker.
+_recording_link_dialog_mod.configure_importers(video=addVideoFunction, audio=addAudioFunction)
+_card_resource_dialog_mod.configure_importers(pdf=addPdfFunction, video=addVideoFunction, audio=addAudioFunction)

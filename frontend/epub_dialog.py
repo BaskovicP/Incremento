@@ -38,8 +38,10 @@ except ImportError:
 
 try:
     from ..backend.i18n import t as _t
+    from ..backend import paths as _paths
 except ImportError:
     from backend.i18n import t as _t
+    from backend import paths as _paths
 
 
 class AddEpubDialog(QDialog):
@@ -52,6 +54,10 @@ class AddEpubDialog(QDialog):
     ):
         super().__init__(parent)
         self._addon_dir = addon_dir
+        self._profile = _paths.get_active_profile()
+        self._collection = mw.col
+        self._closed = False
+        self.finished.connect(lambda *_args: setattr(self, "_closed", True))
         self.setWindowTitle(_t("imports_epub_title"))
         self.setMinimumSize(900, 560)
 
@@ -138,7 +144,17 @@ class AddEpubDialog(QDialog):
         self._table.setColumnWidth(4, 90)
         self._table.verticalHeader().setDefaultSectionSize(42)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
-        layout.addWidget(self._table, stretch=1)
+        from aqt.qt import QSplitter
+        from .document_details import ImportBookDetails
+        documents = QSplitter(Qt.Orientation.Horizontal)
+        documents.addWidget(self._table)
+        self._book_details = ImportBookDetails(self._addon_dir, self._profile, self)
+        self._book_details.setMinimumWidth(270)
+        documents.addWidget(self._book_details)
+        documents.setSizes([700, 290])
+        self._document_details_by_path = {}
+        self._table.currentCellChanged.connect(lambda *_args: self._select_book_details())
+        layout.addWidget(documents, stretch=1)
 
         options = QWidget()
         form = QFormLayout(options)
@@ -455,6 +471,15 @@ class AddEpubDialog(QDialog):
 
     def _on_selection_changed(self) -> None:
         self._remove_selected_btn.setVisible(bool(self._selected_visible_rows()))
+        self._select_book_details()
+
+    def _select_book_details(self) -> None:
+        item = self._table.item(self._table.currentRow(), 1)
+        self._book_details.set_path(item.data(Qt.ItemDataRole.UserRole) if item else None)
+
+    def _request_current(self) -> bool:
+        return (not self._closed and _paths.get_active_profile() == self._profile
+                and mw.col is self._collection)
 
     def _apply_table_filter(self, _text: str) -> None:
         current_row = self._table.currentRow()
@@ -606,6 +631,16 @@ class AddEpubDialog(QDialog):
             return
         self._error_lbl.setVisible(False)
 
+        if not self._request_current():
+            return
+        try:
+            self._document_details_by_path = {path: self._book_details.for_path(path) for path in checked_paths}
+        except ValueError:
+            self._show_error(_t("reader_library_invalid_details"))
+            return
+        self._book_details.setEnabled(False)
+        self._table.setEnabled(False)
+
         global_tags = self._global_tag_edit.tags()
         entries = []
         for path in checked_paths:
@@ -629,6 +664,8 @@ class AddEpubDialog(QDialog):
         self._process_files(entries, 0)
 
     def _process_files(self, entries: list, idx: int) -> None:
+        if not self._request_current():
+            return
         if idx >= len(entries):
             self._finish_add_progress()
             self.accept()
@@ -656,8 +693,10 @@ class AddEpubDialog(QDialog):
                 title,
                 deck_name=deck,
                 tags=tags,
+                profile=self._profile,
+                document_details=self._document_details_by_path.get(path),
             )
-            set_priority(self._addon_dir, _active_profile(), cid, priority)
+            set_priority(self._addon_dir, self._profile, cid, priority)
             self.created.append((path, title))
             self._set_row_status(path, "✓", color="#4caf50")
             self._update_add_progress(idx + 1, len(entries), path, phase=_t("imports_done"))

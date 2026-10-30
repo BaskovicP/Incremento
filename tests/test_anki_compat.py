@@ -2,6 +2,29 @@ import anki_compat
 import pytest
 
 
+def test_reference_visit_pauses_auto_advance_and_restarts_only_on_the_same_card_side():
+    from types import SimpleNamespace
+    calls = []
+    reviewer = SimpleNamespace(card=SimpleNamespace(id=7), state='answer', auto_advance_enabled=True)
+    reviewer.auto_advance_if_enabled = lambda: calls.append(reviewer.auto_advance_enabled)
+    restore = anki_compat.pause_reviewer_auto_advance(reviewer)
+    assert not reviewer.auto_advance_enabled and calls == [False]
+    restore()
+    restore()
+    assert reviewer.auto_advance_enabled and calls == [False, True]
+    restore = anki_compat.pause_reviewer_auto_advance(reviewer)
+    reviewer.card = SimpleNamespace(id=8)
+    restore()
+    assert not reviewer.auto_advance_enabled and calls == [False, True, False]
+
+
+def test_missing_auto_advance_capability_does_not_change_old_reviewers():
+    from types import SimpleNamespace
+    reviewer = SimpleNamespace(card=SimpleNamespace(id=7), state='question')
+    anki_compat.pause_reviewer_auto_advance(reviewer)()
+    assert not hasattr(reviewer, 'auto_advance_enabled')
+
+
 def test_patch_install_is_idempotent_and_preserves_original():
     class _Reviewer:
         def nextCard(self):

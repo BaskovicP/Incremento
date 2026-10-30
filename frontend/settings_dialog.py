@@ -28,10 +28,12 @@ from aqt.qt import (
 
 try:
     from ..backend.i18n import LANGUAGES, normalize_language_choice, t
+    from ..backend.highlight_colors import COLORS, normalize_highlight_color
     from ..backend.config_service import (
         DEFAULT_TOPIC_DONE_TAG, DEFAULT_LEARNING_LEECH_TAG, configured_learning_leech,
         normalize_learning_leech_tag, configured_reviewer_button_visibility,
         configured_reviewer_button_group_visible,
+        configured_study_workspace_enabled,
         configured_pdf_citation_page_numbering,
         normalize_pdf_link_preview_zoom,
         configured_extract_default_type,
@@ -49,10 +51,12 @@ try:
     )
 except ImportError:
     from backend.i18n import LANGUAGES, normalize_language_choice, t
+    from backend.highlight_colors import COLORS, normalize_highlight_color
     from backend.config_service import (  # type: ignore
         DEFAULT_TOPIC_DONE_TAG, DEFAULT_LEARNING_LEECH_TAG, configured_learning_leech,
         normalize_learning_leech_tag, configured_reviewer_button_visibility,
         configured_reviewer_button_group_visible,
+        configured_study_workspace_enabled,
         configured_pdf_citation_page_numbering,
         normalize_pdf_link_preview_zoom,
         configured_extract_default_type,
@@ -381,6 +385,7 @@ class IncrementoSettingsDialog(QDialog):
         current_extract_copy_source_tags: bool = False,
         current_extract_highlight_when_extracting: bool = True,
         current_pdf_show_highlight_delete_buttons: bool = True,
+        current_reader_default_highlight_color: str = 'yellow',
         current_pdf_highlight_extract_field: int = 1,
         current_pdf_snapshot_auto_field_enabled: bool = False,
         current_pdf_link_hover_preview_enabled: bool = True,
@@ -448,6 +453,7 @@ class IncrementoSettingsDialog(QDialog):
         current_learning_leech_tag: str = DEFAULT_LEARNING_LEECH_TAG,
         current_day_end_time: str = "04:00",
         current_pdf_citation_page_numbering: str = "printed",
+        current_study_workspace_enabled: bool = True,
     ):
         super().__init__(parent)
         self.setWindowTitle(t('settings_incremento_settings'))
@@ -671,6 +677,29 @@ class IncrementoSettingsDialog(QDialog):
         )
         extraction_form.addRow("", self._extract_highlight_when_extracting_cb)
 
+        try:
+            initial_color = normalize_highlight_color(current_reader_default_highlight_color)
+        except ValueError:
+            initial_color = 'yellow'
+        self._initial_reader_default_highlight_color = initial_color
+        self._reader_color_context = language_pack_context
+        self._reader_default_highlight_color_combo = QComboBox()
+        self._reader_default_highlight_color_combo.setAccessibleName(t('reader_default_annotation_color'))
+        for color in COLORS:
+            if color != 'snapshot':
+                self._reader_default_highlight_color_combo.addItem(t(f'reader_color_{color}'), color)
+        self._set_reader_default_highlight_color(initial_color)
+        color_row = QHBoxLayout()
+        color_row.addWidget(self._reader_default_highlight_color_combo)
+        color_button = QPushButton(t('reader_more_colors'))
+        color_button.setEnabled(language_pack_context is not None)
+        color_button.clicked.connect(self._choose_reader_default_highlight_color)
+        color_row.addWidget(color_button)
+        extraction_form.addRow(
+            _label_with_info(t('reader_default_annotation_color'), t('reader_default_annotation_color_help')),
+            color_row,
+        )
+
         self._pdf_show_highlight_delete_buttons_cb = QCheckBox(
             t('settings_show_pdf_highlight_delete_buttons')
         )
@@ -800,6 +829,17 @@ class IncrementoSettingsDialog(QDialog):
         review_layout.addWidget(review_hint)
 
         review_layout.addWidget(_section_title(t('settings_review_flow')))
+
+        self._study_workspace_enabled_cb = QCheckBox(t('settings_study_workspace_enabled'))
+        self._study_workspace_enabled_cb.setChecked(configured_study_workspace_enabled(
+            {'study_workspace_enabled': current_study_workspace_enabled}))
+        self._study_workspace_enabled_cb.setAccessibleName(t('settings_study_workspace_enabled'))
+        self._study_workspace_enabled_cb.setAccessibleDescription(t('settings_study_workspace_hint'))
+        self._study_workspace_enabled_cb.setToolTip(t('settings_study_workspace_hint'))
+        review_layout.addWidget(self._study_workspace_enabled_cb)
+        study_workspace_hint = QLabel(t('settings_study_workspace_hint'))
+        study_workspace_hint.setWordWrap(True)
+        review_layout.addWidget(study_workspace_hint)
 
         review_priority_form = _section_form()
 
@@ -2079,6 +2119,10 @@ class IncrementoSettingsDialog(QDialog):
         return bool(self._reviewer_button_group_cb.isChecked())
 
     @property
+    def study_workspace_enabled(self) -> bool:
+        return bool(self._study_workspace_enabled_cb.isChecked())
+
+    @property
     def remember_browser_card_scroll(self) -> bool:
         return bool(self._remember_browser_card_scroll_cb.isChecked())
 
@@ -2108,6 +2152,35 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def pdf_link_preview_zoom(self) -> float:
         return normalize_pdf_link_preview_zoom(self._pdf_link_preview_zoom_spin.value() / 100)
+
+    def _set_reader_default_highlight_color(self, color: str) -> None:
+        combo = self._reader_default_highlight_color_combo
+        index = combo.findData(color)
+        if index < 0:
+            combo.addItem(color, color)
+            index = combo.findData(color)
+        combo.setCurrentIndex(index)
+
+    def _choose_reader_default_highlight_color(self) -> None:
+        if self._reader_color_context is None:
+            return
+        try:
+            from .highlight_color_dialog import choose_highlight_color
+        except ImportError:
+            from highlight_color_dialog import choose_highlight_color
+        addon_dir, profile = self._reader_color_context
+        color = choose_highlight_color(self, self.reader_default_highlight_color,
+            addon_dir=addon_dir, profile=profile, default_color=True)
+        if color is not None:
+            self._set_reader_default_highlight_color(color)
+
+    @property
+    def reader_default_highlight_color(self) -> str:
+        return normalize_highlight_color(self._reader_default_highlight_color_combo.currentData())
+
+    @property
+    def reader_default_highlight_color_changed(self) -> bool:
+        return self.reader_default_highlight_color != self._initial_reader_default_highlight_color
 
     @property
     def pdf_default_appearance(self) -> str:

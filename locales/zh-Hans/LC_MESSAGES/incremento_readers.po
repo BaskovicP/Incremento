@@ -3969,3 +3969,678 @@ msgstr "在新窗口中打开"
 
 msgid "workspace_pdf_window_limit"
 msgstr "最多可同时打开 {count} 个 PDF 窗口。请先关闭一个窗口再打开新的窗口。"
+
+msgid "study_resources"
+msgstr "学习资源"
+
+msgid "study_player_paused"
+msgstr "已定位到关联时间。准备好后点击播放。"
+
+msgid "study_player_unavailable"
+msgstr "此 Anki 安装不支持播放。"
+
+msgid "study_recording_unavailable"
+msgstr "录音或视频无法播放或已更改。请重新打开，或编辑链接选择其他本地文件。"
+
+msgid "study_loading"
+msgstr "正在加载…"
+
+msgid "study_position"
+msgstr "播放位置"
+
+msgid "study_play"
+msgstr "播放"
+
+msgid "study_pause"
+msgstr "暂停"
+
+msgid "study_speed"
+msgstr "播放速度"
+
+msgid "study_volume"
+msgstr "音量"
+
+msgid "study_replay"
+msgstr "重播片段"
+
+msgid "study_continue"
+msgstr "继续播放"
+
+msgid "study_segment_finished"
+msgstr "片段已结束。可以返回段落、重播或继续播放。"
+
+msgid "study_pdf_page"
+msgstr "PDF · 第 {page} 页"
+
+msgid "study_epub_section"
+msgstr "EPUB · 第 {section} 节"
+
+msgid "study_card"
+msgstr "复习卡片"
+
+msgid "study_journey"
+msgstr "卡片 → 教材 → 录音或视频"
+
+msgid "study_return_card"
+msgstr "返回卡片"
+
+msgid "study_close"
+msgstr "关闭"
+
+msgid "study_open"
+msgstr "打开所选资源"
+
+msgid "study_refresh"
+msgstr "刷新"
+
+msgid "study_link_recording"
+msgstr "关联录音或视频…"
+
+msgid "study_edit"
+msgstr "编辑链接…"
+
+msgid "study_remove"
+msgstr "移除链接"
+
+msgid "study_back_passage"
+msgstr "返回段落"
+
+msgid "study_resource_unavailable"
+msgstr "资源不可用、已更改或超出阅读限制。请刷新或编辑链接后重试。"
+
+msgid "study_choose_resource"
+msgstr "在上方选择资源。每个资源都会保留各自的阅读或播放位置。"
+
+msgid "study_no_resources"
+msgstr "此处尚未关联资源。请先关联教材段落或录音、视频。"
+
+msgid "study_missing"
+msgstr "本地文件不可用"
+
+msgid "study_search_recordings"
+msgstr "搜索已导入的录音或视频…"
+
+msgid "study_choose_recording"
+msgstr "1. 选择录音或视频"
+
+msgid "study_import_video"
+msgstr "导入视频…"
+
+msgid "study_import_audio"
+msgstr "导入音频…"
+
+msgid "study_label"
+msgstr "链接名称"
+
+msgid "study_start"
+msgstr "开始时间"
+
+msgid "study_end"
+msgstr "结束时间（可选）"
+
+msgid "study_time_hint"
+msgstr "分:秒 或 时:分:秒"
+
+msgid "study_use_position"
+msgstr "使用当前位置"
+
+msgid "study_choose_another"
+msgstr "选择其他录音或视频"
+
+msgid "study_save_link"
+msgstr "保存链接"
+
+msgid "study_cancel"
+msgstr "取消"
+
+msgid "study_library_limited"
+msgstr "显示最近的 500 个录音和视频。可在其中搜索或导入其他文件。"
+
+msgid "study_import_help"
+msgstr "请导入已下载的视频或课堂录音，然后刷新列表。"
+
+msgid "study_preview_help"
+msgstr "2. 预览并设置关联时间。原始文件保持不变。"
+
+msgid "study_import_refresh"
+msgstr "导入完成后，点击刷新即可选择文件。"
+
+msgid "study_invalid_segment"
+msgstr "请等待预览加载完成，添加名称，并输入录音或视频范围内的有效时间。结束时间必须晚于开始时间。"
+
+msgid "study_tab_card"
+msgstr "卡片"
+
+msgid "study_tab_textbook"
+msgstr "文档"
+
+msgid "study_tab_video"
+msgstr "视频"
+
+msgid "study_tab_audio"
+msgstr "音频"
+
+msgid "study_no_active_card"
+msgstr "开始复习卡片后，即可切换到卡片。"
+
+msgid "study_no_textbooks"
+msgstr "此卡片尚未关联文档。使用“关联资源…”选择 PDF。"
+
+msgid "study_no_recordings"
+msgstr "此处尚未关联录音或视频。请使用关联录音或视频…选择文件。"
+
+msgid "study_review_card"
+msgstr "复习卡片"
+
+msgid "study_question_side"
+msgstr "尚未回答"
+
+msgid "study_answer_revealed"
+msgstr "已显示答案"
+
+msgid "study_card_hint"
+msgstr "在当前复习中打开教材段落或录音视频。"
+
+msgid "study_read_hint"
+msgstr "阅读关联段落了解上下文，或关联教材。"
+
+msgid "study_recording_hint"
+msgstr "打开关联讲解，或关联视频或录音。"
+
+msgid "study_read_passage"
+msgstr "阅读段落"
+
+msgid "study_open_recording"
+msgstr "打开录音或视频"
+
+msgid "study_other_resources"
+msgstr "其他资料"
+
+msgid "study_available"
+msgstr "可用"
+
+msgid "study_no_card"
+msgstr "无卡片"
+
+msgid "study_linked_count"
+msgstr "已关联 {count} 项"
+
+msgid "study_not_linked"
+msgstr "未关联"
+
+msgid "study_unavailable"
+msgstr "不可用"
+
+msgid "study_checking"
+msgstr "检查中…"
+
+msgid "study_check_failed"
+msgstr "无法检查"
+
+msgid "study_manage_links"
+msgstr "管理关联…"
+
+msgid "study_retry"
+msgstr "重试"
+
+msgid "study_focus_textbook"
+msgstr "专注教材"
+
+msgid "study_focus_video"
+msgstr "专注视频"
+
+msgid "study_exit_focus"
+msgstr "退出专注（Esc）"
+
+msgid "study_focus_hint"
+msgstr "全屏显示当前视图。按 Esc 返回学习工作区。"
+
+msgid "study_layout_save_failed"
+msgstr "本次学习会保留此布局，但无法保存您的偏好设置。"
+
+msgid "reader_default_annotation_color"
+msgstr "默认颜色"
+
+msgid "reader_default_annotation_color_help"
+msgstr "选择新高亮的默认颜色（Ctrl/Cmd+H）。选择其他颜色不会更改此默认值。"
+
+msgid "reader_bookshelf_sort_by"
+msgstr "排序方式："
+
+msgid "reader_bookshelf_sort_title"
+msgstr "标题（A–Z）"
+
+msgid "reader_bookshelf_sort_priority"
+msgstr "优先级（最重要的优先）"
+
+msgid "reader_bookshelf_sort_due"
+msgstr "到期卡片（从多到少）"
+
+msgid "reader_bookshelf_sort_reviews"
+msgstr "已复习次数（从多到少）"
+
+msgid "reader_bookshelf_sort_annotations"
+msgstr "标注（从多到少）"
+
+msgid "reader_bookshelf_sort_random"
+msgstr "随机"
+
+msgid "reader_bookshelf_reverse_order"
+msgstr "反向排序"
+
+msgid "reader_bookshelf_shuffle_again"
+msgstr "重新打乱"
+
+msgid "reader_bookshelf_default_priority"
+msgstr "优先级：50（默认）"
+
+msgid "reader_bookshelf_metric_due"
+msgstr "到期关联卡片：{count}"
+
+msgid "reader_bookshelf_metric_reviews"
+msgstr "已复习次数：{count}"
+
+msgid "reader_bookshelf_metric_annotations"
+msgstr "标注：{count}"
+
+msgid "reader_bookshelf_statistics_loading"
+msgstr "正在加载统计数据…"
+
+msgid "reader_bookshelf_statistics_failed"
+msgstr "无法加载统计数据。书架已恢复按标题排序；请重新选择排序方式以重试。"
+
+msgid "reader_bookshelf_sort_hint"
+msgstr "到期卡片统计当前已到期的现有关联卡片。已复习次数累加文档及所有关联卡片的 Anki 复习计数。标注统计已保存的高亮、PDF 标注和截图。优先级遵循已设置的方向；未设置时使用 50。筛选时随机顺序保持不变。"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_formatting"
+msgstr "笔记格式"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_bold"
+msgstr "粗体"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_italic"
+msgstr "斜体"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_underline"
+msgstr "下划线"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_strike"
+msgstr "删除线"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_link"
+msgstr "插入或编辑链接"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_bullets"
+msgstr "项目符号列表"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_numbers"
+msgstr "编号列表"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_clear"
+msgstr "清除格式"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_undo"
+msgstr "撤销"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_redo"
+msgstr "重做"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_link_prompt"
+msgstr "网址（http:// 或 https://）。留空以移除所选链接。"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_link_invalid"
+msgstr "请输入不含登录凭据的有效 http:// 或 https:// 网址。"
+
+#. Annotation note editor validation.
+msgid "reader_note_too_long"
+msgstr "此笔记过长。请缩短文本或简化格式后重试。"
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_missing_files_only"
+msgstr "仅显示文件缺失的 PDF"
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_missing_files_hint"
+msgstr "检查此配置中的实际 PDF 文件，即使已保存封面也会检查。包括文件缺失、空引用或不安全的文件引用。其他筛选条件仍然适用。"
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_check_files_again"
+msgstr "重新检查文件"
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_file_check_failed"
+msgstr "无法检查 PDF 文件。请启用文件缺失筛选以重试。"
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_missing_pdf_status"
+msgstr "PDF 文件缺失或不可用"
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_checking_files"
+msgstr "正在检查 PDF 文件…"
+
+msgid "reader_annotation_style"
+msgstr "样式"
+
+msgid "reader_annotation_appearance"
+msgstr "标注外观"
+
+msgid "reader_annotation_style_help"
+msgstr "选择样式和颜色，然后标记所选文字。"
+
+msgid "reader_mark_selection"
+msgstr "标记所选文字"
+
+msgid "reader_style_highlight"
+msgstr "高亮"
+
+msgid "reader_style_underline"
+msgstr "下划线"
+
+msgid "reader_style_squiggly"
+msgstr "波浪线"
+
+msgid "reader_style_dashed"
+msgstr "虚线"
+
+msgid "reader_style_dotted"
+msgstr "点线"
+
+msgid "reader_style_strikeout"
+msgstr "删除线"
+
+msgid "study_link_resources"
+msgstr "+ 关联资源…"
+
+msgid "study_current_card_only"
+msgstr "仅当前卡片"
+
+msgid "study_card_target"
+msgstr "仅限当前卡片\n{question}"
+
+msgid "study_search_resources"
+msgstr "搜索已导入的资源…"
+
+msgid "study_choose_resources"
+msgstr "勾选资源，然后选择一行以设置关联位置。"
+
+msgid "study_import_pdf"
+msgstr "导入 PDF…"
+
+msgid "study_resource_page"
+msgstr "PDF 页码"
+
+msgid "study_optional_label"
+msgstr "标签（可选）"
+
+msgid "study_unlink"
+msgstr "取消关联"
+
+msgid "study_undo_unlink"
+msgstr "撤销取消关联"
+
+msgid "study_resource_library_limited"
+msgstr "显示最近的 500 个 PDF 和录音视频。可在列表中搜索或导入其他资源。"
+
+msgid "study_batch_limit"
+msgstr "一次最多选择 {count} 个资源。"
+
+msgid "study_batch_failed"
+msgstr "无法加载或保存资源。保存失败时，整批关联均保持不变。请刷新后重试。"
+
+msgid "study_batch_invalid"
+msgstr "请为每个所选资源输入有效的页码和起止时间。"
+
+msgid "study_link_resource_count"
+msgstr "关联所选资源（{count}）"
+
+msgid "study_kind_pdf"
+msgstr "PDF"
+
+msgid "study_kind_video"
+msgstr "视频"
+
+msgid "study_kind_audio"
+msgstr "音频"
+
+msgid "study_inherited_resource"
+msgstr "此资源来自卡片内容或文档段落。请在来源处编辑关联。"
+
+msgid "study_preview_resource"
+msgstr "预览所选资源"
+
+msgid "study_choose_resource_title"
+msgstr "选择资源"
+
+msgid "study_tab_pdfs"
+msgstr "PDF"
+
+msgid "study_picker_page"
+msgstr "第 {page} 页"
+
+msgid "study_current_card_state"
+msgstr "当前卡片 · {state}"
+
+msgid "study_link_to_card"
+msgstr "将资源关联到此卡片"
+
+msgid "study_choose_library"
+msgstr "从资料库中选择"
+
+msgid "study_import_files"
+msgstr "导入文件…"
+
+msgid "study_link_action"
+msgstr "关联资源"
+
+msgid "study_managed_title"
+msgstr "此卡片关联的资源"
+
+msgid "study_manage_done"
+msgstr "完成"
+
+msgid "study_files_kept"
+msgstr "取消关联后保留原始文件。"
+
+msgid "study_own_position"
+msgstr "每个资源都会保留各自的位置。"
+
+msgid "study_library_empty"
+msgstr "未找到已导入的资源。导入文件以关联到此卡片。"
+
+msgid "study_links_saved"
+msgstr "关联已保存到此卡片。"
+
+msgid "study_link_selection"
+msgid_plural "study_link_selection_plural"
+msgstr[0] "关联 {count} 个资源"
+
+msgid "study_preview_short"
+msgstr "预览"
+
+msgid "study_linked_summary"
+msgstr "已关联 {documents} 个文档 · {recordings} 个录音或视频"
+
+msgid "study_preview_links_heading"
+msgstr "正在创建的关联"
+
+msgid "study_preview_connection"
+msgstr "这张卡片将打开："
+
+msgid "study_preview_empty"
+msgstr "从资源列表中选择文件，即可在此预览关联。"
+
+msgid "study_preview_choose_spot"
+msgstr "选择 PDF 中的精确位置…"
+
+msgid "study_preview_not_saved"
+msgstr "此处仅为预览。点击关联资源后才会保存。"
+
+msgid "study_preview_remove"
+msgstr "移除"
+
+msgid "study_preview_remove_named"
+msgstr "从草稿中移除 {title}"
+
+msgid "study_preview_instructions"
+msgstr "选择文件及其打开位置，保存前即可查看效果。"
+
+msgid "study_preview_page_error"
+msgstr "请选择 1 到 {maximum} 之间的页码。"
+
+msgid "study_preview_time_error"
+msgstr "请输入有效的开始时间，结束时间须晚于开始时间，且不超出媒体时长。"
+
+msgid "study_preview_pdf_location"
+msgstr "PDF · 第 {page} 页"
+
+msgid "study_preview_segment"
+msgstr "播放 {start}–{end}"
+
+msgid "study_preview_start"
+msgstr "从 {start} 开始播放"
+
+msgid "study_preview_pdf_named"
+msgstr "{title}，第 {page} 页。可选择精确位置。"
+
+msgid "study_preview_unavailable"
+msgstr "无法预览。请确认原始文件可用，然后重试预览。"
+
+msgid "reader_bookshelf_edit_pdf_name"
+msgstr "编辑 PDF 名称…"
+
+msgid "reader_bookshelf_pdf_name_prompt"
+msgstr "PDF 名称："
+
+msgid "reader_bookshelf_pdf_name_invalid"
+msgstr "请输入 1 到 2000 个字符的 PDF 名称，且不要包含控制字符。"
+
+msgid "reader_bookshelf_pdf_name_failed"
+msgstr "无法更新 PDF 名称。请刷新书架后重试。"
+
+msgid "reader_library_lists"
+msgstr "书单"
+
+msgid "reader_library_edit_lists"
+msgstr "编辑书单"
+
+msgid "reader_library_choose_lists"
+msgstr "本书所属书单"
+
+msgid "reader_library_new_list"
+msgstr "新建书单…"
+
+msgid "reader_library_lists_hint"
+msgstr "一本书可以加入多个书单。"
+
+msgid "reader_library_reason"
+msgstr "我为什么保存这本书"
+
+msgid "reader_library_reason_placeholder"
+msgstr "是什么让你想读它？推荐、疑问、项目…"
+
+msgid "reader_library_reason_limit"
+msgstr "最多 {count} 个字符。"
+
+msgid "reader_library_reason_count"
+msgstr "{count} / {maximum}"
+
+msgid "reader_library_source"
+msgstr "我在哪里发现它（可选）"
+
+msgid "reader_library_source_placeholder"
+msgstr "ChatGPT、博客、朋友或链接"
+
+msgid "reader_library_unlisted"
+msgstr "未加入书单"
+
+msgid "reader_library_select_book"
+msgstr "选择一本书"
+
+msgid "reader_library_list_name"
+msgstr "书单名称："
+
+msgid "reader_library_list_error"
+msgstr "无法保存书单。请使用 1–80 个字符的唯一名称，然后重试。"
+
+msgid "reader_library_import_hint"
+msgstr "书单、保存原因和来源均为可选项，按所选文件分别保存。"
+
+msgid "reader_library_add_pdf"
+msgstr "+ 添加 PDF"
+
+msgid "reader_library_add_epub"
+msgstr "+ 添加 EPUB"
+
+msgid "reader_library_intro"
+msgstr "选择书籍查看所属书单及保存原因。双击或选择“打开书籍”即可阅读。"
+
+msgid "reader_library_cover_view"
+msgstr "封面"
+
+msgid "reader_library_reason_view"
+msgstr "按原因浏览"
+
+msgid "reader_library_view"
+msgstr "书架视图"
+
+msgid "reader_library_search"
+msgstr "搜索书名、保存原因、来源…"
+
+msgid "reader_library_open_book"
+msgstr "打开书籍"
+
+msgid "reader_library_save_changes"
+msgstr "保存更改"
+
+msgid "reader_library_all_books"
+msgstr "全部书籍"
+
+msgid "reader_library_no_reason"
+msgstr "未填写保存原因"
+
+msgid "reader_library_rename_list"
+msgstr "重命名书单…"
+
+msgid "reader_library_delete_list"
+msgstr "删除书单…"
+
+msgid "reader_library_delete_confirmation"
+msgstr "删除书单“{name}”？书籍、保存原因和来源将保留。"
+
+msgid "reader_library_invalid_details"
+msgstr "书籍详情过长或包含不支持的字符。"
+
+msgid "reader_library_unsaved"
+msgstr "未保存的更改"
+
+msgid "reader_library_saved"
+msgstr "已保存"
+
+msgid "reader_library_save_error"
+msgstr "无法保存书籍详情。你的编辑内容仍然保留。"
+
+msgid "reader_library_unsaved_prompt"
+msgstr "关闭前保存书单、保存原因和来源的更改吗？"
+
+msgid "reader_library_reload_error"
+msgstr "无法刷新书架。请关闭后重新打开。"
+
+msgid "reader_library_more_filters"
+msgstr "更多筛选"
+
+msgid "reader_library_add_reason"
+msgstr "+ 添加保存原因"

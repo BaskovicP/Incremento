@@ -1,7 +1,8 @@
-"""Title-bar dragging and non-activating drop outlines for Incremento panes."""
+"""Title-bar dragging, floating resize borders, and non-activating drop outlines."""
 from aqt.qt import (
     QApplication, QDockWidget, QEvent, QFrame, QHBoxLayout, QLabel, QObject,
-    QPoint, QRect, QSignalBlocker, QSizePolicy, QStyle, QTimer, QToolButton, Qt, QWidget,
+    QPainter, QPoint, QRect, QRegion, QSignalBlocker, QSizePolicy, QStyle, QStyleOptionSizeGrip,
+    QTimer, QToolButton, Qt, QWidget,
 )
 
 try:
@@ -33,7 +34,7 @@ class PaneTitleBar(QWidget):
         self.setToolTip(t('workspace_drag_hint'))
         self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         row = QHBoxLayout(self)
-        row.setContentsMargins(8, 3, 4, 3)
+        row.setContentsMargins(8, 6, 6, 3)
         row.setSpacing(4)
         title = QLabel(dock.windowTitle(), self)
         title.setTextFormat(Qt.TextFormat.PlainText)
@@ -96,11 +97,53 @@ class PaneTitleBar(QWidget):
             event.ignore()
 
 
+class _PaneResizeHandle(QWidget):
+    """Own only a narrow floating border; reader content keeps its mouse events."""
+
+    def __init__(self, dock, controller, edges, cursor):
+        super().__init__(dock)
+        self.dock, self.controller, self.edges = dock, controller, edges
+        self.setCursor(cursor)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoMousePropagation)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.hide()
+
+    def paintEvent(self, event):
+        if self.edges == Qt.Edge.RightEdge | Qt.Edge.BottomEdge:
+            option = QStyleOptionSizeGrip()
+            option.initFrom(self)
+            option.corner = Qt.Corner.BottomRightCorner
+            painter = QPainter(self)
+            self.style().drawControl(QStyle.ControlElement.CE_SizeGrip, option, painter, self)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.controller.press_resize(self.dock, self, event.globalPosition().toPoint())
+            event.accept()
+        else:
+            event.ignore()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            self.controller.move(event.globalPosition().toPoint())
+            event.accept()
+        else:
+            event.ignore()
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.controller.release(event.globalPosition().toPoint())
+            event.accept()
+        else:
+            event.ignore()
+
+
 class WorkspaceDrag(QObject):
     def __init__(self, manager):
         super().__init__(manager.main)
         self.manager = manager
         self.active_dock = self.bar = None
+        self._resize_edges = None
         self._moved = False
         self._refresh_pending = False
         self._target = None
@@ -123,9 +166,49 @@ class WorkspaceDrag(QObject):
         for dock in self.manager.main.findChildren(QDockWidget):
             if self.manager.is_workspace_pane(dock) and dock.titleBarWidget() is None:
                 dock.setTitleBarWidget(PaneTitleBar(dock, self))
+            if isinstance(dock.titleBarWidget(), PaneTitleBar):
+                if not hasattr(dock, '_workspace_resize_handles'):
+                    left, right, top, bottom = Qt.Edge.LeftEdge, Qt.Edge.RightEdge, Qt.Edge.TopEdge, Qt.Edge.BottomEdge
+                    dock._workspace_resize_handles = [
+                        _PaneResizeHandle(dock, self, edges, cursor) for edges, cursor in (
+                            (left, Qt.CursorShape.SizeHorCursor), (right, Qt.CursorShape.SizeHorCursor),
+                            (top, Qt.CursorShape.SizeVerCursor), (bottom, Qt.CursorShape.SizeVerCursor),
+                            (left | top, Qt.CursorShape.SizeFDiagCursor), (right | top, Qt.CursorShape.SizeBDiagCursor),
+                            (left | bottom, Qt.CursorShape.SizeBDiagCursor), (right | bottom, Qt.CursorShape.SizeFDiagCursor),
+                        )]
+                self._update_resize_handles(dock)
+
+    def _update_resize_handles(self, dock):
+        # Custom title bars remove native floating-window decorations. Provide
+        # usable hit targets even when the platform/theme paints a 1px frame.
+        visible = dock.isFloating() and dock.isVisible() and not (dock.isMaximized() or dock.isFullScreen())
+        width, height, border, corner = dock.width(), dock.height(), 6, 16
+        rectangles = (
+            QRect(0, corner, border, max(0, height - 2 * corner)),
+            QRect(width - border, corner, border, max(0, height - 2 * corner)),
+            QRect(corner, 0, max(0, width - 2 * corner), border),
+            QRect(corner, height - border, max(0, width - 2 * corner), border),
+            QRect(0, 0, corner, corner), QRect(width - corner, 0, corner, corner),
+            QRect(0, height - corner, corner, corner), QRect(width - corner, height - corner, corner, corner),
+        )
+        for handle, rectangle in zip(getattr(dock, '_workspace_resize_handles', ()), rectangles):
+            handle.setGeometry(rectangle)
+            if rectangle.width() == corner and rectangle.height() == corner:
+                # Corner hit targets wrap around content and title-bar buttons
+                # instead of covering a square inside the reader.
+                x = 0 if handle.edges & Qt.Edge.LeftEdge else corner - border
+                y = 0 if handle.edges & Qt.Edge.TopEdge else corner - border
+                handle.setMask(QRegion(x, 0, border, corner) | QRegion(0, y, corner, border))
+            handle.setVisible(visible)
+            if visible:
+                handle.raise_()
 
     def eventFilter(self, watched, event):
         kind = event.type()
+        if isinstance(watched, QDockWidget) and kind in (
+                QEvent.Type.Show, QEvent.Type.Hide, QEvent.Type.Resize,
+                QEvent.Type.WindowStateChange, QEvent.Type.ParentChange):
+            self._update_resize_handles(watched)
         if kind == QEvent.Type.Show and isinstance(watched, QDockWidget) and self.manager.is_workspace_pane(watched):
             if not self._refresh_pending:
                 self._refresh_pending = True
@@ -136,7 +219,7 @@ class WorkspaceDrag(QObject):
                 return True
             if kind == QEvent.Type.ApplicationDeactivate:
                 self.cancel()
-            elif kind == QEvent.Type.Close and watched in (self.active_dock, self.manager.main):
+            elif kind in (QEvent.Type.Close, QEvent.Type.DeferredDelete) and watched in (self.active_dock, self.manager.main):
                 self.cancel(restore=False)
         return False
 
@@ -149,6 +232,38 @@ class WorkspaceDrag(QObject):
         self.active_dock, self.bar, self._start = dock, bar, QPoint(point)
         self._offset = point - dock.mapToGlobal(QPoint(0, 0))
         self._moved = False
+
+    def press_resize(self, dock, handle, point):
+        if not dock.isFloating() or dock.isMaximized() or dock.isFullScreen():
+            return
+        self.cancel()
+        self.active_dock, self.bar, self._start = dock, handle, QPoint(point)
+        self._resize_edges = handle.edges
+        self._resize_geometry = QRect(dock.geometry())
+        handle.grabMouse()
+
+    def _resize(self, point):
+        dock, edges, original = self.active_dock, self._resize_edges, self._resize_geometry
+        if not dock.isFloating() or not dock.isVisible() or dock.isMaximized() or dock.isFullScreen():
+            self.cancel(restore=False)
+            return
+        delta = point - self._start
+        minimum = dock.minimumSizeHint().expandedTo(dock.minimumSize())
+        maximum = dock.maximumSize()
+        rectangle = QRect(original)
+        if edges & (Qt.Edge.LeftEdge | Qt.Edge.RightEdge):
+            change = -delta.x() if edges & Qt.Edge.LeftEdge else delta.x()
+            width = max(minimum.width(), min(maximum.width(), original.width() + change))
+            rectangle.setWidth(width)
+            if edges & Qt.Edge.LeftEdge:
+                rectangle.moveRight(original.right())
+        if edges & (Qt.Edge.TopEdge | Qt.Edge.BottomEdge):
+            change = -delta.y() if edges & Qt.Edge.TopEdge else delta.y()
+            height = max(minimum.height(), min(maximum.height(), original.height() + change))
+            rectangle.setHeight(height)
+            if edges & Qt.Edge.TopEdge:
+                rectangle.moveBottom(original.bottom())
+        dock.setGeometry(rectangle)
 
     def _begin_move(self):
         dock = self.active_dock
@@ -199,6 +314,9 @@ class WorkspaceDrag(QObject):
         dock = self.active_dock
         if dock is None:
             return
+        if self._resize_edges is not None:
+            self._resize(point)
+            return
         if not self._moved:
             if (point - self._start).manhattanLength() < QApplication.startDragDistance():
                 return
@@ -223,6 +341,10 @@ class WorkspaceDrag(QObject):
         dock = self.active_dock
         if dock is None:
             return
+        if self._resize_edges is not None:
+            self._resize(point)
+            self._clear()
+            return
         if self._moved:
             self.move(point)
             target = self._target
@@ -246,10 +368,13 @@ class WorkspaceDrag(QObject):
             except RuntimeError:
                 pass
         self.active_dock = self.bar = self._target = None
+        self._resize_edges = None
         self._moved = False
         self._before = self._previous = None
 
     def cancel(self, *, restore=True):
+        if restore and self._resize_edges is not None:
+            self.active_dock.setGeometry(self._resize_geometry)
         if restore and self._moved:
             self.manager._previous = self._before
             self.manager.restore()

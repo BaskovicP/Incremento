@@ -458,6 +458,16 @@ def test_shipped_config_keys_are_explicitly_known() -> None:
     assert set(shipped) <= diagnostics._KNOWN_CONFIG_KEYS
 
 
+def test_preview_size_registry_redacts_profile_names_while_workspace_toggle_stays_visible():
+    settings = diagnostics.sanitize_config({
+        "pdf_link_preview_size_by_profile": {"session_card_count": {"width": 640, "height": 480}},
+        "study_workspace_enabled": False,
+    })["settings"]
+    assert settings["pdf_link_preview_size_by_profile"]["redacted"] is True
+    assert "session_card_count" not in json.dumps(settings)
+    assert settings["study_workspace_enabled"] is False
+
+
 def test_search_and_pdf_focus_preferences_export_safe_behavior() -> None:
     for engine in ("google", "duckduckgo"):
         config = {"web_search_engine": engine, "search_remember_logins": True,
@@ -469,6 +479,8 @@ def test_search_and_pdf_focus_preferences_export_safe_behavior() -> None:
 
 @pytest.mark.parametrize('setting', [
     'pdf_controls_collapsed_by_profile', 'epub_controls_collapsed_by_profile',
+    'study_layout_by_profile',
+    'reader_default_highlight_color_by_profile',
 ])
 def test_reader_toolbar_profile_preferences_redact_all_profile_names(setting) -> None:
     snapshot = diagnostics.sanitize_config({setting: {

@@ -105,6 +105,13 @@ export function usePdfRender() {
   }, []);
 
   /* ── Text layer (PDF.js 4.x) ──────────────────────────────────────────────── */
+  // The page wrapper grows with zoom. Measure the viewport so that growth
+  // cannot feed back into subsequent zoom or fit-width calculations.
+  const readerWidth = useCallback(() => (
+    window.document?.documentElement?.clientWidth || window.innerWidth
+    || containerRef.current?.offsetWidth || 800
+  ), []);
+
   const renderTextLayer = useCallback((pg, viewport) => {
     const tl  = textLayerRef.current;
     const lib = window.pdfjsLib;
@@ -116,7 +123,7 @@ export function usePdfRender() {
     tl.style.height   = viewport.height + 'px';
     tl.style.clipPath = 'inset(0)';
 
-    const wrapperW = containerRef.current?.offsetWidth ?? viewport.width;
+    const wrapperW = Math.max(readerWidth(), viewport.width);
     const tlLeft   = Math.round((wrapperW - viewport.width) / 2);
     tl.style.left      = tlLeft + 'px';
     tl.style.top       = '0px';
@@ -146,7 +153,7 @@ export function usePdfRender() {
       if (typeof text.source?.then === 'function') text.source.then(show).catch(() => {});
       else show(text.source);
     } catch (_) {}
-  }, []);
+  }, [readerWidth]);
 
   const renderLinkAnnotations = useCallback(async (pg, viewport, sequence, pageNumber) => {
     try {
@@ -206,11 +213,10 @@ export function usePdfRender() {
             backCvs = backId === 'a' ? canvasARef.current : canvasBRef.current;
             const frontCvs = backId === 'a' ? canvasBRef.current : canvasARef.current;
             if (!backCvs) continue;
-            const colW = containerRef.current?.offsetWidth || 800;
+            const colW = readerWidth();
             lastRenderWidthRef.current = colW;
-            const maxH = Math.max(window.innerHeight - 120, 300);
             const base = pg.getViewport({scale: 1});
-            let scale = Math.min(colW / base.width, maxH / base.height) * request.zoom;
+            let scale = (colW / base.width) * request.zoom;
             if (!scale || scale <= 0) scale = 1;
             const viewport = pg.getViewport({scale});
             const dpr = window.devicePixelRatio || 1;
@@ -253,7 +259,7 @@ export function usePdfRender() {
       }
     };
     void drain();
-  }, [renderLinkAnnotations, renderTextLayer]);
+  }, [readerWidth, renderLinkAnnotations, renderTextLayer]);
 
   /* ── PDF loading ──────────────────────────────────────────────────────────── */
   const doStart = useCallback(() => {
@@ -380,6 +386,15 @@ export function usePdfRender() {
     window.pycmd('incremento_pdf_zoom:' + cardIdRef.current + ':' + clamped);
   }, [renderPage]);
 
+  const fitWidth = useCallback(() => {
+    if (!pdfDocRef.current) return;
+    zoomRef.current = 1;
+    setZoom(1);
+    renderPage(pageRef.current);
+    window.scrollTo({top: 0, left: 0, behavior: 'instant'});
+    window.pycmd('incremento_pdf_zoom:' + cardIdRef.current + ':1');
+  }, [renderPage]);
+
   const setReadProgress = useCallback((readPageValue, anchor = null, notify = true) => {
     const newRp = Math.max(0, parseInt(readPageValue, 10) || 0);
     readPageRef.current = newRp;
@@ -419,17 +434,23 @@ export function usePdfRender() {
     const container = containerRef.current;
     if (!container) return;
     let timer;
-    const observer = new ResizeObserver((entries) => {
-      const newW = Math.round(entries[0]?.contentRect.width ?? 0);
+    const resized = () => {
+      const newW = Math.round(readerWidth());
       if (Math.abs(newW - lastRenderWidthRef.current) < 5) return;
       clearTimeout(timer);
       timer = setTimeout(() => {
         if (pdfDocRef.current) renderPage(pageRef.current);
       }, 150);
-    });
+    };
+    const observer = new ResizeObserver(resized);
     observer.observe(container);
-    return () => { clearTimeout(timer); observer.disconnect(); };
-  }, [renderPage]);
+    window.addEventListener?.('resize', resized);
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+      window.removeEventListener?.('resize', resized);
+    };
+  }, [readerWidth, renderPage]);
 
   return {
     // State (read-only)
@@ -439,6 +460,6 @@ export function usePdfRender() {
     // Refs read by PdfViewer for keyboard/snapshot/highlight logic
     pdfDocRef, busyRef, activeCvsRef, cardIdRef, pageRef, lastScaleRef,
     // Callbacks
-    startViewer, nav, adjustZoom, markRead, setReadProgress,
+    startViewer, nav, adjustZoom, fitWidth, markRead, setReadProgress,
   };
 }

@@ -26,6 +26,7 @@ CONFIG_DEPENDENCIES = (
     ROOT / "backend" / "paths.py",
     ROOT / "backend" / "backup_schedule.py",
     ROOT / "backend" / "workspace_layouts.py",
+    ROOT / "backend" / "highlight_colors.py",
     ROOT / "backend" / "paths.py",
 )
 OUTPUT_LIMIT = 2_000

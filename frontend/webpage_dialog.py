@@ -2,6 +2,7 @@ import os
 import tempfile
 import time
 import threading
+from collections.abc import Callable
 from urllib.error import HTTPError
 
 from PyQt6 import sip
@@ -45,7 +46,7 @@ try:
     from ..backend.content_safety import normalize_external_http_url
     from ..backend.webpage_resources import build_offline_webpage_html
     from ..backend.webpage_export import prepare_export_html
-    from ..backend.webpage_browser import browser_runtime, install_browser_runtime, render_browser_pdf
+    from ..backend.webpage_browser import browser_runtime, install_browser_runtime, render_browser_pdf, capture_browser_html
     from ..backend.webpage_handoff import HANDOFF_PATH, browser_pdf_handoffs, WebpageVerificationRequired, requires_verification
     from ..backend.paths import get_active_profile as _active_profile
     from .tag_edit import QuickTagEdit
@@ -60,7 +61,7 @@ except ImportError:
     from content_safety import normalize_external_http_url
     from webpage_resources import build_offline_webpage_html
     from webpage_export import prepare_export_html
-    from webpage_browser import browser_runtime, install_browser_runtime, render_browser_pdf
+    from webpage_browser import browser_runtime, install_browser_runtime, render_browser_pdf, capture_browser_html
     from webpage_handoff import HANDOFF_PATH, browser_pdf_handoffs, WebpageVerificationRequired, requires_verification
     from paths import get_active_profile as _active_profile
     from incremento.frontend.tag_edit import QuickTagEdit
@@ -119,7 +120,7 @@ def _disable_unneeded_web_capabilities(settings, *, allow_javascript: bool) -> N
 
 def _prepare_webpage(source_url: str, html_text: str, timeout_sec: float,
                      style: str = "print", dynamic: bool = False, include_links: bool = False,
-                     cancel_event=None, prefer_snapshot: bool = False) -> tuple[str, bytes | None]:
+                     cancel_event=None, prefer_snapshot: bool = False, capture_html: bool = False) -> tuple[str, bytes | None]:
     if style not in {"print", "website", "article"}:
         raise ValueError(_t("imports_webpage_invalid_style"))
     if prefer_snapshot:
@@ -128,7 +129,11 @@ def _prepare_webpage(source_url: str, html_text: str, timeout_sec: float,
         dynamic = False
     deadline = time.monotonic() + timeout_sec
     if source_url:
-        source_url = validate_public_http_url(source_url)
+        # A browser snapshot already supplies the document. Its URL is only
+        # provenance and a resource base; the downloader validates each actual
+        # resource request independently before connecting.
+        source_url = (normalize_external_http_url(source_url) if prefer_snapshot
+                      else validate_public_http_url(source_url))
         if not prefer_snapshot and style == "print" and not include_links:
             try:
                 wikipedia_pdf = _fetch_wikipedia_article_pdf(source_url, timeout_sec=max(1.0, deadline - time.monotonic()))
@@ -138,8 +143,12 @@ def _prepare_webpage(source_url: str, html_text: str, timeout_sec: float,
                 return "", wikipedia_pdf
     if dynamic:
         try:
-            return "", render_browser_pdf(source_url, html_text, style=style, include_links=include_links,
-                                           links_heading=_t("imports_webpage_links_heading"), timeout_sec=max(1.0, deadline-time.monotonic()), cancel_event=cancel_event)
+            if capture_html:
+                source_url, html_text = capture_browser_html(source_url, html_text, timeout_sec=max(1.0, deadline-time.monotonic()),
+                                                            cancel_event=cancel_event)
+            else:
+                return "", render_browser_pdf(source_url, html_text, style=style, include_links=include_links,
+                                               links_heading=_t("imports_webpage_links_heading"), timeout_sec=max(1.0, deadline-time.monotonic()), cancel_event=cancel_event)
         except InterruptedError:
             raise RuntimeError(_t("imports_webpage_cancelled")) from None
         except TimeoutError:
@@ -165,7 +174,7 @@ def _prepare_webpage(source_url: str, html_text: str, timeout_sec: float,
 
 def _prepare_in_background(source_url: str, html_text: str, timeout_ms: int,
                            style: str = "print", dynamic: bool = False, include_links: bool = False,
-                           cancel_event=None, prefer_snapshot: bool = False) -> tuple[str, bytes | None]:
+                           cancel_event=None, prefer_snapshot: bool = False, capture_html: bool = False) -> tuple[str, bytes | None]:
     """Retain the synchronous bridge API while leaving Qt responsive to cancellation."""
     from aqt import mw
 
@@ -209,7 +218,7 @@ def _prepare_in_background(source_url: str, html_text: str, timeout_ms: int,
     cancelled.start(100)
     try:
         mw.taskman.run_in_background(
-            lambda: _prepare_webpage(source_url, html_text, max(1.0, timeout_ms / 1000.0), style, dynamic, include_links, cancel_event, prefer_snapshot),
+            lambda: _prepare_webpage(source_url, html_text, max(1.0, timeout_ms / 1000.0), style, dynamic, include_links, cancel_event, prefer_snapshot, capture_html),
             complete,
             uses_collection=False,
         )
@@ -235,13 +244,15 @@ def render_webpage_to_pdf(
     include_links: bool = False,
     cancel_event=None,
     prefer_snapshot: bool = False,
+    edit_before_save: bool = False,
 ) -> None:
     source_url = str(url or "").strip()
     html_text = str(html or "")
     if not source_url and not html_text:
         raise ValueError(_t("imports_webpage_missing_source"))
     profile = _active_profile()
-    html_text, wikipedia_pdf = _prepare_in_background(source_url, html_text, timeout_ms, style, dynamic, include_links, cancel_event, prefer_snapshot)
+    edit_before_save = bool(edit_before_save and style == "website")
+    html_text, wikipedia_pdf = _prepare_in_background(source_url, html_text, timeout_ms, style, dynamic, include_links, cancel_event, prefer_snapshot, edit_before_save)
     if _active_profile() != profile:
         raise RuntimeError(_t("imports_topic_profile_changed"))
     if wikipedia_pdf is not None:
@@ -258,7 +269,8 @@ def render_webpage_to_pdf(
         ) as snapshot:
             snapshot_path = snapshot.name
             snapshot.write(html_text)
-        _print_offline_snapshot(pdf_path, snapshot_path, wait_ms=wait_ms, timeout_ms=timeout_ms, screen_media=style == "website")
+        options = {"edit_before_save": True, "cancel_event": cancel_event} if edit_before_save else {}
+        _print_offline_snapshot(pdf_path, snapshot_path, wait_ms=wait_ms, timeout_ms=timeout_ms, screen_media=style == "website", **options)
     finally:
         try:
             os.remove(snapshot_path)
@@ -268,7 +280,8 @@ def render_webpage_to_pdf(
         raise RuntimeError(_t("imports_topic_profile_changed"))
 
 
-def _print_offline_snapshot(pdf_path: str, snapshot_path: str, *, wait_ms: int, timeout_ms: int, screen_media: bool = False) -> None:
+def _print_offline_snapshot(pdf_path: str, snapshot_path: str, *, wait_ms: int, timeout_ms: int, screen_media: bool = False,
+                            edit_before_save: bool = False, cancel_event=None) -> None:
     document_url = QUrl.fromLocalFile(os.path.realpath(snapshot_path)).toString()
 
     profile = QWebEngineProfile()
@@ -283,6 +296,16 @@ def _print_offline_snapshot(pdf_path: str, snapshot_path: str, *, wait_ms: int, 
     )
     interceptor = _SnapshotRequestInterceptor(document_url, profile)
     profile.setUrlRequestInterceptor(interceptor)
+    preview = None
+    if edit_before_save:
+        from PyQt6.QtWebEngineCore import QWebEngineScript
+        from .webpage_cleanup import CLEANUP_SCRIPT, create_cleanup_preview
+        script = QWebEngineScript()
+        script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentReady)
+        script.setWorldId(QWebEngineScript.ScriptWorldId.ApplicationWorld)
+        script.setSourceCode(CLEANUP_SCRIPT)
+        page.scripts().insert(script)
+        preview = create_cleanup_preview(page, QApplication.activeWindow())
     if screen_media:
         # Emulate screen CSS without executing any script from the webpage.
         from PyQt6.QtWebEngineCore import QWebEngineScript
@@ -343,7 +366,42 @@ def _print_offline_snapshot(pdf_path: str, snapshot_path: str, *, wait_ms: int, 
             return
         # Qt can signal loadFinished before its native PDF frame is ready.
         # Preserve the normal settling period even for a caller requesting zero.
-        QTimer.singleShot(max(1200, int(wait_ms)), _start_print)
+        QTimer.singleShot(max(1200, int(wait_ms)), _ready)
+
+    def _ready() -> None:
+        if state.get("done"):
+            return
+        if preview is None:
+            _start_print()
+        else:
+            # The capture deadline must not limit the user's editing time.
+            timeout.stop()
+            preview.show()
+
+    def _save_preview() -> None:
+        if state.get("done") or state.get("saving"):
+            return
+        state["saving"] = True
+        # Keep the native view attached and visible until printToPdf completes.
+        # Hiding it with QDialog.accept() can invalidate Qt's print frame.
+        preview.setEnabled(False)
+        timeout.start(max(1000, int(timeout_ms)))
+        page.runJavaScript("globalThis.incrementoCleanup && incrementoCleanup.finish()",
+                           QWebEngineScript.ScriptWorldId.ApplicationWorld, lambda _result: _start_print())
+
+    captured_profile = _active_profile() if edit_before_save else None
+    def _check_cancelled() -> None:
+        if _active_profile() != captured_profile:
+            _finish_error(_t("imports_topic_profile_changed"))
+        elif cancel_event is not None and cancel_event.is_set():
+            _finish_error(_t("imports_webpage_cancelled"))
+
+    cancellation = QTimer(page)
+    if preview is not None:
+        preview.save_button.clicked.connect(_save_preview)
+        preview.rejected.connect(lambda: _finish_error(_t("imports_webpage_cancelled")))
+        cancellation.timeout.connect(_check_cancelled)
+        cancellation.start(100)
 
     def _on_timeout() -> None:
         seconds = max(1, int(timeout_ms) // 1000)
@@ -359,12 +417,62 @@ def _print_offline_snapshot(pdf_path: str, snapshot_path: str, *, wait_ms: int, 
         loop.exec()
     finally:
         state["done"] = True
+        timeout.stop()
+        cancellation.stop()
         # Qt requires every page to be destroyed before its profile.
+        if preview is not None:
+            sip.delete(preview)
         sip.delete(page)
         sip.delete(profile)
 
     if not state["ok"]:
         raise RuntimeError(str(state["error"] or _t("imports_webpage_pdf_failed")))
+
+
+class WebpagePdfResultDialog(QDialog):
+    """Offer the saved PDF without blocking Anki or opening it automatically."""
+
+    def __init__(self, parent, title: str, profile: str, open_pdf: Callable[[], None]):
+        super().__init__(parent)
+        self.setWindowTitle(_t("imports_webpage_to_pdf"))
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setMinimumWidth(420)
+        self._profile = profile
+        self._open_pdf = open_pdf
+
+        layout = QVBoxLayout(self)
+        message = QLabel(_t("root_webpage_pdf_added", title=title))
+        message.setTextFormat(Qt.TextFormat.PlainText)
+        message.setWordWrap(True)
+        message.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        layout.addWidget(message)
+        self._status_lbl = QLabel("")
+        self._status_lbl.setTextFormat(Qt.TextFormat.PlainText)
+        self._status_lbl.setWordWrap(True)
+        self._status_lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        layout.addWidget(self._status_lbl)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch()
+        open_button = QPushButton(_t("knowledge_tree_open_pdf"))
+        open_button.clicked.connect(self._on_open)
+        buttons.addWidget(open_button)
+        close_button = QPushButton(_t("reader_close"))
+        close_button.setDefault(True)
+        close_button.clicked.connect(self.accept)
+        buttons.addWidget(close_button)
+        layout.addLayout(buttons)
+
+    def _on_open(self) -> None:
+        if _active_profile() != self._profile:
+            self.reject()
+            return
+        try:
+            self._open_pdf()
+        except Exception as exc:
+            self._status_lbl.setText(_t("root_document_open_failed", error=exc))
+            return
+        self.accept()
 
 
 class WebpageToPdfDialog(QDialog):
@@ -406,6 +514,11 @@ class WebpageToPdfDialog(QDialog):
         self._style_combo.addItem(_t("imports_webpage_style_article"), "article")
         self._style_combo.addItem(_t("imports_webpage_style_print"), "print")
         layout.addWidget(self._style_combo)
+        self._cleanup_check = QCheckBox(_t("imports_webpage_cleanup_option"))
+        self._cleanup_check.setToolTip(_t("imports_webpage_cleanup_help"))
+        self._style_combo.currentIndexChanged.connect(
+            lambda _index: self._cleanup_check.setEnabled(self._style_combo.currentData() == "website"))
+        layout.addWidget(self._cleanup_check)
         self._dynamic_check = QCheckBox(_t("imports_webpage_dynamic"))
         ready = browser_runtime() is not None
         self._dynamic_check.setChecked(ready)
@@ -466,6 +579,7 @@ class WebpageToPdfDialog(QDialog):
         for button in (self._import_btn, self._open_browser_btn, self._saved_pdf_btn, self._setup_btn):
             button.setEnabled(not busy)
         self._progress.setVisible(busy)
+        self._cleanup_check.setEnabled(not busy and self._style_combo.currentData() == "website")
 
     def _browser_source_url(self) -> str:
         url = self._url_edit.text().strip()
@@ -582,7 +696,8 @@ class WebpageToPdfDialog(QDialog):
     def _start_browser_handoff(self, url, title, style, include_links, generation, profile) -> None:
         self._stop_browser_handoff()
         self._handoff_ticket = browser_pdf_handoffs.create(url, profile)
-        self._handoff_context = (url, title, style, include_links, generation, profile)
+        self._handoff_context = (url, title, style, include_links, generation, profile,
+                                 bool(getattr(self, "_requested_cleanup", False)))
         self._browser_handoff_tags = list(self._tag_edit.tags())
         self._status_lbl.setText(_t("imports_webpage_browser_waiting"))
         self._handoff_timer = QTimer(self)
@@ -599,7 +714,7 @@ class WebpageToPdfDialog(QDialog):
         ticket = getattr(self, "_handoff_ticket", None)
         if not ticket:
             return
-        url, title, style, include_links, generation, profile = self._handoff_context
+        url, title, style, include_links, generation, profile, cleanup = self._handoff_context
         if not self._import_current(generation, profile):
             self._stop_browser_handoff()
             self._set_busy(False)
@@ -620,7 +735,8 @@ class WebpageToPdfDialog(QDialog):
             pdf_path = temporary.name
         try:
             render_webpage_to_pdf(pdf_path, url=url, html=html, style=style, include_links=include_links,
-                                  prefer_snapshot=True, cancel_event=self._capture_cancel)
+                                  prefer_snapshot=True, cancel_event=self._capture_cancel,
+                                  edit_before_save=cleanup)
             if not self._import_current(generation, profile):
                 os.remove(pdf_path)
                 return
@@ -654,6 +770,8 @@ class WebpageToPdfDialog(QDialog):
         style = self._style_combo.currentData()
         dynamic = self._dynamic_check.isChecked()
         include_links = self._links_check.isChecked()
+        self._requested_cleanup = bool(style == "website" and getattr(self, "_cleanup_check", None) is not None
+                                       and self._cleanup_check.isChecked())
         self._capture_cancel = threading.Event()
         cancel_event = self._capture_cancel
         self._import_generation += 1
@@ -672,7 +790,8 @@ class WebpageToPdfDialog(QDialog):
             pdf_path = temporary.name
         try:
             render_webpage_to_pdf(pdf_path, url=url, style=style, dynamic=dynamic, include_links=include_links,
-                                  cancel_event=cancel_event, timeout_ms=90000 if dynamic else 45000)
+                                  cancel_event=cancel_event, timeout_ms=90000 if dynamic else 45000,
+                                  edit_before_save=self._requested_cleanup)
         except Exception as exc:
             try:
                 os.remove(pdf_path)

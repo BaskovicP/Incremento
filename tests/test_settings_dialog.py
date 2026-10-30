@@ -422,6 +422,15 @@ resolved_runtime_shortcuts = _MOD.resolved_runtime_shortcuts
 SHORTCUT_ACTION_SPECS = _MOD.SHORTCUT_ACTION_SPECS
 
 
+def test_review_settings_can_restore_and_toggle_the_study_workspace():
+    default = IncrementoSettingsDialog({})
+    assert default.study_workspace_enabled is True
+    normal = IncrementoSettingsDialog({}, current_study_workspace_enabled=False)
+    assert normal.study_workspace_enabled is False
+    normal._study_workspace_enabled_cb.setChecked(True)
+    assert normal.study_workspace_enabled is True
+
+
 def test_search_settings_default_to_google_and_private_and_restore_saved_choices():
     dialog = IncrementoSettingsDialog({})
     assert dialog.web_search_engine == "google"
@@ -468,7 +477,8 @@ def test_review_settings_loads_shared_cutoff_and_exposes_edits(saved):
 
 
 @pytest.mark.parametrize("accepted,save_fails", [(True, False), (False, False), (True, True)], ids=["save", "cancel", "save-failed"])
-def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save_fails):
+@pytest.mark.parametrize('edit_annotation_default', [False, True], ids=['keep-reader-default', 'edit-reader-default'])
+def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save_fails, edit_annotation_default):
     import ast
     import builtins
     import copy
@@ -488,6 +498,8 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         "future_setting": {"keep": True},
         "pdf_focus_mode": True,
         "epub_focus_mode": True,
+        "study_workspace_enabled": False,
+        "reader_default_highlight_color_by_profile": {'A': 'yellow', 'B': 'purple'},
     })
     original = copy.deepcopy(saved)
     manager = Mock()
@@ -501,6 +513,9 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         # A background side pane can change its own controls while Settings is open.
         saved['pdf_controls_collapsed_by_profile'] = {'A': {'main': False, 'side': True}}
         saved['epub_controls_collapsed_by_profile'] = {'A': {'main': False}}
+        saved['reader_default_highlight_color_by_profile']['A'] = '#abcdef'
+        saved['pdf_link_preview_size_by_profile'] = {'A': {'width': 760, 'height': 500}}
+        saved['study_layout_by_profile'] = {'A': {'book': {'focus': True, 'horizontal': .65}}}
         saved['workspace_layouts'] = {'A': {'Desk': {
             'version': 1, 'state': 'UXQ=', 'geometry': 'UXQ=',
             'panes': [{'name': 'incremento_writing_dock', 'kind': 'writing', 'card_id': 42}]}}}
@@ -510,9 +525,16 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         assert kwargs["current_day_end_time"] == "05:30"
         assert kwargs["current_pdf_focus_mode"] is True
         assert kwargs["current_epub_focus_mode"] is True
+        assert kwargs['current_study_workspace_enabled'] is False
+        assert kwargs['current_reader_default_highlight_color'] == 'yellow'
         dialog = IncrementoSettingsDialog(shortcuts, current_day_end_time=kwargs["current_day_end_time"],
             current_pdf_focus_mode=kwargs["current_pdf_focus_mode"],
-            current_epub_focus_mode=kwargs["current_epub_focus_mode"])
+            current_epub_focus_mode=kwargs["current_epub_focus_mode"],
+            current_study_workspace_enabled=kwargs['current_study_workspace_enabled'])
+        dialog._study_workspace_enabled_cb.setChecked(True)
+        if edit_annotation_default:
+            combo = dialog._reader_default_highlight_color_combo
+            combo.setCurrentIndex(combo.findData('green'))
         dialog._pdf_focus_mode_cb.setChecked(False)
         dialog._epub_focus_mode_cb.setChecked(False)
         dialog._day_end_edit.setTime(_Time(0, 0))
@@ -530,14 +552,19 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         "configured_companion_browser": config_service.configured_companion_browser,
         "_load_addon_config": config_service.load_addon_config,
         "_save_addon_config": config_service.save_addon_config,
+        "_current_profile_name": lambda: 'A',
     })
     namespace['_epub_dock_mod'].configured_epub_focus_mode.side_effect = lambda cfg: cfg['epub_focus_mode']
     namespace['_pdf_dock_mod'].configured_pdf_focus_mode.side_effect = lambda cfg: cfg['pdf_focus_mode']
+    namespace['_pdf_dock_mod'].configured_reader_default_highlight_color.side_effect = config_service.configured_reader_default_highlight_color
     exec(compile(ast.Module(body=[helper, function], type_ignores=[]), str(path), "exec"), namespace)
     namespace["openSettingsFunction"]()
 
     assert saved == {**original, 'pdf_controls_collapsed_by_profile': {'A': {'main': False, 'side': True}},
+                     'pdf_link_preview_size_by_profile': {'A': {'width': 760, 'height': 500}},
+                     'reader_default_highlight_color_by_profile': {'A': '#abcdef', 'B': 'purple'},
                      'epub_controls_collapsed_by_profile': {'A': {'main': False}},
+                     'study_layout_by_profile': {'A': {'book': {'focus': True, 'horizontal': .65}}},
                      'workspace_layouts': {'A': {'Desk': {
                          'version': 1, 'state': 'UXQ=', 'geometry': 'UXQ=',
                          'panes': [{'name': 'incremento_writing_dock', 'kind': 'writing', 'card_id': 42}]}}}}
@@ -548,9 +575,15 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         assert stored["search_remember_logins"] is True
         assert stored["pdf_focus_mode"] is False
         assert stored["epub_focus_mode"] is False
+        assert stored['study_workspace_enabled'] is True
+        namespace['_study_workspace_mod'].apply_settings.assert_called_once_with(stored)
+        assert stored['reader_default_highlight_color_by_profile'] == {
+            'A': 'green' if edit_annotation_default else '#abcdef', 'B': 'purple'}
         namespace['_epub_dock_mod'].apply_epub_focus_preference.assert_called_once_with(stored)
         assert stored['pdf_controls_collapsed_by_profile'] == {'A': {'main': False, 'side': True}}
         assert stored['epub_controls_collapsed_by_profile'] == {'A': {'main': False}}
+        assert stored['pdf_link_preview_size_by_profile'] == saved['pdf_link_preview_size_by_profile']
+        assert stored['study_layout_by_profile'] == saved['study_layout_by_profile']
         assert stored['workspace_layouts'] == saved['workspace_layouts']
         namespace['_pdf_dock_mod'].apply_pdf_focus_preference.assert_called_once_with(stored)
         namespace["_selection_search_mod"].configure_search.assert_called_once_with(stored)
@@ -565,6 +598,8 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         namespace["_configure_companion_browser"].assert_not_called()
         namespace["_selection_search_mod"].configure_search.assert_not_called()
         namespace['_pdf_dock_mod'].apply_pdf_focus_preference.assert_not_called()
+        namespace['_study_workspace_mod'].apply_settings.assert_not_called()
+        namespace['_pdf_dock_mod'].refresh_default_highlight_color.assert_not_called()
 
 
 @pytest.mark.parametrize("choice,expected", [("auto", "auto"),("hr", "hr"),("zh_CN", "zh-Hans")])
@@ -1210,6 +1245,14 @@ class TestIncrementoSettingsDialogPdfAppearance:
 
 
 class TestPdfLinkPreviewZoom:
+    def test_annotation_default_restores_named_and_custom_colors_and_can_be_changed(self):
+        assert IncrementoSettingsDialog({}).reader_default_highlight_color == 'yellow'
+        dialog = IncrementoSettingsDialog({}, current_reader_default_highlight_color='#123abc')
+        assert dialog.reader_default_highlight_color == '#123abc'
+        combo = dialog._reader_default_highlight_color_combo
+        combo.setCurrentIndex(combo.findData('green'))
+        assert dialog.reader_default_highlight_color == 'green'
+
     def test_pdf_link_preview_zoom_restores_and_edits_the_profile_preference(self):
         assert IncrementoSettingsDialog({}).pdf_link_preview_zoom == 1.5
         dialog = IncrementoSettingsDialog({}, current_pdf_link_preview_zoom=2.5)

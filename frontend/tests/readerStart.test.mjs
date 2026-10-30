@@ -4,7 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 import { createReaderLanguage, normalizeReaderLocale } from '../src/i18n.mjs';
 import { normalizePdfAppearanceMode } from '../src/pdfAppearance.mjs';
-import {DEFAULT_PDF_LINK_PREVIEW_ZOOM, normalizePdfLinkPreviewZoom} from '../src/pdfLinkPreview.mjs';
+import {DEFAULT_PDF_LINK_PREVIEW_ZOOM, normalizePdfLinkPreviewZoom, normalizePdfLinkPreviewSize} from '../src/pdfLinkPreview.mjs';
 import {pdfFocusState} from '../src/pdfFocus.mjs';
 
 // Exercise the actual global bridge registration without mounting the canvas or
@@ -22,7 +22,8 @@ function registerBridge(pending = null, focus = null) {
     createReaderLanguage,
     normalizeReaderLocale,
     normalizePdfAppearanceMode,
-    DEFAULT_PDF_LINK_PREVIEW_ZOOM, normalizePdfLinkPreviewZoom,
+    DEFAULT_PDF_LINK_PREVIEW_ZOOM, normalizePdfLinkPreviewZoom, normalizePdfLinkPreviewSize,
+    setLinkPreviewSize: value => {state.previewSize = value;},
     setLanguage: (value) => { state.language = value; },
     setLocale: () => {},
     setAppearanceMode: (value) => { state.appearance = value; },
@@ -34,6 +35,7 @@ function registerBridge(pending = null, focus = null) {
     setLinkPreviewZoom: (value) => {state.previewZoom = value;},
     setPageLinksDocument: update => {state.pageLinksDocument = update(state.pageLinksDocument);},
     setHighlightColorPopover: value => {state.colorPopover = value;},
+    applyDefaultHighlightColor: value => {state.defaultHighlightColor = value;},
     startViewer: (...args) => state.starts.push(args),
     clampScrollRatio: (value) => value,
     snapshotMode: {setActive: value => {state.snapshotActive = value;}},
@@ -61,6 +63,14 @@ function registerBridge(pending = null, focus = null) {
   vm.runInNewContext(source.slice(start, finish), scope);
   return { scope, state };
 }
+
+test('PDF startup restores the profile default and older startup calls reset it to yellow', () => {
+  const {scope, state} = registerBridge({cardId: 42, filename: 'book.pdf', page: 1,
+    defaultHighlightColor: '#123abc'});
+  assert.equal(state.defaultHighlightColor, '#123abc');
+  scope.window.incrementoPdfStart(99, 'other.pdf', 1, 1);
+  assert.equal(state.defaultHighlightColor, 'yellow');
+});
 
 test('an empty search reply does not swallow the next query or close an open Find field', () => {
   const {scope, state} = registerBridge();
@@ -156,6 +166,16 @@ test('PDF startup restores profile preview zoom, accepts live Settings changes, 
   assert.equal(state.previewZoom, 3);
   scope.window.incrementoPdfStart(43, 'next.pdf', 1, 1);
   assert.equal(state.previewZoom, 1.5);
+});
+
+test('pending and direct PDF startup restore preview dimensions and an unsaved profile starts with defaults', () => {
+  const size = {width: 760, height: 500};
+  const {scope, state} = registerBridge({cardId: 42, filename: 'source.pdf', page: 1, linkPreviewSize: size});
+  assert.deepEqual(state.previewSize, size);
+  scope.window.incrementoPdfStart(43, 'next.pdf', 1, 1, ...Array(21), size);
+  assert.deepEqual(state.previewSize, size);
+  scope.window.incrementoPdfStart(44, 'other-profile.pdf', 1, 1);
+  assert.equal(state.previewSize, null);
 });
 
 test('starting another PDF retires the visible page-link document generation', () => {

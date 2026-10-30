@@ -40,6 +40,16 @@ function paintedRects(nodes) {
   }));
 }
 
+test('line marks render a non-blocking SVG and remain resizable without a background fill', () => {
+  const mark = {id: 'line', color: 'blue', pdf_annotation: {kind: 'Underline', incremento_style: 'dashed', xref: 7},
+    rects: [{x: 10, y: 20, w: 100, h: 16}]};
+  const nodes = render([mark]);
+  assert.ok(nodes.some(n => n.type === 'path' && n.props.strokeDasharray === '4 3'));
+  assert.equal(nodes.find(n => n.props?.style?.zIndex === 1).props.style.background, 'transparent');
+  assert.ok(nodes.some(n => n.props?.className === 'incremento-pdf-resize-action'));
+  assert.equal(render([mark], {nativeHighlightsVisible: true}).some(n => n.type === 'path' && n.props.strokeDasharray), false);
+});
+
 test('PDF highlights keep their color and other actions when the persistent setting hides the delete X', () => {
   const highlight = { id: 'saved', color: 'yellow', note: 'A note', rects: [{ x: 10, y: 20, w: 100, h: 20 }] };
   const visible = render([highlight]);
@@ -271,7 +281,7 @@ test('custom hex highlights paint their own color before PDF sync', () => {
   }
 });
 
-test('annotation note icons are transparent until hover or keyboard focus and still edit the chosen note', () => {
+test('annotation note icons share hover and keyboard group visibility and still edit the chosen note', () => {
   for (const note of ['', 'Saved annotation note']) {
     const edits = [];
     const nodes = render([{ id: 'annotation', color: 'yellow', note, rects: [
@@ -281,8 +291,10 @@ test('annotation note icons are transparent until hover or keyboard focus and st
     const action = nodes.find(node => node.type === 'button' && node.props.className === 'incremento-pdf-note-action');
 
     assert.ok(action, 'the note action must use the hover-only visibility rules');
-    assert.match(css, /\.incremento-pdf-note-action\s*\{\s*opacity:\s*0\s*;/);
-    assert.match(css, /\.incremento-pdf-highlight-actions:hover\s+\.incremento-pdf-note-action\s*,\s*\.incremento-pdf-note-action:focus-visible\s*\{\s*opacity:\s*1\s*;/);
+    assert.match(css, /\.incremento-pdf-highlight-actions\s*>\s*button\s*\{\s*opacity:\s*0\s*;\s*pointer-events:\s*none\s*;/);
+    assert.match(css, /\.incremento-pdf-highlight-actions\[data-highlight-hovered\]\s*>\s*button/);
+    assert.match(css, /\.incremento-pdf-highlight-actions:hover\s*>\s*button/);
+    assert.match(css, /\.incremento-pdf-highlight-actions:focus-within\s*>\s*button\s*\{\s*opacity:\s*1\s*;\s*pointer-events:\s*auto\s*;/);
     assert.ok(nodes.some(node => node.props?.className === 'incremento-pdf-highlight-actions'));
     assert.equal(action.props['aria-label'], note ? 'Edit highlight note' : 'Add highlight note');
     assert.notEqual(action.props.tabIndex, -1, 'keyboard users must still be able to reach the action');
@@ -327,24 +339,25 @@ test('resize controls are offered only for editable text highlights', () => {
   const actions = nodes.filter(node => node.props?.className === 'incremento-pdf-resize-action');
   const css = nodes.filter(node => node.type === 'style').map(node => node.props.children).join('\n');
 
-  assert.equal(actions.length, 1);
-  assert.match(css, /\.incremento-pdf-resize-action\s*\{\s*opacity:\s*0\s*;/);
-  assert.match(css, /\.incremento-pdf-highlight-actions:hover\s+\.incremento-pdf-resize-action/);
+  assert.equal(actions.length, 2);
+  assert.match(css, /\.incremento-pdf-highlight-actions\s*>\s*button\s*\{\s*opacity:\s*0\s*;/);
+  assert.match(css, /\.incremento-pdf-highlight-actions:hover\s*>\s*button/);
   actions[0].props.onClick();
-  assert.deepEqual(activated, ['text']);
+  actions[1].props.onClick();
+  assert.deepEqual(activated, ['text', 'underline']);
 });
 
-test('annotation color action opens its palette even with delete hidden and excludes snapshots', () => {
+test('the annotation color circle opens the color picker directly even with delete hidden and excludes snapshots', () => {
   const opened = [];
   const nodes = render([
     { id: 'text', color: 'yellow', rects: [{ x: 10, y: 20, w: 100, h: 20 }] },
     { id: 'snapshot', color: 'snapshot', rects: [{ x: 10, y: 50, w: 100, h: 20 }] },
   ], { showHighlightDeleteButtons: false,
-    showHighlightColorPopover: (highlight, point) => opened.push([highlight.id, point]) });
+    editHighlightColor: highlight => opened.push(highlight.id) });
   const actions = nodes.filter(node => node.props?.['aria-label'] === 'Choose annotation color');
   assert.equal(actions.length, 1);
   actions[0].props.onClick({ currentTarget: { getBoundingClientRect: () => ({ left: 20, width: 16, bottom: 30 }) } });
-  assert.deepEqual(opened, [['text', { clientX: 28, clientY: 30 }]]);
+  assert.deepEqual(opened, ['text']);
 });
 
 test('finishing a saved PDF highlight drag updates it in place and keeps its pins until dismissal', () => {
@@ -453,6 +466,7 @@ test('creating a text highlight saves merged PDF coordinates and preserves text,
     pageRef: { current: 6 },
     cardIdRef: { current: 42 },
     hlColorRef: { current: 'purple' },
+    defaultHighlightColorRef: { current: 'yellow' }, markStyleRef: {current: 'highlight'},
     resizeHighlightRef: { current: null },
     highlightRangeCacheRef: { current: new Map() },
     setResizingHighlightId: value => activated.push(value),
@@ -511,6 +525,7 @@ for (const outcome of ['selected', 'cancelled', 'page-changed']) {
         getBoundingClientRect: () => ({ left: 0, top: 0 }) } },
       lastScaleRef: { current: 1 }, pageRef: { current: 6 }, cardIdRef: { current: 42 },
       hlColorRef: { current: 'yellow' }, pendingHighlightSelectionRef: { current: null },
+      defaultHighlightColorRef: { current: 'yellow' }, markStyleRef: {current: 'highlight'}, applyDefaultHighlightColor: () => {},
       recolorHighlight: () => {},
       resizeHighlightRef: { current: null },
       highlightRangeCacheRef: { current: new Map() },

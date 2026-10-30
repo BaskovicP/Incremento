@@ -845,3 +845,9 @@ msgstr "Zapamti prijave na web-stranice"
 #. Web search preferences
 msgid "settings_search_remember_logins_hint"
 msgstr "Odnosi se samo na prozor pretraživanja. Kolačići i pohrana web-stranica spremaju se zasebno za svaki Anki profil. Isključivanje zatvara prozor i koristi privremenu pohranu; prethodno spremljene prijave ostaju spremljene, ali se ne koriste do ponovnog uključivanja. Neke web-stranice zahtijevaju Otvori u pregledniku."
+
+msgid "settings_study_workspace_enabled"
+msgstr "Koristi radni prostor za učenje tijekom ponavljanja"
+
+msgid "settings_study_workspace_hint"
+msgstr "Prikaži prikaze Kartica, Dokumenti i Videozapisi tijekom ponavljanja. Isključi za uobičajeni Anki prikaz kartice. Spremljene poveznice ostaju dostupne u izborniku Resursi za učenje na kartici. Primjenjuje se nakon spremanja postavki."

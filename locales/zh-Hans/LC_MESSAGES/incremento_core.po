@@ -845,3 +845,9 @@ msgstr "记住网站登录状态"
 #. Web search preferences
 msgid "settings_search_remember_logins_hint"
 msgstr "仅适用于搜索窗口。为每个 Anki 配置单独保存 Cookie 和网站存储。关闭此选项会关闭搜索窗口并使用临时存储；以前保存的登录状态会保留，但在重新启用前不会使用。某些网站需要使用“在浏览器中打开”。"
+
+msgid "settings_study_workspace_enabled"
+msgstr "复习时使用学习工作区"
+
+msgid "settings_study_workspace_hint"
+msgstr "复习时显示卡片、文档和视频视图。关闭后使用 Anki 的常规卡片布局。已保存的关联仍可从卡片的学习资源菜单访问。保存设置后生效。"

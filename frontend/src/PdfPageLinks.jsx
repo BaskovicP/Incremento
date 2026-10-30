@@ -26,13 +26,14 @@ export function usePdfPageLinks({cardId, page, generation, enabled = true, onCom
   return {cardId, page, generation, enabled, links: current ? view.links : [],
     loading: !current || view.loading, error: current && view.error,
     create: () => model.current.create(), manage: () => model.current.manage(),
+    recordings: () => model.current.recordings(), linkRecording: () => model.current.linkRecording(),
     remove: row => model.current.remove(row),
     jump: (row, mode) => model.current.jump(row, mode)};
 }
 
 /** A compact toolbar button; its dismissible panel never changes page geometry. */
 export default function PdfPageLinks({linksState, tr}) {
-  const {cardId, page, generation, enabled, links, loading, error, create, manage, jump, remove} = linksState;
+  const {cardId, page, generation, enabled, links, loading, error, create, manage, jump, remove, recordings, linkRecording} = linksState;
   const [openedFor, setOpenedFor] = useState(null);
   const root = useRef(null), trigger = useRef(null), panel = useRef(null);
   const key = `${cardId}:${page}:${generation}`;
@@ -75,6 +76,8 @@ export default function PdfPageLinks({linksState, tr}) {
         <strong style={{whiteSpace: 'nowrap'}}>{tr('reader_page_links')}</strong>
         <button type="button" onClick={() => act(create)}>{tr('reader_link_this_page')}</button>
         <button type="button" onClick={() => act(manage)}>{tr('reader_reference_links')}</button>
+        <button type="button" onClick={() => act(linkRecording)}>{tr('study_link_recording')}</button>
+        <button type="button" onClick={() => act(recordings)}>{tr('study_resources')}</button>
         <button type="button" aria-label={tr('reader_close')} onClick={close} style={{marginLeft: 'auto'}}>×</button>
       </div>
       <div style={{display: 'flex', flexDirection: 'column', gap: 6}} aria-live="polite">

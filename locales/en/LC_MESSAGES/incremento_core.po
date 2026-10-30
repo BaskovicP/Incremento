@@ -845,3 +845,9 @@ msgstr "Remember website logins"
 #. Web search preferences
 msgid "settings_search_remember_logins_hint"
 msgstr "Applies to the search popup only. Saves cookies and website storage separately for each Anki profile. Turning this off closes the popup and uses temporary storage; previously saved logins are retained but not used until you turn it on again. Some websites require Open in Browser."
+
+msgid "settings_study_workspace_enabled"
+msgstr "Use study workspace during review"
+
+msgid "settings_study_workspace_hint"
+msgstr "Show Card, Documents, and Videos views during review. Turn off to use Anki's normal card layout. Saved links remain available from the card's Study resources menu. Applies when you save Settings."

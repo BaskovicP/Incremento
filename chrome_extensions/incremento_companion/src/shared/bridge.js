@@ -9,13 +9,22 @@ const BRIDGE_ERROR_CODES = new Set([
   "authorization_required", "bridge_busy", "unknown_path", "invalid_request",
   "operation_failed", "unsupported_transfer_encoding", "invalid_content_length",
   "request_too_large", "request_timeout", "incomplete_body", "invalid_json",
+  "webpage_verification_required",
 ]);
 
 async function parseBridgeResponse(response) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data?.ok) {
-    const error = new Error(String(data?.error || t("bridge_request_failed", { status: response.status })));
+    const serverMessage = typeof data?.error === "string"
+      ? data.error.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 1000)
+      : "";
+    const error = new Error(serverMessage || t("bridge_request_failed", { status: response.status }));
     error.code = typeof data?.error_code === "string" ? data.error_code : "";
+    error.serverMessage = serverMessage;
+    error.httpStatus = Number.isInteger(response.status) && response.status >= 100 && response.status <= 599
+      ? response.status : null;
+    error.backendStage = ["validation", "preparation", "card_creation"].includes(data?.error_stage)
+      ? data.error_stage : "";
     throw error;
   }
   return data;

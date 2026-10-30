@@ -63,7 +63,7 @@ def test_old_profile_is_upgraded_once_with_stage_timings_and_preserved_search(tm
     assert result == {"files_ms": 250, "database_ms": 750}
     assert db._connection_manager.connection_count() == 0
     with sqlite3.connect(path) as conn:
-        assert conn.execute("PRAGMA user_version").fetchone() == (19,)
+        assert conn.execute("PRAGMA user_version").fetchone() == (23,)
         assert conn.execute("SELECT text FROM pdf_text_fts WHERE pdf_text_fts MATCH 'preserved'").fetchall() == [
             ("preserved text",)]
     assert not storage.storage_preparation_needed(str(tmp_path), "A")
@@ -81,7 +81,7 @@ def test_preparation_moves_legacy_storage_before_opening_the_captured_profile(tm
     assert not legacy.exists() and not path.exists()
     with sqlite3.connect(target) as conn:
         assert conn.execute("SELECT text FROM pdf_text_index").fetchall() == [("preserved text",)]
-        assert conn.execute("PRAGMA user_version").fetchone() == (19,)
+        assert conn.execute("PRAGMA user_version").fetchone() == (23,)
 
 
 def test_failed_upgrade_rolls_back_and_closes_the_worker_connection(tmp_path, monkeypatch):

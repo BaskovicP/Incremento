@@ -81,7 +81,14 @@ def _remove_created_paths(profile_root: Path, relpaths: list[str]) -> bool:
 class ImportOperation:
     """Track one new content import and compensate before a card exists."""
 
-    def __init__(self, addon_dir: str, profile: str, operation_kind: str) -> None:
+    def __init__(self, addon_dir: str, profile: str, operation_kind: str, *, document_details=None) -> None:
+        if document_details is not None:
+            try:
+                from .document_lists import normalize_document_details
+            except ImportError:
+                from document_lists import normalize_document_details
+            document_details = normalize_document_details(document_details)
+        self.document_details = document_details
         self.addon_dir = str(addon_dir)
         self.profile = str(profile)
         self.operation_kind = str(operation_kind or "unknown").strip().lower() or "unknown"
@@ -96,9 +103,10 @@ class ImportOperation:
         with conn:
             conn.execute(
                 "INSERT INTO import_journal("
-                "operation_id, content_id, operation_kind, state, created_at, updated_at"
-                ") VALUES (?, ?, ?, 'pending', ?, ?)",
-                (self.operation_id, self.content_id, self.operation_kind, now, now),
+                "operation_id, content_id, operation_kind, state, created_at, updated_at, document_details"
+                ") VALUES (?, ?, ?, 'pending', ?, ?, ?)",
+                (self.operation_id, self.content_id, self.operation_kind, now, now,
+                 json.dumps(document_details, ensure_ascii=False) if document_details is not None else ""),
             )
 
     def _persist(self, *, state: str = "pending", error_code: str = "") -> None:
@@ -135,6 +143,7 @@ class ImportOperation:
         conn = get_connection(self.addon_dir, self.profile)
         now = int(time.time())
         with conn:
+            _commit_document_details(conn, self.operation_kind, storage_key, self.document_details)
             conn.execute(
                 "DELETE FROM content_items "
                 "WHERE kind=? AND card_id=? AND content_id!=?",
@@ -197,6 +206,16 @@ class ImportOperation:
         return False
 
 
+def _commit_document_details(conn, kind, storage_key, details, *, recovering=False):
+    if details is None or kind not in {"pdf", "epub"}:
+        return
+    try:
+        from .document_lists import write_document_details
+    except ImportError:
+        from document_lists import write_document_details
+    write_document_details(conn, kind, storage_key, details, recovering=recovering)
+
+
 def recover_interrupted_imports(
     addon_dir: str,
     profile: str,
@@ -208,7 +227,7 @@ def recover_interrupted_imports(
     conn = get_connection(addon_dir, profile)
     rows = conn.execute(
         "SELECT operation_id, content_id, operation_kind, card_id, note_id, "
-        "created_relpaths FROM import_journal WHERE state='pending'"
+        "created_relpaths,document_details FROM import_journal WHERE state='pending'"
     ).fetchall()
     recovered = 0
     rolled_back = 0
@@ -216,7 +235,7 @@ def recover_interrupted_imports(
     root = get_user_files_dir(addon_dir, profile)
     matches = dict(content_matches or {})
 
-    for operation_id, content_id, kind, card_id, note_id, relpaths_json in rows:
+    for operation_id, content_id, kind, card_id, note_id, relpaths_json, details_json in rows:
         normalized_card_id = int(card_id or 0)
         normalized_note_id = int(note_id) if note_id not in (None, 0) else None
         matched = matches.get(str(content_id or ""))
@@ -230,7 +249,26 @@ def recover_interrupted_imports(
         relpaths = _decode_relpaths(relpaths_json)
         now = int(time.time())
         if normalized_card_id > 0 and normalized_card_id in live_card_ids:
+            details = None
+            if details_json:
+                try:
+                    if len(details_json) > 16_384:
+                        raise ValueError("Oversized document details.")
+                    try:
+                        from .document_lists import document_key, normalize_document_details
+                    except ImportError:
+                        from document_lists import document_key, normalize_document_details
+                    document_key(kind, relpaths[0] if relpaths else "")
+                    details = normalize_document_details(json.loads(details_json))
+                except (TypeError, ValueError):
+                    with conn:
+                        conn.execute("UPDATE import_journal SET error_code='invalid_document_details' WHERE operation_id=?",
+                                     (operation_id,))
+                    continue
             with conn:
+                if details is not None:
+                    _commit_document_details(conn, kind, relpaths[0] if relpaths else "",
+                                             details, recovering=True)
                 conn.execute(
                     "DELETE FROM content_items "
                     "WHERE kind=? AND card_id=? AND content_id!=?",

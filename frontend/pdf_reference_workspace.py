@@ -97,9 +97,14 @@ def create_reference_view(parent, snapshot, state, handler, *, page_y=None, exce
         if not ok or not state.is_current(get_active_profile(), nonce):
             return
         prefix = '__incremento_reference__:' + nonce + ':'
+        # The lightweight chooser sends JSON actions; the full reader and
+        # shared PDF byte transport send prefixed command strings.
+        payload = "{action:'reader',command:message}"
+        if not full_reader:
+            payload = "message.startsWith('incremento_pdf_range:') ? " + payload + " : JSON.parse(message)"
         bridge = (
             'window.incrementoReferenceCommand = payload => console.info(' + json.dumps(prefix) + ' + JSON.stringify(payload));'
-            "window.pycmd = message => window.incrementoReferenceCommand({action:'reader',command:message});")
+            'window.pycmd = message => window.incrementoReferenceCommand(' + payload + ');')
         page.runJavaScript(
             bridge +
             'window._incReferencePending=' + json.dumps(config) + ';'
@@ -113,13 +118,14 @@ def create_reference_view(parent, snapshot, state, handler, *, page_y=None, exce
 
 
 class ReferenceWindow(QDockWidget):
-    def __init__(self, snapshot, *, profile, page, scroll_ratio, max_page, beside, owner, excerpt='', page_y=None, independent=False, zoom=1):
-        super().__init__(snapshot["title"], mw)
+    def __init__(self, snapshot, *, profile, page, scroll_ratio, max_page, beside, owner, excerpt='', page_y=None, independent=False, zoom=1, embedded=False):
+        super().__init__(snapshot["title"], owner if embedded else mw)
+        self.embedded = embedded
         self.state = PdfReaderState(profile, snapshot["card_id"], snapshot["filename"],
                                     page=min(max(1, page), max_page), scroll_ratio=scroll_ratio,
                                     max_page=max_page, zoom=zoom)
         self.owner = owner
-        self.independent = independent
+        self.independent = independent or embedded
         self._source_path = snapshot['path']
         self._snapshot = dict(snapshot)
         try:
@@ -140,12 +146,17 @@ class ReferenceWindow(QDockWidget):
         self.view.customContextMenuRequested.connect(self.show_context_menu)
         self.view.loadFinished.connect(lambda ok: self.reader.sync_annotations() if ok and self.reader.current() else None)
         self.setWidget(self.view)
-        mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
-        self.setFloating(not beside)
-        if beside:
-            self.pin()
+        if embedded:
+            from aqt.qt import QWidget
+            self.setTitleBarWidget(QWidget(self))
+            self.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
         else:
-            self.resize(720, 650)
+            mw.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
+            self.setFloating(not beside)
+            if beside:
+                self.pin()
+            else:
+                self.resize(720, 650)
         self.topLevelChanged.connect(lambda floating: self._claim_slot())
         self.reader.service._annotation_queue.retain(self._annotation_key)
 
@@ -164,7 +175,7 @@ class ReferenceWindow(QDockWidget):
                 window.close()
 
     def pin(self):
-        if self.state.closed:
+        if self.state.closed or getattr(self, 'embedded', False):
             return
         self.setFloating(False)
         self._claim_slot()
@@ -201,9 +212,25 @@ class ReferenceWindow(QDockWidget):
         def copy(anchor):
             if self.reader.current():
                 self.command('copy', anchor)
+        def populate(menu, anchor):
+            if not self.reader.current() or not isinstance(anchor, dict):
+                return
+            try:
+                from .recording_link_dialog import add_context_actions
+                from ..backend.recording_links import normalize_source
+            except ImportError:
+                from recording_link_dialog import add_context_actions
+                from backend.recording_links import normalize_source
+            try:
+                source = normalize_source(dict(kind='pdf', card_id=self.state.card_id,
+                    page=anchor['page'], scroll=anchor.get('scrollRatio', 0),
+                    quote=str(self.view.selectedText() or '')[:2000]))
+            except (KeyError, ValueError):
+                return
+            add_context_actions(menu, source, owner=self, is_current=self.reader.current)
         return show_reader_anchor_context_menu(self.view, position,
             resolver_script=f'window.incrementoPdfAnchorAtPoint?.({x}, {y}) || null;',
-            on_copy=copy, action_label=t('reader_copy_link_to_place'))
+            on_copy=copy, action_label=t('reader_copy_link_to_place'), populate_menu=populate)
 
     def reader_config(self, result):
         s, state = self.reader.service, self.state
@@ -219,7 +246,9 @@ class ReferenceWindow(QDockWidget):
             'scroll_to_top': s.configured_scroll_to_top_on_page_change(),
             'show_delete': s.configured_pdf_show_highlight_delete_buttons(),
             'controls_collapsed': s.configured_pdf_controls_collapsed(profile=state.profile, reading_only=True),
-            'link_preview_zoom': s.configured_pdf_link_preview_zoom()}
+            'default_highlight_color': s.configured_reader_default_highlight_color(s._config(), state.profile),
+            'link_preview_zoom': s.configured_pdf_link_preview_zoom(),
+            'link_preview_size': s.configured_pdf_link_preview_size(profile=state.profile)}
 
     def reload_reader(self, result):
         if not self.reader.current():
@@ -412,6 +441,12 @@ def focused_reference():
         if not window.state.closed and (focus is window.view or window.view.isAncestorOf(focus)):
             return window
     return None
+
+
+def refresh_default_highlight_color(profile, color):
+    for window in list(_windows):
+        if window.state.profile == profile and not window.state.closed:
+            window.reader.reply('incrementoSetDefaultHighlightColor', color)
 
 
 def refresh_reference_readers(profile, card_id, kind, *, annotation_result=None):

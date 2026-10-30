@@ -87,7 +87,25 @@ function viewer(props = {}, startup = {}) {
   const button = (nodes, text) => nodes.find(node => node.type === 'button' && (
     node.props.children === text || node.props.title === text
   ));
-  return { render, layer, button, commands, renderState, stateWrites: () => stateWrites,
+  const select = () => {
+    const node = {};
+    renderState.textLayerRef.current = {contains: value => value === node,
+      getBoundingClientRect: () => ({left: 0, top: 0})};
+    renderState.lastScaleRef.current = 1;
+    dom.getSelection = () => ({isCollapsed: false, rangeCount: 1,
+      toString: () => 'Selected passage', removeAllRanges: () => {},
+      getRangeAt: () => ({commonAncestorContainer: node,
+        getClientRects: () => [{left: 10, top: 20, width: 100, height: 20}]})});
+  };
+  return { render, layer, button, commands, renderState, select, stateWrites: () => stateWrites,
+    highlight: () => {
+      select();
+      let handler;
+      dom.addEventListener = (name, callback) => { if (name === 'keydown') handler = callback; };
+      effects.findLast(run => run.toString().includes('e.code === "KeyH"'))();
+      handler({code: 'KeyH', ctrlKey: true, preventDefault() {}, stopPropagation() {}});
+      return JSON.parse(commands.at(-1).slice('incremento_pdf_hl_add:'.length)).highlight;
+    },
     bridge: () => {
       dom._incPdfPending = null;
       effects.findLast(run => run.toString().includes('window.incrementoPdfStart ='))();
@@ -104,6 +122,88 @@ function viewer(props = {}, startup = {}) {
     },
     pageLinks: nodes => nodes.filter(node => node.type === PdfPageLinks), elements,
     preview: nodes => nodes.find(node => node.type === PdfLinkPreview) };
+}
+
+for (const readingOnly of [false, true]) {
+  for (const controlsCollapsed of [false, true]) {
+    test(`Fit Width is available beside zoom in ${controlsCollapsed ? 'compact' : 'expanded'} ${readingOnly ? 'side' : 'main'} controls`, () => {
+      const ui = viewer({readingOnly}, {_incPdfPending: {controlsCollapsed}});
+      let clicks = 0;
+      ui.renderState.fitWidth = () => clicks++;
+      const button = ui.render().find(node => node.type === 'button' && node.props.children === 'Fit Width');
+      assert.ok(button, 'Fit Width must be directly available');
+      assert.equal(button.props['aria-label'], 'Fit Width');
+      button.props.onClick();
+      assert.equal(clicks, 1);
+    });
+  }
+
+  test(`hovering a highlight reveals only its action group without rerendering the reader (${readingOnly ? 'side' : 'main'})`, () => {
+    const ui = viewer({readingOnly});
+    ui.render();
+    ui.bridge().incrementoReceivePdfHighlights([
+      {id: 'first', page: 1, color: 'yellow', rects: [{x: 10, y: 20, w: 100, h: 20}]},
+      {id: 'second', page: 1, color: 'green', rects: [{x: 10, y: 70, w: 100, h: 20}]},
+    ]);
+    const actions = ['first', 'second'].map(id => ({dataset: {highlightId: id}, hovered: false,
+      setAttribute() {this.hovered = true;}, removeAttribute() {this.hovered = false;}}));
+    ui.renderState.containerRef.current.querySelectorAll = () => actions;
+    const wrapper = ui.render().find(node => node.props?.id === 'pdf-canvas-wrapper');
+    const writes = ui.stateWrites();
+    wrapper.props.onMouseMove({clientX: 30, clientY: 25});
+    assert.deepEqual(actions.map(action => action.hovered), [true, false]);
+    for (let x = 30; x < 100; x++) wrapper.props.onMouseMove({clientX: x, clientY: 25});
+    wrapper.props.onMouseMove({clientX: 500, clientY: 5,
+      target: {closest: () => actions[0]}});
+    assert.deepEqual(actions.map(action => action.hovered), [true, false], 'Moving onto the action group keeps its buttons clickable');
+    wrapper.props.onMouseMove({clientX: 30, clientY: 25, buttons: 1});
+    assert.deepEqual(actions.map(action => action.hovered), [false, false], 'Text selection must not reveal overlapping buttons');
+    wrapper.props.onMouseMove({clientX: 30, clientY: 75});
+    assert.deepEqual(actions.map(action => action.hovered), [false, true]);
+    wrapper.props.onMouseLeave();
+    assert.deepEqual(actions.map(action => action.hovered), [false, false]);
+    assert.equal(ui.stateWrites(), writes);
+    assert.deepEqual(ui.commands, []);
+  });
+
+  test(`the annotation circle chooses an ad hoc color and keeps the shortcut default (${readingOnly ? 'side' : 'main'})`, () => {
+    const ui = viewer({readingOnly});
+    ui.render();
+    const original = {id: 'saved', page: 1, color: 'green', text: 'Passage', note: 'Keep note',
+      linked_note_id: 9, rects: [{x: 10, y: 20, w: 100, h: 20}]};
+    ui.bridge().incrementoReceivePdfHighlights([original]);
+    ui.layer(ui.render()).props.editHighlightColor(original);
+    assert.equal(ui.commands.at(-1), 'incremento_pdf_hl_color:{"cardId":42,"currentColor":"green"}');
+    assert.equal(ui.render().some(node => node.props?.role === 'dialog'), false,
+      'The circle opens the full picker directly, as in EPUB');
+    ui.bridge().incrementoPickPdfHighlightColor('#123abc');
+    const saved = JSON.parse(ui.commands.at(-1).slice('incremento_pdf_hl_update:'.length));
+    assert.deepEqual(saved, {cardId: 42, highlight: {...original, color: '#123abc'}});
+    assert.equal(ui.highlight().color, 'yellow');
+  });
+
+  test(`shortcut highlights keep the default after a one-off toolbar color (${readingOnly ? 'side' : 'main'})`, () => {
+    const ui = viewer({readingOnly});
+    const blue = ui.render().find(node => node.props?.['aria-label'] === 'Use blue highlight color');
+    blue.props.onClick();
+    assert.equal(ui.highlight().color, 'yellow');
+  });
+
+  test(`the default color button changes future highlights without recoloring a selection (${readingOnly ? 'side' : 'main'})`, () => {
+    const ui = viewer({readingOnly});
+    ui.render();
+    ui.bridge().incrementoSetDefaultHighlightColor('yellow');
+    ui.select();
+    const button = ui.render().find(node => node.type === 'button'
+      && node.props['aria-label'] === 'Default color');
+    assert.ok(button, 'the palette needs an explicit default color control');
+    button.props.onClick();
+    assert.deepEqual(JSON.parse(ui.commands.at(-1).split(':').slice(1).join(':')),
+      {cardId: 42, currentColor: 'yellow', defaultColor: true});
+    ui.bridge().incrementoPickPdfHighlightColor('#123456');
+    assert.equal(ui.commands.some(command => command.startsWith('incremento_pdf_hl_add:')), false);
+    assert.equal(ui.highlight().color, '#123456');
+  });
 }
 
 test('a saved workspace captures and restores the actual PDF toolbar without writing a new preference', () => {
@@ -142,6 +242,20 @@ test('hovering notes and unrelated toolbar updates reuse the page annotation ind
 
 // Contract: a plain annotation click exposes a small in-page palette. Recoloring
 // updates only that annotation, keeps its metadata, and cannot target another page.
+test('restyling a passage keeps its notes, links, color, and range in the current reader', () => {
+  const ui = viewer();
+  ui.render();
+  const original = {id: 'saved', page: 1, color: 'blue', note: 'Keep note', linked_note_id: 9,
+    rects: [{x: 10, y: 20, w: 100, h: 20}]};
+  ui.bridge().incrementoReceivePdfHighlights([original]);
+  ui.render().find(node => node.props?.id === 'pdf-canvas-wrapper').props.onClick({clientX: 30, clientY: 25});
+  ui.button(ui.render(), 'Squiggly').props.onClick();
+  const update = JSON.parse(ui.commands.at(-1).split(':').slice(1).join(':'));
+  assert.deepEqual(update, {cardId: 42, highlight: {...original,
+    style: 'squiggly', pdf_annotation: {kind: 'Squiggly', incremento_style: 'squiggly', opacity: 1}}});
+  assert.equal(ui.layer(ui.render()).props.pageHighlights[0].note, 'Keep note');
+});
+
 for (const readingOnly of [false, true]) {
   test(`clicking a saved PDF annotation offers quick colors and preserves its metadata (${readingOnly ? 'side' : 'main'})`, () => {
     const ui = viewer({ readingOnly });
@@ -151,9 +265,9 @@ for (const readingOnly of [false, true]) {
     ui.bridge().incrementoReceivePdfHighlights([original]);
     ui.render().find(node => node.props?.id === 'pdf-canvas-wrapper').props.onClick({ clientX: 30, clientY: 25 });
     const popup = ui.render().find(node => node.props?.role === 'dialog'
-      && node.props['aria-label'] === 'Choose annotation color');
+      && node.props['aria-label'] === 'Annotation appearance');
     assert.ok(popup, 'clicking the annotation must open its color palette');
-    const colors = ui.elements(popup).filter(node => node.type === 'button' && node.props['aria-pressed'] !== undefined);
+    const colors = ui.elements(popup).filter(node => node.type === 'button' && node.props['aria-pressed'] !== undefined && node.props.title?.startsWith('Highlight '));
     assert.equal(colors.length, 8);
     assert.equal(ui.button(ui.elements(popup), 'Highlight yellow').props['aria-pressed'], true);
     ui.button(ui.elements(popup), 'Highlight blue').props.onClick();
@@ -294,6 +408,14 @@ test('changing footnote preview zoom updates the open preview and persists only 
   preview(render()).props.onZoom(2.5);
   assert.equal(preview(render()).props.zoom, 2.5);
   assert.deepEqual(commands, ['incremento_pdf_link_preview_zoom:{"cardId":42,"zoom":2.5}']);
+});
+
+test('resizing a footnote preview retains its dimensions and saves only its profile preference', () => {
+  const {render, preview, commands} = viewer();
+  preview(render()).props.onResize({width: 760, height: 500});
+  assert.deepEqual(preview(render()).props.size, {width: 760, height: 500});
+  assert.deepEqual(commands, ['incremento_pdf_link_preview_size:{"cardId":42,"size":{"width":760,"height":500}}']);
+  assert.equal(preview(render()).props.zoom, 1.5);
 });
 
 test('the Highlights panel hides controls across pages and restores them without writing annotations', () => {

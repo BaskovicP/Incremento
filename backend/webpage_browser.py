@@ -247,6 +247,24 @@ async def _capture_async(request: dict, executable: str) -> bytes:
             await page.evaluate(_PREPARE_PAGE)
             if resources.verification_required or requires_verification(await page.content()):
                 raise WebpageVerificationRequired()
+            if request.get("output_kind") == "html":
+                captured = await page.evaluate("""() => {
+                    const clone = document.documentElement.cloneNode(true);
+                    const images = clone.querySelectorAll('img');
+                    document.querySelectorAll('img').forEach((img, index) => {
+                        if (img.currentSrc) { images[index].src = img.currentSrc; images[index].removeAttribute('srcset'); }
+                    });
+                    const styles = clone.querySelectorAll('style');
+                    document.querySelectorAll('style').forEach((style, index) => {
+                        try { styles[index].textContent = Array.from(style.sheet.cssRules, rule => rule.cssText).join('\\n'); }
+                        catch (_) {}
+                    });
+                    return clone.outerHTML;
+                }""")
+                result = (page.url + "\n" + captured).encode("utf-8")
+                if len(result) > MAX_HTML_BYTES:
+                    raise ValueError("Webpage HTML exceeds the size limit.")
+                return result
             if request["style"] == "article" or request["include_links"]:
                 captured = await page.evaluate("""() => {
                     document.querySelectorAll('img').forEach(img => { if (img.currentSrc) { img.src = img.currentSrc; img.removeAttribute('srcset'); } });
@@ -276,6 +294,22 @@ async def _capture_async(request: dict, executable: str) -> bytes:
 
 def render_browser_pdf(url: str, html: str, *, style: str, include_links: bool,
                        links_heading: str, timeout_sec: float, cancel_event=None) -> bytes:
+    return _run_browser_capture(url, html, style=style, include_links=include_links,
+                                links_heading=links_heading, timeout_sec=timeout_sec, cancel_event=cancel_event)
+
+
+def capture_browser_html(url: str, html: str, *, timeout_sec: float, cancel_event=None) -> tuple[str, str]:
+    """Capture hydrated DOM for offline sanitizing and user-directed cleanup."""
+    result = _run_browser_capture(url, html, style="website", include_links=False, links_heading="",
+                                  timeout_sec=timeout_sec, cancel_event=cancel_event, output_kind="html").decode("utf-8")
+    final_url, separator, captured = result.partition("\n")
+    if not separator or not captured.strip():
+        raise ValueError("The browser returned an empty webpage.")
+    return validate_public_http_url(final_url), captured
+
+
+def _run_browser_capture(url: str, html: str, *, style: str, include_links: bool,
+                         links_heading: str, timeout_sec: float, cancel_event=None, output_kind: str = "pdf") -> bytes:
     runtime = browser_runtime()
     if runtime is None:
         raise RuntimeError("Webpage browser component is unavailable.")
@@ -285,12 +319,12 @@ def render_browser_pdf(url: str, html: str, *, style: str, include_links: bool,
         raise ValueError("Unknown webpage PDF style.")
     python, executable = runtime
     request = dict(url=url, html=html, style=style, include_links=include_links,
-                   links_heading=links_heading, timeout_sec=max(1, timeout_sec - 2))
+                   links_heading=links_heading, timeout_sec=max(1, timeout_sec - 2), output_kind=output_kind)
     env = os.environ.copy()
     env.pop("PYTHONHOME", None)
     env.pop("PYTHONPATH", None)
     with tempfile.TemporaryDirectory(prefix="incremento-browser-") as directory:
-        output = Path(directory) / "capture.pdf"
+        output = Path(directory) / ("capture.html" if output_kind == "html" else "capture.pdf")
         command = [python, "-I", str(Path(__file__).resolve()), "--worker", str(_runtime_dir() / "packages"), executable, str(output)]
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                    env=env, start_new_session=os.name != "nt")
@@ -328,10 +362,10 @@ def render_browser_pdf(url: str, html: str, *, style: str, include_links: bool,
             raise WebpageVerificationRequired()
         if process.returncode or not output.is_file():
             raise RuntimeError("The browser could not capture this webpage.")
-        if output.stat().st_size > MAX_PDF_BYTES:
+        if output.stat().st_size > (MAX_HTML_BYTES if output_kind == "html" else MAX_PDF_BYTES):
             raise ValueError("Webpage PDF exceeds the size limit.")
         result = output.read_bytes()
-        if not result.startswith(b"%PDF-"):
+        if output_kind == "pdf" and not result.startswith(b"%PDF-"):
             raise ValueError("The browser returned an invalid PDF.")
         return result
 

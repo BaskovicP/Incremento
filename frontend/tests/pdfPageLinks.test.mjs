@@ -4,6 +4,19 @@ import {createPdfPageLinks} from '../src/pdfPageLinks.mjs';
 import {pdfPageLinksViewport} from '../src/pdfPageLinks.mjs';
 import * as pageLinks from '../src/pdfPageLinks.mjs';
 
+test('recording actions keep the current page identity and stop after closing', () => {
+  const sent = [];
+  const model = createPdfPageLinks(value => sent.push(value), () => {});
+  model.start(7, 3, 1);
+  model.recordings();
+  assert.deepEqual(sent.at(-1), {cardId: 7, page: 3, generation: 1, request: 1, operation: 'recordings'});
+  model.linkRecording();
+  assert.equal(sent.at(-1).operation, 'link_recording');
+  model.close();
+  model.recordings();
+  assert.equal(sent.length, 3);
+});
+
 test('wrapped toolbar height reserves the actual reading area and stops updating after teardown', () => {
   let height = 109, resized;
   let disconnected = false;

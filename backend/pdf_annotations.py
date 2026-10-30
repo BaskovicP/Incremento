@@ -26,11 +26,13 @@ try:
     from .db import get_connection
     from .pdf_highlights import RESIZE_REVISION_KEY, load_highlights
     from .highlight_colors import highlight_appearance, color_from_rgb
+    from .annotation_styles import PDF_STYLE_KINDS
 except ImportError:
     import paths
     from db import get_connection
     from pdf_highlights import RESIZE_REVISION_KEY, load_highlights
     from highlight_colors import highlight_appearance, color_from_rgb
+    from annotation_styles import PDF_STYLE_KINDS
 
 
 MAX_PDF_BYTES = 512 * 1024 * 1024
@@ -248,6 +250,11 @@ def _prepare(highlight, document_id):
     metadata.setdefault('name', f'Incremento-{document_id}-{sha256(hl["id"].encode()).hexdigest()[:24]}')
     if metadata['kind'] not in SUPPORTED_KINDS or not isinstance(metadata['name'], str) or len(metadata['name']) > 1024:
         raise PdfAnnotationSyncError('invalid_annotation')
+    if 'incremento_style' in metadata and (
+        not isinstance(metadata['incremento_style'], str)
+        or PDF_STYLE_KINDS.get(metadata['incremento_style']) != metadata['kind']
+    ):
+        raise PdfAnnotationSyncError('invalid_annotation')
     try:
         color, opacity = highlight_appearance(hl.get('color', 'yellow'))
     except ValueError as exc:
@@ -304,6 +311,7 @@ def _semantic(hl, *, note=True):
             return [rounded(v) for v in value]
         return value
     return rounded({'page': hl['page'], 'rects': hl['rects'], 'kind': metadata['kind'],
+                    'line_style': metadata.get('incremento_style') if metadata.get('incremento_style') in {'dashed', 'dotted'} else None,
                     'quads': metadata.get('quads', []), 'color': metadata['color'],
                     'fill': metadata.get('fill', []), 'border_width': metadata.get('border_width', 0),
                     **({key: metadata.get(key, default) for key, default in (
@@ -382,6 +390,9 @@ def _read_native(doc, known, content_digest, cancel, deadline):
                        'author': annot.info.get('title', ''), 'subject': annot.info.get('subject', ''),
                        'fill': _rgb(annot.colors['fill']) if annot.colors.get('fill') else [],
                        'border_width': annot.border.get('width', 0), 'xref': annot.xref}}
+            style_type, style = doc.xref_get_key(annot.xref, 'IncrementoStyle')
+            if style_type == 'string' and PDF_STYLE_KINDS.get(style) == kind:
+                row['pdf_annotation']['incremento_style'] = style
             if kind == 'FreeText':
                 spans = [span for block in annot.get_text('dict').get('blocks', [])
                          for line in block.get('lines', []) for span in line.get('spans', [])]
@@ -448,6 +459,30 @@ def _merge(baseline, local, *pdfs):
     return merged, conflicts
 
 
+def _apply_native_line_style(annot, metadata):
+    """Underline has no PDF border dash support; preserve a standard editable
+    Underline annotation and customize only its generated appearance stream.
+    """
+    import pymupdf as fitz
+
+    style = metadata.get('incremento_style')
+    if style not in PDF_STYLE_KINDS:
+        return
+    doc = annot.parent.parent
+    doc.xref_set_key(annot.xref, 'IncrementoStyle', fitz.get_pdf_str(style))
+    if style not in {'dashed', 'dotted'}:
+        return
+    kind, reference = doc.xref_get_key(annot.xref, 'AP/N')
+    if kind != 'xref':
+        raise PdfAnnotationSyncError('invalid_annotation')
+    appearance = int(reference.split()[0])
+    stream = doc.xref_stream(appearance)
+    if not stream or len(stream) > MAX_BASELINE_CHARS:
+        raise PdfAnnotationSyncError('limits')
+    prefix = b'[4 3] 0 d\n' if style == 'dashed' else b'1 J\n[0 3] 0 d\n'
+    doc.update_stream(appearance, prefix + stream)
+
+
 def _create_native(page, row):
     import pymupdf as fitz
 
@@ -480,6 +515,7 @@ def _create_native(page, row):
     if kind in {'Square', 'Circle'}:
         annot.set_border(width=metadata['border_width'])
     annot.update(opacity=metadata['opacity'])
+    _apply_native_line_style(annot, metadata)
     return annot
 
 
@@ -507,6 +543,7 @@ def _rewrite(doc, target, current):
                 if _semantic(native, note=False) == _semantic(desired, note=False) and annot.type[1] != 'FreeText':
                     annot.set_info(content=desired.get('note', ''))
                     annot.update()
+                    _apply_native_line_style(annot, desired['pdf_annotation'])
                 else:
                     page.delete_annot(annot)
                     _create_native(page, desired)
@@ -767,9 +804,11 @@ def _sync_locked(addon_dir, profile, card_id, filename, source_path, cancel, dea
                 conn.execute('DELETE FROM pdf_highlights WHERE card_id=? AND id=?', (card_id, key))
             else:
                 conn.execute('INSERT OR REPLACE INTO pdf_highlights '
-                             '(id, card_id, page, color, text, note, rects, annotation_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                             '(id, card_id, page, color, text, note, rects, annotation_json, note_html) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
                              (key, card_id, row['page'], row.get('color', 'yellow'), row.get('text', ''), row.get('note', ''),
-                              json.dumps(row['rects']), json.dumps(row['pdf_annotation'])))
+                              json.dumps(row['rects']), json.dumps(row['pdf_annotation']),
+                              raw_local.get(key, {}).get('note_html', '')
+                              if row.get('note', '') == raw_local.get(key, {}).get('note', '') else ''))
         conn.execute('UPDATE pdf_annotation_sync SET source_path=?, content_digest=?, baseline_json=? WHERE card_id=?',
                      (str(source or ''), digest, baseline_json, card_id))
     return {'reader_path': str(reader), 'source_path': str(source or ''), 'conflicts': conflicts,

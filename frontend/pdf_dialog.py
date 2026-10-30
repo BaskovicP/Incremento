@@ -275,6 +275,11 @@ class AddPdfDialog(QDialog):
         self._preview_name.setStyleSheet("font-size: 11px; color: gray;")
         right_layout.addWidget(self._preview_name)
 
+        from .document_details import ImportBookDetails
+        self._book_details = ImportBookDetails(self._addon_dir, self._profile, right)
+        right_layout.addWidget(self._book_details)
+        self._document_details_by_path = {}
+
         splitter.addWidget(right)
         splitter.setSizes([560, 300])
 
@@ -604,10 +609,12 @@ class AddPdfDialog(QDialog):
     def _on_row_changed(self, row: int) -> None:
         if row < 0:
             self._djvu_compression.set_path(None)
+            self._book_details.set_path(None)
             return
         item = self._table.item(row, 1)
         if item:
             path = item.data(Qt.ItemDataRole.UserRole)
+            self._book_details.set_path(path)
             self._show_preview(path)
 
     def _on_selection_changed(self) -> None:
@@ -843,6 +850,16 @@ class AddPdfDialog(QDialog):
                 return
         self._error_lbl.setVisible(False)
 
+        if not self._request_current():
+            return
+        try:
+            self._document_details_by_path = {path: self._book_details.for_path(path) for path in checked_paths}
+        except ValueError:
+            self._show_error(_t("reader_library_invalid_details"))
+            return
+        self._book_details.setEnabled(False)
+        self._table.setEnabled(False)
+
         global_tags = self._global_tag_edit.tags()
         entries = []
         for path in checked_paths:
@@ -891,6 +908,8 @@ class AddPdfDialog(QDialog):
         self._table.setCellWidget(row, 4, self._wrap_cell_widget(lbl))
 
     def _process_files(self, entries: list, idx: int) -> None:
+        if hasattr(self, "_request_current") and not self._request_current():
+            return
         if idx >= len(entries):
             self._finish_add_progress()
             self.accept()
@@ -918,6 +937,9 @@ class AddPdfDialog(QDialog):
 
         self._set_row_status(path, _t("imports_ocr_running") if do_ocr else _t("imports_adding"))
 
+        document_details = self._document_details_by_path.get(path)
+        if document_details and not any(document_details.values()):
+            document_details = None
         try:
             cid = _pdf_manager.add_pdf_card(
                 self._addon_dir,
@@ -926,8 +948,10 @@ class AddPdfDialog(QDialog):
                 title,
                 deck_name=deck,
                 tags=tags,
+                profile=self._profile,
+                document_details=document_details,
             )
-            set_priority(self._addon_dir, _active_profile(), cid, priority)
+            set_priority(self._addon_dir, self._profile, cid, priority)
         except Exception as e:
             self.failed.append((path, str(e)))
             self._set_row_status(path, "✗", color="red")
@@ -970,11 +994,13 @@ class AddPdfDialog(QDialog):
             return []
 
         def ocr_done(fut) -> None:
+            if not self._request_current():
+                return
             ocr_ok = False
             try:
                 page_texts = fut.result()
                 if page_texts:
-                    replace_pdf_text_index(self._addon_dir, _active_profile(), cid, page_texts)
+                    replace_pdf_text_index(self._addon_dir, self._profile, cid, page_texts)
                     ocr_ok = True
             except Exception:
                 pass
@@ -1004,6 +1030,7 @@ class AddPdfDialog(QDialog):
         deck = self._deck_combo.currentText()
         compression = self._djvu_compression.choice_for(path)
         profile, collection = self._profile, self._collection
+        document_details = getattr(self, "_document_details_by_path", {}).get(path)
         cancelled = self._cancel_event
         addon_dir = self._addon_dir
         self._cancel_btn.setEnabled(True)
@@ -1054,6 +1081,7 @@ class AddPdfDialog(QDialog):
                     undo_step = col.add_custom_undo_entry(_t("imports_djvu_undo"))
                     cid = pdf_manager.add_pdf_card(addon_dir, col, prepared.path, title, deck_name=deck,
                                                   tags=tags, profile=profile,
+                                                  document_details=document_details,
                                                   precomputed_page_texts=prepared.page_texts)
                     set_priority(addon_dir, profile, cid, priority)
                     return SimpleNamespace(changes=col.merge_undo_entries(undo_step), card_id=cid)
