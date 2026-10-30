@@ -15,6 +15,7 @@ READER_COMMANDS = frozenset({
     'incremento_pdf_hl_note', 'incremento_pdf_hl_color', 'incremento_pdf_bookmark_add',
     'incremento_pdf_bookmark_delete', 'incremento_pdf_bookmark_list',
     'incremento_pdf_mark_read', 'incremento_pdf_appearance', 'incremento_pdf_link_preview_zoom',
+    'incremento_pdf_link_preview_size',
     'incremento_pdf_page_links', 'incremento_pdf_open_link', 'incremento_pdf_contents',
     'incremento_pdf_find', 'incremento_pdf_find_nav', 'incremento_pdf_open_find_dialog',
     'incremento_pdf_limit_override', 'incremento_pdf_annotations',
@@ -172,11 +173,25 @@ class SharedPdfReader:
             self.edit_note(str(data.get('id') or ''))
         elif name == 'incremento_pdf_hl_color':
             try:
-                from .highlight_color_dialog import choose_highlight_color
+                from .highlight_color_dialog import choose_highlight_color, refresh_reader_default_highlight_color
             except ImportError:
-                from highlight_color_dialog import choose_highlight_color
+                from highlight_color_dialog import choose_highlight_color, refresh_reader_default_highlight_color
+            context = (state.card_id, state.filename, state.page)
+            choose_default = data.get('defaultColor') is True
+            if choose_default and data.get('cardId') != state.card_id:
+                return False
             color = choose_highlight_color(self.owner, data.get('currentColor', 'yellow'),
-                addon_dir=s._ADDON_DIR, profile=state.profile)
+                addon_dir=s._ADDON_DIR, profile=state.profile, default_color=choose_default)
+            if not self.current() or context != (state.card_id, state.filename, state.page):
+                return False
+            if choose_default and color is not None:
+                try:
+                    color = s.save_reader_default_highlight_color(s.mw.addonManager, s._ADDON_PKG, state.profile, color)
+                except Exception:
+                    color = None
+                    s.showInfo(s.t('settings_save_failed'))
+                else:
+                    refresh_reader_default_highlight_color(state.profile, color)
             self.reply('incrementoPickPdfHighlightColor', color)
         elif name == 'incremento_pdf_bookmark_add':
             if not self.page_allowed(data.get('page')):
@@ -217,6 +232,10 @@ class SharedPdfReader:
             if data.get('cardId') != state.card_id or type(data.get('collapsed')) is not bool:
                 return False
             return s.save_pdf_controls_collapsed(data['collapsed'], profile=state.profile, reading_only=True)
+        elif name == 'incremento_pdf_link_preview_size':
+            if data.get('cardId') != state.card_id:
+                return False
+            return s.save_pdf_link_preview_size(data.get('size'), profile=state.profile)
         elif name == 'incremento_pdf_link_preview_zoom':
             zoom = data.get('zoom')
             if type(zoom) not in (int, float) or not 1 <= zoom <= 4:
@@ -276,9 +295,10 @@ class SharedPdfReader:
         if not highlight:
             return
         dialog = s.HighlightNoteDialog(self.owner, title=s.t('reader_pdf_highlight_note_title'),
-            excerpt=str(highlight.get('text') or ''), current_note=str(highlight.get('note') or ''))
+            excerpt=str(highlight.get('text') or ''), current_note=str(highlight.get('note') or ''),
+            current_note_html=str(highlight.get('note_html') or ''))
         if dialog.exec() and self.current():
-            self.storage('update_highlight_note', highlight_id, dialog.note_text())
+            self.storage('update_highlight_note', highlight_id, dialog.note_text(), note_html=dialog.note_html())
             self.on_change('highlights')
 
     def citation_page(self, page):

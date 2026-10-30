@@ -120,10 +120,21 @@ def test_large_pdf_keeps_rendering_bounded_and_snapshot_crops_correct(tmp_path, 
             canvas = page.locator('#pdf-canvas-wrapper > canvas:visible')
             geometry = canvas.evaluate('c => ({width: c.width, height: c.height, css: c.getBoundingClientRect().toJSON()})')
             assert geometry['width'] * geometry['height'] <= 8_000_000, geometry
-            assert geometry['css']['width'] == 2640, 'High zoom preserves the displayed page geometry'
+            # Fit Width now uses the layout viewport, independent of page height.
+            reader_width = page.evaluate('document.documentElement.clientWidth')
+            assert geometry['css']['width'] == reader_width * 4, geometry
             page.get_by_role('button', name='Annotate', exact=True).click()
             page.locator('button').filter(has_text='Snapshot').first.click()
             page.locator('[data-pdf-snapshot-overlay]').wait_for()
+            # At 4x width the marked passage is beyond the initial viewport.
+            canvas.evaluate("""c => {
+                const rect = c.getBoundingClientRect();
+                window.scrollTo({
+                    left: window.scrollX + rect.left + rect.width * .5 - window.innerWidth / 2,
+                    top: window.scrollY + rect.top + rect.height * .125 - window.innerHeight / 2,
+                    behavior: 'instant'
+                });
+            }""")
             box = canvas.bounding_box()
             x1, y1 = box['x'] + box['width'] * .48, box['y'] + box['height'] * .115
             x2, y2 = box['x'] + box['width'] * .52, box['y'] + box['height'] * .135

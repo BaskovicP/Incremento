@@ -4125,7 +4125,7 @@ msgid "study_resource_unavailable"
 msgstr "Ovaj materijal nije dostupan, promijenjen je ili prelazi granicu čitanja. Osvježite ili uredite poveznicu i pokušajte ponovno."
 
 msgid "study_choose_resource"
-msgstr "Otvorite odlomak za kontekst, a zatim povezanu snimku. Kartica za ponavljanje ostaje na mjestu."
+msgstr "Odaberi resurs iznad. Svaki resurs zadržava vlastito mjesto čitanja ili reprodukcije."
 
 msgid "study_no_resources"
 msgstr "Ovdje još nema povezanih materijala. Za početak povežite odlomak iz udžbenika ili snimku."
@@ -4188,10 +4188,10 @@ msgid "study_tab_card"
 msgstr "Kartica"
 
 msgid "study_tab_textbook"
-msgstr "Udžbenik"
+msgstr "Dokumenti"
 
 msgid "study_tab_video"
-msgstr "Video"
+msgstr "Videozapisi"
 
 msgid "study_tab_audio"
 msgstr "Zvuk"
@@ -4200,7 +4200,7 @@ msgid "study_no_active_card"
 msgstr "Pokrenite ponavljanje kartice za prelazak na Karticu."
 
 msgid "study_no_textbooks"
-msgstr "Ova kartica još nema povezan odlomak iz udžbenika. Odaberite ga pomoću Poveži PDF…"
+msgstr "Nema dokumenata povezanih s ovom karticom. Odaberi Poveži resurse… za odabir PDF-ova."
 
 msgid "study_no_recordings"
 msgstr "Ovdje još nema povezane snimke. Odaberite video ili zvučnu datoteku pomoću Poveži snimku…"
@@ -4273,3 +4273,452 @@ msgstr "Prikaži samo ovaj prikaz preko cijelog zaslona. Esc vraća radni prosto
 
 msgid "study_layout_save_failed"
 msgstr "Ovaj će se raspored zadržati tijekom ovog posjeta, ali vaša postavka nije spremljena."
+
+msgid "reader_default_annotation_color"
+msgstr "Zadana boja"
+
+msgid "reader_default_annotation_color_help"
+msgstr "Odaberite spremljenu boju za nova označavanja (Ctrl/Cmd+H). Odabir drugih boja ne mijenja ovu zadanu boju."
+
+msgid "reader_bookshelf_sort_by"
+msgstr "Poredaj po:"
+
+msgid "reader_bookshelf_sort_title"
+msgstr "Naslov (A–Ž)"
+
+msgid "reader_bookshelf_sort_priority"
+msgstr "Prioritet (najvažnije prvo)"
+
+msgid "reader_bookshelf_sort_due"
+msgstr "Dospjele kartice (najviše prvo)"
+
+msgid "reader_bookshelf_sort_reviews"
+msgstr "Obavljena ponavljanja (najviše prvo)"
+
+msgid "reader_bookshelf_sort_annotations"
+msgstr "Bilješke i oznake (najviše prvo)"
+
+msgid "reader_bookshelf_sort_random"
+msgstr "Nasumično"
+
+msgid "reader_bookshelf_reverse_order"
+msgstr "Obrni redoslijed"
+
+msgid "reader_bookshelf_shuffle_again"
+msgstr "Ponovno promiješaj"
+
+msgid "reader_bookshelf_default_priority"
+msgstr "Prioritet: 50 (zadano)"
+
+msgid "reader_bookshelf_metric_due"
+msgstr "Dospjele povezane kartice: {count}"
+
+msgid "reader_bookshelf_metric_reviews"
+msgstr "Obavljena ponavljanja: {count}"
+
+msgid "reader_bookshelf_metric_annotations"
+msgstr "Bilješke i oznake: {count}"
+
+msgid "reader_bookshelf_statistics_loading"
+msgstr "Učitavanje statistike…"
+
+msgid "reader_bookshelf_statistics_failed"
+msgstr "Statistiku nije moguće učitati. Polica je ponovno poredana po naslovu; ponovno odaberite poredak za novi pokušaj."
+
+msgid "reader_bookshelf_sort_hint"
+msgstr "Dospjele kartice broje postojeće povezane kartice koje su sada dospjele. Obavljena ponavljanja zbrajaju Ankijeve brojače ponavljanja dokumenta i svih povezanih kartica. Bilješke i oznake broje spremljena isticanja, PDF oznake i snimke. Prioritet slijedi postavljeni smjer; nepostavljen prioritet koristi 50. Nasumični redoslijed ostaje isti tijekom filtriranja."
+
+#. Annotation note editor toolbar.
+msgid "reader_note_formatting"
+msgstr "Oblikovanje bilješke"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_bold"
+msgstr "Podebljano"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_italic"
+msgstr "Kurziv"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_underline"
+msgstr "Podcrtano"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_strike"
+msgstr "Precrtano"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_link"
+msgstr "Umetni ili uredi poveznicu"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_bullets"
+msgstr "Popis s grafičkim oznakama"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_numbers"
+msgstr "Numerirani popis"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_clear"
+msgstr "Ukloni oblikovanje"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_undo"
+msgstr "Poništi"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_redo"
+msgstr "Ponovi"
+
+#. Annotation note editor toolbar.
+msgid "reader_note_link_prompt"
+msgstr "URL (http:// ili https://). Ostavite prazno za uklanjanje odabrane poveznice."
+
+#. Annotation note editor toolbar.
+msgid "reader_note_link_invalid"
+msgstr "Unesite valjan http:// ili https:// URL bez podataka za prijavu."
+
+#. Annotation note editor validation.
+msgid "reader_note_too_long"
+msgstr "Bilješka je preduga. Skratite tekst ili pojednostavite oblikovanje pa pokušajte ponovno."
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_missing_files_only"
+msgstr "Samo PDF-ovi kojima nedostaje datoteka"
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_missing_files_hint"
+msgstr "Provjerava stvarne PDF datoteke u ovom profilu, čak i kada je naslovnica spremljena. Uključuje reference na datoteke koje nedostaju, prazne reference i nesigurne reference. Ostali filtri i dalje vrijede."
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_check_files_again"
+msgstr "Ponovno provjeri datoteke"
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_file_check_failed"
+msgstr "Provjera PDF datoteka nije uspjela. Uključite filtar datoteka koje nedostaju za ponovni pokušaj."
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_missing_pdf_status"
+msgstr "PDF datoteka nedostaje ili nije dostupna"
+
+#: frontend/pdf_bookshelf.py
+msgid "reader_bookshelf_checking_files"
+msgstr "Provjera PDF datoteka…"
+
+msgid "reader_annotation_style"
+msgstr "Stil"
+
+msgid "reader_annotation_appearance"
+msgstr "Izgled oznake"
+
+msgid "reader_annotation_style_help"
+msgstr "Odaberite stil i boju, zatim označite odabrani tekst."
+
+msgid "reader_mark_selection"
+msgstr "Označi odabir"
+
+msgid "reader_style_highlight"
+msgstr "Isticanje"
+
+msgid "reader_style_underline"
+msgstr "Podcrtano"
+
+msgid "reader_style_squiggly"
+msgstr "Valovito"
+
+msgid "reader_style_dashed"
+msgstr "Isprekidano"
+
+msgid "reader_style_dotted"
+msgstr "Točkasto"
+
+msgid "reader_style_strikeout"
+msgstr "Precrtano"
+
+msgid "study_link_resources"
+msgstr "+ Poveži resurse…"
+
+msgid "study_current_card_only"
+msgstr "Samo trenutačna kartica"
+
+msgid "study_card_target"
+msgstr "Samo trenutačna kartica\n{question}"
+
+msgid "study_search_resources"
+msgstr "Pretraži uvezene resurse…"
+
+msgid "study_choose_resources"
+msgstr "Odaberi resurse, zatim odaberi redak za postavljanje povezanog mjesta."
+
+msgid "study_import_pdf"
+msgstr "Uvezi PDF-ove…"
+
+msgid "study_resource_page"
+msgstr "PDF stranica"
+
+msgid "study_optional_label"
+msgstr "Oznaka (neobavezno)"
+
+msgid "study_unlink"
+msgstr "Ukloni poveznicu"
+
+msgid "study_undo_unlink"
+msgstr "Poništi uklanjanje poveznice"
+
+msgid "study_resource_library_limited"
+msgstr "Prikazano je 500 najnovijih PDF-ova i snimki. Pretraži ovaj popis ili uvezi drugi resurs."
+
+msgid "study_batch_limit"
+msgstr "Odaberi najviše {count} resursa odjednom."
+
+msgid "study_batch_failed"
+msgstr "Nije moguće učitati ili spremiti resurse. Neuspjelo spremanje ne mijenja nijednu poveznicu u grupi. Osvježi i pokušaj ponovno."
+
+msgid "study_batch_invalid"
+msgstr "Unesi valjane stranice i početna/završna vremena za svaki odabrani resurs."
+
+msgid "study_link_resource_count"
+msgstr "Poveži odabrane resurse ({count})"
+
+msgid "study_kind_pdf"
+msgstr "PDF"
+
+msgid "study_kind_video"
+msgstr "Video"
+
+msgid "study_kind_audio"
+msgstr "Audio"
+
+msgid "study_inherited_resource"
+msgstr "Ovaj resurs potječe iz sadržaja kartice ili odlomka dokumenta. Uredi poveznicu na izvornom mjestu."
+
+msgid "study_preview_resource"
+msgstr "Pregledaj odabrani resurs"
+
+msgid "study_choose_resource_title"
+msgstr "Odaberi resurs"
+
+msgid "study_tab_pdfs"
+msgstr "PDF-ovi"
+
+msgid "study_picker_page"
+msgstr "Stranica {page}"
+
+msgid "study_current_card_state"
+msgstr "Trenutačna kartica · {state}"
+
+msgid "study_link_to_card"
+msgstr "Poveži resurse s ovom karticom"
+
+msgid "study_choose_library"
+msgstr "Odaberi iz svoje zbirke"
+
+msgid "study_import_files"
+msgstr "Uvezi datoteke…"
+
+msgid "study_link_action"
+msgstr "Poveži resurse"
+
+msgid "study_managed_title"
+msgstr "Resursi povezani s ovom karticom"
+
+msgid "study_manage_done"
+msgstr "Gotovo"
+
+msgid "study_files_kept"
+msgstr "Uklanjanje poveznice zadržava izvorne datoteke."
+
+msgid "study_own_position"
+msgstr "Svaki resurs zadržava vlastito mjesto."
+
+msgid "study_library_empty"
+msgstr "Nema uvezenih resursa. Uvezi datoteke za povezivanje s ovom karticom."
+
+msgid "study_links_saved"
+msgstr "Poveznice su spremljene uz ovu karticu."
+
+msgid "study_link_selection"
+msgid_plural "study_link_selection_plural"
+msgstr[0] "Poveži {count} resurs"
+msgstr[1] "Poveži {count} resursa"
+msgstr[2] "Poveži {count} resursa"
+
+msgid "study_preview_short"
+msgstr "Pregled"
+
+msgid "study_linked_summary"
+msgstr "Povezani dokumenti: {documents} · snimke: {recordings}"
+
+msgid "study_preview_links_heading"
+msgstr "Veze koje stvarate"
+
+msgid "study_preview_connection"
+msgstr "Ova će kartica otvarati:"
+
+msgid "study_preview_empty"
+msgstr "Odaberite datoteku s popisa za pregled veze."
+
+msgid "study_preview_choose_spot"
+msgstr "Odaberi točno mjesto u PDF-u…"
+
+msgid "study_preview_not_saved"
+msgstr "Ovo je pregled. Veze se spremaju tek kada kliknete Poveži resurse."
+
+msgid "study_preview_remove"
+msgstr "Ukloni"
+
+msgid "study_preview_remove_named"
+msgstr "Ukloni {title} iz ove skice"
+
+msgid "study_preview_instructions"
+msgstr "Odaberite datoteke i mjesta otvaranja. Pregledajte rezultat prije spremanja."
+
+msgid "study_preview_page_error"
+msgstr "Odaberite stranicu od 1 do {maximum}."
+
+msgid "study_preview_time_error"
+msgstr "Unesite valjano početno vrijeme i kasnije završno vrijeme unutar snimke."
+
+msgid "study_preview_pdf_location"
+msgstr "PDF · stranica {page}"
+
+msgid "study_preview_segment"
+msgstr "Reproduciraj {start}–{end}"
+
+msgid "study_preview_start"
+msgstr "Reproduciraj od {start}"
+
+msgid "study_preview_pdf_named"
+msgstr "{title}, stranica {page}. Odaberite točno mjesto."
+
+msgid "study_preview_unavailable"
+msgstr "Pregled nije dostupan. Provjerite izvornu datoteku pa ponovno odaberite Pregled."
+
+msgid "reader_bookshelf_edit_pdf_name"
+msgstr "Uredi naziv PDF-a…"
+
+msgid "reader_bookshelf_pdf_name_prompt"
+msgstr "Naziv PDF-a:"
+
+msgid "reader_bookshelf_pdf_name_invalid"
+msgstr "Unesite naziv PDF-a duljine od 1 do 2000 znakova, bez kontrolnih znakova."
+
+msgid "reader_bookshelf_pdf_name_failed"
+msgstr "Naziv PDF-a nije moguće ažurirati. Osvježite knjižnicu i pokušajte ponovno."
+
+msgid "reader_library_lists"
+msgstr "Popisi"
+
+msgid "reader_library_edit_lists"
+msgstr "Uredi popise"
+
+msgid "reader_library_choose_lists"
+msgstr "Popisi ove knjige"
+
+msgid "reader_library_new_list"
+msgstr "Novi popis…"
+
+msgid "reader_library_lists_hint"
+msgstr "Knjiga može pripadati većem broju popisa."
+
+msgid "reader_library_reason"
+msgstr "Zašto sam spremio ovu knjigu"
+
+msgid "reader_library_reason_placeholder"
+msgstr "Što vas je potaknulo na čitanje? Preporuka, pitanje, projekt…"
+
+msgid "reader_library_reason_limit"
+msgstr "Najviše {count} znakova."
+
+msgid "reader_library_reason_count"
+msgstr "{count} / {maximum}"
+
+msgid "reader_library_source"
+msgstr "Gdje sam je pronašao (neobavezno)"
+
+msgid "reader_library_source_placeholder"
+msgstr "ChatGPT, blog, prijatelj ili poveznica"
+
+msgid "reader_library_unlisted"
+msgstr "Bez popisa"
+
+msgid "reader_library_select_book"
+msgstr "Odaberite knjigu"
+
+msgid "reader_library_list_name"
+msgstr "Naziv popisa:"
+
+msgid "reader_library_list_error"
+msgstr "Popis nije moguće spremiti. Unesite jedinstven naziv od 1 do 80 znakova i pokušajte ponovno."
+
+msgid "reader_library_import_hint"
+msgstr "Popisi, razlog i izvor nisu obavezni i spremaju se zasebno za svaku odabranu datoteku."
+
+msgid "reader_library_add_pdf"
+msgstr "+ Dodaj PDF"
+
+msgid "reader_library_add_epub"
+msgstr "+ Dodaj EPUB"
+
+msgid "reader_library_intro"
+msgstr "Odaberite knjigu za prikaz popisa i spremljenog razloga. Za čitanje dvaput kliknite ili odaberite Otvori knjigu."
+
+msgid "reader_library_cover_view"
+msgstr "Naslovnice"
+
+msgid "reader_library_reason_view"
+msgstr "Popis s razlozima"
+
+msgid "reader_library_view"
+msgstr "Prikaz police"
+
+msgid "reader_library_search"
+msgstr "Pretraži naslove, razloge, izvore…"
+
+msgid "reader_library_open_book"
+msgstr "Otvori knjigu"
+
+msgid "reader_library_save_changes"
+msgstr "Spremi promjene"
+
+msgid "reader_library_all_books"
+msgstr "Sve knjige"
+
+msgid "reader_library_no_reason"
+msgstr "Bez spremljenog razloga"
+
+msgid "reader_library_rename_list"
+msgstr "Preimenuj popis…"
+
+msgid "reader_library_delete_list"
+msgstr "Izbriši popis…"
+
+msgid "reader_library_delete_confirmation"
+msgstr "Izbrisati popis „{name}”? Knjige, spremljeni razlozi i izvori ostat će sačuvani."
+
+msgid "reader_library_invalid_details"
+msgstr "Podaci o knjizi predugi su ili sadrže nepodržane znakove."
+
+msgid "reader_library_unsaved"
+msgstr "Nespremljene promjene"
+
+msgid "reader_library_saved"
+msgstr "Spremljeno"
+
+msgid "reader_library_save_error"
+msgstr "Podatke o knjizi nije moguće spremiti. Vaše izmjene još su dostupne."
+
+msgid "reader_library_unsaved_prompt"
+msgstr "Spremiti promjene popisa, razloga i izvora knjiga prije zatvaranja?"
+
+msgid "reader_library_reload_error"
+msgstr "Policu nije moguće osvježiti. Zatvorite je i ponovno otvorite."
+
+msgid "reader_library_more_filters"
+msgstr "Dodatni filtri"
+
+msgid "reader_library_add_reason"
+msgstr "+ Dodaj razlog spremanja"

@@ -1507,5 +1507,35 @@
   },
   "bookmark_next_page": {
     "message": "Next page"
+  },
+  "error_anki_detail": {
+    "message": "Anki detail"
+  },
+  "error_http_status": {
+    "message": "HTTP status"
+  },
+  "error_anki_stage": {
+    "message": "Anki stage"
+  },
+  "error_anki_validation": {
+    "message": "Validating request"
+  },
+  "error_anki_preparation": {
+    "message": "Preparing content"
+  },
+  "error_anki_creation": {
+    "message": "Creating card"
+  },
+  "error_pdf_layout": {
+    "message": "PDF layout"
+  },
+  "error_yes": {
+    "message": "Yes"
+  },
+  "error_no": {
+    "message": "No"
+  },
+  "bridge_error_webpage_verification_required": {
+    "message": "This site requires a security check or sign-in. Complete it in the original tab, then choose Capture opened page as PDF."
   }
 }

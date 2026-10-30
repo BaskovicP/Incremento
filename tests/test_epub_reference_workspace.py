@@ -43,6 +43,20 @@ def test_closed_or_switched_reference_cannot_write_highlights(monkeypatch, works
     write.assert_not_called()
 
 
+def test_style_edit_refreshes_other_panes_without_dismissing_its_own_palette(monkeypatch, workspace):
+    rows = [dict(id='mark', sectionIndex=0, style='dashed')]
+    source = SimpleNamespace(current=lambda: True, location=dict(card_id=7, section=0), js=MagicMock())
+    other = SimpleNamespace(current=lambda: True, location=dict(card_id=7, section=0), js=MagicMock())
+    monkeypatch.setattr(workspace, '_windows', [source, other])
+    monkeypatch.setattr(workspace, 'get_active_profile', lambda: 'Synthetic')
+    monkeypatch.setattr(workspace, 'load_highlights', lambda *args: rows)
+    workspace.refresh_readers('Synthetic', 7, include_main=False, exclude=source)
+    assert source.highlights == rows
+    source.js.assert_not_called()
+    other.js.assert_called_once()
+    assert '"style": "dashed"' in other.js.call_args.args[0]
+
+
 @pytest.mark.parametrize('message', ['{', '[]', '{"cardId":true}', '{"cardId":7,"scrollRatio":NaN}'])
 def test_reference_malformed_progress_does_not_change_position(message, workspace):
     window = SimpleNamespace(location=dict(card_id=7, section=0, offset=0, scroll=.4), current=lambda: True,

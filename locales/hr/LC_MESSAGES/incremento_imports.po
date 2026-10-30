@@ -1550,3 +1550,31 @@ msgstr "Otvaranje stranice putem Incremento Companiona. Ako se ništa ne dogodi,
 
 msgid "imports_companion_browser_unavailable"
 msgstr "Nije moguće otvoriti odabrani preglednik za Companion. Provjerite odabir u postavkama Incrementa → Ponavljanje."
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_option"
+msgstr "Pregledaj i ukloni elemente prije spremanja"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_title"
+msgstr "Ukloni suvišne elemente"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_help"
+msgstr "Klikni neželjeni element kako bi ga sakrio. Shift-klik uklanja njegov nadređeni spremnik. Poništi vraća zadnje uklanjanje; Vrati sve vraća sve elemente. Isključi Uklanjanje za odabir teksta. Uključuje se samo već učitani sadržaj."
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_zap"
+msgstr "Uklanjanje elemenata"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_undo"
+msgstr "Poništi uklanjanje"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_reset"
+msgstr "Vrati sve"
+
+#: frontend/webpage_cleanup.py frontend/webpage_dialog.py
+msgid "imports_webpage_cleanup_save"
+msgstr "Spremi PDF"

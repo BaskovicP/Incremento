@@ -1,5 +1,6 @@
 """Bounded per-profile associations; Anki remains the owner of document cards."""
 import math
+from contextlib import nullcontext
 
 try:
     from .db import get_connection
@@ -23,7 +24,8 @@ def _identity(conn, card_id):
 
 
 def add_document_link(addon_dir, profile, *, source_card_id, source_kind, target_card_id,
-                      source_page=0, quote="", target_page=1, target_scroll=0, source_y=None, target_y=None):
+                      source_page=0, quote="", target_page=1, target_scroll=0, source_y=None, target_y=None,
+                      _connection=None):
     _validate_position(target_scroll, target_y)
     _validate_position(0, source_y)
     for number, minimum in ((source_card_id, 1), (target_card_id, 1), (source_page, 0), (target_page, 1)):
@@ -34,8 +36,8 @@ def add_document_link(addon_dir, profile, *, source_card_id, source_kind, target
             or type(target_scroll) not in (int, float) or not math.isfinite(target_scroll)
             or not 0 <= target_scroll <= 1):
         raise ValueError("Invalid document link")
-    conn = get_connection(addon_dir, profile)
-    with conn:
+    conn = _connection if _connection is not None else get_connection(addon_dir, profile)
+    with nullcontext() if _connection is not None else conn:
         source_identity = _identity(conn, source_card_id)
         count = conn.execute('SELECT count(*) FROM document_links WHERE ' + _SOURCE_MATCH,
                              (source_identity, source_card_id)).fetchone()[0]

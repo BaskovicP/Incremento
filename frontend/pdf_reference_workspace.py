@@ -97,9 +97,14 @@ def create_reference_view(parent, snapshot, state, handler, *, page_y=None, exce
         if not ok or not state.is_current(get_active_profile(), nonce):
             return
         prefix = '__incremento_reference__:' + nonce + ':'
+        # The lightweight chooser sends JSON actions; the full reader and
+        # shared PDF byte transport send prefixed command strings.
+        payload = "{action:'reader',command:message}"
+        if not full_reader:
+            payload = "message.startsWith('incremento_pdf_range:') ? " + payload + " : JSON.parse(message)"
         bridge = (
             'window.incrementoReferenceCommand = payload => console.info(' + json.dumps(prefix) + ' + JSON.stringify(payload));'
-            "window.pycmd = message => window.incrementoReferenceCommand({action:'reader',command:message});")
+            'window.pycmd = message => window.incrementoReferenceCommand(' + payload + ');')
         page.runJavaScript(
             bridge +
             'window._incReferencePending=' + json.dumps(config) + ';'
@@ -241,7 +246,9 @@ class ReferenceWindow(QDockWidget):
             'scroll_to_top': s.configured_scroll_to_top_on_page_change(),
             'show_delete': s.configured_pdf_show_highlight_delete_buttons(),
             'controls_collapsed': s.configured_pdf_controls_collapsed(profile=state.profile, reading_only=True),
-            'link_preview_zoom': s.configured_pdf_link_preview_zoom()}
+            'default_highlight_color': s.configured_reader_default_highlight_color(s._config(), state.profile),
+            'link_preview_zoom': s.configured_pdf_link_preview_zoom(),
+            'link_preview_size': s.configured_pdf_link_preview_size(profile=state.profile)}
 
     def reload_reader(self, result):
         if not self.reader.current():
@@ -434,6 +441,12 @@ def focused_reference():
         if not window.state.closed and (focus is window.view or window.view.isAncestorOf(focus)):
             return window
     return None
+
+
+def refresh_default_highlight_color(profile, color):
+    for window in list(_windows):
+        if window.state.profile == profile and not window.state.closed:
+            window.reader.reply('incrementoSetDefaultHighlightColor', color)
 
 
 def refresh_reference_readers(profile, card_id, kind, *, annotation_result=None):

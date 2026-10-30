@@ -24,6 +24,7 @@ def test_textbook_focus_uses_full_screen_then_restores_split_docks_and_reading_p
         layout.insertWidget(0,toolbar)
         ui.show_resources(); w=ui._window; drain(); click(w,'book'); drain(); app.processEvents()
         reader=w.reader; reader.state.scroll_ratio=.72; reader.state.zoom=1.7
+        w.more_resources.click(); app.processEvents()  # Explicitly expand the compact resource drawer before splitting.
         w.splitter.setSizes([850,400]); app.processEvents()
         sizes=w.splitter.sizes(); before=mw.geometry()
         w.focus_book.click(); app.processEvents()
@@ -55,7 +56,8 @@ def test_video_focus_and_escape_keep_playback_position_and_do_not_close_the_visi
         # QDialog's Escape path exits focus first, preserving the study visit.
         w.reject(); app.processEvents()
         assert not mw.isFullScreen() and w.isVisible() and not w.visit.closed
-        assert w.book_host.isVisible() and w.resource_panel.isVisible()
+        # Leaving focus restores the compact Videos view and its open drawer.
+        assert w.book_host.isHidden() and w.play_host.isVisible() and w.resource_panel.isVisible()
         assert player.pos==16.75 and player.loads==1 and not player.paused
         w.focus_video.click(); click(w,'card'); app.processEvents()
         assert not mw.isFullScreen() and web.isVisible() and player.paused

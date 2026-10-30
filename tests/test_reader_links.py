@@ -532,6 +532,35 @@ def test_saved_always_visible_snapshot_gets_closed_preview_control():
     assert reader_links.collapsible_pdf_snapshot_previews(displayed) == displayed
 
 
+@pytest.mark.parametrize("kind", ["snapshot", "context"])
+def test_saved_preview_click_guard_preserves_card_content_and_open_state(kind):
+    saved = (
+        '<p title="Keep > this">Before</p>\n'
+        f"<details class='extra incremento-pdf-{kind}-details' open data-label='A &amp; B'>"
+        '<summary>Source <b>page</b> preview</summary>\n'
+        '<div>Saved <i>context</i></div></details>\n<p>After</p>'
+    )
+
+    displayed = reader_links.collapsible_pdf_snapshot_previews(saved)
+
+    assert displayed == saved.replace(
+        f"<details class='extra incremento-pdf-{kind}-details' open data-label='A &amp; B'>",
+        f'<details class="extra incremento-pdf-{kind}-details" open data-label="A &amp; B" '
+        'onclick="event.stopPropagation();">',
+    )
+    assert reader_links.collapsible_pdf_snapshot_previews(displayed) == displayed
+
+
+def test_preview_click_guard_leaves_unrelated_controls_scripts_and_comments_unchanged():
+    saved = (
+        '<details onclick="customClick()"><summary>My control</summary>My text</details>'
+        '<script>const example = \'<details class="incremento-pdf-snapshot-details">\';</script>'
+        '<!-- <details class="incremento-pdf-context-details"> -->'
+    )
+
+    assert reader_links.collapsible_pdf_snapshot_previews(saved) == saved
+
+
 def test_saved_snapshot_label_is_escaped_in_reveal_control():
     saved = (
         '<div data-incremento-pdf-snapshot="1" '

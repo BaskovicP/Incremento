@@ -86,6 +86,50 @@ def sync(tmp_path, **kwargs):
     return annotations.sync_pdf_annotations(str(tmp_path), PROFILE, CARD, FILENAME, **kwargs)
 
 
+@pytest.mark.parametrize('style,kind', [('highlight', 'Highlight'), ('underline', 'Underline'),
+    ('squiggly', 'Squiggly'), ('dashed', 'Underline'), ('dotted', 'Underline'), ('strikeout', 'StrikeOut')])
+def test_text_mark_style_round_trips_native_pdf_and_note_edits(tmp_path, style, kind):
+    filename = pdf_file(tmp_path)
+    add_highlight(str(tmp_path), PROFILE, CARD, {**local_highlight(), 'style': style})
+    for _ in range(2):
+        sync(tmp_path)
+    row = load_highlights(str(tmp_path), PROFILE, CARD)[0]
+    assert row['pdf_annotation']['kind'] == kind
+    assert row['pdf_annotation'].get('incremento_style', 'highlight') == style
+    update_highlight_note(str(tmp_path), PROFILE, CARD, row['id'], 'Edited note')
+    sync(tmp_path)
+    with fitz.open(filename) as doc:
+        annot = doc[0].first_annot
+        assert annot.info['content'] == 'Edited note'
+        if style in ('dashed', 'dotted'):
+            assert doc.xref_get_key(annot.xref, 'IncrementoStyle') == ('string', style)
+            appearance = int(doc.xref_get_key(annot.xref, 'AP/N')[1].split()[0])
+            stream = doc.xref_stream(appearance)
+            assert (b'[4 3] 0 d' if style == 'dashed' else b'[0 3] 0 d') in stream
+    assert len(native_rows(filename)) == 1
+
+
+def test_rich_note_survives_native_sync_while_outside_text_edit_clears_stale_formatting(tmp_path):
+    filename = pdf_file(tmp_path)
+    highlight = {**local_highlight('Bold note'), 'note_html': '<p><b>Bold</b> note</p>'}
+    add_highlight(str(tmp_path), PROFILE, CARD, highlight)
+    sync(tmp_path)
+    sync(tmp_path)
+    assert native_rows(filename)[0]['note'] == 'Bold note'
+    assert load_highlights(str(tmp_path), PROFILE, CARD)[0]['note_html'] == highlight['note_html']
+
+    def edit(doc):
+        page = doc[0]
+        annot = next(page.annots())
+        annot.set_info(content='Changed outside')
+        annot.update()
+
+    change_pdf(filename, edit)
+    sync(tmp_path)
+    row = load_highlights(str(tmp_path), PROFILE, CARD)[0]
+    assert row['note'] == 'Changed outside' and not row.get('note_html')
+
+
 def test_incremento_highlight_and_unicode_note_become_one_editable_pdf_annotation(tmp_path):
     filename = pdf_file(tmp_path)
     highlight = local_highlight('Arabic العربية\nChinese 中文\nMy note')

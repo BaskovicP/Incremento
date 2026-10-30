@@ -13,8 +13,8 @@ except ImportError:
 
 
 _SEARCH_SPECS = {
-    "pdf_annotations": ("pdf_highlights", ("card_id", "page", "note", "text", "color"), "note"),
-    "epub_annotations": ("epub_highlights", ("card_id", "section_index", "note", "text", "color"), "note"),
+    "pdf_annotations": ("pdf_highlights", ("card_id", "page", "note", "text", "color", "note_html"), "note"),
+    "epub_annotations": ("epub_highlights", ("card_id", "section_index", "note", "text", "color", "note_html"), "note"),
     "pdf_highlights": ("pdf_highlights", ("card_id", "page", "text"), "text"),
     "pdf_sources": (
         "pdf_card_sources",

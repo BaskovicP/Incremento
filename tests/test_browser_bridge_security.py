@@ -183,3 +183,45 @@ def test_main_thread_wait_preserves_success_and_operation_errors(monkeypatch):
 
     with pytest.raises(ValueError, match="invalid import"):
         browser_bridge._run_on_main_and_wait(failed_operation, timeout_sec=0)
+
+
+def test_pdf_preparation_rejection_reports_the_backend_stage_without_creating_a_card(monkeypatch):
+    handler, responses = _post(monkeypatch, {"kind": "pdf", "url": "https://example.org/article"})
+    imported = []
+
+    def rejected(*_args, **_kwargs):
+        raise ValueError("The remote host resolves to a private or special address.")
+
+    monkeypatch.setattr(browser_bridge, "prepare_add_content_request_off_main", rejected)
+    monkeypatch.setattr(browser_bridge, "_run_content_request_and_wait", lambda *a, **k: imported.append(a))
+    handler._do_POST()
+
+    assert responses == [(400, {
+        "ok": False, "error": "The remote host resolves to a private or special address.",
+        "error_code": "invalid_request", "error_stage": "preparation",
+    })]
+    assert imported == []
+
+
+def test_pdf_verification_failure_explains_recovery_and_cleans_the_staged_file(monkeypatch, tmp_path):
+    from webpage_handoff import WebpageVerificationRequired
+
+    staged = tmp_path / "prepared.pdf"
+    handler, responses = _post(monkeypatch, {"kind": "pdf", "url": "https://example.org/article"})
+    imported = []
+
+    def needs_verification(*_args, **_kwargs):
+        raise WebpageVerificationRequired()
+
+    monkeypatch.setattr(browser_bridge, "_make_temp_pdf_path", lambda: str(staged))
+    monkeypatch.setattr(browser_bridge, "_render_prepared_webpage_pdf", needs_verification)
+    monkeypatch.setattr(browser_bridge, "_run_content_request_and_wait", lambda *a, **k: imported.append(a))
+    handler._do_POST()
+
+    assert responses == [(400, {
+        "ok": False,
+        "error": "This site requires verification. Complete the security check or sign-in in your browser, then use Capture opened page as PDF.",
+        "error_code": "webpage_verification_required", "error_stage": "preparation",
+    })]
+    assert imported == []
+    assert not staged.exists()

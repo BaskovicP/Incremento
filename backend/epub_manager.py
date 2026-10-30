@@ -1631,10 +1631,17 @@ def add_epub_card(
     *,
     profile: str | None = None,
     source_type: str = "EPUB",
+    document_details: dict | None = None,
 ) -> int:
+    if document_details is not None:
+        try:
+            from .document_lists import normalize_document_details
+        except ImportError:
+            from document_lists import normalize_document_details
+        document_details = normalize_document_details(document_details)
     ensure_epub_note_type(col)
     profile = profile or _paths.get_active_profile()
-    with ImportOperation(addon_dir, profile, "epub") as operation:
+    with ImportOperation(addon_dir, profile, "epub", document_details=document_details) as operation:
         return _create_new_epub_card(
             addon_dir,
             profile,

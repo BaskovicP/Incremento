@@ -134,6 +134,32 @@ def test_epub_custom_hex_color_is_selected_without_falling_back_to_yellow(monkey
     assert epub_dock._current_epub_highlight_color == '#123abc'
 
 
+def test_epub_one_off_color_does_not_replace_the_default_for_next_highlight():
+    import subprocess
+    script = epub_dock._build_page_script(card_id=7, section_index=0, scroll_ratio=0,
+        text_scale=1, read_anchor=None, focus_offset=-1, search_query='', highlights=[],
+        bridge_nonce='fixture', sections=[{'text': 'A passage'}],
+        highlight_color='blue', default_highlight_color='yellow')
+    start = script.index('window.incrementoAddEpubHighlight =')
+    end = script.index('window.incrementoSnapshotEpubSelection =', start)
+    result = subprocess.run(['node', '-e', '''
+        const assert = require('node:assert/strict');
+        const window = {}, messages = [];
+        const STATE = {cardId: 7, sectionIndex: 0, highlightColor: 'blue', defaultHighlightColor: 'yellow'};
+        const selectionMeta = () => ({text: 'A passage', startOffset: 0, endOffset: 9});
+        const normalizeHighlightColor = color => color;
+        const clearSelection = () => {}, removeSelectionResizeHandles = () => {}, removeHighlightResizeHandles = () => {};
+        const applyHighlight = () => true, send = message => messages.push(JSON.parse(message.split(':').slice(1).join(':')));
+    ''' + script[start:end] + '''
+        assert.equal(window.incrementoAddEpubHighlight(null, 'blue'), true);
+        assert.equal(window.incrementoAddEpubHighlight(), true);
+        STATE.defaultHighlightColor = '#123abc';
+        assert.equal(window.incrementoAddEpubHighlight(), true);
+        assert.deepEqual(messages.map(message => message.highlight.color), ['blue', 'yellow', '#123abc']);
+    '''], capture_output=True, text=True, timeout=10)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_epub_page_links_slot_opens_connections_for_the_current_document(monkeypatch):
     button = MagicMock()
     factory = MagicMock(return_value=button)
@@ -1776,17 +1802,21 @@ def test_edit_current_epub_highlight_note_updates_live_view(monkeypatch):
     tooltips = []
 
     class _FakeDialog:
-        def __init__(self, parent, *, title, excerpt, current_note):
+        def __init__(self, parent, *, title, excerpt, current_note, current_note_html):
             assert parent is epub_dock.mw
             assert title == "EPUB Highlight Note"
             assert excerpt == "Quoted text"
             assert current_note == ""
+            assert current_note_html == ""
 
         def exec(self):
             return True
 
         def note_text(self):
             return "New note"
+
+        def note_html(self):
+            return '<p><b>New</b> note</p>'
 
     class _FakePage:
         def runJavaScript(self, js):
@@ -1811,9 +1841,9 @@ def test_edit_current_epub_highlight_note_updates_live_view(monkeypatch):
     monkeypatch.setattr(
         epub_dock,
         "update_highlight_note",
-        lambda addon_dir, profile, card_id, hl_id, note: (
-            updates.append((addon_dir, profile, card_id, hl_id, note)) or
-            {"id": hl_id, "note": note}
+        lambda addon_dir, profile, card_id, hl_id, note, *, note_html: (
+            updates.append((addon_dir, profile, card_id, hl_id, note, note_html)) or
+            {"id": hl_id, "note": note, "note_html": note_html}
         ),
     )
     monkeypatch.setattr(epub_dock, "_update_sources_panel", lambda: js_calls.append("sources"))
@@ -1823,10 +1853,42 @@ def test_edit_current_epub_highlight_note_updates_live_view(monkeypatch):
 
     epub_dock._edit_current_epub_highlight_note("hl-1")
 
-    assert updates == [("/tmp/addon", "TestProfile", 42, "hl-1", "New note")]
+    assert updates == [("/tmp/addon", "TestProfile", 42, "hl-1", "New note", '<p><b>New</b> note</p>')]
     assert any("incrementoUpdateEpubHighlightNote" in js for js in js_calls if isinstance(js, str))
     assert "sources" in js_calls
     assert tooltips == ["EPUB highlight note saved."]
+
+
+@pytest.mark.parametrize('change', ['profile', 'card', 'section', 'dock', 'cancel'])
+def test_epub_note_editor_drops_cancelled_or_retired_document_edits(monkeypatch, change):
+    profile = ['A']
+    writes = []
+    monkeypatch.setattr(epub_dock, '_active_profile', lambda: profile[0])
+    monkeypatch.setattr(epub_dock, '_current_epub_card_id', 42)
+    monkeypatch.setattr(epub_dock, '_current_epub_section_index', 3)
+    monkeypatch.setattr(epub_dock, '_epub_dock', object())
+    monkeypatch.setattr(epub_dock, '_current_section_highlights', lambda: [
+        {'id': 'h', 'text': 'source', 'note': 'Saved note', 'note_html': '<b>Saved</b> note'}])
+
+    def accept():
+        if change == 'profile':
+            profile[0] = 'B'
+        elif change == 'card':
+            monkeypatch.setattr(epub_dock, '_current_epub_card_id', 99)
+        elif change == 'section':
+            monkeypatch.setattr(epub_dock, '_current_epub_section_index', 4)
+        elif change == 'dock':
+            monkeypatch.setattr(epub_dock, '_epub_dock', object())
+        return change != 'cancel'
+
+    def dialog(_parent, **kwargs):
+        assert kwargs['current_note_html'] == '<b>Saved</b> note'
+        return types.SimpleNamespace(exec=accept, note_text=lambda: 'Changed', note_html=lambda: '<b>Changed</b>')
+
+    monkeypatch.setattr(epub_dock, 'HighlightNoteDialog', dialog)
+    monkeypatch.setattr(epub_dock, 'update_highlight_note', lambda *args, **kwargs: writes.append((args, kwargs)))
+    epub_dock._edit_current_epub_highlight_note('h')
+    assert writes == []
 
 
 def test_current_card_epub_search_hits_use_section_title_fallback(monkeypatch):
@@ -2085,13 +2147,14 @@ def test_epub_hex_selection_survives_picker_and_paints_selected_text(monkeypatch
         text_scale=1, read_anchor=None, focus_offset=-1, search_query='', highlights=[],
         bridge_nonce='test-nonce', highlight_color='yellow')
     normalize = script[script.index('      const HIGHLIGHT_COLORS'):script.index('      function send')]
-    paint = script[script.index('      function applyHighlight'):script.index('      function selectionMeta')]
+    paint = script[script.index('      function applyHighlight(hl)'):script.index('      function selectionMeta')]
     set_color = script[script.index('      window.incrementoSetEpubHighlightColor'):script.index('      window.incrementoSetEpubReadAnchor')]
     picker = script[script.index('      let pendingHighlightSelection'):script.index('      window.incrementoSnapshotEpubSelection')]
     program = '''
         const fs = require('node:fs');
         const input = JSON.parse(fs.readFileSync(0, 'utf8'));
-        const STATE = { cardId: 42, sectionIndex: 0, highlightColor: 'yellow' };
+        const STATE = { cardId: 42, sectionIndex: 0, highlightColor: 'yellow',
+            annotationStyle: 'highlight', styleLabels: {highlight: 'Highlight'} };
         const window = {}, rows = [], wrappers = [];
         let selection = { text: 'Selected passage', startOffset: 2, endOffset: 18 };
         const selectionMeta = () => selection;

@@ -6,6 +6,8 @@ import subprocess
 import sys
 from textwrap import dedent
 
+import pytest
+
 
 _BROWSER_SETUP = dedent('''
         import json
@@ -83,6 +85,63 @@ def _run_editor_browser_script(script):
         capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("kind", ["snapshot", "context"])
+@pytest.mark.parametrize("mode", ["new", "saved-review", "saved-editor"])
+def test_source_preview_toggles_inside_card_without_activating_enclosing_pdf_link(kind, mode):
+    _run_editor_browser_script(f'kind = {kind!r}\nmode = {mode!r}\n' + dedent('''
+        from types import SimpleNamespace
+
+        command = 'incremento_open_pdf_ref:{"card_id":7,"filename":"synthetic.pdf","page":3}'
+        citation = reader_links.make_reader_anchor_html(command, 'Page 3')
+        if mode == 'new':
+            if kind == 'snapshot':
+                preview = reader_links.pdf_snapshot_card_html(
+                    'synthetic-preview.png', preview_label='Source page preview')
+            else:
+                preview = reader_links.pdf_text_context_reference_html(
+                    'Exact excerpt', citation, 'Before\\nExact excerpt\\nAfter', excerpt='Exact excerpt',
+                    context_rows=1, preview_label='Source page preview')
+                preview = preview[preview.index('<div data-incremento-pdf-text-preview'):]
+        else:
+            content = '<img src="synthetic-preview.png">' if kind == 'snapshot' else 'Saved context'
+            preview = ('<details class="incremento-pdf-' + kind + '-details" contenteditable="false">'
+                       '<summary>Source page preview</summary><div>' + content + '</div></details>')
+            if mode == 'saved-review':
+                preview = reader_links.collapsible_pdf_snapshot_previews(preview)
+        # An edited citation can accidentally enclose the preview. Its click
+        # opens the reference reader and cancels the summary's native toggle.
+        enclosing_link = citation.replace('</a>', '<br>' + preview + '</a>')
+        # Match Anki replacing card HTML in an already loaded reviewer page.
+        load('')
+        js('document.getElementById("field").innerHTML = ' + json.dumps(enclosing_link))
+        if mode == 'saved-editor':
+            reader_links.prepare_pdf_previews_for_editor(SimpleNamespace(
+                note=SimpleNamespace(fields=[enclosing_link]), web=SimpleNamespace(eval=js)))
+        js("document.getElementById('field').contentEditable = 'false';"
+           "window.commands = []; window.pycmd = command => window.commands.push(command);")
+        assert js("document.querySelector('summary').closest('a') === document.querySelector('a')")
+        assert js("""(() => {
+            const preview = document.querySelector('details');
+            preview.querySelector('summary').click();
+            return {open: preview.open, commands: window.commands};
+        })()""") == {'open': True, 'commands': []}, \
+            'Source page preview must expand inline without opening the PDF reader'
+        assert js("""(() => {
+            const preview = document.querySelector('details');
+            const content = preview.querySelector('div');
+            content.click();
+            return preview.open && window.commands.length === 0;
+        })()""") is True, 'Preview content must not activate its enclosing citation'
+        assert js("""(() => {
+            const preview = document.querySelector('details');
+            preview.querySelector('summary').click();
+            return {open: preview.open, commands: window.commands};
+        })()""") == {'open': False, 'commands': []}
+        js("document.querySelector('a').click()")
+        assert js('window.commands') == [command], 'The citation must still open the PDF reader'
+    '''))
 
 
 def test_pdf_extract_preview_allows_typing_below_it_without_creating_more_buttons():

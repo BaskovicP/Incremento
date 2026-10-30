@@ -69,6 +69,7 @@ def drain():
         query = pending.pop(0)
         query.success(query.op(mw.col))
 def click(w, stage):
+    app.processEvents()  # Settle responsive header layouts before a real pointer click.
     QtTest.QTest.mouseClick(w.stage_buttons[stage], QtCore.Qt.MouseButton.LeftButton)
 def bridge(stage, context=None, token=None):
     return ui.on_js_message((False, None), 'incremento_study:' + (token or ui._review_token) + ':' + stage,
@@ -264,27 +265,28 @@ def test_opening_recording_tab_directly_loads_its_textbook_context_and_exact_sta
         assert w.reader is not None and w.source['page']==6
         assert w.player.loads==1 and w.player.pos==12 and w.player.paused
         assert w.visit.stage=='video' and w.stage_buttons['video'].isChecked()
-        assert w.stage_buttons['video'].text()==ui.t('study_tab_' + KIND)
+        assert w.stage_buttons['video'].title_label.text()==ui.t('study_tab_' + KIND)
+        assert w.stage_buttons['video'].count_label.text()=='1'
         click(w,'card'); bridge('video'); drain()
         assert w.player.loads==1 and w.player.pos==12
         w.close()
     ''').replace('KIND', repr(kind)))
 
 
-def test_empty_stages_disable_navigation_and_keep_explicit_linking_actions_available():
+def test_empty_stages_open_their_linking_state_without_losing_the_card():
     run_scene('''
         ui.load_card_resources=lambda *a: dict(documents=[], recordings=[])
         mw.resize(1200,850)
         ui.show_resources(); w=ui._window; drain()
         click(w,'video'); drain()
         app.processEvents()
-        assert w.stage_buttons['book'].isChecked() and w.resources.count()==0
-        assert not w.stage_buttons['video'].isEnabled() and not w.stage_buttons['book'].isEnabled()
+        assert w.stage_buttons['video'].isChecked() and w.resources.count()==0
+        assert w.stage_buttons['video'].isEnabled() and w.stage_buttons['book'].isEnabled()
         assert w.stage_status['video'].text()==ui.t('study_not_linked')
         assert w.add_recording.isEnabled()
-        assert w.resource_panel.width()<=640 and w.resource_panel.height()<400
+        assert w.empty_state.width()<=640 and w.empty_state.height()<400
         click(w,'book'); drain()
-        assert w.stage_buttons['book'].isChecked() and w.link_book.isVisible()
+        assert w.stage_buttons['book'].isChecked() and w.empty_link_button.isVisible()
         assert w.status.text()==ui.t('study_no_textbooks')
         click(w,'card'); assert web.isEnabled() and not w.visit.closed
         ui.reset()
@@ -324,7 +326,9 @@ def test_multiple_recordings_offer_a_choice_and_textbook_only_visits_explain_mis
         second=dict(recording, id=6, recording_card_id=24, label='Second explanation')
         ui.load_card_resources=lambda *a: dict(documents=[document], recordings=[recording, second])
         ui.show_resources(); w=ui._window; drain(); click(w,'video'); drain()
-        assert w.resources.count()==2 and w.player is None and w.visit.stage=='video'
+        assert w.resource_picker.count()==2 and w.player is not None and w.visit.stage=='video'
+        w.resource_picker.activated.emit(1); drain()
+        assert w._selected_recording[0]==24
         w.close()
         mw.state='deckBrowser'; ui.reviewer_shown()
         ui.show_resources(source); w=ui._window; drain()

@@ -1,5 +1,6 @@
 """Shared document edits, independent pane navigation, and stale-reader safety."""
 import json
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -46,6 +47,19 @@ def test_side_controls_save_its_own_preference_and_reject_stale_readers(reader):
         send(reader, 'incremento_pdf_controls', payload)
     reader.profile[0] = 'B'
     send(reader, 'incremento_pdf_controls', {'cardId': 7, 'collapsed': True})
+    assert len(saved) == 1
+
+
+def test_side_footnote_size_uses_its_captured_profile_and_rejects_stale_or_missing_cards(reader):
+    saved = []
+    reader.service.save_pdf_link_preview_size = lambda value, **kw: saved.append((value, kw)) or True
+    size = {'width': 760, 'height': 500}
+    assert send(reader, 'incremento_pdf_link_preview_size', {'cardId': 7, 'size': size})
+    assert saved == [(size, {'profile': 'A'})]
+    for payload in ({'cardId': 8, 'size': size}, {'size': size}, {'cardId': True, 'size': size}):
+        assert not send(reader, 'incremento_pdf_link_preview_size', payload)
+    reader.profile[0] = 'B'
+    assert not send(reader, 'incremento_pdf_link_preview_size', {'cardId': 7, 'size': size})
     assert len(saved) == 1
 
 
@@ -131,9 +145,11 @@ def test_editing_a_side_highlight_note_updates_the_shared_note(reader):
     from backend.pdf_highlights import update_highlight_note
     reader.service.update_highlight_note = update_highlight_note
     reader.service.t = lambda key: key
-    reader.service.HighlightNoteDialog = lambda *a, **kw: SimpleNamespace(exec=lambda: True, note_text=lambda: 'Shared note')
+    reader.service.HighlightNoteDialog = lambda *a, **kw: SimpleNamespace(exec=lambda: True, note_text=lambda: 'Shared note',
+                                                                        note_html=lambda: '<b>Shared note</b>')
     send(reader, 'incremento_pdf_hl_note', {'id': 'note'})
     assert reader.service.load_highlights(reader.service._ADDON_DIR, 'A', 7)[0]['note'] == 'Shared note'
+    assert reader.service.load_highlights(reader.service._ADDON_DIR, 'A', 7)[0]['note_html'] == '<b>Shared note</b>'
 
 
 def test_profile_switch_during_note_dialog_cannot_save_the_old_note(reader):
@@ -143,7 +159,7 @@ def test_profile_switch_during_note_dialog_cannot_save_the_old_note(reader):
     def accept():
         reader.profile[0] = 'B'
         return True
-    reader.service.HighlightNoteDialog = lambda *a, **kw: SimpleNamespace(exec=accept, note_text=lambda: 'Stale')
+    reader.service.HighlightNoteDialog = lambda *a, **kw: SimpleNamespace(exec=accept, note_text=lambda: 'Stale', note_html=lambda: '')
     send(reader, 'incremento_pdf_hl_note', {'id': 'note'})
     assert not reader.service.load_highlights(reader.service._ADDON_DIR, 'A', 7)[0].get('note')
 
@@ -243,15 +259,41 @@ def test_side_custom_color_reply_is_scoped_to_the_live_reader(reader, monkeypatc
     def choose(*args, **kwargs):
         assert kwargs['profile'] == 'A'
         return '#123456'
-    monkeypatch.setitem(sys.modules, 'highlight_color_dialog', SimpleNamespace(choose_highlight_color=choose))
+    monkeypatch.setitem(sys.modules, 'highlight_color_dialog', SimpleNamespace(choose_highlight_color=choose,
+        refresh_reader_default_highlight_color=lambda *args: pytest.fail('An annotation edit cannot change the default')))
     send(reader, 'incremento_pdf_hl_color', {'cardId': 7, 'currentColor': 'yellow'})
     assert reader.scripts == ['window.incrementoPickPdfHighlightColor?.("#123456");']
     def stale(*args, **kwargs):
         reader.profile[0] = 'B'
         return '#abcdef'
-    monkeypatch.setitem(sys.modules, 'highlight_color_dialog', SimpleNamespace(choose_highlight_color=stale))
+    monkeypatch.setitem(sys.modules, 'highlight_color_dialog', SimpleNamespace(choose_highlight_color=stale,
+        refresh_reader_default_highlight_color=lambda *args: pytest.fail('A stale edit cannot change the default')))
     send(reader, 'incremento_pdf_hl_color', {'cardId': 7, 'currentColor': 'yellow'})
     assert len(reader.scripts) == 1
+
+
+@pytest.mark.parametrize('outcome', ['saved', 'cancelled', 'profile-switched', 'page-changed'])
+def test_side_default_color_picker_saves_only_for_the_current_profile_and_document(reader, monkeypatch, outcome):
+    import config_service
+    stored, refreshed = {}, []
+    manager = SimpleNamespace(getConfig=lambda _key: dict(stored),
+        writeConfig=lambda _key, config: stored.update(config))
+    reader.service.mw = SimpleNamespace(addonManager=manager)
+    reader.service._ADDON_PKG = 'incremento'
+    reader.service.save_reader_default_highlight_color = config_service.save_reader_default_highlight_color
+    def choose(*_args, **kwargs):
+        assert kwargs['default_color'] is True
+        if outcome == 'profile-switched':
+            reader.profile[0] = 'B'
+        if outcome == 'page-changed':
+            reader.state.page = 5
+        return None if outcome == 'cancelled' else 'green'
+    monkeypatch.setitem(sys.modules, 'highlight_color_dialog', SimpleNamespace(
+        choose_highlight_color=choose, refresh_reader_default_highlight_color=lambda *args: refreshed.append(args)))
+    send(reader, 'incremento_pdf_hl_color', {'cardId': 7, 'currentColor': 'yellow', 'defaultColor': True})
+    assert config_service.configured_reader_default_highlight_color(stored, 'A') == ('green' if outcome == 'saved' else 'yellow')
+    assert refreshed == ([('A', 'green')] if outcome == 'saved' else [])
+    assert reader.changed == [], 'The preference must not create or recolor document annotations'
 
 
 def test_side_contents_can_jump_and_save_an_exact_place_but_rejects_stale_callbacks(reader, monkeypatch):

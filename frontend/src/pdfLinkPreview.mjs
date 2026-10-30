@@ -15,6 +15,25 @@ export function normalizePdfLinkPreviewZoom(raw) {
     ? Math.round(Math.max(1, Math.min(4, value)) * 4) / 4 : DEFAULT_PDF_LINK_PREVIEW_ZOOM;
 }
 
+export function normalizePdfLinkPreviewSize(raw) {
+  if (!raw || !['width', 'height'].every(key => typeof raw[key] === 'number'
+      && Number.isFinite(raw[key]) && raw[key] > 0)) return null;
+  return {width: Math.round(Math.min(4096, Math.max(280, raw.width))),
+    height: Math.round(Math.min(4096, Math.max(160, raw.height)))};
+}
+
+export function pdfLinkPreviewLayout(size, anchor, viewportWidth, viewportHeight) {
+  const preferred = normalizePdfLinkPreviewSize(size) || {width: 560, height: 360};
+  const width = Math.max(1, Math.min(preferred.width, viewportWidth - 24));
+  const height = Math.max(1, Math.min(preferred.height, viewportHeight - 24));
+  const left = Math.max(12, Math.min(anchor.x - 24, viewportWidth - width - 12));
+  const top = anchor.y + height + 20 < viewportHeight
+    ? anchor.y + 20 : Math.max(12, anchor.y - height - 20);
+  return {width, height, left, top,
+    maxWidth: Math.max(1, viewportWidth - left - 12),
+    maxHeight: Math.max(1, viewportHeight - top - 12)};
+}
+
 export function pdfLinkAtPoint(links, x, y) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   return links.find(link => link.kind === 'internal'
@@ -157,11 +176,11 @@ export function createPdfPreviewRenderer({createCanvas, onChange, pixelRatio = 1
 }
 
 // Passive listeners leave native selection and opt-in link activation alone.
-export function attachPdfLinkPreview({container, popup, host, links, tlLeft, doc, preview, maxPage = null}) {
-  let active = null, dismissed = null, timer = null;
+export function attachPdfLinkPreview({container, popup, host, links, tlLeft, doc, preview, maxPage = null, onResize}) {
+  let active = null, dismissed = null, timer = null, interacting = false, initialSize = null;
   const cancelClose = () => {if (timer != null) host.clearTimeout(timer); timer = null;};
-  const close = () => {cancelClose(); active = null; preview.clear();};
-  const scheduleClose = () => {if (timer == null) timer = host.setTimeout(close, 180);};
+  const close = () => {cancelClose(); active = null; interacting = false; initialSize = null; preview.clear();};
+  const scheduleClose = () => {if (!interacting && timer == null) timer = host.setTimeout(close, 180);};
   const leave = () => {dismissed = null; scheduleClose();};
   const open = (link, x, y) => {
     cancelClose();
@@ -171,6 +190,7 @@ export function attachPdfLinkPreview({container, popup, host, links, tlLeft, doc
     void preview.show(doc, link, {x, y}, maxPage);
   };
   const move = event => {
+    if (interacting) return;
     if (event.buttons || event.pointerType === 'touch') {if (active) close(); return;}
     const rect = container.getBoundingClientRect();
     const link = pdfLinkAtPoint(links, event.clientX - rect.left - tlLeft, event.clientY - rect.top);
@@ -186,7 +206,24 @@ export function attachPdfLinkPreview({container, popup, host, links, tlLeft, doc
   };
   const key = event => {if (event.key === 'Escape' && active) {dismissed = active; close();}};
   const scroll = event => {if (!popup.contains(event.target)) close();};
-  const pointerDown = event => {if (!popup.contains(event.target)) close();};
+  const pointerDown = event => {
+    if (!popup.contains(event.target)) {close(); return;}
+    interacting = true;
+    initialSize = popup.getBoundingClientRect();
+    cancelClose();
+  };
+  const pointerUp = event => {
+    if (!interacting) return;
+    interacting = false;
+    const rect = popup.getBoundingClientRect();
+    const size = normalizePdfLinkPreviewSize(rect);
+    if (size && initialSize && (rect.width !== initialSize.width || rect.height !== initialSize.height)) {
+      onResize?.(size);
+    }
+    initialSize = null;
+    if (!popup.contains(event.target)) scheduleClose();
+  };
+  const pointerCancel = event => {initialSize = null; pointerUp(event);};
   const listeners = [
     [container, 'pointermove', move], [container, 'pointerleave', leave],
     [container, 'focusin', focus], [container, 'focusout', scheduleClose],
@@ -194,6 +231,7 @@ export function attachPdfLinkPreview({container, popup, host, links, tlLeft, doc
     [popup, 'focusin', cancelClose], [popup, 'focusout', scheduleClose],
     [host, 'keydown', key], [host, 'scroll', scroll], [host, 'resize', close],
     [host, 'blur', close], [host, 'pointerdown', pointerDown],
+    [host, 'pointerup', pointerUp], [host, 'pointercancel', pointerCancel],
   ];
   // Enter/leave and window blur must target the surface itself. Capturing them
   // would treat transitions between text spans or popup controls as leaving it.

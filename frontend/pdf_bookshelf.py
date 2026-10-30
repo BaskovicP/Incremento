@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import math
 import os
+import random
 import re
 import sys
 import threading
@@ -32,6 +33,7 @@ from aqt.qt import (
     QHBoxLayout,
     QIcon,
     QImageReader,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QListView,
@@ -43,12 +45,15 @@ from aqt.qt import (
     QPen,
     QPixmap,
     QPushButton,
+    QRect,
     QSize,
     QStyle,
     QStyleOptionViewItem,
     QStyledItemDelegate,
+    QSplitter,
     QTimer,
     QVBoxLayout,
+    QWidget,
     Qt,
     qconnect,
 )
@@ -61,8 +66,10 @@ except ImportError:
 
 try:
     from ..backend.paths import get_active_profile as _active_profile
+    from ..backend import document_lists as _document_lists
 except ImportError:
     from paths import get_active_profile as _active_profile
+    import document_lists as _document_lists
 
 try:
     from ..backend.pdf_manager import (
@@ -81,7 +88,8 @@ try:
         load_media_review_tree_snapshot,
     )
     from ..backend.document_library import load_document_notes
-    from ..backend.priority_manager import get_all_priorities
+    from ..backend.document_library_stats import load_document_statistics
+    from ..backend.priority_manager import configured_priority_lower_is_more_important, get_all_priorities
 except ImportError:
     from pdf_manager import PDF_COVER_FIELD, PDF_NOTE_TYPE, pdf_storage_abspath  # type: ignore
     from epub_manager import EPUB_COVER_FIELD, EPUB_FILE_FIELD, EPUB_NOTE_TYPE, epub_storage_abspath  # type: ignore
@@ -90,7 +98,8 @@ except ImportError:
         load_media_review_tree_snapshot,
     )
     from document_library import load_document_notes  # type: ignore
-    from priority_manager import get_all_priorities  # type: ignore
+    from document_library_stats import load_document_statistics  # type: ignore
+    from priority_manager import configured_priority_lower_is_more_important, get_all_priorities  # type: ignore
 
 try:
     from .file_shell import reveal_local_file
@@ -100,13 +109,14 @@ except ImportError:
 
 _PREVIEW_WIDTH = 160
 _PREVIEW_HEIGHT = 220
-_TILE_WIDTH = 196
-_TILE_HEIGHT = 350
+_TILE_WIDTH = 172
+_TILE_HEIGHT = 280
 _KIND_ALL = "ALL"
 _KIND_PDF = "PDF"
 _KIND_EPUB = "EPUB"
 _TAG_MODE_OR = "OR"
 _TAG_MODE_AND = "AND"
+_STATISTIC_SORTS = frozenset({"due", "reviews", "annotations"})
 _MAX_TAG_FILTER_CHARS = 4_096
 _MAX_TAG_FILTER_TERMS = 64
 _MAX_TAG_SUGGESTIONS = 10_000
@@ -136,6 +146,7 @@ _MAX_DUPLICATE_FEATURE_BUCKET = 64
 _MAX_EXACT_TITLE_BUCKET = 128
 _MAX_PDF_METADATA_TITLE_CHARS = 2_048
 _ATTACHMENT_BADGE_ROLE = int(Qt.ItemDataRole.UserRole) + 1
+_BOOK_METRIC_ROLE = int(Qt.ItemDataRole.UserRole) + 2
 _GENERIC_PDF_METADATA_TITLES = frozenset(
     {
         "document",
@@ -158,6 +169,53 @@ class _BookshelfEntry:
     tags: tuple[str, ...] = ()
     note_id: int = 0
     metadata_title: str = ""
+    saved_reason: str = ""
+    saved_source: str = ""
+    list_ids: tuple[int, ...] = ()
+    list_names: tuple[str, ...] = ()
+
+
+def _with_library_details(entries, snapshot):
+    names = dict(snapshot["lists"])
+    result = []
+    for entry in entries:
+        details = snapshot["books"].get((entry.kind.lower(), entry.source_filename), {})
+        ids = tuple(details.get("list_ids", ()))
+        result.append(replace(entry, saved_reason=details.get("reason", ""),
+            saved_source=details.get("source", ""), list_ids=ids,
+            list_names=tuple(names[i] for i in ids if i in names)))
+    return result
+
+
+def _shuffled_bookshelf_order(entries, *, rng=None) -> dict[int, int]:
+    ids = [entry.card_id for entry in entries]
+    (rng or random).shuffle(ids)
+    return {card_id: index for index, card_id in enumerate(ids)}
+
+
+def _sort_bookshelf_entries(
+    entries,
+    mode: str,
+    *,
+    reverse: bool = False,
+    counts=None,
+    random_order=None,
+    priority_lower_is_more_important: bool = True,
+) -> list[_BookshelfEntry]:
+    """Keep ties alphabetical and random ranks stable across filter changes."""
+    alphabetical = sorted(entries, key=lambda entry: (entry.title.casefold(), entry.card_id))
+    if mode == "random":
+        ranks = random_order or {}
+        return sorted(alphabetical, key=lambda entry: ranks.get(entry.card_id, len(ranks)))
+    if mode == "priority":
+        def priority(entry):
+            value = float(entry.priority) if entry.priority is not None else 50.0
+            return value if math.isfinite(value) else 50.0
+        return sorted(alphabetical, key=priority, reverse=(not priority_lower_is_more_important) != reverse)
+    if mode in _STATISTIC_SORTS:
+        values = counts or {}
+        return sorted(alphabetical, key=lambda entry: values.get(entry.card_id, 0), reverse=not reverse)
+    return sorted(alphabetical, key=lambda entry: entry.title.casefold(), reverse=reverse)
 
 
 @dataclass(frozen=True)
@@ -906,7 +964,10 @@ class _BookshelfItemDelegate(QStyledItemDelegate):
     """Paint attachment status above Qt's cover/selection rendering."""
 
     def paint(self, painter, option, index) -> None:
-        super().paint(painter, option, index)
+        entry = index.data(Qt.ItemDataRole.UserRole)
+        custom_icon_rect = self._paint_book(painter, option, index, entry) if isinstance(entry, _BookshelfEntry) else None
+        if custom_icon_rect is None:
+            super().paint(painter, option, index)
         try:
             attachment_count = int(index.data(_ATTACHMENT_BADGE_ROLE) or 0)
         except (TypeError, ValueError):
@@ -927,6 +988,8 @@ class _BookshelfItemDelegate(QStyledItemDelegate):
             if style is not None
             else None
         )
+        if custom_icon_rect is not None:
+            icon_rect = custom_icon_rect
         if icon_rect is not None and icon_rect.isValid() and icon_rect.width() >= 36:
             icon_left = icon_rect.left()
             icon_top = icon_rect.top()
@@ -972,6 +1035,78 @@ class _BookshelfItemDelegate(QStyledItemDelegate):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawLine(left + 8, top + 16, left + 14, top + 22)
             painter.drawLine(left + 14, top + 22, left + 25, top + 10)
+        finally:
+            painter.restore()
+
+    def _paint_book(self, painter, option, index, entry):
+        initialized = QStyleOptionViewItem(option)
+        self.initStyleOption(initialized, index)
+        view = initialized.widget
+        reason_view = view is not None and view.viewMode() == QListView.ViewMode.ListMode
+        rect = initialized.rect.adjusted(4, 4, -4, -4)
+        palette = initialized.palette
+        base = palette.color(QPalette.ColorRole.Base)
+        accent = palette.color(QPalette.ColorRole.Highlight)
+        text = palette.color(QPalette.ColorRole.Text)
+        muted = QColor(text)
+        muted.setAlpha(185)
+        selected = bool(initialized.state & QStyle.StateFlag.State_Selected)
+        background = QColor.fromRgbF(*(base_component * .92 + accent_component * .08
+            for base_component, accent_component in zip(base.getRgbF()[:3], accent.getRgbF()[:3], strict=True))) if selected else base
+        painter.save()
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setClipRect(rect)
+            painter.setBrush(background)
+            painter.setPen(QPen(accent if selected else palette.color(QPalette.ColorRole.Mid), 1.5 if selected else .5))
+            painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 7, 7)
+            icon_rect = (QRect(rect.left()+10, rect.top()+12, 44, 66) if reason_view else
+                         QRect(rect.center().x()-50, rect.top()+12, 100, 138))
+            pixmap = initialized.icon.pixmap(icon_rect.size())
+            # QIcon returns physical pixels at the screen's device pixel ratio.
+            # Layout and drawPixmap's target rectangle use logical coordinates.
+            cover_size = pixmap.deviceIndependentSize().toSize()
+            centered = QRect(icon_rect.center().x()-cover_size.width()//2,
+                             icon_rect.center().y()-cover_size.height()//2,
+                             cover_size.width(), cover_size.height())
+            painter.setClipRect(icon_rect, Qt.ClipOperation.IntersectClip)
+            painter.drawPixmap(centered, pixmap)
+            painter.setClipRect(rect)
+            x = rect.left()+66 if reason_view else rect.left()+11
+            y = rect.top()+10 if reason_view else icon_rect.bottom()+10
+            width = rect.right()-x-10
+            caption_rect = QRect(x, y, width, rect.bottom()-y-4)
+            painter.setClipRect(caption_rect, Qt.ClipOperation.IntersectClip)
+            font = initialized.font
+            font.setBold(True)
+            painter.setFont(font)
+            painter.setPen(text)
+            line_height = painter.fontMetrics().height()
+            painter.drawText(QRect(x,y,width,line_height*2), Qt.TextFlag.TextWordWrap, entry.title)
+            y += line_height*2
+            font.setBold(False)
+            painter.setFont(font)
+            painter.setPen(muted)
+            names = " · ".join(entry.list_names) or t("reader_library_unlisted")
+            painter.drawText(QRect(x,y,width,line_height), Qt.AlignmentFlag.AlignLeft,
+                             painter.fontMetrics().elidedText(names, Qt.TextElideMode.ElideRight, width))
+            y += line_height+3
+            reason = " ".join(entry.saved_reason.split()) or t("reader_library_add_reason")
+            metric = index.data(_BOOK_METRIC_ROLE)
+            lines = 1 if metric else 2
+            preview = painter.fontMetrics().elidedText(reason, Qt.TextElideMode.ElideRight, width*lines-20)
+            painter.drawText(QRect(x,y,width,line_height*lines), Qt.TextFlag.TextWordWrap, preview)
+            if metric:
+                painter.setPen(text)
+                painter.drawText(QRect(x,rect.bottom()-line_height-5,width,line_height), Qt.AlignmentFlag.AlignLeft, str(metric))
+            painter.setClipRect(rect)
+            if initialized.state & QStyle.StateFlag.State_HasFocus:
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                pen = QPen(accent, 1)
+                pen.setStyle(Qt.PenStyle.DotLine)
+                painter.setPen(pen)
+                painter.drawRoundedRect(rect.adjusted(3,3,-3,-3), 5, 5)
+            return centered
         finally:
             painter.restore()
 
@@ -1086,6 +1221,7 @@ def _load_bookshelf_entries(
             title = note.fields.get("Title", "").strip()
             if not title:
                 title = note.first_field.strip()
+            title = html.unescape(re.sub(r"<[^>]*>", "", title)).strip()
 
             entries.append(
                 _BookshelfEntry(
@@ -1100,6 +1236,10 @@ def _load_bookshelf_entries(
                 )
             )
 
+    try:
+        entries = _with_library_details(entries, _document_lists.load_document_library(addon_dir, captured_profile))
+    except Exception:
+        pass
     return sorted(entries, key=lambda entry: (entry.title.casefold(), entry.card_id))
 
 
@@ -1139,6 +1279,9 @@ def _filter_bookshelf_entries(
     tag_mode: str = _TAG_MODE_OR,
     duplicates_only: bool = False,
     duplicate_card_ids: set[int] | None = None,
+    missing_files_only: bool = False,
+    missing_pdf_card_ids: set[int] | None = None,
+    library_scope: str | int = "all",
 ) -> list[_BookshelfEntry]:
     needle = str(query or "").strip().casefold()
     normalized_kind = str(kind or _KIND_ALL).strip().upper()
@@ -1173,9 +1316,16 @@ def _filter_bookshelf_entries(
         entry
         for entry in entries
         if (normalized_kind == _KIND_ALL or entry.kind == normalized_kind)
-        and (not needle or needle in entry.title.casefold())
+        and (not needle or needle in " ".join((entry.title, entry.saved_reason, entry.saved_source)).casefold())
+        and (library_scope == "all"
+             or library_scope == "unlisted" and not entry.list_ids
+             or library_scope == "no_reason" and not entry.saved_reason.strip()
+             or isinstance(library_scope, int) and library_scope in entry.list_ids)
         and matches_tags(entry)
         and (not duplicates_only or entry.card_id in active_duplicate_card_ids)
+        and (not missing_files_only or (
+            entry.kind == _KIND_PDF and entry.card_id in (missing_pdf_card_ids or ())
+        ))
     ]
 
 
@@ -1230,6 +1380,22 @@ def _bookshelf_source_path(entry: _BookshelfEntry, *, profile: str) -> str:
         return ""
 
 
+def _load_missing_pdf_card_ids(
+    entries: list[_BookshelfEntry],
+    *,
+    profile: str,
+    cancelled: threading.Event | None = None,
+) -> set[int]:
+    """Check source files through profile containment, independently of covers."""
+    missing: set[int] = set()
+    for entry in entries:
+        if cancelled is not None and cancelled.is_set():
+            break
+        if entry.kind == _KIND_PDF and not _bookshelf_source_path(entry, profile=profile):
+            missing.add(entry.card_id)
+    return missing
+
+
 def _existing_media_preview_path(media_dir: str, cover_filename: str) -> str:
     """Resolve an Anki media preview without allowing it to escape media.dir()."""
     raw = str(cover_filename or "").strip()
@@ -1281,6 +1447,8 @@ class _DocumentBookshelfDialog(QDialog):
         entries: list[_BookshelfEntry] | None = None,
         attachment_counts: dict[int, int] | None = None,
         selection_only: bool = False,
+        import_pdf=None,
+        import_epub=None,
     ):
         super().__init__(parent)
         self._addon_dir = str(addon_dir)
@@ -1296,6 +1464,10 @@ class _DocumentBookshelfDialog(QDialog):
             else _load_bookshelf_entries(addon_dir)
         )
         self._last_opened_card_id = last_opened_card_id
+        self._book_drafts: dict[tuple[str, str], dict] = {}
+        self._book_current_key = None
+        self._library_scope: str | int = "all"
+        self._library_lists = []
         self._thumbnail_generation = 0
         self._thumbnail_queue: deque[tuple[QListWidgetItem, _BookshelfEntry]] = deque()
         self._thumbnail_cache = ByteLRU(24 * 1024 * 1024)
@@ -1313,6 +1485,17 @@ class _DocumentBookshelfDialog(QDialog):
         self._attachment_scan_generation = 0
         self._delete_check_in_progress = False
         self._pdf_metadata_cancelled = threading.Event()
+        self._missing_files_cancelled = threading.Event()
+        self._missing_pdf_card_ids: set[int] | None = None
+        self._missing_files_pending = False
+        self._missing_files_generation = 0
+        self._statistics_cancelled = threading.Event()
+        self._statistics_cache: dict[str, dict[int, int]] = {}
+        self._statistics_pending = False
+        self._sort_generation = 0
+        self._random_order: dict[int, int] = {}
+        self._sort_reset_selection = False
+        self._priority_lower_is_more_important = configured_priority_lower_is_more_important()
         self._metadata_scan_pending = True
         self._analysis_generation = 0
         try:
@@ -1321,7 +1504,7 @@ class _DocumentBookshelfDialog(QDialog):
             self._media_dir = ""
 
         self.setWindowTitle(t("reader_bookshelf_title"))
-        self.resize(1080, 760)
+        self.resize(1320, 840)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
@@ -1329,11 +1512,50 @@ class _DocumentBookshelfDialog(QDialog):
 
         title = QLabel(f"<b>{t('reader_bookshelf_title')}</b>")
         title.setStyleSheet("font-size: 20px;")
-        layout.addWidget(title)
+        heading = QHBoxLayout()
+        heading.addWidget(title)
+        heading.addStretch()
+        for callback, key in ((import_pdf, "reader_library_add_pdf"), (import_epub, "reader_library_add_epub")):
+            if callback is not None and not self._selection_only:
+                button = QPushButton(t(key))
+                qconnect(button.clicked, lambda _checked=False, cb=callback: self._import_books(cb))
+                heading.addWidget(button)
+        layout.addLayout(heading)
 
-        hint = QLabel(t("reader_bookshelf_intro"))
+        hint = QLabel(t("reader_library_intro"))
         hint.setWordWrap(True)
         layout.addWidget(hint)
+
+        self._splitter = QSplitter(Qt.Orientation.Horizontal)
+        layout.addWidget(self._splitter, 1)
+        sidebar = QWidget()
+        sidebar.setMinimumWidth(150)
+        sidebar.setMaximumWidth(235)
+        side_layout = QVBoxLayout(sidebar)
+        side_layout.setContentsMargins(0, 0, 8, 0)
+        side_heading = QHBoxLayout()
+        side_heading.addWidget(QLabel(t("reader_library_lists")))
+        side_heading.addStretch()
+        new_list = QPushButton("+")
+        new_list.setFixedWidth(32)
+        new_list.setAccessibleName(t("reader_library_new_list"))
+        qconnect(new_list.clicked, self._create_library_list)
+        side_heading.addWidget(new_list)
+        side_layout.addLayout(side_heading)
+        self._list_sidebar = QListWidget()
+        self._list_sidebar.setAccessibleName(t("reader_library_lists"))
+        self._list_sidebar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        qconnect(self._list_sidebar.currentItemChanged, self._library_scope_changed)
+        qconnect(self._list_sidebar.customContextMenuRequested, self._library_list_menu)
+        side_layout.addWidget(self._list_sidebar, 1)
+        side_hint = QLabel(t("reader_library_lists_hint"))
+        side_hint.setWordWrap(True)
+        side_layout.addWidget(side_hint)
+        self._splitter.addWidget(sidebar)
+        center = QWidget()
+        self._splitter.addWidget(center)
+        layout = QVBoxLayout(center)
+        layout.setContentsMargins(6, 0, 6, 0)
 
         kind_row = QHBoxLayout()
         kind_row.addWidget(QLabel(t("reader_show_label")))
@@ -1342,15 +1564,64 @@ class _DocumentBookshelfDialog(QDialog):
         self._kind_combo.addItem(t("reader_bookshelf_pdfs"), _KIND_PDF)
         self._kind_combo.addItem(t("reader_bookshelf_epubs"), _KIND_EPUB)
         kind_row.addWidget(self._kind_combo)
+        self._view_combo = QComboBox()
+        self._view_combo.addItem(t("reader_library_cover_view"), "covers")
+        self._view_combo.addItem(t("reader_library_reason_view"), "reasons")
+        self._view_combo.setAccessibleName(t("reader_library_view"))
+        kind_row.addWidget(self._view_combo)
         self._duplicates_only_cb = QCheckBox(
             t("reader_bookshelf_duplicates_only")
         )
-        kind_row.addWidget(self._duplicates_only_cb)
+        more_filters = QPushButton(t("reader_library_more_filters"))
+        more_filters.setCheckable(True)
+        kind_row.addWidget(more_filters)
         kind_row.addStretch(1)
         layout.addLayout(kind_row)
 
+        advanced_filters = QWidget()
+        advanced_layout = QVBoxLayout(advanced_filters)
+        advanced_layout.setContentsMargins(0, 0, 0, 0)
+        advanced_layout.addWidget(self._duplicates_only_cb)
+        layout.addWidget(advanced_filters)
+        advanced_filters.hide()
+        qconnect(more_filters.toggled, advanced_filters.setVisible)
+
+        files_row = QHBoxLayout()
+        self._missing_files_only_cb = QCheckBox(t("reader_bookshelf_missing_files_only"))
+        self._missing_files_only_cb.setToolTip(t("reader_bookshelf_missing_files_hint"))
+        files_row.addWidget(self._missing_files_only_cb)
+        self._check_files_button = QPushButton(t("reader_bookshelf_check_files_again"))
+        self._check_files_button.setEnabled(False)
+        files_row.addWidget(self._check_files_button)
+        files_row.addStretch(1)
+        advanced_layout.addLayout(files_row)
+
+        sort_row = QHBoxLayout()
+        sort_row.addWidget(QLabel(t("reader_bookshelf_sort_by")))
+        self._sort_combo = QComboBox()
+        for mode, key in (
+            ("title", "reader_bookshelf_sort_title"),
+            ("priority", "reader_bookshelf_sort_priority"),
+            ("due", "reader_bookshelf_sort_due"),
+            ("reviews", "reader_bookshelf_sort_reviews"),
+            ("annotations", "reader_bookshelf_sort_annotations"),
+            ("random", "reader_bookshelf_sort_random"),
+        ):
+            self._sort_combo.addItem(t(key), mode)
+        self._sort_combo.setAccessibleName(t("reader_bookshelf_sort_by"))
+        self._sort_combo.setToolTip(t("reader_bookshelf_sort_hint"))
+        sort_row.addWidget(self._sort_combo)
+        self._reverse_sort_cb = QCheckBox(t("reader_bookshelf_reverse_order"))
+        sort_row.addWidget(self._reverse_sort_cb)
+        self._shuffle_button = QPushButton(t("reader_bookshelf_shuffle_again"))
+        self._shuffle_button.setEnabled(False)
+        qconnect(self._shuffle_button.clicked, self._shuffle_again)
+        sort_row.addWidget(self._shuffle_button)
+        sort_row.addStretch(1)
+        layout.addLayout(sort_row)
+
         self._search = QLineEdit()
-        self._search.setPlaceholderText(t("reader_bookshelf_search_titles"))
+        self._search.setPlaceholderText(t("reader_library_search"))
         self._search.setClearButtonEnabled(True)
         layout.addWidget(self._search)
 
@@ -1458,7 +1729,45 @@ class _DocumentBookshelfDialog(QDialog):
         cancel_button = QPushButton(t("reader_cancel"))
         qconnect(cancel_button.clicked, self.reject)
         footer.addWidget(cancel_button)
+        self._open_button = QPushButton(t("reader_library_open_book"))
+        self._open_button.setDefault(True)
+        qconnect(self._open_button.clicked, self._accept_current)
+        footer.addWidget(self._open_button)
         layout.addLayout(footer)
+
+        try:
+            from .document_details import BookDetailsEditor
+        except ImportError:
+            from document_details import BookDetailsEditor
+        details_panel = QWidget()
+        details_panel.setMinimumWidth(260)
+        details_panel.setMaximumWidth(360)
+        details_layout = QVBoxLayout(details_panel)
+        details_layout.setContentsMargins(16, 0, 0, 0)
+        self._book_title = QLabel(t("reader_library_select_book"))
+        self._book_title.setTextFormat(Qt.TextFormat.PlainText)
+        self._book_title.setWordWrap(True)
+        self._book_title.setStyleSheet("font-size: 17px; font-weight: bold;")
+        self._book_cover = QLabel()
+        self._book_cover.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        details_layout.addWidget(self._book_cover)
+        details_layout.addWidget(self._book_title)
+        self._book_kind = QLabel()
+        details_layout.addWidget(self._book_kind)
+        self._book_details = BookDetailsEditor(self._addon_dir, self._profile, details_panel, available_lists=[])
+        qconnect(self._book_details.changed, self._book_details_changed)
+        details_layout.addWidget(self._book_details)
+        save_row = QHBoxLayout()
+        self._book_status = QLabel()
+        save_row.addWidget(self._book_status, 1)
+        self._save_book_button = QPushButton(t("reader_library_save_changes"))
+        self._save_book_button.setAutoDefault(False)
+        qconnect(self._save_book_button.clicked, self._save_book_details)
+        save_row.addWidget(self._save_book_button)
+        details_layout.addLayout(save_row)
+        details_layout.addStretch(1)
+        self._splitter.addWidget(details_panel)
+        self._splitter.setSizes([170, 790, 310])
 
         self._filter_timer = QTimer(self)
         self._filter_timer.setSingleShot(True)
@@ -1471,6 +1780,11 @@ class _DocumentBookshelfDialog(QDialog):
         qconnect(self._list.verticalScrollBar().valueChanged, lambda _value: self._thumbnail_timer.start())
         qconnect(self._search.textChanged, lambda _text: self._filter_timer.start())
         qconnect(self._kind_combo.currentIndexChanged, self._refresh)
+        qconnect(self._view_combo.currentIndexChanged, self._refresh)
+        qconnect(self._missing_files_only_cb.stateChanged, self._missing_files_filter_changed)
+        qconnect(self._check_files_button.clicked, self._start_missing_files_scan)
+        qconnect(self._sort_combo.currentIndexChanged, self._sort_changed)
+        qconnect(self._reverse_sort_cb.stateChanged, self._sort_direction_changed)
         qconnect(
             self._duplicates_only_cb.stateChanged,
             self._duplicates_filter_changed,
@@ -1482,34 +1796,220 @@ class _DocumentBookshelfDialog(QDialog):
         qconnect(self._tag_search.returnPressed, self._accept_current)
         qconnect(self._list.itemActivated, self._accept_item)
         qconnect(self._list.currentItemChanged, self._update_option_availability)
+        qconnect(self._list.currentItemChanged, self._update_book_details)
         qconnect(self._list.customContextMenuRequested, self._show_context_menu)
         qconnect(
             self.finished,
             lambda *_args: self._pdf_metadata_cancelled.set(),
         )
+        qconnect(self.finished, lambda *_args: self._statistics_cancelled.set())
+        qconnect(self.finished, lambda *_args: self._missing_files_cancelled.set())
         self._search.installEventFilter(self)
         self._tag_search.installEventFilter(self)
-        self._list.viewport().installEventFilter(self)
 
         self._update_duplicate_filter_state()
+        self._reload_library_lists()
         self._refresh()
         self._search.setFocus()
         self._start_pdf_metadata_scan()
 
-    def eventFilter(self, watched, event):
-        if (
-            watched is self._list.viewport()
-            and event.type() == QEvent.Type.MouseButtonRelease
-            and event.button() == Qt.MouseButton.LeftButton
-        ):
+    def _library_current(self) -> bool:
+        return (not self._pdf_metadata_cancelled.is_set()
+                and str(_active_profile() or "") == self._profile)
+
+    def _reload_library_lists(self) -> None:
+        try:
+            self._library_lists = _document_lists.get_document_lists(self._addon_dir, self._profile)
+            self._library_available = True
+        except Exception:
+            self._library_available = False
+        self._book_details.reload_lists(self._library_lists)
+        names = dict(self._library_lists)
+        self._entries = [replace(e, list_names=tuple(names[i] for i in e.list_ids if i in names))
+                         for e in self._entries]
+        self._refresh_library_sidebar()
+
+    def _refresh_library_sidebar(self) -> None:
+        if not hasattr(self, "_list_sidebar"):
+            return
+        self._list_sidebar.blockSignals(True)
+        self._list_sidebar.clear()
+        scopes = [("all", t("reader_library_all_books")),
+                  ("unlisted", t("reader_library_unlisted")),
+                  ("no_reason", t("reader_library_no_reason")), *self._library_lists]
+        if self._library_scope not in dict(scopes):
+            self._library_scope = "all"
+        counts = defaultdict(set)
+        for entry in self._entries:
+            identity = (entry.kind, entry.source_filename or str(entry.card_id))
+            for scope in ("all", *entry.list_ids):
+                counts[scope].add(identity)
+            if not entry.list_ids:
+                counts["unlisted"].add(identity)
+            if not entry.saved_reason.strip():
+                counts["no_reason"].add(identity)
+        for scope, name in scopes:
+            count = len(counts[scope])
+            item = QListWidgetItem(f"{name}  {count}")
+            item.setData(Qt.ItemDataRole.UserRole, scope)
+            self._list_sidebar.addItem(item)
+            if scope == self._library_scope:
+                self._list_sidebar.setCurrentItem(item)
+        self._list_sidebar.blockSignals(False)
+
+    def _library_scope_changed(self, current, _previous=None) -> None:
+        if current is not None:
+            self._library_scope = current.data(Qt.ItemDataRole.UserRole)
+            self._refresh()
+
+    def _create_library_list(self) -> None:
+        if not self._library_current():
+            return
+        name, accepted = QInputDialog.getText(self, t("reader_library_new_list"), t("reader_library_list_name"))
+        if accepted and self._library_current():
             try:
-                position = event.position().toPoint()
-            except AttributeError:
-                position = event.pos()
-            item = self._list.itemAt(position)
-            if item is not None:
-                self._accept_item(item)
-                return True
+                _document_lists.create_document_list(self._addon_dir, self._profile, name)
+                self._reload_library_lists()
+            except Exception:
+                tooltip(t("reader_library_list_error"), parent=self)
+
+    def _library_list_menu(self, position) -> None:
+        item = self._list_sidebar.itemAt(position)
+        list_id = item.data(Qt.ItemDataRole.UserRole) if item else None
+        if type(list_id) is not int or not self._library_current():
+            return
+        name = dict(self._library_lists).get(list_id, "")
+        menu = QMenu(self)
+        rename_action = menu.addAction(t("reader_library_rename_list"))
+        delete_action = menu.addAction(t("reader_library_delete_list"))
+        chosen = menu.exec(self._list_sidebar.viewport().mapToGlobal(position))
+        try:
+            if chosen is rename_action:
+                renamed, accepted = QInputDialog.getText(self, t("reader_library_rename_list"),
+                                                        t("reader_library_list_name"), text=name)
+                if accepted and self._library_current():
+                    _document_lists.rename_document_list(self._addon_dir, self._profile, list_id, renamed)
+            elif chosen is delete_action and askUser(
+                    t("reader_library_delete_confirmation", name=html.escape(name)), parent=self):
+                if not self._library_current():
+                    return
+                _document_lists.delete_document_list(self._addon_dir, self._profile, list_id)
+                self._entries = [replace(e, list_ids=tuple(i for i in e.list_ids if i != list_id))
+                                 for e in self._entries]
+                for draft in self._book_drafts.values():
+                    draft["list_ids"] = [i for i in draft["list_ids"] if i != list_id]
+            else:
+                return
+            self._reload_library_lists()
+            self._refresh()
+        except Exception:
+            tooltip(t("reader_library_list_error"), parent=self)
+
+    @staticmethod
+    def _entry_details(entry):
+        return {"reason": entry.saved_reason, "source": entry.saved_source, "list_ids": list(entry.list_ids)}
+
+    def _update_book_details(self, *_args) -> None:
+        entry = self._selected_entry()
+        self._book_current_key = (entry.kind.lower(), entry.source_filename) if entry else None
+        enabled = bool(entry and entry.source_filename and self._library_available)
+        self._book_details.setEnabled(enabled)
+        self._book_title.setText(entry.title if entry else t("reader_library_select_book"))
+        self._book_kind.setText(entry.kind if entry else "")
+        item = self._list.currentItem()
+        self._book_cover.setPixmap(item.icon().pixmap(QSize(70, 96)) if item else QPixmap())
+        self._book_details.set_details(self._book_drafts.get(self._book_current_key, self._entry_details(entry))
+                                       if entry else {})
+        self._update_book_save_state()
+        self._open_button.setEnabled(entry is not None)
+
+    def _book_details_changed(self) -> None:
+        entry = self._selected_entry()
+        if entry is None or not self._book_current_key:
+            return
+        draft = self._book_details.raw_details()
+        if draft == self._entry_details(entry):
+            self._book_drafts.pop(self._book_current_key, None)
+        else:
+            self._book_drafts[self._book_current_key] = draft
+        if self._book_details._available_lists != self._library_lists:
+            self._reload_library_lists()
+        self._update_book_save_state()
+
+    def _update_book_save_state(self) -> None:
+        changed = self._book_current_key in self._book_drafts
+        valid = True
+        try:
+            self._book_details.details()
+        except ValueError:
+            valid = False
+        self._save_book_button.setEnabled(changed and valid and self._library_current())
+        self._book_status.setText(t("reader_library_invalid_details") if not valid else
+                                  t("reader_library_unsaved") if changed else
+                                  t("reader_library_saved") if self._book_current_key else "")
+
+    def _save_book_details(self, *_args) -> None:
+        key = self._book_current_key
+        if not key or not self._library_current() or key not in self._book_drafts:
+            return
+        try:
+            details = _document_lists.normalize_document_details(self._book_drafts[key])
+            _document_lists.save_document_details(self._addon_dir, self._profile, *key, details)
+        except Exception:
+            tooltip(t("reader_library_save_error"), parent=self)
+            return
+        del self._book_drafts[key]
+        names = dict(self._library_lists)
+        self._entries = [replace(e, saved_reason=details["reason"], saved_source=details["source"],
+            list_ids=tuple(details["list_ids"]), list_names=tuple(names[i] for i in details["list_ids"]))
+            if (e.kind.lower(), e.source_filename) == key else e for e in self._entries]
+        self._refresh_library_sidebar()
+        self._refresh()
+
+    def done(self, result) -> None:
+        drafts = getattr(self, "_book_drafts", {})
+        if drafts and self._library_current():
+            from aqt.qt import QMessageBox
+            choice = QMessageBox.question(self, t("reader_bookshelf_title"), t("reader_library_unsaved_prompt"),
+                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel)
+            if not self._library_current():
+                super().done(result)
+                return
+            if choice == QMessageBox.StandardButton.Cancel:
+                self._reference_mode = "main"
+                return
+            if choice == QMessageBox.StandardButton.Save:
+                try:
+                    for key, details in list(drafts.items()):
+                        _document_lists.save_document_details(self._addon_dir, self._profile, *key, details)
+                        del drafts[key]
+                except Exception:
+                    self._reference_mode = "main"
+                    tooltip(t("reader_library_save_error"), parent=self)
+                    return
+        super().done(result)
+
+    def _import_books(self, callback) -> None:
+        if not self._library_current():
+            return
+        callback()
+        if not self._library_current():
+            return
+        from aqt.operations import QueryOp
+        profile, addon_dir = self._profile, self._addon_dir
+        def loaded(entries):
+            if self._library_current():
+                self._entries = entries
+                self._reload_library_lists()
+                self._refresh()
+                self._metadata_scan_pending = True
+                self._start_pdf_metadata_scan()
+        QueryOp(parent=self, op=lambda col: _load_bookshelf_entries(addon_dir, collection=col, profile=profile),
+                success=loaded).failure(lambda _error: tooltip(t("reader_library_reload_error"), parent=self)
+                    if self._library_current() else None).run_in_background()
+
+    def eventFilter(self, watched, event):
         if (
             watched in (self._search, self._tag_search)
             and event.type() == QEvent.Type.KeyPress
@@ -1649,7 +2149,9 @@ class _DocumentBookshelfDialog(QDialog):
                 if str(_active_profile() or "") != captured_profile:
                     return
                 entries, matches = future.result()
-                self._entries = entries
+                titles = {e.card_id: e.metadata_title for e in entries}
+                self._entries = [replace(e, metadata_title=titles.get(e.card_id, e.metadata_title))
+                                 for e in self._entries]
                 self._duplicate_matches = matches
                 self._update_duplicate_filter_state()
                 self._refresh()
@@ -1665,6 +2167,132 @@ class _DocumentBookshelfDialog(QDialog):
             finished,
             uses_collection=False,
         )
+
+    def _missing_files_filter_changed(self, *_args) -> None:
+        if not self._missing_files_only_cb.isChecked() and self._missing_files_pending:
+            self._missing_files_cancelled.set()
+            self._missing_files_pending = False
+        if (self._missing_files_only_cb.isChecked()
+                and self._missing_pdf_card_ids is None and not self._missing_files_pending):
+            self._start_missing_files_scan()
+            return
+        self._check_files_button.setEnabled(
+            self._missing_files_only_cb.isChecked() and not self._missing_files_pending
+        )
+        self._refresh()
+
+    def _start_missing_files_scan(self, *_args) -> None:
+        if (self._missing_files_pending or self._pdf_metadata_cancelled.is_set()
+                or str(_active_profile() or "") != self._profile):
+            return
+        self._missing_files_cancelled.set()
+        self._missing_files_cancelled = threading.Event()
+        cancelled = self._missing_files_cancelled
+        self._missing_files_generation += 1
+        generation = self._missing_files_generation
+        captured_profile = self._profile
+        captured_collection = mw.col
+        snapshot = list(self._entries)
+        self._missing_files_pending = True
+        self._missing_pdf_card_ids = None
+        self._check_files_button.setEnabled(False)
+        self._refresh()
+
+        def scan():
+            if not captured_profile:
+                raise RuntimeError("No profile captured for file check")
+            return _load_missing_pdf_card_ids(snapshot, profile=captured_profile, cancelled=cancelled)
+
+        def finished(future) -> None:
+            if (cancelled.is_set() or self._pdf_metadata_cancelled.is_set()
+                    or generation != self._missing_files_generation
+                    or str(_active_profile() or "") != captured_profile
+                    or mw.col is not captured_collection):
+                return
+            self._missing_files_pending = False
+            try:
+                self._missing_pdf_card_ids = future.result()
+            except Exception:
+                self._missing_files_only_cb.setChecked(False)
+                tooltip(t("reader_bookshelf_file_check_failed"), parent=self)
+            self._missing_files_filter_changed()
+
+        try:
+            mw.taskman.run_in_background(scan, finished, uses_collection=False)
+        except Exception:
+            self._missing_files_pending = False
+            self._missing_files_only_cb.setChecked(False)
+            self._missing_files_filter_changed()
+            tooltip(t("reader_bookshelf_file_check_failed"), parent=self)
+
+    def _sort_changed(self, *_args) -> None:
+        self._statistics_cancelled.set()
+        self._statistics_cancelled = threading.Event()
+        self._sort_generation += 1
+        mode = self._sort_combo.currentData()
+        self._statistics_pending = mode in _STATISTIC_SORTS and mode not in self._statistics_cache
+        self._shuffle_button.setEnabled(mode == "random")
+        self._reverse_sort_cb.setEnabled(mode != "random")
+        if mode == "random":
+            self._random_order = _shuffled_bookshelf_order(self._entries)
+        self._sort_reset_selection = True
+        self._refresh()
+        if self._statistics_pending:
+            self._start_statistics_scan()
+
+    def _sort_direction_changed(self, *_args) -> None:
+        self._sort_reset_selection = True
+        self._refresh()
+
+    def _shuffle_again(self, *_args) -> None:
+        self._random_order = _shuffled_bookshelf_order(self._entries)
+        self._sort_reset_selection = True
+        self._refresh()
+
+    def _start_statistics_scan(self) -> None:
+        from aqt.operations import QueryOp
+
+        mode = self._sort_combo.currentData()
+        generation = self._sort_generation
+        captured_profile = self._profile
+        captured_collection = mw.col
+        addon_dir = self._addon_dir
+        documents = [(entry.card_id, entry.kind) for entry in self._entries]
+        cancelled = self._statistics_cancelled
+
+        def current():
+            return (
+                not cancelled.is_set()
+                and not self._pdf_metadata_cancelled.is_set()
+                and generation == self._sort_generation
+                and str(_active_profile() or "") == captured_profile
+                and mw.col is captured_collection
+            )
+
+        def inspect(col):
+            return load_document_statistics(
+                addon_dir, captured_profile, documents, col=col, metric=mode, cancelled=cancelled,
+            )
+
+        def checked(counts):
+            if not current():
+                return
+            self._statistics_pending = False
+            self._statistics_cache[mode] = dict(counts)
+            self._sort_reset_selection = True
+            self._refresh()
+
+        def failed(_error):
+            if not current():
+                return
+            self._statistics_pending = False
+            self._sort_combo.setCurrentIndex(self._sort_combo.findData("title"))
+            tooltip(t("reader_bookshelf_statistics_failed"), parent=self)
+
+        try:
+            QueryOp(parent=self, op=inspect, success=checked).failure(failed).run_in_background()
+        except Exception as error:
+            failed(error)
 
     def _current_kind(self) -> str:
         kind = self._kind_combo.currentData()
@@ -1698,6 +2326,9 @@ class _DocumentBookshelfDialog(QDialog):
             current_entry.card_id if isinstance(current_entry, _BookshelfEntry)
             else self._last_opened_card_id
         )
+        if self._sort_reset_selection:
+            preferred_card_id = None
+        self._sort_reset_selection = False
         kind = self._current_kind()
         visible_entries = _filter_bookshelf_entries(
             self._entries,
@@ -1707,6 +2338,17 @@ class _DocumentBookshelfDialog(QDialog):
             tag_mode=self._current_tag_mode(),
             duplicates_only=self._duplicates_only_cb.isChecked(),
             duplicate_card_ids=set(self._duplicate_matches),
+            missing_files_only=self._missing_files_only_cb.isChecked(),
+            missing_pdf_card_ids=self._missing_pdf_card_ids,
+            library_scope=getattr(self, "_library_scope", "all"),
+        )
+        sort_mode = self._sort_combo.currentData()
+        counts = self._statistics_cache.get(sort_mode)
+        visible_entries = _sort_bookshelf_entries(
+            visible_entries, sort_mode if not self._statistics_pending else "title",
+            reverse=self._reverse_sort_cb.isChecked(), counts=counts,
+            random_order=self._random_order,
+            priority_lower_is_more_important=self._priority_lower_is_more_important,
         )
         self._thumbnail_generation += 1
         generation = self._thumbnail_generation
@@ -1714,6 +2356,12 @@ class _DocumentBookshelfDialog(QDialog):
         self._thumbnail_visible.clear()
         self._thumbnail_attempted.clear()
         self._list.clear()
+        reason_view = hasattr(self, "_view_combo") and self._view_combo.currentData() == "reasons"
+        if hasattr(self, "_view_combo"):
+            self._list.setViewMode(QListView.ViewMode.ListMode if reason_view else QListView.ViewMode.IconMode)
+            self._list.setWrapping(not reason_view)
+            self._list.setIconSize(QSize(48, 66) if reason_view else QSize(_PREVIEW_WIDTH, _PREVIEW_HEIGHT))
+            self._list.setGridSize(QSize() if reason_view else QSize(_TILE_WIDTH, _TILE_HEIGHT))
 
         placeholder = self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
         selected_item = None
@@ -1723,10 +2371,31 @@ class _DocumentBookshelfDialog(QDialog):
                     or str(_active_profile() or "") != self._profile):
                 return
             for entry in visible_entries[offset:offset + 40]:
-                item = QListWidgetItem(entry.title)
+                metric_text = ""
+                if counts is not None:
+                    metric_text = t({
+                        "due": "reader_bookshelf_metric_due",
+                        "reviews": "reader_bookshelf_metric_reviews",
+                        "annotations": "reader_bookshelf_metric_annotations",
+                    }[sort_mode], count=counts.get(entry.card_id, 0))
+                elif sort_mode == "priority":
+                    metric_text = (
+                        t("reader_bookshelf_priority_value", value=int(round(entry.priority)))
+                        if entry.priority is not None else t("reader_bookshelf_default_priority")
+                    )
+                caption = [entry.title]
+                if entry.list_names:
+                    caption.append(" · ".join(entry.list_names))
+                if entry.saved_reason:
+                    preview = " ".join(entry.saved_reason.split())
+                    caption.append(preview[:120] + ("…" if len(preview) > 120 else ""))
+                if metric_text:
+                    caption.append(metric_text)
+                item = QListWidgetItem("\n".join(caption))
                 item.setData(Qt.ItemDataRole.UserRole, entry)
+                item.setData(_BOOK_METRIC_ROLE, metric_text)
                 item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop
+                    (Qt.AlignmentFlag.AlignLeft if reason_view else Qt.AlignmentFlag.AlignHCenter) | Qt.AlignmentFlag.AlignTop
                 )
                 item.setForeground(QColor(self._caption_color))
                 title_font = item.font()
@@ -1735,7 +2404,7 @@ class _DocumentBookshelfDialog(QDialog):
                 # QListView's icon mode can ignore gridSize() for the item's own
                 # paint rectangle, which clips the text directly beneath tall
                 # covers. An explicit size hint reserves a real caption area.
-                item.setSizeHint(QSize(_TILE_WIDTH, _TILE_HEIGHT))
+                item.setSizeHint(QSize(0, 112) if reason_view else QSize(_TILE_WIDTH, _TILE_HEIGHT))
                 priority_text = (
                     t("reader_bookshelf_priority_value", value=int(round(entry.priority)))
                     if entry.priority is not None
@@ -1752,6 +2421,14 @@ class _DocumentBookshelfDialog(QDialog):
                     tags=tags_text,
                     priority=priority_text,
                 )
+                if metric_text:
+                    item_tooltip += "\n" + metric_text
+                if entry.saved_reason:
+                    item_tooltip += "\n" + html.escape(entry.saved_reason)
+                if entry.saved_source:
+                    item_tooltip += "\n" + html.escape(entry.saved_source)
+                if entry.card_id in (self._missing_pdf_card_ids or ()):
+                    item_tooltip += "\n" + t("reader_bookshelf_missing_pdf_status")
                 if entry.metadata_title:
                     item_tooltip += "\n" + t(
                         "reader_bookshelf_pdf_metadata_title",
@@ -1793,11 +2470,15 @@ class _DocumentBookshelfDialog(QDialog):
 
             self._thumbnail_timer.start()
 
-        self._count_label.setText(
-            _bookshelf_count_text(self._entries, visible_entries, kind)
-        )
+        count_text = _bookshelf_count_text(self._entries, visible_entries, kind)
+        if self._statistics_pending:
+            count_text += " · " + t("reader_bookshelf_statistics_loading")
+        if self._missing_files_pending:
+            count_text += " · " + t("reader_bookshelf_checking_files")
+        self._count_label.setText(count_text)
 
         populate()
+        self._refresh_library_sidebar()
 
     def _duplicates_for_entry(
         self,
@@ -1827,6 +2508,15 @@ class _DocumentBookshelfDialog(QDialog):
             reveal_action.triggered,
             lambda _checked=False, target=entry: self._reveal_entry(target),
         )
+        if entry.kind == _KIND_PDF:
+            rename_action = menu.addAction(t("reader_bookshelf_edit_pdf_name"))
+            rename_action.setEnabled(
+                str(_active_profile() or "") == self._profile and entry.note_id > 0
+            )
+            qconnect(
+                rename_action.triggered,
+                lambda _checked=False, target=entry: self._edit_pdf_name(target),
+            )
         menu.addSeparator()
         if getattr(self, "_selection_only", False):
             menu.exec(self._list.viewport().mapToGlobal(position))
@@ -1863,6 +2553,71 @@ class _DocumentBookshelfDialog(QDialog):
             )
 
         menu.exec(self._list.viewport().mapToGlobal(position))
+
+    def _edit_pdf_name(self, entry: _BookshelfEntry) -> None:
+        captured_profile = self._profile
+        captured_collection = mw.col
+        cancelled = self._pdf_metadata_cancelled
+
+        def current() -> bool:
+            return (
+                not cancelled.is_set()
+                and str(_active_profile() or "") == captured_profile
+                and mw.col is captured_collection
+            )
+
+        if entry.kind != _KIND_PDF or entry.note_id <= 0 or not current():
+            return
+        name, accepted = QInputDialog.getText(
+            self,
+            t("reader_bookshelf_edit_pdf_name"),
+            t("reader_bookshelf_pdf_name_prompt"),
+            text=entry.title,
+        )
+        if not accepted or not current():
+            return
+        name = name.strip()
+        if not name or len(name) > 2_000 or any(ord(char) < 32 or ord(char) == 127 for char in name):
+            tooltip(t("reader_bookshelf_pdf_name_invalid"), parent=self)
+            return
+        if name == entry.title:
+            return
+
+        def save(col):
+            if col is not captured_collection or not current():
+                raise RuntimeError("PDF name edit is no longer current")
+            card = col.get_card(entry.card_id)
+            if int(card.nid) != entry.note_id:
+                raise ValueError("PDF note identity changed")
+            note = col.get_note(entry.note_id)
+            if note.note_type()["name"] != PDF_NOTE_TYPE:
+                raise ValueError("PDF note type changed")
+            note["Title"] = html.escape(name)
+            return col.update_note(note)
+
+        def saved(_changes) -> None:
+            if not current():
+                return
+            self._entries = [
+                replace(candidate, title=name) if candidate.note_id == entry.note_id else candidate
+                for candidate in self._entries
+            ]
+            # Supersede metadata snapshots that still contain the old name.
+            self._duplicate_matches = {}
+            self._metadata_scan_pending = True
+            self._start_pdf_metadata_scan()
+            self._refresh()
+
+        def failed(_error) -> None:
+            if current():
+                tooltip(t("reader_bookshelf_pdf_name_failed"), parent=self)
+
+        from aqt.operations import CollectionOp
+
+        try:
+            CollectionOp(self, save).success(saved).failure(failed).run_in_background()
+        except Exception as error:
+            failed(error)
 
     def _reveal_entry(self, entry: _BookshelfEntry) -> None:
         source_path = ""
@@ -1949,6 +2704,8 @@ class _DocumentBookshelfDialog(QDialog):
             failed(RuntimeError("attachment check could not start"))
 
     def _after_entries_deleted(self, note_ids: tuple[int, ...]) -> None:
+        self._statistics_cancelled.set()
+        self._statistics_cache.clear()
         deleted = set(note_ids)
         deleted_card_ids = {
             entry.card_id for entry in self._entries if entry.note_id in deleted
@@ -1965,7 +2722,7 @@ class _DocumentBookshelfDialog(QDialog):
             self._metadata_scan_pending = True
             self._start_pdf_metadata_scan()
             self._update_duplicate_filter_state()
-            self._refresh()
+            self._sort_changed()
             tooltip(
                 tn("reader_bookshelf_deleted_count", len(note_ids)),
                 parent=self,
@@ -1979,9 +2736,11 @@ class _DocumentBookshelfDialog(QDialog):
         viewport = self._list.viewport()
         # QListView's grid already includes spacing; adding it again drifts
         # away from the actual visible rows in a long library.
-        columns = max(1, viewport.width() // _TILE_WIDTH)
-        first_row = self._list.verticalScrollBar().value() // _TILE_HEIGHT
-        rows = max(1, math.ceil(viewport.height() / _TILE_HEIGHT))
+        reason_view = hasattr(self, "_view_combo") and self._view_combo.currentData() == "reasons"
+        row_height = 112 + 2 * self._list.spacing() if reason_view else _TILE_HEIGHT
+        columns = 1 if reason_view else max(1, viewport.width() // _TILE_WIDTH)
+        first_row = self._list.verticalScrollBar().value() // row_height
+        rows = max(1, math.ceil(viewport.height() / row_height))
         window = set(thumbnail_window(self._list.count(), columns=columns, first_row=first_row, visible_rows=rows))
         placeholder = self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
         for index in self._thumbnail_visible - window:
@@ -1999,6 +2758,8 @@ class _DocumentBookshelfDialog(QDialog):
             cached = self._thumbnail_cache.get(key)
             if cached is not None:
                 item.setIcon(cached)
+                if item is self._list.currentItem() and hasattr(self, "_book_cover"):
+                    self._book_cover.setPixmap(cached.pixmap(QSize(70, 96)))
             elif key not in self._thumbnail_attempted:
                 self._thumbnail_queue.append((item, entry))
         self._load_next_thumbnail(self._thumbnail_generation)
@@ -2099,6 +2860,8 @@ class _DocumentBookshelfDialog(QDialog):
         self._thumbnail_attempted.discard((entry.kind, entry.card_id))
         if self._list.row(item) in self._thumbnail_visible:
             item.setIcon(icon)
+            if item is self._list.currentItem() and hasattr(self, "_book_cover"):
+                self._book_cover.setPixmap(icon.pixmap(QSize(70, 96)))
 
     def _accept_reference(self, *, beside: bool, new_window: bool = False) -> None:
         entry = self._selected_entry()

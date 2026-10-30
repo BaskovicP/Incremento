@@ -1373,5 +1373,35 @@
   },
   "bookmark_next_page": {
     "message": "下一页"
+  },
+  "error_anki_detail": {
+    "message": "Anki 详细信息"
+  },
+  "error_http_status": {
+    "message": "HTTP 状态"
+  },
+  "error_anki_stage": {
+    "message": "Anki 阶段"
+  },
+  "error_anki_validation": {
+    "message": "验证请求"
+  },
+  "error_anki_preparation": {
+    "message": "准备内容"
+  },
+  "error_anki_creation": {
+    "message": "创建卡片"
+  },
+  "error_pdf_layout": {
+    "message": "PDF 布局"
+  },
+  "error_yes": {
+    "message": "是"
+  },
+  "error_no": {
+    "message": "否"
+  },
+  "bridge_error_webpage_verification_required": {
+    "message": "此网站需要安全验证或登录。请在原标签页中完成验证或登录，然后选择将已打开的页面捕获为 PDF。"
   }
 }

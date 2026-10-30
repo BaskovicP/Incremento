@@ -46,45 +46,32 @@ body[data-study-canvas] { background: var(--study-workspace-canvas) !important; 
   border: 1px solid var(--study-card-border); border-top: 0; border-radius: 0 0 12px 12px;
   text-align: start; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
-#incremento-study-card-resources h2 { margin: 0 0 3px; font-size: 14px; font-weight: 600; }
-#incremento-study-card-resources p { margin: 0 0 16px; font-size: 12px; color: var(--study-card-muted); }
-#incremento-study-card-resources .study-resource-tile {
-  display: flex; align-items: center; gap: 14px; padding: 14px; margin-top: 10px;
-  background: var(--study-workspace-canvas); border: 1px solid var(--study-card-border); border-radius: 8px;
-}
-#incremento-study-card-resources .study-resource-copy { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-#incremento-study-card-resources .study-resource-title { font-weight: 500; }
-#incremento-study-card-resources .study-resource-status { margin-inline-start: 8px; font-size: 11px; color: var(--study-card-muted); font-weight: 400; }
-#incremento-study-card-resources .study-resource-detail { font-size: 12px; color: var(--study-card-muted); margin-top: 3px; }
-#incremento-study-card-resources svg { width: 22px; height: 22px; flex: none; color: var(--study-card-accent); }
-#incremento-study-card-resources button { flex: none; cursor: pointer; }
+#incremento-study-card-resources { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+#incremento-study-card-resources .study-card-summary { font-size: 12px; color: var(--study-card-muted); }
+#incremento-study-card-resources button { cursor: pointer; background: transparent !important; border-color: transparent !important; }
 @media (max-width: 520px) {
-  #qa[data-study-panel], #incremento-study-card-resources { width: 100% !important; padding: 20px !important; }
-  #incremento-study-card-resources .study-resource-tile { flex-wrap: wrap; gap: 10px; }
-  #incremento-study-card-resources .study-resource-copy { flex-basis: calc(100% - 40px); }
-  #incremento-study-card-resources button { margin-inline-start: 32px; }
+  #qa[data-study-panel], #incremento-study-card-resources { width: 100% !important; padding: 16px !important; }
 }
 #incremento-study-navigation {
   display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px;
-  box-sizing: border-box; margin: 0 0 24px; padding: 12px 0 16px;
+  box-sizing: border-box; margin: 0 0 24px; padding: 16px;
   border-bottom: 1px solid var(--study-nav-border); text-align: start;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
-#incremento-study-navigation .study-nav-label {
-  color: var(--study-nav-foreground); font-size: 12px; font-weight: 500;
-}
+#incremento-study-navigation .study-nav-label { display: none; }
 #incremento-study-navigation .study-nav-steps {
-  display: inline-flex; align-items: center; gap: 4px; padding: 4px;
+  display: inline-flex; align-items: center; gap: 5px; padding: 0;
   max-width: 100%; box-sizing: border-box; border-radius: 12px;
-  border: 1px solid var(--study-nav-border); background: var(--study-nav-surface);
+  border: 0; background: transparent;
 }
 #incremento-study-navigation button {
   gap: 7px; margin: 0 !important; background: transparent !important; border-color: transparent !important;
   color: var(--study-nav-foreground) !important; cursor: pointer;
 }
-#incremento-study-navigation button[data-availability] { height: auto !important; min-height: 48px !important; }
-#incremento-study-navigation .study-nav-copy { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; white-space: normal; }
-#incremento-study-navigation .study-nav-status { font-size: 11px; font-weight: 400; line-height: 1.4; }
+#incremento-study-navigation button[data-availability] { height: auto !important; min-height: 36px !important; }
+#incremento-study-navigation #incremento-study-link-resources { margin-inline-start: auto !important; }
+#incremento-study-navigation .study-nav-copy { display: flex; align-items: center; gap: 8px; min-width: 0; white-space: normal; }
+#incremento-study-navigation .study-nav-count { font-size: 12px; font-weight: 400; line-height: 1.4; padding: 1px 5px; border-radius: 3px; background: var(--study-nav-border); }
 #incremento-study-navigation button:disabled { opacity: .7 !important; cursor: default; }
 #incremento-study-card-resources button:disabled { cursor: default; }
 #incremento-study-navigation button[aria-current="step"] {
@@ -99,8 +86,8 @@ body[data-study-canvas] { background: var(--study-workspace-canvas) !important; 
 @media (max-width: 520px) {
   #incremento-study-navigation { gap: 8px; }
   #incremento-study-navigation .study-nav-label { flex-basis: 100%; }
-  #incremento-study-navigation .study-nav-steps { width: 100%; }
-  #incremento-study-navigation button { flex: 1; min-width: 0 !important; padding: 0 9px !important; }
+  #incremento-study-navigation .study-nav-steps { width: 100%; flex-wrap: wrap; }
+  #incremento-study-navigation button { flex: 1 0 auto; min-width: 0 !important; padding: 0 9px !important; }
   #incremento-study-navigation.study-nav-entry .study-nav-steps { width: auto; }
 }
 """
@@ -135,18 +122,42 @@ def style_stage_bar(container, buttons):
     colors = NAVIGATION_COLORS['dark' if dark else 'light']
     container.setObjectName('study-stage-bar')
     container.setStyleSheet(f"""
-        QWidget#study-stage-bar {{ background: {colors['surface']}; border: 1px solid {colors['border']}; border-radius: 12px; }}
+        QWidget#study-stage-bar {{ background: transparent; border: 0; }}
         QWidget#study-stage-bar QPushButton {{ background: transparent; color: {colors['foreground']};
-            border: 1px solid transparent; border-radius: 8px; padding: 6px 12px; }}
+            border: 1px solid transparent; border-radius: 8px; padding: 0; }}
         QWidget#study-stage-bar QPushButton:checked {{ background: {colors['selected']}; color: {colors['accent']}; font-weight: 600; }}
         QWidget#study-stage-bar QPushButton:hover {{ border-color: {colors['border']}; }}
         QWidget#study-stage-bar QPushButton:focus {{ border-color: {colors['accent']}; }}
         QWidget#study-stage-bar QPushButton:disabled {{ color: {container.palette().color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.ButtonText).name()}; }}
         QWidget#study-stage-bar QLabel {{ color: {colors['foreground']}; }}
+        QWidget#study-stage-bar QPushButton:checked QLabel#study-stage-title {{ color:{colors['accent']}; font-weight:500; }}
+        QWidget#study-stage-bar QLabel#study-stage-count {{ background:{colors['border']}; color:{colors['ink']};
+            padding:1px 5px; border-radius:3px; }}
     """)
     for stage, button in buttons.items():
         set_stage_icon(button, stage, colors)
     return colors
+
+
+def reviewer_navigation_clear_script():
+    """Remove our presentation without re-rendering Anki's live card document."""
+    return """
+(() => {
+  for (const id of ['incremento-study-resources', 'incremento-study-navigation',
+                    'incremento-study-card-resources', 'incremento-study-navigation-style']) {
+    document.getElementById(id)?.remove();
+  }
+  const card = document.getElementById('qa');
+  for (const name of ['data-study-panel', 'data-study-heading', 'data-study-state']) {
+    card?.removeAttribute(name);
+  }
+  document.body.removeAttribute('data-study-canvas');
+  for (const name of ['--study-workspace-canvas', '--study-card-border', '--study-card-paper',
+                     '--study-card-muted', '--study-card-ink', '--study-card-accent']) {
+    document.body.style.removeProperty(name);
+  }
+})();
+"""
 
 
 def reviewer_navigation_script(routes, label, *, workspace=None):
@@ -184,10 +195,14 @@ def reviewer_navigation_script(routes, label, *, workspace=None):
     const title = document.createElement('span'); title.textContent = route.label;
     copy.appendChild(title);
     if (route.status) {
-      const status = document.createElement('span'); status.className = 'study-nav-status'; status.textContent = route.status;
-      copy.appendChild(status);
       button.title = route.status;
+      button.setAttribute('aria-description', route.status);
       button.dataset.availability = route.availability;
+    }
+    if (route.stage !== 'card' && Number.isSafeInteger(route.count)) {
+      const count = document.createElement('span');
+      count.className = 'study-nav-count'; count.textContent = String(route.count);
+      copy.appendChild(count);
     }
     button.appendChild(copy);
     button.disabled = Boolean(route.disabled);
@@ -211,6 +226,14 @@ def reviewer_navigation_script(routes, label, *, workspace=None):
     button.onclick = () => pycmd(route.command);
     steps.appendChild(button);
   }
+  if (data.workspace?.link_action) {
+    const action = document.createElement('button');
+    action.id = 'incremento-study-link-resources';
+    action.type = 'button';
+    action.textContent = data.workspace.link_action.label;
+    action.onclick = () => pycmd(data.workspace.link_action.command);
+    nav.appendChild(action);
+  }
   // Keep Anki's live #qa node and card templates intact, including listeners.
   const card = document.getElementById('qa');
   if (card) card.before(nav);
@@ -232,25 +255,15 @@ def reviewer_navigation_script(routes, label, *, workspace=None):
     const shelf = document.createElement('section');
     shelf.id = 'incremento-study-card-resources';
     shelf.setAttribute('aria-label', data.workspace.resources_label);
-    const heading = document.createElement('h2'); heading.textContent = data.workspace.resources_label;
-    const hint = document.createElement('p'); hint.textContent = data.workspace.hint;
-    shelf.append(heading,hint);
-    for (const resource of data.workspace.tiles) {
-      const tile = document.createElement('div'); tile.className = 'study-resource-tile';
-      const icon = steps.querySelector('[data-study-stage="' + resource.stage + '"] svg');
-      if (icon) tile.appendChild(icon.cloneNode(true));
-      const copy = document.createElement('div'); copy.className = 'study-resource-copy';
-      const title = document.createElement('div'); title.className = 'study-resource-title'; title.textContent = resource.title;
-      if (resource.status) {
-        const status = document.createElement('span'); status.className = 'study-resource-status'; status.textContent = resource.status;
-        title.appendChild(status);
-      }
-      const detail = document.createElement('div'); detail.className = 'study-resource-detail'; detail.textContent = resource.detail;
-      copy.append(title,detail);
-      const action = document.createElement('button'); action.type = 'button'; action.textContent = resource.action;
-      action.disabled = Boolean(resource.disabled);
-      action.onclick = () => pycmd(resource.command);
-      tile.append(copy,action); shelf.appendChild(tile);
+    const summary = document.createElement('span');
+    summary.className = 'study-card-summary';
+    summary.textContent = data.workspace.summary || '';
+    shelf.appendChild(summary);
+    if (data.workspace.manage_action) {
+      const action = document.createElement('button');
+      action.type = 'button'; action.textContent = data.workspace.manage_action.label;
+      action.onclick = () => pycmd(data.workspace.manage_action.command);
+      shelf.appendChild(action);
     }
     card.after(shelf);
   } else if (card) {

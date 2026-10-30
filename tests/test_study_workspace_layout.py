@@ -9,7 +9,7 @@ import pytest
 
 
 def test_centered_card_panel_resources_and_answer_refresh_preserve_live_content(tmp_path):
-    from frontend.study_navigation import reviewer_navigation_script
+    from frontend.study_navigation import reviewer_navigation_script, reviewer_navigation_clear_script
     from webpage_browser import browser_runtime, _runtime_dir
     runtime = browser_runtime()
     if runtime is None:
@@ -17,14 +17,16 @@ def test_centered_card_panel_resources_and_answer_refresh_preserve_live_content(
     routes = [dict(stage=stage, label=label, current=stage == 'card', command='go:' + stage)
               for stage, label in [('card', 'Card'), ('book', 'Textbook'), ('video', 'Video')]]
     workspace = dict(heading='Review card', state='Question not answered', resources_label='Study resources',
-        hint='Open a passage or recording without leaving this review.', tiles=[
+        hint='Open a passage or recording without leaving this review.', summary='1 document · 1 recording linked',
+        link_action=dict(label='+ Link resources…',command='go:link'),
+        manage_action=dict(label='Manage links…',command='go:manage'), tiles=[
             dict(stage='book', title='Geometry textbook', detail='Page 84 · Opposite angles', action='Read passage', command='go:book'),
             dict(stage='video', title='Why opposite angles are equal', detail='Episode 4 · 8:10–11:35', action='Open recording', command='go:video')])
     payload=tmp_path/'workspace.json'
     payload.write_text(json.dumps(dict(
         script=reviewer_navigation_script(routes,'Study resources',workspace=workspace),
         answer=reviewer_navigation_script(routes,'Study resources',workspace=dict(workspace,state='Answer revealed')),
-        reset=reviewer_navigation_script(routes,'Study resources'))))
+        reset=reviewer_navigation_script(routes,'Study resources'), clear=reviewer_navigation_clear_script())))
     script=dedent('''
         import json, sys
         from pathlib import Path
@@ -52,8 +54,12 @@ def test_centered_card_panel_resources_and_answer_refresh_preserve_live_content(
                     page.locator('#audio').click(); assert page.evaluate('plays')>0
                     shelf=page.locator('#incremento-study-card-resources')
                     assert shelf.count()==1
-                    shelf.get_by_role('button',name='Read passage').click()
-                    assert page.evaluate('commands.at(-1)')=='go:book'
+                    shelf.get_by_role('button',name='Manage links…').click()
+                    assert page.evaluate('commands.at(-1)')=='go:manage'
+                    expect(shelf).to_contain_text('1 document · 1 recording linked')
+                    assert shelf.locator('.study-resource-tile').count()==0
+                    page.get_by_role('button',name='+ Link resources…').click()
+                    assert page.evaluate('commands.at(-1)')=='go:link'
                     assert page.evaluate('document.documentElement.scrollWidth')==width
                     page.screenshot(path=str(Path(sys.argv[4])/('workspace-'+('dark' if dark else 'light')+'-'+str(width)+'.png')),full_page=True)
             # Native Anki answer rendering replaces content, not the #qa node.
@@ -65,6 +71,19 @@ def test_centered_card_panel_resources_and_answer_refresh_preserve_live_content(
             page.evaluate(data['reset'])
             assert page.locator('#incremento-study-card-resources').count()==0
             assert page.locator('#qa').get_attribute('data-study-panel') is None
+            page.evaluate(data['script'])
+            page.evaluate('card.dataset.userMarker="keep";card.style.color="rgb(10, 20, 30)";window.taps=0;card.addEventListener("user-tap",()=>taps++)')
+            page.evaluate(data['clear'])
+            assert page.locator('#incremento-study-navigation').count()==0
+            assert page.locator('#incremento-study-navigation-style').count()==0
+            assert page.locator('#incremento-study-card-resources').count()==0
+            assert page.locator('#qa').get_attribute('data-study-panel') is None
+            assert page.locator('body').get_attribute('data-study-canvas') is None
+            assert page.evaluate('card===document.getElementById("qa") && card.parentNode===window.cardParent')
+            assert page.locator('#qa').get_attribute('data-user-marker')=='keep'
+            assert page.evaluate('card.style.color')=='rgb(10, 20, 30)'
+            page.evaluate('card.dispatchEvent(new Event("user-tap"))')
+            assert page.evaluate('taps')==1
             browser.close()
     ''')
     result=subprocess.run([runtime[0],'-I','-c',script,str(_runtime_dir()/'packages'),runtime[1],str(payload),str(tmp_path)],
@@ -79,9 +98,11 @@ def test_availability_labels_fit_and_disabled_tabs_do_not_dispatch(tmp_path):
     if runtime is None:
         pytest.skip('Optional webpage browser component has not been explicitly installed')
     routes = [dict(stage='card', label='Card', status='Available', availability='ready', disabled=False, current=True, command='go:card'),
-              dict(stage='book', label='Textbook', status='1 linked', availability='ready', disabled=False, command='go:book'),
-              dict(stage='video', label='Video', status='Not linked', availability='empty', disabled=True, command='go:video')]
-    workspace = dict(heading='Review card',state='Question not answered',resources_label='Study resources',hint='Open a passage or recording without leaving this review.',tiles=[
+              dict(stage='book', label='PDFs', count=1, status='1 linked', availability='ready', disabled=False, command='go:book'),
+              dict(stage='video', label='Videos', count=0, status='Not linked', availability='empty', disabled=True, command='go:video')]
+    workspace = dict(heading='Review card',state='Question not answered',resources_label='Study resources',hint='Open a passage or recording without leaving this review.',
+        link_action=dict(label='+ Link resources…',command='go:link'),
+        manage_action=dict(label='Manage links…',command='go:manage'),tiles=[
         dict(stage='book',title='Geometry',detail='PDF · page 6',status='1 linked',action='Read passage',command='go:book'),
         dict(stage='video',title='Video',detail='No recording linked to this card.',status='Not linked',action='Link recording…',command='go:link_video')])
     payload=tmp_path/'availability.json'
@@ -103,16 +124,18 @@ def test_availability_labels_fit_and_disabled_tabs_do_not_dispatch(tmp_path):
                 page.evaluate(data['script'])
                 video=page.locator('[data-study-stage=video]')
                 expect(video).to_be_disabled()
-                expect(video).to_contain_text('Not linked')
+                expect(video).to_contain_text('Videos0')
+                expect(video).to_have_attribute('aria-description','Not linked')
+                assert video.locator('.study-nav-status').count()==0
                 video.evaluate('e=>e.click()')
                 assert page.evaluate('commands.includes("go:video")') is False
                 book=page.locator('[data-study-stage=book]')
                 expect(book).to_be_enabled(); book.click()
                 assert page.evaluate('commands.at(-1)')=='go:book'
-                page.get_by_role('button',name='Link recording…').click()
-                assert page.evaluate('commands.at(-1)')=='go:link_video'
+                page.get_by_role('button',name='+ Link resources…').click()
+                assert page.evaluate('commands.at(-1)')=='go:link'
                 for button in page.locator('#incremento-study-navigation button').all():
-                    assert button.evaluate('e=>e.scrollWidth<=e.clientWidth+2 && e.scrollHeight<=e.clientHeight+2')
+                    assert button.evaluate('e=>e.scrollWidth<=e.clientWidth+2 && e.scrollHeight<=e.clientHeight+2'), button.evaluate('e=>({text:e.textContent,width:e.clientWidth,scrollWidth:e.scrollWidth,height:e.clientHeight,scrollHeight:e.scrollHeight})')
                 assert page.evaluate('document.documentElement.scrollWidth')==width
                 page.screenshot(path=str(Path(sys.argv[4])/f'availability-{width}.png'),full_page=True)
             browser.close()

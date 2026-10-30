@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+from contextlib import nullcontext
 
 try:
     from .db import get_connection
@@ -70,14 +71,14 @@ def _source_position(source):
     return source.get("page", source.get("section", 0))
 
 
-def add_recording_link(addon_dir, profile, source, recording_card_id, *, start, end=None, label):
+def add_recording_link(addon_dir, profile, source, recording_card_id, *, start, end=None, label, _connection=None):
     source = normalize_source(source)
     recording_card_id = _integer(recording_card_id)
     start, end = validate_segment(start, end)
     label = _text(label, 240, required=True)
     encoded = json.dumps(source, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    conn = get_connection(addon_dir, profile)
-    with conn:
+    conn = _connection if _connection is not None else get_connection(addon_dir, profile)
+    with nullcontext() if _connection is not None else conn:
         src_id, rec_id = _identity(conn, source["card_id"]), _identity(conn, recording_card_id)
         params = (src_id, source["card_id"], rec_id, recording_card_id, start, end, MAX_LINKS)
         candidates = conn.execute(

@@ -28,11 +28,11 @@ from PyQt6.QtCore import QTimer, QUrl
 try:
     from .latest_query import LatestQuery
     from .search_all_results import AnnotationPreview, run_search, _document_result_url, _highlight_result_url
-    from .search_all_preview import PREVIEW_CONTEXT_CHARS, annotation_source_html
+    from .search_all_preview import PREVIEW_CONTEXT_CHARS, annotation_source_html, annotation_note_html
 except ImportError:
     from latest_query import LatestQuery  # type: ignore
     from search_all_results import AnnotationPreview, run_search, _document_result_url, _highlight_result_url  # type: ignore
-    from search_all_preview import PREVIEW_CONTEXT_CHARS, annotation_source_html  # type: ignore
+    from search_all_preview import PREVIEW_CONTEXT_CHARS, annotation_source_html, annotation_note_html  # type: ignore
 
 try:
     from ..backend.i18n import t
@@ -907,6 +907,9 @@ class _SearchAllDialog(QDialog):
             else f"<i style='color:#aaa'>{escape(t('search_all_no_highlight_text'))}</i>"
         )
         if target.annotation is not None:
+            if target.annotation.note_html:
+                body = annotation_note_html(target.annotation.note, target.annotation.note_html,
+                                            lambda text: self._highlight_terms(text, target.query))
             try:
                 if target.media == "pdf":
                     page_text = pdf_page_text(self._addon_dir, self._profile, target.card_id, target.position,

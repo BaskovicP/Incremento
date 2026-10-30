@@ -1507,5 +1507,35 @@
   },
   "bookmark_next_page": {
     "message": "Sljedeća stranica"
+  },
+  "error_anki_detail": {
+    "message": "Pojedinosti iz Ankija"
+  },
+  "error_http_status": {
+    "message": "HTTP status"
+  },
+  "error_anki_stage": {
+    "message": "Faza u Ankiju"
+  },
+  "error_anki_validation": {
+    "message": "Provjera zahtjeva"
+  },
+  "error_anki_preparation": {
+    "message": "Priprema sadržaja"
+  },
+  "error_anki_creation": {
+    "message": "Izrada kartice"
+  },
+  "error_pdf_layout": {
+    "message": "Izgled PDF-a"
+  },
+  "error_yes": {
+    "message": "Da"
+  },
+  "error_no": {
+    "message": "Ne"
+  },
+  "bridge_error_webpage_verification_required": {
+    "message": "Ova stranica zahtijeva sigurnosnu provjeru ili prijavu. Dovršite je u izvornoj kartici preglednika, a zatim odaberite Snimi otvorenu stranicu kao PDF."
   }
 }

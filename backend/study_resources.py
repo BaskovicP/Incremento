@@ -31,6 +31,7 @@ except ImportError:
 
 MAX_RESOURCES = 32
 MAX_RECORDINGS = 500
+MAX_LINKED_RESOURCES = 200
 _EPUB = re.compile(r"incremento_open_epub:(\d+):(\d+):(-?\d+)(?::([0-9.]+))?")
 _VIDEO = re.compile(r"incremento_open_video:(\d+):([0-9.]+)")
 _OLD_PDF = re.compile(r"incremento_open_pdf:(\d+):(\d+)")
@@ -137,12 +138,13 @@ def inline_locations(text):
 def source_locations(addon_dir, profile, collection, card_id):
     card = collection.get_card(card_id)
     note = collection.get_note(card.nid)
-    sources = inline_locations(_note_text(note))
+    sources = []
     conn = get_connection(addon_dir, profile)
-    for row in list_document_links(addon_dir, profile, card_id)[:MAX_RESOURCES]:
+    for row in list_document_links(addon_dir, profile, card_id):
         if row["target_card_id"] > 0:
             sources.append(dict(kind="pdf", card_id=row["target_card_id"], page=row["target_page"],
                                 scroll=row["target_scroll"], page_y=row.get("target_y"), quote=row["quote"]))
+    sources.extend(inline_locations(_note_text(note)))
     for cid, page, quote in conn.execute(
         "SELECT pdf_card_id,page,excerpt FROM pdf_card_sources WHERE note_id=? ORDER BY id LIMIT ?",
         (card.nid, MAX_RESOURCES),
@@ -159,11 +161,12 @@ def source_locations(addon_dir, profile, collection, card_id):
             source = normalize_source(source)
         except ValueError:
             continue
-        key = (source["kind"], source["card_id"], source.get("page", source.get("section")))
+        key = (source["kind"], source["card_id"], source.get("page", source.get("section")),
+               source.get('scroll', 0), source.get('page_y'))
         if key not in seen:
             seen.add(key)
             result.append(source)
-        if len(result) >= MAX_RESOURCES:
+        if len(result) >= MAX_LINKED_RESOURCES:
             break
     return result
 
@@ -202,16 +205,28 @@ def resolve_link_rows(addon_dir, profile, collection, rows):
 
 def load_card_resources(addon_dir, profile, collection, card_id):
     sources = source_locations(addon_dir, profile, collection, card_id)
-    documents, recordings = [], []
+    saved_documents = list_document_links(addon_dir, profile, card_id)
+    direct = dict(kind="card", card_id=card_id)
+    documents, recordings = [], list_recording_links(addon_dir, profile, source=direct)
     for source in sources:
+        saved = next((row for row in saved_documents if row['source_kind'] == 'card'
+            and source['kind'] == 'pdf' and row['target_card_id'] == source['card_id']
+            and row['target_page'] == source['page'] and row['target_scroll'] == source.get('scroll', 0)
+            and row.get('target_y') == source.get('page_y')), None)
+        metadata = dict(link_id=saved['id'] if saved else 0,
+                        owner_card_id=card_id if saved else 0, label=saved['quote'] if saved else '')
         try:
             snapshot = resolve_document(addon_dir, profile, collection, source)
-            documents.append(dict(location=source, title=snapshot["title"], available=True))
+            documents.append(dict(location=source, title=snapshot["title"], available=True, **metadata))
         except ValueError:
-            documents.append(dict(location=source, title="", available=False))
-        recordings.extend(list_recording_links(addon_dir, profile, source=source))
-    direct = dict(kind="card", card_id=card_id)
-    recordings.extend(list_recording_links(addon_dir, profile, source=direct))
+            documents.append(dict(location=source, title="", available=False, **metadata))
+        if len(recordings) < MAX_LINKED_RESOURCES:
+            recordings.extend(list_recording_links(addon_dir, profile, source=source)[:MAX_LINKED_RESOURCES-len(recordings)])
+    for row in saved_documents:
+        if row['source_kind'] == 'card' and row['target_card_id'] == 0:
+            documents.append(dict(location=dict(kind='pdf', card_id=0, page=row['target_page'],
+                scroll=row['target_scroll'], page_y=row.get('target_y')), title='', available=False,
+                link_id=row['id'], owner_card_id=card_id, label=row['quote']))
     # Video extracts already contain exact source timestamps; retain those too.
     note = collection.get_note(collection.get_card(card_id).nid)
     for match in list(_VIDEO.finditer(_note_text(note)))[:MAX_RESOURCES]:
@@ -224,5 +239,7 @@ def load_card_resources(addon_dir, profile, collection, card_id):
     unique = {}
     for row in recordings:
         unique.setdefault((row["recording_card_id"], row["start"], row["end"]), row)
+    raw_title = note_field(note, 'Title') or str(next(iter(note.fields), ''))[:4000]
+    card_title = ' '.join(unescape(re.sub(r'<[^>]*>', ' ', raw_title)).split())[:240]
     return dict(documents=documents, recordings=resolve_link_rows(
-        addon_dir, profile, collection, list(unique.values())[:MAX_RESOURCES]))
+        addon_dir, profile, collection, list(unique.values())[:MAX_LINKED_RESOURCES]), card_title=card_title)

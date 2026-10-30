@@ -27,7 +27,7 @@ _ADDON_DIR = str(Path(__file__).resolve().parent.parent)
 
 
 class PdfDestinationDialog(QDialog):
-    def __init__(self, snapshot, *, profile, max_page, is_current):
+    def __init__(self, snapshot, *, profile, max_page, is_current, initial_location=None):
         super().__init__(mw)
         from .pdf_reference_workspace import create_reference_view
         self.setWindowTitle(t('reader_destination_title'))
@@ -36,6 +36,10 @@ class PdfDestinationDialog(QDialog):
         self._snapshot, self._source_current = dict(snapshot), is_current
         self._closed, self._saving, self.selected_location = False, False, None
         self.state = PdfReaderState(profile, snapshot['card_id'], snapshot['filename'], max_page=max_page)
+        if initial_location is not None and not self.state.receive(
+                dict(page=initial_location.get('page', 1), scroll_ratio=initial_location.get('scroll', 0)),
+                profile=profile, nonce=self.state.nonce):
+            raise ValueError('Invalid initial PDF destination')
         self._nonce = self.state.nonce
         self.view, self.page, self._engine_profile, self._interceptor = create_reference_view(
             self, snapshot, self.state, self.command, choosing=True)

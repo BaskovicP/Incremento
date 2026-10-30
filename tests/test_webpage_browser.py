@@ -110,3 +110,35 @@ def test_runtime_discovery_rejects_incomplete_or_escaping_installation(tmp_path,
     assert browser.browser_runtime() is None
     (tmp_path / "runtime.json").write_text(json.dumps({"python": "python", "browser": "../../outside"}))
     assert browser.browser_runtime() is None
+
+
+def test_dynamic_cleanup_snapshot_keeps_hydrated_comments_and_cssom_styles():
+    import subprocess
+    from textwrap import dedent
+    runtime = browser.browser_runtime()
+    if runtime is None:
+        pytest.skip("Optional browser component is not installed")
+    script = dedent('''
+        import sys
+        sys.path[:0] = [sys.argv[1], 'backend']
+        import webpage_browser as browser
+        browser.validate_public_http_url = lambda url: url
+        html = """<html><head><style id="runtime"></style></head><body>
+          <h1>Article</h1><section id="comments"></section>
+          <script>
+            document.querySelector('#comments').textContent = 'Loaded discussion';
+            document.querySelector('#runtime').sheet.insertRule('section { color: rgb(1, 2, 3); }');
+          </script></body></html>"""
+        browser.PublicBrowserResources.fetch = lambda self, url: ('text/html', html.encode(), url)
+        result = browser._capture(dict(url='https://example.test/article', html='', timeout_sec=15,
+            style='website', include_links=False, links_heading='', output_kind='html'), sys.argv[2])
+        url, captured = result.decode().split('\\n', 1)
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(captured, 'html.parser')
+        assert url == 'https://example.test/article'
+        assert soup.select_one('#comments').get_text() == 'Loaded discussion'
+        assert 'color: rgb(1, 2, 3)' in soup.select_one('#runtime').get_text()
+    ''')
+    result = subprocess.run([runtime[0], '-c', script, str(browser._runtime_dir() / 'packages'), runtime[1]],
+                            capture_output=True, text=True, timeout=25)
+    assert result.returncode == 0, result.stdout + result.stderr

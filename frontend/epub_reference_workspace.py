@@ -6,7 +6,7 @@ from aqt import mw
 from aqt.operations import QueryOp
 from aqt.qt import (QApplication, QComboBox, QDialog, QDockWidget, QLabel, QLineEdit, QListWidget,
                     QPushButton, QVBoxLayout, QWidget, Qt, QUrl)
-from aqt.utils import tooltip
+from aqt.utils import showInfo, tooltip
 from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEngineSettings
 from PyQt6.QtWebEngineWidgets import QWebEngineView
 
@@ -16,7 +16,7 @@ try:
     from ..backend.epub_reference import resolve_epub_reference, validate_location, location_allowed
     from ..backend.epub_connections import normalize_location, add_connection, list_connections, remove_connection
     from ..backend.epub_highlights import (load_highlights, add_highlight, update_highlight,
-        remove_highlight, update_highlight_note, update_highlight_color)
+        remove_highlight, update_highlight_note, update_highlight_color, update_highlight_style)
     from ..backend.epub_manager import (get_epub_daily_limit_status, get_epub_font_scale,
         get_read_anchor, get_read_section_index, set_read_section_index)
     from ..backend.epub_appearance import get_appearance, set_appearance
@@ -28,7 +28,7 @@ except ImportError:
     from backend.epub_reference import resolve_epub_reference, validate_location, location_allowed
     from backend.epub_connections import normalize_location, add_connection, list_connections, remove_connection
     from backend.epub_highlights import (load_highlights, add_highlight, update_highlight,
-        remove_highlight, update_highlight_note, update_highlight_color)
+        remove_highlight, update_highlight_note, update_highlight_color, update_highlight_style)
     from backend.epub_manager import (get_epub_daily_limit_status, get_epub_font_scale,
         get_read_anchor, get_read_section_index, set_read_section_index)
     from backend.epub_appearance import get_appearance, set_appearance
@@ -93,6 +93,7 @@ class EpubReferenceWindow(QDockWidget):
         self.owner, self.on_choose = owner, on_choose
         self.generation, self.closed, self.loaded = _generation, False, False
         self.history, self.links_enabled, self.request = [], False, 0
+        self.annotation_style = 'highlight'
         self.fragment = ""
         self._last_allowed_scroll = None
         self.setObjectName('incremento_epub_reference_' + str(id(self)))
@@ -157,7 +158,21 @@ class EpubReferenceWindow(QDockWidget):
         self.search.returnPressed.connect(lambda: self.view.findText(self.search.text()))
         flow.addWidget(self.search)
         button(t('reader_extract'), lambda: self.js('window.incrementoFillEpubField(0);'))
-        button(t('reader_highlight'), lambda: self.js('window.incrementoAddEpubHighlight();'))
+        self.style_combo = QComboBox(toolbar)
+        for style in reader.ANNOTATION_STYLES:
+            self.style_combo.addItem(t(f'reader_style_{style}'), style)
+        self.style_combo.setAccessibleName(t('reader_annotation_style'))
+        self.style_combo.setToolTip(t('reader_annotation_style_help'))
+        self.style_combo.currentIndexChanged.connect(self.set_annotation_style)
+        flow.addWidget(self.style_combo)
+        button(t('reader_mark_selection'), lambda: self.js('window.incrementoAddEpubHighlight();'))
+        self.default_color_button = button(t('reader_default_annotation_color'), self.choose_default_highlight_color)
+        try:
+            from .highlight_color_dialog import set_default_color_button
+        except ImportError:
+            from highlight_color_dialog import set_default_color_button
+        set_default_color_button(self.default_color_button,
+            reader.configured_reader_default_highlight_color(reader._config(), self.profile))
         button(t('reader_bookmark'), self.bookmark)
         button(t('reader_read_to_here'), self.mark_read)
         if not embedded:
@@ -208,10 +223,17 @@ class EpubReferenceWindow(QDockWidget):
             highlights=[h for h in self.highlights if h['sectionIndex'] == section],
             bridge_nonce=self.page.bridge_nonce(), clickable_links=self.links_enabled,
             link_fragment=self.fragment,
+            annotation_style=self.annotation_style,
+            default_highlight_color=reader.configured_reader_default_highlight_color(reader._config(), self.profile),
             sections=self.snapshot['sections'], appearance=self.snapshot.get('appearance', 'original'))
         self.js(script)
         if self.on_choose:
             self.choose_button.setEnabled(True)
+
+    def set_annotation_style(self, _index):
+        self.annotation_style = self.style_combo.currentData()
+        self.js('window.incrementoSetEpubAnnotationStyle && window.incrementoSetEpubAnnotationStyle('
+                + json.dumps(self.annotation_style) + ');')
 
     def capture(self, callback):
         context = (self.request, self.page.bridge_nonce())
@@ -293,6 +315,24 @@ class EpubReferenceWindow(QDockWidget):
             self.owner.show()
             mw.splitDockWidget(self.owner, self, Qt.Orientation.Horizontal)
         self.show()
+
+    def choose_default_highlight_color(self):
+        try:
+            from .highlight_color_dialog import choose_highlight_color, refresh_reader_default_highlight_color
+        except ImportError:
+            from highlight_color_dialog import choose_highlight_color, refresh_reader_default_highlight_color
+        context = (self.request, self.page.bridge_nonce())
+        color = choose_highlight_color(self,
+            reader.configured_reader_default_highlight_color(reader._config(), self.profile),
+            addon_dir=_ADDON_DIR, profile=self.profile, default_color=True)
+        if color is None or not self.current() or context != (self.request, self.page.bridge_nonce()):
+            return
+        try:
+            color = reader.save_reader_default_highlight_color(mw.addonManager, reader._ADDON_PKG, self.profile, color)
+        except Exception:
+            showInfo(t('settings_save_failed'))
+            return
+        refresh_reader_default_highlight_color(self.profile, color)
 
     def bookmark(self):
         def save(location):
@@ -399,12 +439,21 @@ class EpubReferenceWindow(QDockWidget):
                     _ADDON_DIR, self.profile, cid, highlight)
             elif name == 'incremento_epub_hl_del':
                 remove_highlight(_ADDON_DIR, self.profile, cid, str(data.get('id') or ''))
+            elif name == 'incremento_epub_hl_style' or (name == 'incremento_epub_hl_color' and 'color' in data):
+                hl_id = str(data.get('id') or '')
+                if not any(h['id'] == hl_id and h['sectionIndex'] == section
+                           for h in load_highlights(_ADDON_DIR, self.profile, cid, section_index=section)):
+                    return
+                update = update_highlight_style if name.endswith('_style') else update_highlight_color
+                update(_ADDON_DIR, self.profile, cid, hl_id, data.get('style' if name.endswith('_style') else 'color'))
             elif name in ('incremento_epub_hl_note', 'incremento_epub_hl_color'):
                 self.edit_highlight(str(data.get('id') or ''), color=name.endswith('_color'))
                 return
             else:
                 return
-            refresh_readers(self.profile, cid)
+            appearance_edit = name == 'incremento_epub_hl_style' or (
+                name == 'incremento_epub_hl_color' and 'color' in data)
+            refresh_readers(self.profile, cid, exclude=self if appearance_edit else None)
         except (ValueError, TypeError, KeyError, OverflowError):
             return
 
@@ -447,13 +496,26 @@ def focused_reference():
                  and (focus is window.view or window.view.isAncestorOf(focus))), None)
 
 
-def refresh_readers(profile, card_id, *, include_main=True):
+def refresh_default_highlight_color(profile, color):
+    try:
+        from .highlight_color_dialog import set_default_color_button
+    except ImportError:
+        from highlight_color_dialog import set_default_color_button
+    for window in list(_windows):
+        if window.profile == profile and window.current():
+            window.js(f'window.incrementoSetDefaultHighlightColor?.({json.dumps(color)});')
+            set_default_color_button(window.default_color_button, color)
+
+
+def refresh_readers(profile, card_id, *, include_main=True, exclude=None):
     if profile != get_active_profile():
         return
     highlights = load_highlights(_ADDON_DIR, profile, card_id)
     for window in list(_windows):
         if window.current() and window.location['card_id'] == card_id:
             window.highlights = highlights
+            if window is exclude:
+                continue
             window.js('window.incrementoReplaceEpubHighlights(' + json.dumps(
                 [h for h in highlights if h['sectionIndex'] == window.location['section']]) + ');')
     if include_main and reader._current_epub_card_id == card_id and reader._epub_dock is not None:

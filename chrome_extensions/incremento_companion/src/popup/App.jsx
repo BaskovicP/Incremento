@@ -63,7 +63,7 @@ import { DEFAULT_PDF_EXPORT_SETTINGS, PDF_EXPORT_SETTINGS_KEY, loadPdfExportSett
 import { runPopupStartupTasks } from "./startup.js";
 import { runVisibleOperation } from "./visibleOperation.js";
 import {
-  buildErrorReport,
+  buildImportErrorReport,
   copyErrorReport,
   normalizeErrorCode,
   safePositiveInteger,
@@ -582,6 +582,7 @@ export function PopupApp() {
     setBusy(true);
     const kindLabel = cardKindMessage(kind);
     const actionLabel = importActionMessage(kind, options);
+    let pdfErrorOptions = null;
     try {
       const operation = await runVisibleOperation({
         initialStatus: {
@@ -595,6 +596,7 @@ export function PopupApp() {
           const pdfSettings = kind === "pdf"
             ? pdfExportSettingsForCapture(await loadPdfExportSettings(), {openedPage: options.openedPage === true})
             : null;
+          pdfErrorOptions = pdfSettings;
           const context = await readCurrentPageContext(pageContextOptionsForImport(kind, {
             writingMode: requestedWritingMode,
             pageContentScope,
@@ -757,6 +759,10 @@ export function PopupApp() {
               stage: lastStatus?.text || kindLabel,
               reason,
               code: normalizeErrorCode(error?.code),
+              serverMessage: error?.serverMessage,
+              httpStatus: error?.httpStatus,
+              backendStage: error?.backendStage,
+              pdfOptions: pdfErrorOptions,
               contentScope: ["main", "full"].includes(error?.details?.scope)
                 ? error.details.scope
                 : "",
@@ -991,25 +997,7 @@ export function PopupApp() {
   const pdfCaptureShortcut = commandShortcuts.find((command) => command.name === "capture-opened-page-as-pdf")?.shortcut || "";
 
   function localizedErrorReport(details) {
-    if (!details) return "";
-    const scopeLabel = details.contentScope === "main"
-      ? t("main_content")
-      : details.contentScope === "full"
-        ? t("entire_page")
-        : "";
-    return buildErrorReport({
-      title: t("error_report_title"),
-      fields: [
-        [t("error_extension_version"), chrome.runtime.getManifest?.().version || ""],
-        [t("error_action"), displayMessage(details.action)],
-        [t("error_stage"), displayMessage(details.stage)],
-        [t("error_reason"), displayMessage(details.reason)],
-        [t("error_code"), details.code],
-        [t("error_content_scope"), scopeLabel],
-        [t("error_actual_chars"), details.actualChars ? formatNumber(details.actualChars) : ""],
-        [t("error_max_chars"), details.maxChars ? formatNumber(details.maxChars) : ""],
-      ],
-    });
+    return buildImportErrorReport(details, chrome.runtime.getManifest?.().version || "");
   }
 
   async function handleCopyErrorDetails() {

@@ -32,6 +32,8 @@
   "reader_pdf_page_number": "PDF 页码",
   "reader_zoom_out": "缩小",
   "reader_zoom_in": "放大",
+  "reader_fit_width": "适合宽度",
+  "reader_fit_width_hint": "将页面缩放至阅读器宽度；垂直滚动以阅读",
   "reader_links_enable": "启用此 PDF 中的可点击链接",
   "reader_link_preview": "脚注／链接预览",
   "reader_link_preview_zoom": "脚注预览缩放",
@@ -211,5 +213,17 @@
   "reader_read_sections": "第 1–{count} 节",
   "reader_exact_read_marker": "精确阅读标记",
   "study_resources": "学习资源",
-  "study_link_recording": "关联录音或视频…"
+  "study_link_recording": "关联录音或视频…",
+  "reader_default_annotation_color": "默认颜色",
+  "reader_default_annotation_color_help": "选择新高亮的默认颜色（Ctrl/Cmd+H）。选择其他颜色不会更改此默认值。",
+  "reader_annotation_style": "样式",
+  "reader_annotation_appearance": "标注外观",
+  "reader_annotation_style_help": "选择样式和颜色，然后标记所选文字。",
+  "reader_mark_selection": "标记所选文字",
+  "reader_style_highlight": "高亮",
+  "reader_style_underline": "下划线",
+  "reader_style_squiggly": "波浪线",
+  "reader_style_dashed": "虚线",
+  "reader_style_dotted": "点线",
+  "reader_style_strikeout": "删除线"
 }

@@ -33,7 +33,7 @@ test('recoloring preserves highlight identity, range, notes and linkage and emit
     window: { pycmd: command => commands.push(command) } };
   const start = source.indexOf('  const recolorHighlight =');
   assert.ok(start >= 0, 'reader needs a saved-highlight recolor action');
-  vm.runInNewContext(source.slice(start, source.indexOf('  const makeHighlight', start)) + '\nrecolorHighlight("saved", "blue");', scope);
+  vm.runInNewContext(source.slice(start, source.indexOf('  const restyleHighlight', start)) + '\nrecolorHighlight("saved", "blue");', scope);
   assert.deepEqual(JSON.parse(JSON.stringify(highlights[0])), { ...original, color: 'blue' });
   assert.deepEqual(JSON.parse(commands[0].split(':').slice(1).join(':')), { cardId: 42, highlight: { ...original, color: 'blue' } });
   assert.equal(original.color, 'yellow');

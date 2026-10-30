@@ -86,10 +86,14 @@ try:
     from ..backend.paths import get_active_profile as _active_profile, get_pdf_annotation_reader_path
     from ..backend.content_safety import external_plain_text_to_anki_html
     from ..backend.config_service import (
+        configured_reader_default_highlight_color,
+        save_reader_default_highlight_color,
         configured_pdf_default_appearance as _configured_pdf_default_appearance,
         configured_pdf_controls_collapsed as _configured_pdf_controls_collapsed,
         configured_pdf_link_preview_zoom as _configured_pdf_link_preview_zoom,
         normalize_pdf_link_preview_zoom,
+        configured_pdf_link_preview_size as _configured_pdf_link_preview_size,
+        normalize_pdf_link_preview_size,
         configured_pdf_context_rows as _configured_pdf_context_rows,
         configured_pdf_citation_page_numbering as _configured_pdf_citation_page_numbering,
         configured_pdf_force_default_appearance as _configured_pdf_force_default_appearance,
@@ -111,10 +115,14 @@ except ImportError:
     from paths import get_active_profile as _active_profile, get_pdf_annotation_reader_path
     from content_safety import external_plain_text_to_anki_html  # type: ignore
     from config_service import (  # type: ignore
+        configured_reader_default_highlight_color,
+        save_reader_default_highlight_color,
         configured_pdf_default_appearance as _configured_pdf_default_appearance,
         configured_pdf_controls_collapsed as _configured_pdf_controls_collapsed,
         configured_pdf_link_preview_zoom as _configured_pdf_link_preview_zoom,
         normalize_pdf_link_preview_zoom,
+        configured_pdf_link_preview_size as _configured_pdf_link_preview_size,
+        normalize_pdf_link_preview_size,
         configured_pdf_context_rows as _configured_pdf_context_rows,
         configured_pdf_citation_page_numbering as _configured_pdf_citation_page_numbering,
         configured_pdf_force_default_appearance as _configured_pdf_force_default_appearance,
@@ -604,6 +612,27 @@ def configured_pdf_default_appearance(config: dict | None = None) -> str:
 
 def configured_pdf_link_preview_zoom(config: dict | None = None, profile: str | None = None) -> float:
     return _configured_pdf_link_preview_zoom(_config(config), profile if profile is not None else _active_profile())
+
+
+def configured_pdf_link_preview_size(config: dict | None = None, profile: str | None = None) -> dict | None:
+    return _configured_pdf_link_preview_size(_config(config), profile if profile is not None else _active_profile())
+
+
+def save_pdf_link_preview_size(size: object, *, profile: str) -> bool:
+    normalized = normalize_pdf_link_preview_size(size)
+    if normalized is None or not profile or profile != _active_profile():
+        return False
+    try:
+        cfg = dict(_config())
+        if _configured_pdf_link_preview_size(cfg, profile) == normalized:
+            return True
+        values = dict(cfg.get('pdf_link_preview_size_by_profile') or {})
+        values[profile] = normalized
+        cfg['pdf_link_preview_size_by_profile'] = values
+        save_addon_config(mw.addonManager, _ADDON_PKG, cfg)
+        return True
+    except (AttributeError, TypeError, ValueError, RuntimeError, OSError):
+        return False
 
 
 def configured_pdf_force_default_appearance(config: dict | None = None) -> bool:
@@ -1900,6 +1929,7 @@ _MSG_ZOOM = "incremento_pdf_zoom:"
 _MSG_SCROLL = "incremento_pdf_scroll:"
 _MSG_APPEARANCE = "incremento_pdf_appearance:"
 _MSG_LINK_PREVIEW_ZOOM = "incremento_pdf_link_preview_zoom:"
+_MSG_LINK_PREVIEW_SIZE = "incremento_pdf_link_preview_size:"
 _MSG_PAGE_LABELS = "incremento_pdf_page_labels:"
 _MSG_HL_ADD = "incremento_pdf_hl_add:"
 _MSG_HL_UPDATE = "incremento_pdf_hl_update:"
@@ -2141,26 +2171,48 @@ def _regenerate_pdf_cover() -> None:
         tooltip(t("reader_pdf_cover_cleared"))
 
 
+def refresh_default_highlight_color(profile: str, color: str) -> None:
+    if profile != _active_profile():
+        return
+    if _pdf_dock is not None:
+        _pdf_dock._view.page().runJavaScript(
+            f'window.incrementoSetDefaultHighlightColor?.({json.dumps(color)});')
+    try:
+        from .pdf_reference_workspace import refresh_default_highlight_color as refresh_references
+    except ImportError:
+        from pdf_reference_workspace import refresh_default_highlight_color as refresh_references
+    refresh_references(profile, color)
+
+
 def _choose_pdf_highlight_color(data: dict) -> None:
     if not isinstance(data, dict):
         return
     try:
-        from .highlight_color_dialog import choose_highlight_color
+        from .highlight_color_dialog import choose_highlight_color, refresh_reader_default_highlight_color
     except ImportError:
-        from highlight_color_dialog import choose_highlight_color
+        from highlight_color_dialog import choose_highlight_color, refresh_reader_default_highlight_color
     try:
         from ..backend.highlight_colors import normalize_highlight_color
     except ImportError:
         from highlight_colors import normalize_highlight_color
     cid = current_pdf_card_id()
     dock = _pdf_dock
-    if cid is None or dock is None or int(data.get('cardId', 0)) != cid:
+    if cid is None or dock is None or type(data.get('cardId')) is not int or data['cardId'] != cid:
         return
+    choose_default = data.get('defaultColor') is True
     color = normalize_highlight_color(data.get('currentColor', 'yellow'))
     context = (_active_profile(), cid, _current_pdf_filename, dock, _pdf_annotation_generation)
-    selected = choose_highlight_color(dock, color, addon_dir=_ADDON_DIR, profile=context[0])
+    selected = choose_highlight_color(dock, color, addon_dir=_ADDON_DIR, profile=context[0], default_color=choose_default)
     if not _pdf_annotation_context_matches(*context):
         return
+    if choose_default and selected is not None:
+        try:
+            selected = save_reader_default_highlight_color(mw.addonManager, _ADDON_PKG, context[0], selected)
+        except Exception:
+            selected = None
+            showInfo(t('settings_save_failed'))
+        else:
+            refresh_reader_default_highlight_color(context[0], selected)
     dock._view.page().runJavaScript(
         'window.incrementoPickPdfHighlightColor && '
         f'window.incrementoPickPdfHighlightColor({json.dumps(selected)});')
@@ -2189,6 +2241,7 @@ def _edit_pdf_highlight_note(hl_id: str) -> None:
         title=t("reader_pdf_highlight_note_title"),
         excerpt=str(highlight.get("text") or ""),
         current_note=str(highlight.get("note") or ""),
+        current_note_html=str(highlight.get("note_html") or ""),
     )
     if not dialog.exec():
         return
@@ -2201,6 +2254,7 @@ def _edit_pdf_highlight_note(hl_id: str) -> None:
             int(card_id),
             str(highlight.get("id") or ""),
             dialog.note_text(),
+            note_html=dialog.note_html(),
         )
     except Exception as exc:
         showInfo(t("reader_pdf_highlight_note_save_failed", error=exc))
@@ -2210,11 +2264,12 @@ def _edit_pdf_highlight_note(hl_id: str) -> None:
         return
     escaped_id = json.dumps(str(updated.get("id") or ""))
     escaped_note = json.dumps(str(updated.get("note") or ""))
+    escaped_html = json.dumps(str(updated.get("note_html") or ""))
     try:
         if _pdf_dock is not None:
             _pdf_dock._view.page().runJavaScript(
                 "window.incrementoUpdatePdfHighlightNote && "
-                f"window.incrementoUpdatePdfHighlightNote({escaped_id}, {escaped_note});"
+                f"window.incrementoUpdatePdfHighlightNote({escaped_id}, {escaped_note}, {escaped_html});"
             )
     except Exception:
         pass
@@ -3119,6 +3174,17 @@ def _handle_pdf_js_message(msg: str) -> None:
                     float(payload.get("scrollRatio", 0.0) or 0.0),
                 )
         except Exception:
+            pass
+    elif msg.startswith(_MSG_LINK_PREVIEW_SIZE):
+        try:
+            payload = json.loads(msg[len(_MSG_LINK_PREVIEW_SIZE):])
+            if not isinstance(payload, dict):
+                return
+            cid = payload.get('cardId')
+            if type(cid) is not int or cid <= 0 or cid != current_pdf_card_id():
+                return
+            save_pdf_link_preview_size(payload.get('size'), profile=_active_profile())
+        except (TypeError, ValueError):
             pass
     elif msg.startswith(_MSG_LINK_PREVIEW_ZOOM):
         try:
@@ -4265,10 +4331,10 @@ def show_pdf_in_dock(
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._pdfNativeHighlightsVisible = {json.dumps(bool((_annotation_result or {}).get('native_highlights_visible')))};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)}, locale: {json.dumps(reader_locale)}, customLanguage: {json.dumps(custom_reader_language)}, appearanceMode: {json.dumps(appearance_mode)}, showHighlightDeleteButtons: {json.dumps(configured_pdf_show_highlight_delete_buttons())}, linkPreviewZoom: {json.dumps(configured_pdf_link_preview_zoom())}, pageY: {json.dumps(requested_page_y)}, controlsCollapsed: {json.dumps(controls_collapsed)} }};"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)}, locale: {json.dumps(reader_locale)}, customLanguage: {json.dumps(custom_reader_language)}, appearanceMode: {json.dumps(appearance_mode)}, showHighlightDeleteButtons: {json.dumps(configured_pdf_show_highlight_delete_buttons())}, linkPreviewZoom: {json.dumps(configured_pdf_link_preview_zoom())}, pageY: {json.dumps(requested_page_y)}, controlsCollapsed: {json.dumps(controls_collapsed)}, defaultHighlightColor: {json.dumps(configured_reader_default_highlight_color(_config(), _active_profile()))}, linkPreviewSize: {json.dumps(configured_pdf_link_preview_size())} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}, {json.dumps(reader_locale)}, {json.dumps(custom_reader_language)}, {json.dumps(appearance_mode)}, {json.dumps(configured_pdf_show_highlight_delete_buttons())}, {json.dumps(configured_pdf_link_preview_zoom())}, {json.dumps(requested_page_y)}, {json.dumps(controls_collapsed)}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}, {json.dumps(reader_locale)}, {json.dumps(custom_reader_language)}, {json.dumps(appearance_mode)}, {json.dumps(configured_pdf_show_highlight_delete_buttons())}, {json.dumps(configured_pdf_link_preview_zoom())}, {json.dumps(requested_page_y)}, {json.dumps(controls_collapsed)}, {json.dumps(configured_reader_default_highlight_color(_config(), _active_profile()))}, {json.dumps(configured_pdf_link_preview_size())}));"
     )
 
     current = _pdf_dock._view.url().toString()

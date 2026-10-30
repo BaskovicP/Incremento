@@ -1,4 +1,4 @@
-"""The completed browser handoff saves first, then returns without another prompt."""
+"""Completed webpage imports offer to open their saved PDF without blocking Anki."""
 import ast
 from pathlib import Path
 from types import SimpleNamespace
@@ -6,8 +6,9 @@ from types import SimpleNamespace
 import pytest
 
 
-@pytest.mark.parametrize("switched", [False, True])
-def test_browser_handoff_returns_to_anki_only_after_a_successful_same_profile_import(tmp_path, switched):
+@pytest.mark.parametrize("handoff", [False, True])
+@pytest.mark.parametrize("outcome", ["success", "profile-switch", "save-failed"])
+def test_webpage_import_offers_its_saved_pdf_only_after_success(tmp_path, handoff, outcome):
     path = Path(__file__).resolve().parents[1] / "__init__.py"
     function = next(node for node in ast.parse(path.read_text()).body
                     if isinstance(node, ast.FunctionDef) and node.name == "addWebpageFunction")
@@ -17,19 +18,30 @@ def test_browser_handoff_returns_to_anki_only_after_a_successful_same_profile_im
     pdf = tmp_path / "verified.pdf"
     pdf.write_bytes(b"%PDF-1.7\nArticle")
     def exec_dialog():
-        if switched:
+        if outcome == "profile-switch":
             profile[0] = "Second"
         return True
     dialog = SimpleNamespace(exec=exec_dialog, pdf_path=str(pdf), title_text="My article", tags_to_apply=["topic"],
-                             source_url="https://example.org/article", browser_handoff_completed=True)
+                             source_url="https://example.org/article", browser_handoff_completed=handoff)
     def add(*_args, **kwargs):
         assert kwargs["tags"] == ["topic"]
         assert kwargs["metadata"]["source_link"] == "https://example.org/article"
+        if outcome == "save-failed":
+            raise OSError("Synthetic import failure")
         events.append("saved")
+        return 123
+    result_dialogs = []
+    def result_dialog(parent, title, result_profile, open_pdf):
+        assert parent is namespace["mw"]
+        assert title == "My article" and result_profile == "First"
+        result_dialogs.append(open_pdf)
+        return SimpleNamespace(show=lambda: events.append("result"))
     namespace = {
         "mw": SimpleNamespace(col=object()), "_ADDON_DIR": str(tmp_path),
         "_active_profile": lambda: profile[0], "WebpageToPdfDialog": lambda _parent: dialog,
         "add_pdf_card": add, "activate_anki_window": lambda _window: events.append("focus"),
+        "WebpagePdfResultDialog": result_dialog,
+        "_open_pdf_card": lambda cid: events.append(("open", cid)),
         "tooltip": lambda *_a, **_kw: events.append("message"),
         "showInfo": lambda *_a, **_kw: events.append("modal"),
         "build_incremento_metadata": lambda **kwargs: kwargs,
@@ -37,5 +49,14 @@ def test_browser_handoff_returns_to_anki_only_after_a_successful_same_profile_im
     }
     exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), "exec"), namespace)
     namespace["addWebpageFunction"]()
-    assert events == ([] if switched else ["saved", "focus", "message"])
+    if outcome == "success":
+        assert events == (["saved", "focus", "result"] if handoff else ["saved", "result"])
+        assert len(result_dialogs) == 1
+        # The temporary conversion is already gone; open the durable card through
+        # the shared reader route, only when the user chooses the action.
+        result_dialogs[0]()
+        assert events[-1] == ("open", 123)
+    else:
+        assert events == (["modal"] if outcome == "save-failed" else [])
+        assert result_dialogs == []
     assert not pdf.exists()

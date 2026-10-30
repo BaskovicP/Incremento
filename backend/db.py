@@ -829,6 +829,47 @@ def _migration_20_recording_links(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_21_annotation_note_formatting(conn: sqlite3.Connection) -> None:
+    # Explicit BEGIN also makes SQLite DDL atomic when no DML preceded it.
+    if not conn.in_transaction:
+        conn.execute('BEGIN')
+    for table in ('pdf_highlights', 'epub_highlights'):
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN note_html TEXT NOT NULL DEFAULT ''")
+
+
+def _migration_22_annotation_styles(conn: sqlite3.Connection) -> None:
+    if not conn.in_transaction:
+        conn.execute('BEGIN')
+    conn.execute("ALTER TABLE epub_highlights ADD COLUMN style TEXT NOT NULL DEFAULT 'highlight' "
+                 "CHECK(style IN ('highlight','underline','squiggly','dashed','dotted','strikeout'))")
+
+
+def _migration_23_document_library(conn: sqlite3.Connection) -> None:
+    _begin_migration_script(conn, """
+        CREATE TABLE document_library_lists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 80),
+            name_key TEXT NOT NULL UNIQUE
+        );
+        CREATE TABLE document_library_books (
+            kind TEXT NOT NULL CHECK(kind IN ('pdf','epub')),
+            filename TEXT NOT NULL CHECK(length(filename) BETWEEN 1 AND 500),
+            reason TEXT NOT NULL DEFAULT '' CHECK(length(reason)<=2000),
+            source TEXT NOT NULL DEFAULT '' CHECK(length(source)<=500),
+            PRIMARY KEY(kind,filename)
+        );
+        CREATE TABLE document_library_memberships (
+            kind TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            list_id INTEGER NOT NULL REFERENCES document_library_lists(id) ON DELETE CASCADE,
+            PRIMARY KEY(kind,filename,list_id),
+            FOREIGN KEY(kind,filename) REFERENCES document_library_books(kind,filename) ON DELETE CASCADE
+        );
+        CREATE INDEX document_library_by_list ON document_library_memberships(list_id);
+        ALTER TABLE import_journal ADD COLUMN document_details TEXT NOT NULL DEFAULT '';
+    """)
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
@@ -849,6 +890,9 @@ _SCHEMA_MIGRATIONS = (
     (18, "epub_connections", _migration_18_epub_connections),
     (19, "search_fts_keys", _migration_19_search_fts_keys),
     (20, "recording_links", _migration_20_recording_links),
+    (21, "annotation_note_formatting", _migration_21_annotation_note_formatting),
+    (22, "annotation_styles", _migration_22_annotation_styles),
+    (23, "document_library", _migration_23_document_library),
 )
 
 

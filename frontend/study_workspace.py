@@ -6,11 +6,12 @@ from threading import Event
 
 from aqt import mw
 from aqt.operations import QueryOp
-from aqt.qt import (QButtonGroup, QDialog, QFrame, QHBoxLayout, QKeySequence, QLabel, QListWidget, QListWidgetItem,
-                    QPushButton, QScrollArea, QShortcut, QSize, QSplitter, QTimer, QVBoxLayout, QWidget, Qt)
+from aqt.qt import (QBoxLayout, QButtonGroup, QDialog, QFrame, QHBoxLayout, QKeySequence, QLabel, QListWidget, QListWidgetItem, QMenu,
+                    QPushButton, QScrollArea, QShortcut, QSize, QSizePolicy, QSplitter, QStackedWidget, QTimer, QVBoxLayout, QWidget, Qt)
+from PyQt6 import sip
 
 try:
-    from ..backend.config_service import load_addon_config, save_addon_config
+    from ..backend.config_service import load_addon_config, save_addon_config, configured_study_workspace_enabled
     from ..backend.anki_compat import pause_reviewer_auto_advance
     from ..backend.i18n import t
     from ..backend.paths import get_active_profile
@@ -19,12 +20,14 @@ try:
                                           resolve_link_rows)
     from .study_visit import StudyVisit
     from .recording_player import RecordingPlayer, timestamp
-    from .study_navigation import reviewer_navigation_script, set_stage_icon, style_stage_bar
+    from .study_navigation import reviewer_navigation_script, reviewer_navigation_clear_script, set_stage_icon, style_stage_bar
     from .study_surface import StudySurface
     from .study_availability import card_availability, resource_availability
     from .study_focus import StudyFocus
+    from .study_resource_widgets import ResourcePicker, StageButton, ElidedLabel, resource_styles
+    from .study_resource_titles import display_resource_title
 except ImportError:
-    from backend.config_service import load_addon_config, save_addon_config
+    from backend.config_service import load_addon_config, save_addon_config, configured_study_workspace_enabled
     from backend.anki_compat import pause_reviewer_auto_advance
     from backend.i18n import t
     from backend.paths import get_active_profile
@@ -32,10 +35,12 @@ except ImportError:
     from backend.study_resources import load_card_resources, resolve_document, resolve_recording, resolve_link_rows
     from frontend.study_visit import StudyVisit
     from frontend.recording_player import RecordingPlayer, timestamp
-    from frontend.study_navigation import reviewer_navigation_script, set_stage_icon, style_stage_bar
+    from frontend.study_navigation import reviewer_navigation_script, reviewer_navigation_clear_script, set_stage_icon, style_stage_bar
     from frontend.study_surface import StudySurface
     from frontend.study_availability import card_availability, resource_availability
     from frontend.study_focus import StudyFocus
+    from frontend.study_resource_widgets import ResourcePicker, StageButton, ElidedLabel, resource_styles
+    from frontend.study_resource_titles import display_resource_title
 
 _ADDON_DIR = str(Path(__file__).resolve().parent.parent)
 _ADDON_PKG = __name__.split('.')[0]
@@ -65,12 +70,15 @@ def source_label(source):
 
 
 class StudyWorkspace(QDialog):
-    def __init__(self, source=None):
+    def __init__(self, source=None, *, initial_stage='book'):
         super().__init__(mw)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
         self.setWindowTitle(t('study_resources'))
         self.resize(1200, 800)
         self.visit = StudyVisit(*_context())
+        self._compact_resources = source is None
+        self.active_sheet = None
+        self._card_title = ''
         try:
             cfg = load_addon_config(mw.addonManager, _ADDON_PKG)
             self._layout_preferences = deepcopy(cfg['study_layout_by_profile'].get(self.visit.profile, {}))
@@ -94,6 +102,12 @@ class StudyWorkspace(QDialog):
         self._items = []
         self._documents = []
         self._recordings = []
+        self._picker_items = []
+        self._selected_document = None
+        self._selected_recording = None
+        self._document_positions = {}
+        self._document_zooms = {}
+        self._recording_positions = {}
         self._resources_known = False
         self._resources_failed = False
         self._resources_source = None
@@ -115,9 +129,10 @@ class StudyWorkspace(QDialog):
         # Leave the existing web document intact, including the question/answer side.
         self._suspend_reviewer()
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(16)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         header_panel = self.header_panel = QFrame(self)
+        header_panel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         header_panel.setObjectName('study-header')
         header = QHBoxLayout(header_panel)
         header.setContentsMargins(16, 12, 16, 12)
@@ -131,7 +146,7 @@ class StudyWorkspace(QDialog):
         self.stage_group = QButtonGroup(self)
         self.stage_group.setExclusive(True)
         for stage, key in (('card', 'study_tab_card'), ('book', 'study_tab_textbook'), ('video', 'study_tab_video')):
-            button = QPushButton(t(key), self.stage_bar)
+            button = StageButton(t(key), self.stage_bar)
             button.setObjectName('study-stage-' + stage)
             button.setAccessibleName(t(key))
             button.setCheckable(True)
@@ -139,17 +154,15 @@ class StudyWorkspace(QDialog):
             button.clicked.connect(lambda _=False, stage=stage: self.navigate(stage))
             self.stage_group.addButton(button)
             self.stage_buttons[stage] = button
-            group = QVBoxLayout()
-            group.setSpacing(2)
-            group.addWidget(button)
             status = QLabel('', self.stage_bar)
             status.setAlignment(Qt.AlignmentFlag.AlignCenter)
             font = status.font()
             font.setPointSizeF(max(10, font.pointSizeF() * .85))
             status.setFont(font)
             self.stage_status[stage] = status
-            group.addWidget(status)
-            stages.addLayout(group)
+            status.hide()
+            stages.addWidget(button)
+        stages.addStretch(1)
         self._stage_colors = style_stage_bar(self.stage_bar, self.stage_buttons)
         self._recording_icon = 'video'
         header.addWidget(self.stage_bar)
@@ -160,6 +173,11 @@ class StudyWorkspace(QDialog):
         self.breadcrumb.setWordWrap(True)
         header.addWidget(self.breadcrumb, 1)
         header.addStretch(1)
+        self.link_resources_button = QPushButton(t('study_link_resources'), self)
+        self.link_resources_button.setAutoDefault(False)
+        self.link_resources_button.clicked.connect(self.link_resources)
+        self.link_resources_button.setVisible(bool(self.visit.card_id))
+        header.addWidget(self.link_resources_button)
         self.exit_focus = QPushButton(t('study_exit_focus'), self)
         self.exit_focus.setAutoDefault(False)
         self.exit_focus.clicked.connect(self.leave_focus)
@@ -170,21 +188,28 @@ class StudyWorkspace(QDialog):
         self.focus_escape.activated.connect(self.leave_focus)
         self.focus_escape.setEnabled(False)
         layout.addWidget(header_panel)
+        self.body_stack = QStackedWidget(self)
+        layout.addWidget(self.body_stack, 1)
+        self.study_body = QWidget(self.body_stack)
+        self.body_stack.addWidget(self.study_body)
+        layout = QVBoxLayout(self.study_body)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(14)
         self.context_panel = QFrame(self)
         self.context_panel.setObjectName('study-context')
         context_row = QHBoxLayout(self.context_panel)
-        context_row.setContentsMargins(16, 12, 16, 12)
+        context_row.setContentsMargins(0, 0, 0, 0)
         context_copy = QVBoxLayout()
         self.context_state = QLabel(t('study_answer_revealed' if self.visit.side == 'answer' else 'study_question_side'), self)
         self.context_state.setObjectName('study-context-state')
-        self.context_title = QLabel(t('study_review_card'), self)
+        self.context_title = ElidedLabel(t('study_review_card'), self)
         self.context_title.setTextFormat(Qt.TextFormat.PlainText)
-        self.context_title.setWordWrap(True)
         self.context_title.setObjectName('study-context-title')
         context_copy.addWidget(self.context_state)
         context_copy.addWidget(self.context_title)
         context_row.addLayout(context_copy, 1)
         back = QPushButton(t('study_return_card') if self.visit.card_id else t('study_close'), self)
+        self.return_card_button = back
         back.clicked.connect(lambda: self.navigate('card') if self.visit.card_id else self.close())
         (context_row if self.visit.card_id else header).addWidget(back)
         layout.addWidget(self.context_panel)
@@ -309,21 +334,54 @@ class StudyWorkspace(QDialog):
         self.resource_scroll.setWidgetResizable(True)
         self.resource_scroll.setWidget(self.resource_panel)
         side.addWidget(self.resource_scroll, 1)
+        self.empty_state = QFrame(self.side)
+        self.empty_state.setObjectName('study-resource-panel')
+        self.empty_state.setMaximumSize(640, 300)
+        empty_layout = QVBoxLayout(self.empty_state)
+        empty_layout.setContentsMargins(20, 20, 20, 20)
+        self.empty_title = QLabel('', self.empty_state)
+        self.empty_title.setWordWrap(True)
+        self.empty_title.setTextFormat(Qt.TextFormat.PlainText)
+        empty_layout.addWidget(self.empty_title)
+        self.empty_link_button = QPushButton(t('study_link_resources'), self.empty_state)
+        self.empty_link_button.clicked.connect(self.link_resources)
+        empty_layout.addWidget(self.empty_link_button, 0, Qt.AlignmentFlag.AlignLeft)
+        empty_layout.addStretch(1)
+        side.addWidget(self.empty_state, 0, Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
+        self.empty_state.hide()
         self.splitter.addWidget(self.side)
         self.splitter.setStretchFactor(0, 3)
         self.splitter.setStretchFactor(1, 2)
+        picker_row = self.picker_row = QWidget(self)
+        picker_layout = QHBoxLayout(picker_row)
+        picker_layout.setContentsMargins(0, 0, 0, 0)
+        self.resource_picker = ResourcePicker(self)
+        self.resource_picker.setAccessibleName(t('study_choose_resources'))
+        self.resource_picker.activated.connect(self.pick_resource)
+        self.resource_picker.linkRequested.connect(self.link_resources)
+        self.resource_picker.manageRequested.connect(self.manage_links)
+        self.resource_picker.toggle_button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.resource_picker.toggle_button.customContextMenuRequested.connect(self._picker_context_menu)
+        picker_layout.addWidget(self.resource_picker, 1)
+        self.manage_links_button = QPushButton(t('study_manage_links'), self)
+        self.manage_links_button.clicked.connect(self.manage_links)
+        self.manage_links_button.setVisible(bool(self.visit.card_id))
+        layout.addWidget(picker_row)
         self.content_scroll = QScrollArea(self)
         self.content_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.content_scroll.setWidgetResizable(True)
         self.content_scroll.setWidget(self.splitter)
         layout.addWidget(self.content_scroll, 1)
-        layout.addWidget(self.status)
+        footer = QHBoxLayout()
+        footer.addWidget(self.status, 1)
+        footer.addWidget(self.manage_links_button)
+        layout.addLayout(footer)
         self._style_workspace()
         self.finished.connect(self.finish)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll_location)
         self.timer.start(400)
-        self._set_stage('book')
+        self._set_stage(initial_stage)
         if self.source['kind'] == 'card':
             self.refresh()
         else:
@@ -336,11 +394,12 @@ class StudyWorkspace(QDialog):
         c = self._stage_colors
         self.setObjectName('study-workspace')
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet(f"""
+        self.setStyleSheet(resource_styles(c) + f"""
             QWidget#study-workspace {{ background: {c['surface']}; color: {c['ink']}; }}
-            QFrame#study-header, QFrame#study-book-panel, QFrame#study-resource-panel,
+            QFrame#study-header {{ background:{c['surface']}; border:0; border-bottom:1px solid {c['border']}; }}
+            QFrame#study-book-panel, QFrame#study-resource-panel,
             QFrame#study-player-panel {{ background: {c['paper']}; border: 1px solid {c['border']}; border-radius: 10px; }}
-            QFrame#study-context {{ background: {c['selected']}; border: 1px solid {c['border']}; border-radius: 8px; }}
+            QFrame#study-context {{ background:transparent; border:0; }}
             QLabel#study-panel-title, QLabel#study-context-title {{ color: {c['ink']}; font-weight: 600; }}
             QLabel#study-panel-detail, QLabel#study-context-state {{ color: {c['foreground']}; }}
             QListWidget#study-resource-list {{ background: transparent; color: {c['ink']}; border: 0; }}
@@ -357,12 +416,12 @@ class StudyWorkspace(QDialog):
 
     def present(self):
         self.surface.present()
-        self.context_state.setText(t('study_answer_revealed' if self.visit.side == 'answer' else 'study_question_side'))
+        self.context_state.setText(t('study_current_card_state', state=t('study_answer_revealed' if self.visit.side == 'answer' else 'study_question_side')))
         context = _context()
         evaluate = getattr(getattr(getattr(mw, 'reviewer', None), 'web', None), 'evalWithCallback', None)
-        if self.visit.card_id and callable(evaluate):
+        if self.visit.card_id and callable(evaluate) and not self._card_title:
             def captured(value):
-                if self.current() and _context() == context and isinstance(value, str) and value.strip():
+                if not self._card_title and self.current() and _context() == context and isinstance(value, str) and value.strip():
                     self.context_title.setText(' '.join(value.split())[:240])
             evaluate("(() => {const q=document.getElementById('qa');return q ? q.innerText.slice(0,320) : '';})()", captured)
         self._adapt_panels()
@@ -377,6 +436,11 @@ class StudyWorkspace(QDialog):
         if self.focus_stage is not None:
             return
         orientation = Qt.Orientation.Vertical if self.width() < 880 else Qt.Orientation.Horizontal
+        header_minimum = self.stage_bar.minimumSizeHint().width() + self.link_resources_button.sizeHint().width() + 64
+        self.header_panel.layout().setDirection(QBoxLayout.Direction.TopToBottom if self.width() < max(520, header_minimum)
+                                               else QBoxLayout.Direction.LeftToRight)
+        self.stage_bar.setMinimumHeight(self.stage_bar.minimumSizeHint().height())
+        self.header_panel.setMinimumHeight(self.header_panel.minimumSizeHint().height())
         mode = (orientation, self.visit.stage)
         if mode != self._pane_mode:
             if self._pane_mode is not None and all(self.splitter.sizes()):
@@ -426,6 +490,8 @@ class StudyWorkspace(QDialog):
         self._layout_save_warned = False
 
     def _schedule_focus_restore(self):
+        if self.active_sheet is not None:
+            return
         # Wait for the visible surface to settle. A video may load its textbook
         # first, so a queued restore must still match the requested stage.
         self._focus_restore_stage = self.visit.stage
@@ -439,7 +505,7 @@ class StudyWorkspace(QDialog):
     def enter_focus(self, stage, *, remember=True):
         if (not self.current() or self.focus_stage is not None
                 or stage not in ('book', 'video')
-                or (self.reader if stage == 'book' else self.player) is None):
+                or (self._live_reader() if stage == 'book' else self.player) is None):
             return
         if stage != self.visit.stage:
             self.navigate(stage)
@@ -477,29 +543,49 @@ class StudyWorkspace(QDialog):
         states = self.availability()
         for stage, state in states.items():
             button = self.stage_buttons[stage]
-            button.setEnabled(not state['disabled'])
+            button.setEnabled(not state['disabled'] or (bool(self.visit.card_id) and state['availability'] in ('empty', 'unavailable')))
             button.setAccessibleDescription(state['status'])
             button.setToolTip(t('study_no_active_card') if stage == 'card' and state['disabled'] else state['status'])
             self.stage_status[stage].setText(state['status'])
+            if stage == 'card':
+                button.set_title_count(t('study_tab_card'))
+            else:
+                key = 'study_tab_textbook' if stage == 'book' else 'study_tab_audio' if self._recording_icon == 'audio' else 'study_tab_video'
+                if stage == 'book' and not any(item['location']['kind'] == 'epub' for item in self._documents):
+                    key = 'study_tab_pdfs'
+                button.set_title_count(t(key), state.get('count', 0))
         video = self.visit.stage == 'video' and self.player is not None
+        compact_book = self._compact_resources and self.reader is not None and self.visit.stage == 'book'
         focused = self.focus_stage is not None
         self.exit_focus.setVisible(focused)
         self.context_panel.setVisible(bool(self.visit.card_id) and not focused)
         self.status.setVisible(not focused)
-        self.breadcrumb.setVisible(not focused)
+        self.breadcrumb.setVisible(not focused and not self._compact_resources)
+        self.picker_row.setVisible(not focused)
+        self._refresh_picker()
         for label in self.stage_status.values():
-            label.setVisible(not focused)
-        self.focus_book.setVisible(not focused)
-        self.focus_video.setVisible(not focused)
-        self.layout().setContentsMargins(*((8, 6, 8, 6) if focused else (20, 16, 20, 16)))
-        self.layout().setSpacing(6 if focused else 16)
+            label.hide()
+        self.return_card_button.setVisible(not self._compact_resources and not focused)
+        self.context_state.setText(t('study_current_card_state', state=t('study_answer_revealed' if self.visit.side == 'answer' else 'study_question_side')))
+        self.book_title.setVisible(not self._compact_resources)
+        self.book_position.setVisible(not self._compact_resources)
+        self.player_title.setVisible(not self._compact_resources)
+        self.player_segment.setVisible(not self._compact_resources)
+        self.focus_book.setVisible(not focused and not self._compact_resources)
+        self.focus_video.setVisible(not focused and not self._compact_resources)
+        self.book_layout.setContentsMargins(*((0, 0, 0, 0) if self._compact_resources else (12, 12, 12, 12)))
+        self.study_body.layout().setContentsMargins(*((8, 6, 8, 6) if focused else (16, 16, 16, 16)))
         self.header_panel.layout().setContentsMargins(*((8, 4, 8, 4) if focused else (16, 12, 16, 12)))
         self.play_host.setVisible(video)
-        self.back_passage.setVisible(video and self.reader is not None and not focused)
-        self.book_host.setVisible(self.reader is not None and self.focus_stage != 'video')
-        self.side.setVisible(self.focus_stage != 'book')
-        self.more_resources.setVisible(video and not focused)
-        self.resource_scroll.setVisible(not focused and (not video or self.more_resources.isChecked()))
+        self.back_passage.setVisible(video and self.reader is not None and not focused and not self._compact_resources)
+        self.book_host.setVisible(self.reader is not None and self.focus_stage != 'video'
+            and (self.visit.stage == 'book' or (video and not self._compact_resources)))
+        self.side.setVisible(self.focus_stage != 'book' and (not compact_book or self.more_resources.isChecked()))
+        self.more_resources.setVisible((video or self.reader is not None) and not focused and not self._compact_resources)
+        self.resource_scroll.setVisible(not focused and ((not self._compact_resources and not video) or self.more_resources.isChecked()))
+        self.empty_state.setVisible(self._compact_resources and not focused and (
+            (self.visit.stage == 'book' and self.reader is None) or (self.visit.stage == 'video' and self.player is None)))
+        self.empty_title.setText(t('study_no_textbooks' if self.visit.stage == 'book' else 'study_no_recordings'))
         self.resource_scroll.setMaximumHeight(240 if video else 16777215)
         chooser = self.reader is None and not video
         self.resource_scroll.setMaximumWidth(640 if chooser else 16777215)
@@ -512,12 +598,52 @@ class StudyWorkspace(QDialog):
             t('study_no_textbooks' if self.source['kind'] == 'card' and self.visit.stage == 'book' else 'study_no_recordings'))
         self._adapt_panels()
 
+    def _picker_context_menu(self, point):
+        menu = QMenu(self)
+        stage = self.visit.stage
+        if (stage == 'book' and self.reader is not None) or (stage == 'video' and self.player is not None):
+            action = menu.addAction(t('study_focus_textbook' if stage == 'book' else 'study_focus_video'))
+            action.triggered.connect(lambda: self.enter_focus(stage))
+        if self._compact_resources:
+            action = menu.addAction(t('study_other_resources'))
+            action.setCheckable(True)
+            action.setChecked(self.more_resources.isChecked())
+            action.triggered.connect(lambda checked: (self.more_resources.setChecked(checked), self._sync_panels()))
+        menu.exec(self.resource_picker.toggle_button.mapToGlobal(point))
+
     def availability(self):
         return dict(card=card_availability(bool(self.visit.card_id)),
             book=resource_availability(self._documents if self._resources_known else None,
-                                       present=self.reader is not None, failed=self._resources_failed),
+                                       present=self._live_reader() is not None and not self._compact_resources, failed=self._resources_failed),
             video=resource_availability(self._recordings if self._resources_known else None,
                                         present=self.player is not None, failed=self._resources_failed))
+
+    def _live_reader(self):
+        reader = self.reader
+        if reader is not None and (sip.isdeleted(reader) or sip.isdeleted(reader.view)
+                or getattr(getattr(reader, 'state', None), 'closed', False)
+                or getattr(reader, 'closed', False)):
+            self._retire_reader(reader)
+        return self.reader
+
+    def _retire_reader(self, reader):
+        if sip.isdeleted(self) or self.reader is not reader:
+            return
+        # These positions are Python-owned and survive the native pane. Keep
+        # them so Back to passage can use the normal validated document loader.
+        if self.reader_kind == 'pdf':
+            self.source.update(page=reader.state.page, scroll=reader.state.scroll_ratio)
+        else:
+            self.source.update(reader.location)
+        key = (self.source['card_id'], self.source.get('page', self.source.get('section')))
+        if key != self._last_location:
+            self.source.pop('page_y', None)
+            self.source['quote'] = ''
+        self.reader = self.reader_kind = None
+        if self.current():
+            if self.focus_stage == 'book':
+                self.leave_focus(remember=False)
+            self._sync_panels()
 
     def _suspend_reviewer(self):
         if not self.visit.card_id or self._review_suspended:
@@ -558,9 +684,11 @@ class StudyWorkspace(QDialog):
     def navigate(self, stage):
         if not self.current() or stage not in self.stage_buttons:
             return
+        if self.active_sheet is not None:
+            self.active_sheet.reject()
         if stage == 'card' and not self.visit.card_id:
             return
-        if self.availability()[stage]['disabled'] and self.availability()[stage]['availability'] != 'loading':
+        if self.availability()[stage]['availability'] == 'error':
             return
         for channel in ('document', 'recording', 'resources'):
             pending = self._requests.get(channel)
@@ -582,7 +710,7 @@ class StudyWorkspace(QDialog):
         self.raise_()
         self.activateWindow()
         if stage == 'book' and self.reader is not None:
-            self.status.setText(t('study_choose_resource'))
+            self.status.setText(t('study_own_position' if self._compact_resources else 'study_choose_resource'))
             self.reader.view.setFocus()
         elif stage == 'video' and self.player is not None:
             self.status.setText(t('study_player_paused'))
@@ -597,7 +725,7 @@ class StudyWorkspace(QDialog):
             return
         choices = self._documents if stage == 'book' else self._recordings
         available = [item for item in choices if item['available']]
-        if len(available) == 1:
+        if available:
             if stage == 'book':
                 self.open_document(available[0]['location'])
             else:
@@ -610,7 +738,7 @@ class StudyWorkspace(QDialog):
                 self._append_document(item)
             else:
                 self._append_recording(item)
-        self.link_book.setVisible(stage == 'book' and not choices and self.source['kind'] == 'card')
+        self.link_book.setVisible(stage == 'book' and bool(self.visit.card_id))
         self.status.setText(t('study_choose_resource') if choices else
                             t('study_no_textbooks' if stage == 'book' else 'study_no_recordings'))
         if choices:
@@ -651,6 +779,14 @@ class StudyWorkspace(QDialog):
             self._recordings = []
             self._sync_panels()
         def load(col):
+            if self.visit.card_id:
+                result = load_card_resources(_ADDON_DIR, profile, col, self.visit.card_id)
+                if source['kind'] != 'card':
+                    rows = resolve_link_rows(_ADDON_DIR, profile, col,
+                        list_recording_links(_ADDON_DIR, profile, source=source))
+                    seen = {self._recording_key(r) for r in result['recordings']}
+                    result['recordings'] += [r for r in rows if self._recording_key(r) not in seen]
+                return result
             if source['kind'] == 'card':
                 return load_card_resources(_ADDON_DIR, profile, col, source['card_id'])
             rows = list_recording_links(_ADDON_DIR, profile, source=source)
@@ -658,7 +794,11 @@ class StudyWorkspace(QDialog):
         def ready(result):
             self._resources_known = True
             self._resources_failed = False
-            if source['kind'] == 'card':
+            if result.get('card_title'):
+                self._card_title = result['card_title']
+                self.context_title.setText(display_resource_title(self._card_title))
+                self.context_title.setToolTip(self._card_title)
+            if self.visit.card_id or source['kind'] == 'card':
                 self._documents = result['documents']
             self._recordings = result['recordings']
             self.resources.clear()
@@ -667,18 +807,20 @@ class StudyWorkspace(QDialog):
                 self._append_document(item)
             for item in result['recordings']:
                 self._append_recording(item)
-            self.status.setText(t('study_choose_resource') if self._items else
+            self.status.setText(t('study_own_position' if self._compact_resources else 'study_choose_resource') if self._items else
                 t('study_no_recordings') if source['kind'] != 'card' or self.visit.stage == 'video'
                 else t('study_no_textbooks'))
             if self._items:
-                self.resources.setCurrentRow(0)
+                preferred = next((i for i, (kind, _) in enumerate(self._items) if kind == 'recording'), 0) if source['kind'] != 'card' else 0
+                self.resources.setCurrentRow(preferred)
             if navigate_to:
                 self._choose_stage_resource(navigate_to)
             self._sync_panels()
         self.submit(load, ready)
 
     def _append_document(self, item):
-        self._add_item('document', item, (item['title'] or t('study_tab_textbook')) + '\n' + source_label(item['location']))
+        self._add_item('document', item, (item['title'] or t('study_tab_textbook')) + '\n' + source_label(item['location']) +
+                       (' · ' + item['label'] if item.get('label') else ''))
 
     def _append_recording(self, item):
         title = item['label'] or (item['recording'] or {}).get('title', '')
@@ -714,13 +856,23 @@ class StudyWorkspace(QDialog):
         source = item['source']
         same_passage = all(source.get(key) == self.source.get(key)
                            for key in ('kind', 'card_id', 'page', 'section'))
-        if source['kind'] != 'card' and (self.reader is None or not same_passage):
+        if source['kind'] != 'card' and (self._live_reader() is None or not same_passage):
             self.open_document(source, after=lambda: self.open_recording(item))
         else:
             self.open_recording(item)
 
     def open_document(self, source, *, after=None):
         source, profile = normalize_source(source), self.visit.profile
+        anchor = self._document_key(source)
+        if self.reader is not None:
+            self.poll_location()
+            if self._selected_document:
+                self._document_positions[self._selected_document] = dict(self.source)
+                if self.reader_kind == 'pdf':
+                    self._document_zooms[self._selected_document] = getattr(self.reader.state, 'zoom', 1)
+        if self._selected_recording and self.player and hasattr(self.player, 'position'):
+            self._recording_positions[self._selected_recording] = self.player.position()
+        source = dict(self._document_positions.get(anchor, source))
         pending = self._requests.get('recording')
         if pending:
             pending.set()
@@ -738,20 +890,25 @@ class StudyWorkspace(QDialog):
             from .epub_reference_workspace import _load
             return _load(col, profile, source)
         def ready(result):
-            if self.reader:
-                self.reader.close()
+            reader = self._live_reader()
+            if reader is not None:
+                reader.close()
             if source['kind'] == 'pdf':
                 from . import pdf_reference_workspace as pdf
                 self.reader = pdf.ReferenceWindow(result, profile=profile, page=source['page'],
                     scroll_ratio=source['scroll'], max_page=result['max_page'], beside=True, owner=self,
-                    excerpt=source['quote'], page_y=source.get('page_y'), embedded=True)
+                    excerpt=source['quote'], page_y=source.get('page_y'), embedded=True,
+                    zoom=self._document_zooms.get(anchor, 1))
                 pdf._windows.append(self.reader)
             else:
                 from . import epub_reference_workspace as epub
                 self.reader = epub.EpubReferenceWindow(result, source, profile=profile, owner=self, embedded=True)
                 epub._windows.append(self.reader)
             self.source = source
+            self._selected_document = anchor
             self.reader_kind = source['kind']
+            reader = self.reader
+            reader.destroyed.connect(lambda: self._retire_reader(reader))
             self._last_location = (source['card_id'], source.get('page', source.get('section')))
             self.book_layout.addWidget(self.reader, 1)
             self.book_title.setText(result.get('title') or t('study_tab_textbook'))
@@ -770,11 +927,18 @@ class StudyWorkspace(QDialog):
 
     def open_recording(self, item):
         profile = self.visit.profile
+        key = self._recording_key(item)
+        if self._selected_recording and self.player and hasattr(self.player, 'position'):
+            self._recording_positions[self._selected_recording] = self.player.position()
         def ready(recording):
             if self.player is None:
                 self.player = RecordingPlayer(self, compact=True)
                 self.play_layout.addWidget(self.player)
-            self.player.load(recording, start=item['start'], end=item['end'])
+            position = self._recording_positions.get(key, item['start'])
+            if item['end'] is not None and position >= item['end']:
+                position = item['start']
+            self.player.load(recording, start=position, end=item['end'])
+            self._selected_recording = key
             self.player_title.setText(recording.get('title') or t('study_tab_video'))
             segment = timestamp(item['start'])
             if item['end'] is not None:
@@ -799,7 +963,7 @@ class StudyWorkspace(QDialog):
         if not self.current():
             self.close()
             return
-        if self.reader is None:
+        if self._live_reader() is None:
             return
         if self.reader_kind == 'pdf':
             state = self.reader.state
@@ -865,6 +1029,130 @@ class StudyWorkspace(QDialog):
             self.submit(save, lambda _: self.refresh(), channel='write')
         choose_pdf(chosen, is_current=self.current)
 
+    @staticmethod
+    def _document_key(source):
+        return (source['kind'], source['card_id'], source.get('page', source.get('section')),
+                source.get('scroll', 0), source.get('page_y'))
+
+    @staticmethod
+    def _recording_key(row):
+        return row['recording_card_id'], row['start'], row['end']
+
+    def _refresh_picker(self):
+        stage = self.visit.stage
+        self._picker_items = list(self._documents if stage == 'book' else self._recordings)
+        if stage == 'book' and self.reader is not None and not any(
+                self._document_key(row['location']) == self._selected_document for row in self._picker_items):
+            self._picker_items.append(dict(title=self.book_title.text(), location=dict(self.source), available=True))
+        groups = {}
+        for row in self._picker_items:
+            identity = (row['location']['kind'], row['location']['card_id']) if stage == 'book' else row['recording_card_id']
+            groups.setdefault(identity, []).append(row)
+        self._picker_items = [row for group in groups.values() for row in group]
+        entries, selected = [], -1
+        for index, row in enumerate(self._picker_items):
+            if stage == 'book':
+                title = row['title'] or t('study_unavailable')
+                location = row['location']
+                detail = t('study_picker_page', page=location['page']) if location['kind'] == 'pdf' else source_label(location)
+                active = self._document_key(location) == self._selected_document
+            else:
+                title = (row.get('recording') or {}).get('title') or row.get('label') or t('study_unavailable')
+                detail = timestamp(row['start']) + ('–' + timestamp(row['end']) if row['end'] is not None else '')
+                active = self._recording_key(row) == self._selected_recording
+            if row.get('label'):
+                detail += ' · ' + row['label']
+            if not row['available']:
+                detail += ' · ' + t('study_missing')
+            entries.append(dict(title=display_resource_title(title), full_title=title, detail=detail, available=row['available'],
+                                icon=self.stage_buttons['book' if stage == 'book' else 'video'].icon()))
+            if active:
+                selected = index
+        if selected < 0 and entries:
+            selected = next((i for i, row in enumerate(entries) if row['available']), 0)
+        caption = None
+        if stage == 'book' and self.reader is not None:
+            caption = t('study_picker_page', page=self.source['page']) if self.source['kind'] == 'pdf' else source_label(self.source)
+        self.resource_picker.set_entries(entries, selected,
+            placeholder=t('study_not_linked'), caption_detail=caption)
+        self.resource_picker.link_button.setVisible(bool(self.visit.card_id))
+        self.resource_picker.manage_button.setVisible(bool(self.visit.card_id))
+
+    def pick_resource(self, index):
+        if not self.current() or not 0 <= index < len(self._picker_items):
+            return
+        row = self._picker_items[index]
+        if row['available']:
+            if self.visit.stage == 'book':
+                self.open_document(row['location'])
+            else:
+                self._open_recording_resource(row)
+
+    def _card_links_changed(self):
+        if not self.current():
+            return
+        profile, card_id = self.visit.profile, self.visit.card_id
+        def ready(result):
+            self._documents = result['documents']
+            self._recordings = result['recordings']
+            self._resources_known = True
+            self.status.setText(t('study_links_saved'))
+            self._sync_panels()
+            check_reviewer_resources(force=True)
+        self.submit(lambda col: load_card_resources(_ADDON_DIR, profile, col, card_id), ready)
+
+    def link_resources(self, *, manage=False):
+        if not self.current() or not self.visit.card_id:
+            return
+        from .card_resource_dialog import open_resource_dialog
+        if self.active_sheet is not None:
+            if manage:
+                self.active_sheet.show_manage()
+            elif self.active_sheet.steps.currentIndex() == 1:
+                self.active_sheet.add_more()
+            return self.active_sheet
+        if self.player:
+            self.player.pause()
+        open_resource_dialog(self.visit.card_id, owner=self, is_current=self.current,
+            on_saved=self._card_links_changed, manage=manage,
+            current_location=dict(self.source) if self.source['kind'] == 'pdf' else None)
+
+    def present_resource_dialog(self, dialog):
+        if not self.current():
+            dialog.reject()
+            return
+        if self.active_sheet is not None:
+            self.active_sheet.reject()
+        if self.focus_stage is not None:
+            self.leave_focus(remember=False)
+        self.resource_picker.setExpanded(False)
+        self._layout_restore_timer.stop()
+        self.active_sheet = dialog
+        dialog.setParent(self.body_stack)
+        dialog.setWindowFlags(Qt.WindowType.Widget)
+        self.body_stack.addWidget(dialog)
+        self.body_stack.setCurrentWidget(dialog)
+        def restored(*_):
+            if self.active_sheet is not dialog:
+                return
+            self.active_sheet = None
+            self.body_stack.removeWidget(dialog)
+            self.body_stack.setCurrentWidget(self.study_body)
+            if not self.current():
+                return
+            if self.visit.stage == 'card':
+                self.navigate('card')
+            else:
+                self._sync_panels()
+                self._schedule_focus_restore()
+        dialog.finished.connect(restored)
+        self._suspend_reviewer()
+        self.present()
+        dialog.show()
+
+    def manage_links(self):
+        self.link_resources(manage=True)
+
     def finish(self, *_):
         global _window
         if self.visit.closed:
@@ -924,13 +1212,40 @@ def show_resources(source=None):
     window.present()
 
 
-def reset(*_):
+def workspace_enabled(config=None):
+    if config is None:
+        try:
+            config = load_addon_config(getattr(mw, 'addonManager', None), _ADDON_PKG)
+        except Exception:
+            config = {}
+    return configured_study_workspace_enabled(config)
+
+
+def _disable_reviewer_workspace():
+    # Explicit Study resources visits remain available in normal-card mode.
+    reset(close_visit=bool(_review_token))
+    if _context()[2]:
+        mw.reviewer.web.eval(reviewer_navigation_clear_script())
+
+
+def apply_settings(config):
+    """Apply an accepted preference without rendering or answering the card."""
+    if not workspace_enabled(config):
+        _disable_reviewer_workspace()
+    elif _context()[2]:
+        if not _review_token or _review_context != _context():
+            reviewer_shown()
+        else:
+            refresh_reviewer_navigation()
+
+
+def reset(*_, close_visit=True):
     global _review_token, _review_context, _resource_context, _review_resources, _resource_failed
     _review_token, _review_context = '', None
     if _resource_request is not None:
         _resource_request.set()
     _resource_context, _review_resources, _resource_failed = None, None, False
-    if _window is not None:
+    if close_visit and _window is not None:
         _window.close()
 
 
@@ -946,6 +1261,9 @@ def reviewer_shown(*_):
     if not context[2]:
         reset()
         return
+    if not workspace_enabled():
+        _disable_reviewer_workspace()
+        return
     _review_context = context
     _review_token = secrets.token_urlsafe(24)
     refresh_reviewer_navigation()
@@ -956,7 +1274,7 @@ def check_reviewer_resources(*, force=False):
     """Inspect only this card's bounded references off the UI thread."""
     global _resource_context, _resource_request, _review_resources, _resource_failed
     context = _context()[:3]
-    if not context[2] or _review_context != _context():
+    if not workspace_enabled() or not context[2] or _review_context != _context():
         return
     if not force and _resource_context == context:
         return
@@ -973,7 +1291,8 @@ def check_reviewer_resources(*, force=False):
         return None
     def current():
         now = _context()
-        return not cancelled.is_set() and now[0] == profile and now[1] is collection and now[2] == card_id
+        return (not cancelled.is_set() and workspace_enabled() and now[0] == profile
+                and now[1] is collection and now[2] == card_id)
     def ready(result):
         global _review_resources, _resource_failed
         if current():
@@ -989,7 +1308,7 @@ def check_reviewer_resources(*, force=False):
 
 
 def refresh_reviewer_navigation():
-    if not _review_token or _review_context != _context():
+    if not workspace_enabled() or not _review_token or _review_context != _context():
         return
     command = 'incremento_study:' + _review_token
     result = _review_resources if _resource_context == _context()[:3] else None
@@ -1000,9 +1319,13 @@ def refresh_reviewer_navigation():
                   video=resource_availability(recordings, failed=_resource_failed))
     available_recordings = [item for item in (recordings or []) if item['available']]
     audio = bool(available_recordings) and all((item.get('recording') or {}).get('kind') == 'audio' for item in available_recordings)
+    document_key = 'study_tab_textbook' if any(item['location']['kind'] == 'epub' for item in (documents or [])) else 'study_tab_pdfs'
     routes = [dict(stage=stage, label=t(key), command=command + ':' + stage, current=stage == 'card', **states[stage],
                    icon='audio' if stage == 'video' and audio else stage)
-              for stage, key in (('card', 'study_tab_card'), ('book', 'study_tab_textbook'), ('video', 'study_tab_audio' if audio else 'study_tab_video'))]
+              for stage, key in (('card', 'study_tab_card'), ('book', document_key), ('video', 'study_tab_audio' if audio else 'study_tab_video'))]
+    for route in routes:
+        if route['availability'] in ('empty', 'unavailable'):
+            route['disabled'] = False
     book = dict(stage='book', title=t('study_tab_textbook'), detail=t('study_read_hint'),
                 action=t('study_read_passage'), command=command + ':book')
     video = dict(stage='video', title=t('study_tab_audio' if audio else 'study_tab_video'), detail=t('study_recording_hint'),
@@ -1035,22 +1358,30 @@ def refresh_reviewer_navigation():
             tile.update(detail=state['status'], action=state['status'], disabled=True)
     workspace = dict(heading=t('study_review_card'),
         state=t('study_answer_revealed' if _context()[3] == 'answer' else 'study_question_side'),
-        resources_label=t('study_resources'), hint=t('study_card_hint'), tiles=[book, video])
+        resources_label=t('study_resources'), hint=t('study_card_hint'), tiles=[book, video],
+        summary=t('study_linked_summary', documents=states['book'].get('count', 0), recordings=states['video'].get('count', 0)),
+        link_action=dict(label=t('study_link_resources'), command=command + ':link'),
+        manage_action=dict(label=t('study_manage_links'), command=command + ':manage'))
     mw.reviewer.web.eval(reviewer_navigation_script(routes, t('study_resources'), workspace=workspace))
 
 
 def on_js_message(handled, message, context):
+    global _window
     if not isinstance(message, str) or not message.startswith('incremento_study:'):
         return handled
     parts = message.removeprefix('incremento_study:').split(':')
-    if (context is getattr(mw, 'reviewer', None) and _review_token and len(parts) in (1, 2)
+    if (context is getattr(mw, 'reviewer', None) and workspace_enabled() and _review_token and len(parts) in (1, 2)
             and parts[0].isascii() and secrets.compare_digest(parts[0], _review_token)
             and _review_context == _context()):
         if len(parts) == 1:
             show_resources()
         elif parts[1] == 'retry':
             check_reviewer_resources(force=True)
-        elif parts[1] in ('link_book', 'link_video', 'manage'):
+        elif parts[1] in ('link', 'manage'):
+            if _window is None:
+                _window = StudyWorkspace(initial_stage='card')
+            _window.link_resources(manage=parts[1] == 'manage')
+        elif parts[1] in ('link_book', 'link_video'):
             show_resources()
             if parts[1] == 'link_book':
                 _window.link_textbook()
@@ -1059,7 +1390,7 @@ def on_js_message(handled, message, context):
         elif parts[1] in ('card', 'book', 'video'):
             if parts[1] != 'card':
                 items = (_review_resources or {}).get('documents' if parts[1] == 'book' else 'recordings')
-                if resource_availability(items, failed=_resource_failed)['disabled']:
+                if resource_availability(items, failed=_resource_failed)['availability'] in ('loading', 'error'):
                     return True, None
             if _window is None and parts[1] != 'card':
                 show_resources()

@@ -118,7 +118,7 @@ def test_highlight_search_finds_annotation_notes_and_preserves_location(tmp_path
         addon_dir, "Profile", f"{media}_annotations", "failure mode"
     )
 
-    assert rows == [(7, 3, "My thoughts about failure mode today", "A saved passage", "green")]
+    assert rows == [(7, 3, "My thoughts about failure mode today", "A saved passage", "green", "")]
     assert search_repository.search_excerpt_rows(
         addon_dir, "OtherProfile", f"{media}_annotations", "failure mode"
     ) == []

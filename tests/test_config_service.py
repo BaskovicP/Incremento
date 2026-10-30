@@ -2,6 +2,67 @@ import config_service
 import pytest
 
 
+@pytest.mark.parametrize('value,expected', [(True, True), (False, False), ('off', False), ('true', True), (None, True)])
+def test_study_workspace_preference_normalizes_without_changing_saved_links_or_layouts(value, expected):
+    raw = dict(study_workspace_enabled=value, future_setting={'keep': True},
+               study_layout_by_profile={'A': {'book': {'focus': True}}})
+    normalized = config_service.normalize_config(raw)
+    assert normalized['study_workspace_enabled'] is expected
+    assert normalized['study_layout_by_profile'] == raw['study_layout_by_profile']
+    assert normalized['future_setting'] == {'keep': True}
+    assert config_service.normalize_config(normalized) == normalized
+
+
+def test_study_workspace_defaults_to_the_current_enhanced_view():
+    assert config_service.normalize_config({})['study_workspace_enabled'] is True
+
+
+def test_annotation_default_is_yellow_and_saved_colors_are_normalized_per_profile():
+    raw = {'reader_default_highlight_color_by_profile': {
+        'A': ' #AbC ', 'B': 'BLUE', 'invalid': 'url(unsafe)', 'snapshot': 'snapshot',
+        '': 'green', 'wrong-type': None}, 'future_setting': {'keep': True}}
+    config = config_service.normalize_config(raw)
+    assert config['reader_default_highlight_color_by_profile'] == {'A': '#aabbcc', 'B': 'blue'}
+    assert config_service.configured_reader_default_highlight_color(config, 'A') == '#aabbcc'
+    assert config_service.configured_reader_default_highlight_color(config, 'B') == 'blue'
+    assert config_service.configured_reader_default_highlight_color(config, 'new') == 'yellow'
+    assert config['future_setting'] == {'keep': True}
+    assert raw['reader_default_highlight_color_by_profile']['A'] == ' #AbC '
+    assert config_service.normalize_config(config) == config
+
+
+@pytest.mark.parametrize('value', [None, [], True, 5, 'green'])
+def test_malformed_annotation_defaults_fall_back_to_yellow(value):
+    config = config_service.normalize_config({'reader_default_highlight_color_by_profile': value})
+    assert config['reader_default_highlight_color_by_profile'] == {}
+    assert config_service.configured_reader_default_highlight_color(config, 'A') == 'yellow'
+
+
+def test_annotation_default_save_survives_reload_and_preserves_other_profiles_and_settings():
+    from copy import deepcopy
+    from types import SimpleNamespace
+    stored = {'reader_default_highlight_color_by_profile': {'B': 'purple'}, 'future': {'keep': True}}
+    def write(_key, value):
+        stored.clear()
+        stored.update(deepcopy(value))
+    manager = SimpleNamespace(getConfig=lambda _key: deepcopy(stored), writeConfig=write)
+    config_service.save_reader_default_highlight_color(manager, 'incremento', 'A', '#AbC')
+    reloaded = config_service.load_addon_config(manager, 'incremento')
+    assert reloaded['reader_default_highlight_color_by_profile'] == {'A': '#aabbcc', 'B': 'purple'}
+    assert reloaded['future'] == {'keep': True}
+
+
+def test_failed_annotation_default_save_cannot_change_the_stored_preference():
+    from types import SimpleNamespace
+    stored = {'reader_default_highlight_color_by_profile': {'A': 'green'}}
+    def fail(*_args):
+        raise OSError('Synthetic write failure')
+    manager = SimpleNamespace(getConfig=lambda _key: stored, writeConfig=fail)
+    with pytest.raises(OSError, match='Synthetic'):
+        config_service.save_reader_default_highlight_color(manager, 'incremento', 'A', 'red')
+    assert stored == {'reader_default_highlight_color_by_profile': {'A': 'green'}}
+
+
 def test_study_layout_preferences_normalize_focus_and_ratios_without_mutating_other_profiles():
     from copy import deepcopy
     raw = {'study_layout_by_profile': {
@@ -110,6 +171,35 @@ def test_pdf_link_preview_zoom_is_remembered_separately_for_each_profile():
     assert config["future_key"] == {"keep": True}
     assert config_service.normalize_config(config) == config
     assert original["pdf_link_preview_zoom_by_profile"] == {"Profile A": 2.5, "Profile B": 1.75}
+
+
+@pytest.mark.parametrize('raw, expected', [
+    (None, None), ({}, None), ([], None),
+    ({'width': True, 'height': 300}, None), ({'width': '700', 'height': 300}, None),
+    ({'width': float('nan'), 'height': 300}, None),
+    ({'width': 700, 'height': float('inf')}, None), ({'width': 0, 'height': 300}, None),
+    ({'width': 700.4, 'height': 450.6}, {'width': 700, 'height': 451}),
+    ({'width': 100, 'height': 80}, {'width': 280, 'height': 160}),
+    ({'width': 1e9, 'height': 1e9}, {'width': 4096, 'height': 4096}),
+])
+def test_pdf_link_preview_size_is_validated_and_bounded(raw, expected):
+    assert config_service.normalize_pdf_link_preview_size(raw) == expected
+
+
+def test_pdf_link_preview_size_remembers_each_profile_without_mutating_input():
+    from copy import deepcopy
+    original = {'pdf_link_preview_size_by_profile': {
+        'A': {'width': 760, 'height': 500}, 'B': {'width': 600, 'height': 400}, 'bad': None,
+    }, 'future_key': True}
+    untouched = deepcopy(original)
+    config = config_service.normalize_config(original)
+    assert config_service.configured_pdf_link_preview_size(config, 'A') == {'width': 760, 'height': 500}
+    assert config_service.configured_pdf_link_preview_size(config, 'B') == {'width': 600, 'height': 400}
+    assert config_service.configured_pdf_link_preview_size(config, 'C') is None
+    assert 'bad' not in config['pdf_link_preview_size_by_profile']
+    assert config['future_key'] is True
+    assert config_service.normalize_config(config) == config
+    assert original == untouched
 
 
 @pytest.mark.parametrize("raw, expected", [

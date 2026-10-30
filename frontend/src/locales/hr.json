@@ -34,6 +34,8 @@
   "reader_pdf_page_number": "Broj stranice PDF-a",
   "reader_zoom_out": "Smanji prikaz",
   "reader_zoom_in": "Povećaj prikaz",
+  "reader_fit_width": "Prilagodi širini",
+  "reader_fit_width_hint": "Prilagodi stranicu širini čitača; za čitanje pomiči okomito",
   "reader_links_enable": "Uključi poveznice u ovom PDF-u",
   "reader_link_preview": "Pregled fusnote / poveznice",
   "reader_link_preview_zoom": "Povećanje pregleda fusnote",
@@ -215,5 +217,17 @@
   "reader_read_sections": "Odjeljci 1–{count}",
   "reader_exact_read_marker": "Točna oznaka čitanja",
   "study_resources": "Materijali za učenje",
-  "study_link_recording": "Poveži snimku…"
+  "study_link_recording": "Poveži snimku…",
+  "reader_default_annotation_color": "Zadana boja",
+  "reader_default_annotation_color_help": "Odaberite spremljenu boju za nova označavanja (Ctrl/Cmd+H). Odabir drugih boja ne mijenja ovu zadanu boju.",
+  "reader_annotation_style": "Stil",
+  "reader_annotation_appearance": "Izgled oznake",
+  "reader_annotation_style_help": "Odaberite stil i boju, zatim označite odabrani tekst.",
+  "reader_mark_selection": "Označi odabir",
+  "reader_style_highlight": "Isticanje",
+  "reader_style_underline": "Podcrtano",
+  "reader_style_squiggly": "Valovito",
+  "reader_style_dashed": "Isprekidano",
+  "reader_style_dotted": "Točkasto",
+  "reader_style_strikeout": "Precrtano"
 }

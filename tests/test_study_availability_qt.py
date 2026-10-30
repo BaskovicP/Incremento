@@ -30,16 +30,17 @@ def test_review_checks_resources_in_background_without_opening_a_workspace():
     '''), resolve_availability=False)
 
 
-def test_empty_and_missing_resources_disable_navigation_but_offer_explicit_link_or_manage_actions():
+def test_empty_and_missing_resources_offer_navigation_and_explicit_link_or_manage_actions():
     run_scene(CAPTURE + dedent('''
         ui.load_card_resources=lambda *a: dict(documents=[],recordings=[dict(recording,available=False,recording=None)])
         drain()
-        assert routes()['book']['availability']=='empty' and routes()['book']['disabled']
-        assert routes()['video']['availability']=='unavailable' and routes()['video']['disabled']
+        assert routes()['book']['availability']=='empty' and not routes()['book']['disabled']
+        assert routes()['video']['availability']=='unavailable' and not routes()['video']['disabled']
         assert tiles()['book']['command'].endswith(':link_book')
         assert tiles()['video']['command'].endswith(':manage')
-        bridge('book'); bridge('video')
-        assert ui._window is None, 'Disabled navigation must not open an empty resource view'
+        bridge('book'); drain(); bridge('video'); drain()
+        assert ui._window is not None and ui._window.player is None
+        click(ui._window,'card')
         linked=[]
         ui.StudyWorkspace.link_textbook=lambda self: linked.append(self.source['card_id'])
         bridge('link_book'); drain()
@@ -80,11 +81,13 @@ def test_native_tabs_show_passage_availability_and_update_after_link_refresh():
         assert w.stage_buttons['video'].isEnabled()
         ui.list_recording_links=lambda *a,**kw: []
         ui.resolve_link_rows=lambda *a: []
+        ui.load_card_resources=lambda *a: dict(documents=[document],recordings=[])
         w.refresh(); drain()
-        assert not w.stage_buttons['video'].isEnabled()
+        assert w.stage_buttons['video'].isEnabled()
         assert w.stage_status['video'].text()==ui.t('study_not_linked')
         assert w.add_recording.isEnabled()
         ui.resolve_link_rows=lambda *a: [recording]
+        ui.load_card_resources=lambda *a: dict(documents=[document],recordings=[recording])
         w.refresh(); drain()
         assert w.stage_buttons['video'].isEnabled()
         click(w,'video'); drain(); player=w.player
@@ -110,7 +113,7 @@ def test_profile_change_discards_pending_availability_and_audio_is_identified_be
     '''), resolve_availability=False)
 
 
-def test_changing_passage_does_not_advertise_the_previous_pages_recordings():
+def test_changing_passage_retains_resources_associated_with_the_review_card():
     run_scene('''
         ui.list_recording_links=lambda *a,**kw: [row] if kw['source'].get('page')==6 else []
         ui.resolve_link_rows=lambda *args: [recording] if args[-1] else []
@@ -120,7 +123,7 @@ def test_changing_passage_does_not_advertise_the_previous_pages_recordings():
         assert not w.stage_buttons['video'].isEnabled()
         assert w.stage_status['video'].text()==ui.t('study_checking')
         drain()
-        assert w.stage_status['video'].text()==ui.t('study_not_linked')
-        click(w,'video'); assert w.player is None
+        assert w.stage_status['video'].text()==ui.t('study_linked_count',count=1)
+        click(w,'video'); drain(); assert w.player is not None
         w.close()
     ''')

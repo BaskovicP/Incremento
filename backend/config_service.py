@@ -10,8 +10,10 @@ from typing import Any, Mapping
 
 try:
     from .i18n import normalize_language_choice
+    from .highlight_colors import normalize_highlight_color
 except ImportError:
     from i18n import normalize_language_choice
+    from highlight_colors import normalize_highlight_color
 
 try:
     from .backup_schedule import normalize_policy
@@ -36,6 +38,7 @@ MAX_PDF_SNAPSHOT_FIELD_NAME_LENGTH = 255
 _DAY_END_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 _BOOLEAN_DEFAULTS = {
+    "study_workspace_enabled": True,
     "priority_lower_is_more_important": True,
     "reviewer_button_group_visible": True,
     "remember_browser_card_scroll": True,
@@ -138,6 +141,34 @@ def configured_pdf_controls_collapsed(
 def configured_epub_controls_collapsed(config: Mapping[str, Any] | None, profile: str) -> bool | None:
     preferences = normalize_pdf_controls_preferences((config or {}).get('epub_controls_collapsed_by_profile'))
     return preferences.get(profile, {}).get('main')
+
+
+def normalize_reader_default_highlight_colors(value: Any) -> dict[str, str]:
+    result: dict[str, str] = {}
+    if isinstance(value, Mapping):
+        for profile, color in value.items():
+            if not isinstance(profile, str) or not profile or len(profile) > 255 or not isinstance(color, str):
+                continue
+            try:
+                result[profile] = normalize_highlight_color(color)
+            except ValueError:
+                continue
+    return result
+
+
+def configured_reader_default_highlight_color(config: Mapping[str, Any] | None, profile: str) -> str:
+    colors = normalize_reader_default_highlight_colors((config or {}).get('reader_default_highlight_color_by_profile'))
+    return colors.get(profile, 'yellow')
+
+
+def save_reader_default_highlight_color(addon_manager, addon_key: str, profile: str, color: str) -> str:
+    if not isinstance(profile, str) or not profile or len(profile) > 255:
+        raise ValueError('Invalid profile')
+    color = normalize_highlight_color(color)
+    config = normalize_config(addon_manager.getConfig(addon_key) or {})
+    config['reader_default_highlight_color_by_profile'][profile] = color
+    save_addon_config(addon_manager, addon_key, config)
+    return color
 
 
 def _number(value: Any, default, minimum, maximum, cast):
@@ -289,6 +320,10 @@ def configured_reviewer_button_group_visible(
     return _bool((config or {}).get("reviewer_button_group_visible"), True)
 
 
+def configured_study_workspace_enabled(config: Mapping[str, Any] | None = None) -> bool:
+    return _bool((config or {}).get('study_workspace_enabled'), True)
+
+
 def normalize_pdf_appearance_mode(value: Any) -> str:
     """Return one supported PDF page appearance, defaulting safely to original."""
     if not isinstance(value, str):
@@ -332,6 +367,28 @@ def normalize_pdf_link_preview_zoom(raw: Any) -> float:
 def configured_pdf_link_preview_zoom(config: Mapping[str, Any] | None, profile: str) -> float:
     values = (config or {}).get("pdf_link_preview_zoom_by_profile")
     return normalize_pdf_link_preview_zoom(values.get(profile) if isinstance(values, Mapping) else None)
+
+
+def normalize_pdf_link_preview_size(raw: Any) -> dict[str, int] | None:
+    if not isinstance(raw, Mapping):
+        return None
+    size = {}
+    for key, minimum in (("width", 280), ("height", 160)):
+        value = raw.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+            return None
+        try:
+            if not math.isfinite(value):
+                return None
+        except OverflowError:
+            return None
+        size[key] = math.floor(min(4096, max(minimum, value)) + 0.5)
+    return size
+
+
+def configured_pdf_link_preview_size(config: Mapping[str, Any] | None, profile: str) -> dict[str, int] | None:
+    values = (config or {}).get("pdf_link_preview_size_by_profile")
+    return normalize_pdf_link_preview_size(values.get(profile) if isinstance(values, Mapping) else None)
 
 
 def configured_pdf_force_default_appearance(
@@ -382,6 +439,7 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     config["search_remember_logins"] = configured_search_remember_logins(config)
     config["day_end_time"] = configured_day_end_time(config)
     config["ui_language"] = normalize_language_choice(config.get("ui_language"))
+    config['study_workspace_enabled'] = configured_study_workspace_enabled(config)
     config["config_schema_version"] = CONFIG_SCHEMA_VERSION
     config["extract_default_type"] = configured_extract_default_type(config)
     config["topic_done_tag"] = configured_topic_done_tag(config)
@@ -395,6 +453,8 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
         config.get('pdf_controls_collapsed_by_profile'))
     config['epub_controls_collapsed_by_profile'] = normalize_pdf_controls_preferences(
         config.get('epub_controls_collapsed_by_profile'))
+    config['reader_default_highlight_color_by_profile'] = normalize_reader_default_highlight_colors(
+        config.get('reader_default_highlight_color_by_profile'))
     config['study_layout_by_profile'] = normalize_study_layout_preferences(config.get('study_layout_by_profile'))
     config['workspace_layouts'] = normalize_workspaces(config.get('workspace_layouts'))
     preview_zooms = config.get("pdf_link_preview_zoom_by_profile")
@@ -402,6 +462,13 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
         profile: normalize_pdf_link_preview_zoom(value)
         for profile, value in (preview_zooms.items() if isinstance(preview_zooms, Mapping) else [])
         if isinstance(profile, str) and profile and len(profile) <= 255
+    }
+    preview_sizes = config.get("pdf_link_preview_size_by_profile")
+    config["pdf_link_preview_size_by_profile"] = {
+        profile: size
+        for profile, value in (preview_sizes.items() if isinstance(preview_sizes, Mapping) else [])
+        if isinstance(profile, str) and profile and len(profile) <= 255
+        and (size := normalize_pdf_link_preview_size(value)) is not None
     }
     config["pdf_citation_page_numbering"] = configured_pdf_citation_page_numbering(config)
     config["pdf_force_default_appearance"] = configured_pdf_force_default_appearance(config)

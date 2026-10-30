@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {retainPdfPage, releasePdfPage} from '../src/pdfPageResources.mjs';
+import * as previewSizing from '../src/pdfLinkPreview.mjs';
 import {
   pdfLinkAtPoint, pdfPreviewRegion, createPdfPreviewRenderer, attachPdfLinkPreview,
   normalizePdfLinkPreviewZoom,
@@ -163,6 +164,39 @@ function surface() {
     getBoundingClientRect: () => ({left: 50, top: 100}), contains: () => false};
 }
 
+test('remembered preview dimensions fit the current viewport without changing the saved preference', () => {
+  const size = {width: 760, height: 500};
+  const large = previewSizing.pdfLinkPreviewLayout(size, {x: 1100, y: 800}, 1280, 900);
+  assert.deepEqual([large.width, large.height, large.left, large.top], [760, 500, 508, 280]);
+  const small = previewSizing.pdfLinkPreviewLayout(size, {x: 330, y: 280}, 350, 300);
+  assert.deepEqual([small.width, small.height, small.left, small.top], [326, 276, 12, 12]);
+  assert.deepEqual(size, {width: 760, height: 500});
+});
+
+test('only a completed pointer resize saves the new dimensions', () => {
+  const container = surface(), popup = surface(), host = surface(), grip = {};
+  let rect = {width: 560, height: 360};
+  const saved = [];
+  popup.contains = target => target === grip;
+  popup.getBoundingClientRect = () => rect;
+  host.setTimeout = () => 1; host.clearTimeout = () => {};
+  const cleanup = attachPdfLinkPreview({container, popup, host, links: [footnote], tlLeft: 0,
+    doc: {}, preview: {show() {}, clear() {}}, onResize: size => saved.push(size)});
+  container.emit('pointermove', {clientX: 75, clientY: 135});
+  host.emit('pointerdown', {target: grip});
+  host.emit('pointerup', {target: grip});
+  assert.deepEqual(saved, [], 'clicking controls must not save a size');
+  host.emit('pointerdown', {target: grip});
+  rect = {width: 760, height: 500};
+  host.emit('pointerup', {target: grip});
+  assert.deepEqual(saved, [rect]);
+  host.emit('pointerdown', {target: grip});
+  rect = {width: 800, height: 540};
+  host.emit('pointercancel', {target: grip});
+  assert.equal(saved.length, 1);
+  cleanup();
+});
+
 test('hover works with Links Off, preserves selection, stays open over the popup and dismisses on Escape', () => {
   const container = surface(), popup = surface(), host = surface();
   let timer;
@@ -268,4 +302,32 @@ test('scrolling inside the preview keeps it open while document scroll and outsi
   host.emit('pointerdown', {target: container});
   assert.equal(clears, 2);
   cleanup();
+});
+
+test('dragging from the preview keeps it open until release outside, then restores hover dismissal', () => {
+  const container = surface(), popup = surface(), host = surface(), grip = {};
+  popup.contains = target => target === grip;
+  let timer = null, clears = 0;
+  host.setTimeout = fn => {timer = fn; return 1;};
+  host.clearTimeout = () => {timer = null;};
+  const cleanup = attachPdfLinkPreview({container, popup, host, links: [footnote], tlLeft: 0,
+    doc: {}, preview: {show() {}, clear() {++clears;}}});
+  const hover = () => container.emit('pointermove', {clientX: 75, clientY: 135});
+  hover();
+  container.emit('pointerleave');
+  host.emit('pointerdown', {target: grip});
+  assert.equal(timer, null, 'starting a resize cancels pending hover dismissal');
+  popup.emit('pointerleave');
+  container.emit('pointermove', {clientX: 300, clientY: 300, buttons: 1});
+  assert.equal(timer, null, 'leaving the popup during a resize must not schedule dismissal');
+  assert.equal(clears, 0, 'the document must not treat a preview resize as text selection');
+  host.emit('pointerup', {target: container});
+  assert.equal(typeof timer, 'function');
+  timer();
+  assert.equal(clears, 1);
+  hover();
+  container.emit('pointermove', {clientX: 75, clientY: 135, buttons: 1});
+  assert.equal(clears, 2, 'document selection still dismisses the preview after the resize');
+  cleanup();
+  assert.equal(container.handlers.size + popup.handlers.size + host.handlers.size, 0);
 });

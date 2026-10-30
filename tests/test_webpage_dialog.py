@@ -19,6 +19,100 @@ from webpage_handoff import BrowserPdfHandoffs, WebpageVerificationRequired, req
 from content_safety import normalize_external_http_url
 
 
+def _offline_webpage_preparer():
+    """Run the real preparation pipeline without importing native Qt widgets."""
+    import time
+    from webpage_export import prepare_export_html
+    from webpage_resources import build_offline_webpage_html
+
+    path = Path(__file__).resolve().parents[1] / "frontend/webpage_dialog.py"
+    function = next(node for node in ast.parse(path.read_text()).body
+                    if isinstance(node, ast.FunctionDef) and node.name == "_prepare_webpage")
+    namespace = {
+        "time": time, "_t": lambda key: key,
+        "normalize_external_http_url": normalize_external_http_url,
+        "validate_public_http_url": network_safety.validate_public_http_url,
+        "requires_verification": requires_verification,
+        "WebpageVerificationRequired": WebpageVerificationRequired,
+        "prepare_export_html": prepare_export_html,
+        "build_offline_webpage_html": build_offline_webpage_html,
+    }
+    exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), "exec"), namespace)
+    return namespace["_prepare_webpage"], namespace
+
+
+@pytest.mark.parametrize("style", ["print", "website", "article"])
+def test_opened_archive_snapshot_survives_unsafe_source_dns_without_fetching_private_assets(monkeypatch, style):
+    import base64
+    import socket
+    from bs4 import BeautifulSoup
+    import webpage_resources
+
+    source = "https://archive.ph/20260821073428/https://medium.com/example-article"
+    requests = []
+    png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1kAAAAASUVORK5CYII=")
+
+    def resolver(host, port, **_kwargs):
+        address = "93.184.216.34" if host == "images.example.test" else "127.0.0.2"
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, port))]
+
+    def validate(url):
+        return network_safety.validate_public_http_url(url, resolver=resolver)
+
+    def fetch(request, *, timeout):
+        requests.append(request.full_url)
+        assert request.full_url == "https://images.example.test/photo.png"
+        response = io.BytesIO(png)
+        response.headers = {"Content-Type": "image/png"}
+        response.geturl = lambda: request.full_url
+        return response
+
+    prepare, namespace = _offline_webpage_preparer()
+    namespace["validate_public_http_url"] = validate
+    monkeypatch.setattr(webpage_resources, "validate_public_http_url", validate)
+    monkeypatch.setattr(webpage_resources, "open_public_http", fetch)
+    html = '''<html><body><article><h1>Verified archived article</h1><p>Captured in the browser.</p>
+        <img src="/blocked-photo.png"><img src="http://169.254.169.254/latest/meta-data/">
+        <img src="file:///private/secret"><img src="https://images.example.test/photo.png">
+        <script>fetch('http://127.0.0.1/secret')</script><iframe src="http://127.0.0.1/"></iframe>
+        </article></body></html>'''
+
+    result, pdf = prepare(source, html, 10, style=style, prefer_snapshot=True)
+
+    soup = BeautifulSoup(result, "html.parser")
+    assert pdf is None
+    assert soup.h1.get_text() == "Verified archived article"
+    assert soup.p.get_text() == "Captured in the browser."
+    assert requests == ["https://images.example.test/photo.png"]
+    assert [image.get("src") for image in soup.find_all("img")] == [
+        None, None, None, "data:image/png;base64," + base64.b64encode(png).decode(),
+    ]
+    assert not soup.find_all(["script", "iframe"])
+    assert "default-src 'none'" in soup.find("meta", attrs={"http-equiv": "Content-Security-Policy"})["content"]
+
+
+@pytest.mark.parametrize("url", [
+    "file:///private/article.html", "javascript:alert(1)",
+    "https://user:secret@archive.ph/article", "https://archive.ph/article\nprivate",
+])
+def test_opened_snapshot_still_rejects_unsafe_source_urls_before_resource_capture(url):
+    prepare, _namespace = _offline_webpage_preparer()
+    with pytest.raises(ValueError):
+        prepare(url, "<article>Captured article</article>", 10, prefer_snapshot=True)
+
+
+@pytest.mark.parametrize("dynamic", [False, True])
+def test_regular_webpage_export_still_rejects_unsafe_source_dns(dynamic):
+    import socket
+
+    prepare, namespace = _offline_webpage_preparer()
+    namespace["validate_public_http_url"] = lambda url: network_safety.validate_public_http_url(
+        url, resolver=lambda *_a, **_kw: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.2", 443))],
+    )
+    with pytest.raises(network_safety.UnsafeNetworkTargetError, match="private or special address"):
+        prepare("https://archive.ph/article", "", 10, dynamic=dynamic)
+
+
 @pytest.mark.parametrize("style", ["print", "website", "article"])
 def test_browser_snapshot_is_used_without_fetching_the_article_again(style):
     import time
@@ -27,6 +121,7 @@ def test_browser_snapshot_is_used_without_fetching_the_article_again(style):
                     if isinstance(node, ast.FunctionDef) and node.name == "_prepare_webpage")
     namespace = {
         "time": time, "_t": lambda key: key, "validate_public_http_url": lambda url: url,
+        "normalize_external_http_url": normalize_external_http_url,
         "requires_verification": requires_verification, "WebpageVerificationRequired": WebpageVerificationRequired,
         "_fetch_wikipedia_article_pdf": lambda *_a, **_kw: pytest.fail("Captured article must not be replaced by a new download"),
         "_fetch_webpage_html": lambda *_a, **_kw: pytest.fail("Do not refetch a browser-verified article"),
@@ -197,6 +292,8 @@ def _browser_fallback_dialog(monkeypatch, tmp_path):
     state._style_combo = SimpleNamespace(currentData=lambda: "article")
     state._dynamic_check = SimpleNamespace(isChecked=lambda: False)
     state._links_check = SimpleNamespace(isChecked=lambda: False)
+    state._cleanup_check = Control()
+    state._cleanup_check.isChecked = lambda: False
     state._import_generation = 0
     state._capture_cancel = threading.Event()
     state._pdf_path = None
@@ -259,7 +356,7 @@ def test_browser_verification_automatically_finishes_the_original_import(monkeyp
     if outcome == "success":
         assert calls == [{"url": "https://example.org/article", "html": "<article>Verified article</article>",
                           "style": "article", "include_links": False, "prefer_snapshot": True,
-                          "cancel_event": state._capture_cancel}]
+                          "cancel_event": state._capture_cancel, "edit_before_save": False}]
         assert state.browser_handoff_completed
         assert state.title_text == "My article" and state.tags_to_apply == ["topic", "reading"]
         Path(state.pdf_path).unlink()
@@ -316,6 +413,84 @@ def test_browser_fallback_opens_only_uncredentialed_http_urls(monkeypatch, tmp_p
 
     assert opened == (["https://example.org/article"] if allowed else [])
     assert accepted == pending == []
+
+
+@pytest.mark.parametrize("outcome", ["success", "close", "open-failed", "profile-switch"])
+def test_completed_webpage_pdf_action_is_optional_profile_scoped_and_retryable(outcome):
+    script = dedent('''
+        import gc
+        import importlib
+        from pathlib import Path
+        import sys
+        from types import ModuleType, SimpleNamespace
+        import aqt
+        from aqt.qt import QApplication, QLabel, QPushButton, QWidget, Qt
+        package = ModuleType('webpage_result_fixture')
+        package.__path__ = [str(Path.cwd())]
+        sys.modules[package.__name__] = package
+        aqt.mw = SimpleNamespace(col=None)
+        module = importlib.import_module('webpage_result_fixture.frontend.webpage_dialog')
+        i18n = importlib.import_module('webpage_result_fixture.backend.i18n')
+        app = QApplication([])
+        app.setStyle('Fusion')
+        owner = QWidget()
+        profile = ['First']
+        module._active_profile = lambda: profile[0]
+        opened = []
+        outcome = sys.argv[1]
+        fail_open = [outcome == 'open-failed']
+        for language in ('en', 'hr', 'zh-Hans'):
+            i18n.initialize_language(language)
+            for font_size in (13, 18):
+                from aqt.qt import QFont
+                app.setFont(QFont('Arial', font_size))
+                profile[0] = 'First'
+                opened.clear()
+                fail_open[0] = outcome == 'open-failed'
+                def open_pdf():
+                    opened.append(123)
+                    if fail_open[0]:
+                        raise ValueError('Missing PDF')
+                def show_result():
+                    module.WebpagePdfResultDialog(owner, '<b>Article</b>', 'First', open_pdf).show()
+                show_result()
+                gc.collect()
+                app.processEvents()
+                dialog = next(child for child in owner.findChildren(module.WebpagePdfResultDialog)
+                              if child.isVisible())
+                assert dialog.parent() is owner
+                assert dialog.isVisible() and not dialog.isModal()
+                assert opened == []
+                for label in dialog.findChildren(QLabel):
+                    assert label.textFormat() == Qt.TextFormat.PlainText
+                    if label.isVisible() and label.wordWrap() and label.text():
+                        assert label.height() >= label.heightForWidth(label.width())
+                button = next(button for button in dialog.findChildren(QPushButton)
+                              if button.text() == i18n.t('knowledge_tree_open_pdf'))
+                if outcome == 'profile-switch':
+                    profile[0] = 'Second'
+                if outcome == 'close':
+                    next(button for button in dialog.findChildren(QPushButton)
+                         if button.text() == i18n.t('reader_close')).click()
+                else:
+                    button.click()
+                assert opened == ([123] if outcome in ('success', 'open-failed') else [])
+                if outcome == 'open-failed':
+                    message = i18n.t('root_document_open_failed', error='Missing PDF')
+                    assert any(label.text() == message for label in dialog.findChildren(QLabel))
+                    assert dialog.isVisible()
+                    fail_open[0] = False
+                    button.click()
+                    assert opened == [123, 123] and not dialog.isVisible()
+                else:
+                    assert not dialog.isVisible()
+                dialog.close()
+    ''')
+    result = subprocess.run(
+        [sys.executable, "-c", script, outcome], cwd=Path(__file__).resolve().parents[1],
+        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"}, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_cancelled_saved_pdf_picker_does_not_start_work(monkeypatch, tmp_path):
@@ -384,6 +559,21 @@ def test_dynamic_export_uses_browser_and_keeps_requested_style(style):
     assert namespace["_prepare_webpage"]("https://example.org/a", "", 10, style, True, True) == ("", b"%PDF-browser")
     assert calls[0][2]["style"] == style
     assert calls[0][2]["include_links"] is True
+
+
+def test_dynamic_cleanup_captures_rendered_html_for_an_offline_editable_preview():
+    prepare, namespace = _offline_webpage_preparer()
+    calls = []
+    namespace["validate_public_http_url"] = lambda url: url
+    namespace["capture_browser_html"] = lambda url, html, **kw: calls.append((url, kw)) or (url, '<main><p>Dynamic comments</p></main>')
+    namespace["render_browser_pdf"] = lambda *_a, **_kw: pytest.fail("Cleanup needs the DOM before PDF printing")
+
+    html, pdf = prepare("https://example.test/post", "", 10, style="website", dynamic=True, capture_html=True)
+
+    assert pdf is None
+    assert "Dynamic comments" in html
+    assert "default-src 'none'" in html
+    assert calls[0][0] == "https://example.test/post"
 
 
 @pytest.mark.parametrize("switch_during", ["capture", "print"])
@@ -755,6 +945,28 @@ def test_import_routes_selected_options_and_drops_results_after_closing(tmp_path
     if not closed:
         assert state._pdf_path == output
         Path(output).unlink()
+
+
+def test_cleanup_choice_is_retained_through_verification_even_if_controls_change(monkeypatch, tmp_path):
+    state, namespace, _profile, _opened, accepted, _pending, _finish = _browser_fallback_dialog(monkeypatch, tmp_path)
+    state._style_combo.currentData = lambda: "website"
+    state._cleanup_check.isChecked = lambda: True
+    calls = []
+    def render(path, **options):
+        calls.append(options)
+        if len(calls) == 1:
+            raise WebpageVerificationRequired()
+        Path(path).write_bytes(b"%PDF-fixture")
+    namespace["render_webpage_to_pdf"] = render
+
+    state._on_import()
+    state._cleanup_check.isChecked = lambda: False
+    namespace["browser_pdf_handoffs"].submit(state._handoff_ticket, "https://example.org/article", "<article>Verified article</article>")
+    state._poll_browser_handoff()
+
+    assert [options["edit_before_save"] for options in calls] == [True, True]
+    assert accepted == [True]
+    Path(state.pdf_path).unlink()
 
 
 def test_missing_companion_browser_leaves_no_pending_pdf_handoff(monkeypatch, tmp_path):

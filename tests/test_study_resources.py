@@ -31,6 +31,13 @@ class Collection:
         return self.notes[nid // 10]
 
 
+def test_card_resource_context_uses_the_note_title_without_rendered_reader_instructions(tmp_path):
+    note = Note('Incremento PDF', Title='Statistics textbook', Front='PDF open in sidebar · select text to fill fields')
+    result = load_card_resources(str(tmp_path), 'A', Collection({1: note}), 1)
+    assert result['card_title'] == 'Statistics textbook'
+    assert note['Front'] == 'PDF open in sidebar · select text to fill fields'
+
+
 def test_card_finds_its_textbook_passage_and_the_passages_recording(tmp_path):
     root = str(tmp_path)
     pdf = get_pdf_dir(root, "A") / "geometry.pdf"

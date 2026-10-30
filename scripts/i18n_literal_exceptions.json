@@ -1,5 +1,11 @@
 [
   {
+    "file": "frontend/highlight_note_dialog.py",
+    "sink": "QAction",
+    "text": "Tx",
+    "reason": "Conventional clear-formatting toolbar glyph; the tooltip and accessible name use the translated reader_note_clear label."
+  },
+  {
     "file": "__init__.py",
     "sink": "create_database_checkpoint",
     "text": "sqlite_editor",

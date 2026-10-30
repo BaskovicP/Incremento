@@ -56,7 +56,12 @@ def test_real_renderer_keeps_styles_images_and_large_html_without_browser_networ
         main.weakref = lambda: main
         main.taskman = TaskManager(main)
         aqt.mw = main
-        frontend.validate_public_http_url = lambda url: url
+        def validate_source(url):
+            if opened_page:
+                from snapshot_fixture_addon.backend.network_safety import UnsafeNetworkTargetError
+                raise UnsafeNetworkTargetError('The remote host resolves to a private or special address.')
+            return url
+        frontend.validate_public_http_url = validate_source
         official_calls = []
         def official_pdf(*_args, **_kwargs):
             official_calls.append(_args)

@@ -1250,8 +1250,15 @@ def add_pdf_card(
     enforcement_mode: str = "warning",
     precomputed_page_texts: list[str] | None = None,
     profile: str | None = None,
+    document_details: dict | None = None,
 ) -> int:
     """Copy PDF to media, create note, return card id."""
+    if document_details is not None:
+        try:
+            from .document_lists import normalize_document_details
+        except ImportError:
+            from document_lists import normalize_document_details
+        document_details = normalize_document_details(document_details)
     ensure_pdf_note_type(col)
     profile = profile or _paths.get_active_profile()
 
@@ -1263,13 +1270,19 @@ def add_pdf_card(
         title=title,
     )
     if relink_card_id is not None:
-        replace_pdf_card_file(
+        replacement_filename = replace_pdf_card_file(
             addon_dir,
             col,
             relink_card_id,
             pdf_path,
             profile=profile,
         )
+        if document_details is not None:
+            try:
+                from .document_lists import save_document_details
+            except ImportError:
+                from document_lists import save_document_details
+            save_document_details(addon_dir, profile, "pdf", replacement_filename, document_details)
         try:
             save_pdf_daily_limit_settings(
                 addon_dir,
@@ -1283,7 +1296,7 @@ def add_pdf_card(
             pass
         return relink_card_id
 
-    with ImportOperation(addon_dir, profile, "pdf") as operation:
+    with ImportOperation(addon_dir, profile, "pdf", document_details=document_details) as operation:
         return _create_new_pdf_card(
             addon_dir,
             profile,
@@ -1493,6 +1506,7 @@ def replace_pdf_card_file(
     if note is None:
         raise RuntimeError(t("backend_document_note_missing", kind="PDF"))
 
+    original_filename = str(note["PDF_Filename"] or "").strip()
     media_filename = _copy_to_pdf_dir(pdf_path, profile=profile_name)
     dest_path = os.path.join(get_pdf_dir(profile_name), media_filename)
     try:
@@ -1550,6 +1564,11 @@ def replace_pdf_card_file(
             pass
         raise
     sync_pdf_card_file_references(addon_dir, profile_name, col, cid)
+    try:
+        from .document_lists import copy_document_details
+    except ImportError:
+        from document_lists import copy_document_details
+    copy_document_details(addon_dir, profile_name, "pdf", original_filename, media_filename)
     # An explicit replacement no longer refers to the linked original document.
     # Leave saved highlights and backups intact; the next open starts a baseline
     # for the newly selected managed PDF.
