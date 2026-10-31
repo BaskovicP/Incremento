@@ -140,7 +140,7 @@ export default function HighlightLayer({
 
       {/* ── Hover targets for note-bearing highlights — above text layer ── */}
       {showHighlightControls && displayHighlights.map(h =>
-        !String(h.note || '').trim()
+        !hasAnnotationNote(h)
           ? null
           : h.rects.map((r, ri) => (
               <div

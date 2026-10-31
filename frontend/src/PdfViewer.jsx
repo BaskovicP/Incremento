@@ -758,6 +758,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
   const showHighlightNote = highlightTooltip.show;
   const moveHighlightNote = highlightTooltip.move;
   const hideHighlightNote = highlightTooltip.hide;
+  const scheduleHighlightNoteHide = highlightTooltip.scheduleHide;
 
   const describeLimitReached = useCallback(() => {
     const prefix = limitTotal > 0
@@ -3737,7 +3738,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
           focusedHighlightId={focusedHighlightId}
           showHighlightNote={showHighlightNote}
           moveHighlightNote={moveHighlightNote}
-          hideHighlightNote={hideHighlightNote}
+          hideHighlightNote={scheduleHighlightNoteHide}
         />
         <PdfSnapshotLayer mode={snapshotMode} previewRef={snapPreviewRef}
           onStart={handleSnapStart} onMove={handleSnapMove} onEnd={handleSnapEnd} />

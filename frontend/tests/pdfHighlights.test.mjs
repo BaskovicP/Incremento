@@ -255,6 +255,13 @@ test('blank highlight notes do not create hover targets', () => {
   assert.equal(nodes.filter(node => node.props?.onMouseEnter).length, 0);
 });
 
+test('an image-only annotation still creates a hover preview target', () => {
+  const nodes = render([{id: 'image-note', note: '',
+    note_html: '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAD0lEQVR4nGP4z8DA8J8BAAf/Af8Bf4mnAAAAAElFTkSuQmCC" width="2" height="1" alt="">',
+    rects: [{x: 10, y: 20, w: 100, h: 20}]}]);
+  assert.equal(nodes.filter(node => node.props?.onMouseEnter).length, 1);
+});
+
 test('native underline and text comments keep their PDF appearance and offer editable notes', () => {
   for (const kind of ['Underline', 'Text', 'FreeText', 'Square']) {
     const edits = [];

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {buildPdfHighlightIndex, pdfDisplayHighlights} from '../src/pdfHighlightIndex.mjs';
-import {createPdfHighlightTooltip} from '../src/pdfHighlightTooltip.mjs';
+import {createPdfHighlightTooltip, pdfHighlightTooltipLayout,
+  pdfHighlightTooltipSurfaceStyle} from '../src/pdfHighlightTooltip.mjs';
 
 test('the annotation index groups pages without losing document order or link metadata', () => {
   const a = {id: 'a', page: 2, text: 'Passage', rects: [{x: 1, y: 2, w: 3, h: 4}]};
@@ -31,4 +32,42 @@ test('tooltip movement batches to one animation frame and hiding cancels late mo
   tooltip.move({clientX: 200, clientY: 200}); tooltip.hide();
   assert.equal(frames.size, 0); assert.equal(tooltip.getSnapshot(), null);
   unsubscribe();
+});
+
+test('annotation tooltip leaves time to enter its scroll surface before closing', () => {
+  const timers = new Map(); let next = 0;
+  const tooltip = createPdfHighlightTooltip({
+    schedule: run => run(), cancel: () => {},
+    delay: run => {timers.set(++next, run); return next;},
+    cancelDelay: id => timers.delete(id),
+  });
+  tooltip.show({id: 'a', note: 'Several images'}, {clientX: 10, clientY: 20});
+  tooltip.scheduleHide();
+  assert.equal(timers.size, 1);
+  assert.equal(tooltip.getSnapshot().note, 'Several images');
+
+  tooltip.cancelHide();
+  assert.equal(timers.size, 0);
+  assert.equal(tooltip.getSnapshot().note, 'Several images');
+
+  tooltip.scheduleHide();
+  timers.values().next().value();
+  assert.equal(tooltip.getSnapshot(), null);
+});
+
+test('annotation tooltip uses a wide viewport-bounded surface above or below the highlight', () => {
+  assert.deepEqual(pdfHighlightTooltipLayout({x: 900, y: 700}, 1000, 800), {
+    left: 548, bottom: 116, width: 440, maxHeight: 520,
+  });
+  assert.deepEqual(pdfHighlightTooltipLayout({x: 290, y: 200}, 300, 240), {
+    left: 12, bottom: 56, width: 276, maxHeight: 172,
+  });
+  assert.deepEqual(pdfHighlightTooltipLayout({x: 20, y: 40}, 1000, 800), {
+    left: 34, top: 56, width: 440, maxHeight: 520,
+  });
+  assert.deepEqual(
+    Object.fromEntries(Object.entries(pdfHighlightTooltipSurfaceStyle({x: 20, y: 40}, 1000, 800))
+      .filter(([key]) => ['overflowY', 'overflowX', 'overscrollBehavior', 'pointerEvents'].includes(key))),
+    {overflowY: 'auto', overflowX: 'hidden', overscrollBehavior: 'contain', pointerEvents: 'auto'},
+  );
 });

@@ -7413,20 +7413,82 @@
     if (stack.length !== 1 || plain.replace(/\u00a0/g, " ").trim() !== String(note || "").trim()) return null;
     return root.children;
   }
+  const TOOLTIP_MARGIN = 12;
+  const TOOLTIP_GAP = 16;
+  const TOOLTIP_WIDTH = 440;
+  const TOOLTIP_MAX_HEIGHT = 520;
+  const TOOLTIP_CLOSE_DELAY = 180;
+  function pdfHighlightTooltipLayout(anchor, viewportWidth, viewportHeight) {
+    const viewWidth = Math.max(1, Number(viewportWidth) || 1);
+    const viewHeight = Math.max(1, Number(viewportHeight) || 1);
+    const x = Number.isFinite(Number(anchor == null ? void 0 : anchor.x)) ? Number(anchor.x) : 0;
+    const y = Number.isFinite(Number(anchor == null ? void 0 : anchor.y)) ? Number(anchor.y) : 0;
+    const width = Math.max(1, Math.min(TOOLTIP_WIDTH, viewWidth - TOOLTIP_MARGIN * 2));
+    const left = Math.max(
+      TOOLTIP_MARGIN,
+      Math.min(x + 14, viewWidth - width - TOOLTIP_MARGIN)
+    );
+    if (y <= viewHeight / 2) {
+      const top = Math.max(TOOLTIP_MARGIN, Math.min(y + TOOLTIP_GAP, viewHeight - TOOLTIP_MARGIN));
+      return {
+        left,
+        top,
+        width,
+        maxHeight: Math.max(1, Math.min(TOOLTIP_MAX_HEIGHT, viewHeight - top - TOOLTIP_MARGIN))
+      };
+    }
+    const bottom = Math.max(
+      TOOLTIP_MARGIN,
+      Math.min(viewHeight - y + TOOLTIP_GAP, viewHeight - TOOLTIP_MARGIN)
+    );
+    return {
+      left,
+      bottom,
+      width,
+      maxHeight: Math.max(1, Math.min(TOOLTIP_MAX_HEIGHT, viewHeight - bottom - TOOLTIP_MARGIN))
+    };
+  }
+  function pdfHighlightTooltipSurfaceStyle(anchor, viewportWidth, viewportHeight) {
+    return {
+      ...pdfHighlightTooltipLayout(anchor, viewportWidth, viewportHeight),
+      overflowY: "auto",
+      overflowX: "hidden",
+      overscrollBehavior: "contain",
+      pointerEvents: "auto"
+    };
+  }
   function createPdfHighlightTooltip({
     schedule = (run) => window.requestAnimationFrame(run),
-    cancel = (id) => window.cancelAnimationFrame(id)
+    cancel = (id) => window.cancelAnimationFrame(id),
+    delay = (run, ms) => globalThis.setTimeout(run, ms),
+    cancelDelay = (id) => globalThis.clearTimeout(id)
   } = {}) {
     const listeners = /* @__PURE__ */ new Set();
-    let value = null, position = null, frame = null;
+    let value = null, position = null, frame = null, closeTimer = null;
     const publish = (next) => {
       value = next;
       for (const listener of listeners) listener();
     };
-    const stop = () => {
+    const stopMove = () => {
       if (frame !== null) cancel(frame);
       frame = null;
       position = null;
+    };
+    const cancelHide = () => {
+      if (closeTimer !== null) cancelDelay(closeTimer);
+      closeTimer = null;
+    };
+    const hide = () => {
+      cancelHide();
+      stopMove();
+      if (value) publish(null);
+    };
+    const scheduleHide = () => {
+      cancelHide();
+      closeTimer = delay(() => {
+        closeTimer = null;
+        hide();
+      }, TOOLTIP_CLOSE_DELAY);
     };
     return {
       subscribe(listener) {
@@ -7437,7 +7499,8 @@
       show(highlight, event) {
         const note = String((highlight == null ? void 0 : highlight.note) || "").trim();
         if (!hasAnnotationNote(highlight)) return;
-        stop();
+        cancelHide();
+        stopMove();
         publish({
           id: String(highlight.id || ""),
           note,
@@ -7455,10 +7518,9 @@
           position = null;
         });
       },
-      hide() {
-        stop();
-        if (value) publish(null);
-      }
+      cancelHide,
+      scheduleHide,
+      hide
     };
   }
   function AnnotationNote({ note, html, onOpenLink }) {
@@ -7516,24 +7578,35 @@
   function PdfHighlightTooltip({ tooltip }) {
     const note = reactExports.useSyncExternalStore(tooltip.subscribe, tooltip.getSnapshot);
     if (!note) return null;
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { role: "tooltip", style: {
-      position: "fixed",
-      left: note.x + 14,
-      top: note.y + 16,
-      maxWidth: 280,
-      maxHeight: "min(320px, 60vh)",
-      overflow: "hidden",
-      padding: "8px 10px",
-      background: "rgba(20,20,20,0.96)",
-      border: "1px solid rgba(147,197,253,0.45)",
-      borderRadius: 6,
-      color: "rgb(219,234,254)",
-      fontSize: 12,
-      lineHeight: 1.4,
-      boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
-      pointerEvents: "none",
-      zIndex: 120
-    }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AnnotationNote, { note: note.note, html: note.html }) });
+    const surface = pdfHighlightTooltipSurfaceStyle(note, window.innerWidth, window.innerHeight);
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        role: "tooltip",
+        onPointerEnter: tooltip.cancelHide,
+        onPointerLeave: tooltip.scheduleHide,
+        onWheel: (event) => event.stopPropagation(),
+        onPointerDown: (event) => event.stopPropagation(),
+        style: {
+          position: "fixed",
+          ...surface,
+          boxSizing: "border-box",
+          scrollbarGutter: "stable",
+          padding: "10px 12px",
+          background: "rgba(20,20,20,0.96)",
+          border: "1px solid rgba(147,197,253,0.45)",
+          borderRadius: 6,
+          color: "rgb(219,234,254)",
+          fontSize: 12,
+          lineHeight: 1.4,
+          boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
+          textAlign: "left",
+          cursor: "default",
+          zIndex: 120
+        },
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(AnnotationNote, { note: note.note, html: note.html })
+      }
+    );
   }
   function pdfCanvasPlan(viewport, pixelRatio) {
     const { width, height } = viewport;
@@ -10277,7 +10350,7 @@
         })
       ),
       showHighlightControls && displayHighlights.map(
-        (h) => !String(h.note || "").trim() ? null : h.rects.map((r, ri) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+        (h) => !hasAnnotationNote(h) ? null : h.rects.map((r, ri) => /* @__PURE__ */ jsxRuntimeExports.jsx(
           "div",
           {
             onMouseEnter: (event) => showHighlightNote(h, event),
@@ -12760,6 +12833,7 @@
     const showHighlightNote = highlightTooltip.show;
     const moveHighlightNote = highlightTooltip.move;
     const hideHighlightNote = highlightTooltip.hide;
+    const scheduleHighlightNoteHide = highlightTooltip.scheduleHide;
     const describeLimitReached = reactExports.useCallback(() => {
       const prefix = limitTotal > 0 ? tr("reader_limit_reached_pages", { used: Math.max(limitUsed, limitTotal), total: limitTotal }) : tr("reader_limit_reached_pdf");
       if (limitMode === "hard_stop") {
@@ -15962,7 +16036,7 @@
                     focusedHighlightId,
                     showHighlightNote,
                     moveHighlightNote,
-                    hideHighlightNote
+                    hideHighlightNote: scheduleHighlightNoteHide
                   }
                 ),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
