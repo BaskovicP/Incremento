@@ -446,10 +446,10 @@ def test_bookshelf_root_opens_reference_only_after_modal_picker_exits(monkeypatc
     namespace['_open_document_bookshelf']()
     if stale_callback:
         profile[0] = 'B'
-        pending[0][stale_callback](([], {}) if stale_callback == 'success' else RuntimeError('stale'))
+        pending[0][stale_callback](([], {}, {}) if stale_callback == 'success' else RuntimeError('stale'))
         assert calls == []
         return
-    pending[0]['success'](([], {}))
+    pending[0]['success'](([], {}, {}))
     expected = ["modal exited", "primary replaced", "study started"] if mode == 'main' else [
         "modal exited", ((8,), {"beside": mode == 'beside', "owner": "primary"})]
     if mode == 'window':
@@ -663,7 +663,7 @@ def test_bookshelf_loads_pdf_and_epub_notes_with_cover_metadata(monkeypatch):
     ]
 
 
-def test_bookshelf_snapshot_preloads_attachment_counts_for_title_duplicates(
+def test_bookshelf_snapshot_defers_duplicate_attachment_work_until_requested(
     monkeypatch,
 ):
     entries = [
@@ -695,10 +695,10 @@ def test_bookshelf_snapshot_preloads_attachment_counts_for_title_duplicates(
         collection=collection,
     )
 
-    assert snapshot == (entries, {1: 4, 2: 0})
+    # Attachment badges are only used in duplicate mode, never on initial open.
+    assert snapshot == (entries, {}, {})
     assert calls == [
         ("load", "/addon", collection, "Captured"),
-        ("counts", "/addon", "Captured", entries[:2], collection),
     ]
 
 
@@ -732,6 +732,22 @@ def test_bookshelf_keeps_legacy_pdf_without_cover_field(monkeypatch):
             note_id=7,
         )
     ]
+
+
+def test_bookshelf_tag_suggestions_validate_shared_tags_once_per_load(monkeypatch):
+    inspected = []
+    original = pdf_bookshelf._is_bookshelf_tag_delimiter
+    def delimiter(character):
+        inspected.append(character)
+        return original(character)
+    monkeypatch.setattr(pdf_bookshelf, "_is_bookshelf_tag_delimiter", delimiter)
+    entries = [pdf_bookshelf._BookshelfEntry("Book", cid, "PDF", tags=("Reading", "Subject"))
+               for cid in range(1000)]
+    entries.append(pdf_bookshelf._BookshelfEntry("Other", 1001, "EPUB",
+                                               tags=("READING", "bad tag", "", "Unique")))
+
+    assert pdf_bookshelf._bookshelf_tag_suggestions(entries) == ("Reading", "Subject", "Unique")
+    assert len(inspected) <= len("ReadingSubjectbad tagUnique")
 
 
 def test_bookshelf_filter_is_case_insensitive_and_preserves_order():

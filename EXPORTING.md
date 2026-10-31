@@ -63,6 +63,7 @@ Common add-on paths:
 - The APKG and `user_files/<ProfileName>/` snapshot both cover the profile that was open when the backup started.
 - The runtime folder is exported as a full profile snapshot so local PDFs, EPUBs, downloaded videos, writing files, and browser session data can be restored together.
 - Legacy SimpleTex credentials and their temporary writes remain excluded. Local LaTeX-OCR software and model caches are outside the profile backup; run **Set up / repair local LaTeX-OCR** after moving to another computer.
+- Disposable bookshelf preview files under `bookshelf_cover_cache/` are excluded; covers in Anki media and original PDF/EPUB documents remain included. Previews rebuild automatically after restore.
 - The export is read-only. It does not delete or modify existing data.
 - If the active Anki profile changes while export is running, Incremento aborts instead of combining two profiles.
 

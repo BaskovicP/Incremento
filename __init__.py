@@ -3820,7 +3820,7 @@ def _open_document_bookshelf(*, new_window: bool = False) -> None:
     def show_bookshelf(snapshot) -> None:
         if captured_profile != _active_profile():
             return
-        entries, attachment_counts = snapshot
+        entries, attachment_counts, cached_covers = snapshot
         if new_window:
             entries = [entry for entry in entries if entry.kind == 'PDF']
         dlg = _DocumentBookshelfDialog(
@@ -3829,6 +3829,7 @@ def _open_document_bookshelf(*, new_window: bool = False) -> None:
             last_opened_card_id=_last_opened_document_cid,
             entries=list(entries or []),
             attachment_counts=dict(attachment_counts or {}),
+            cached_covers=cached_covers,
             selection_only=new_window,
             import_pdf=addPdfFunction,
             import_epub=addEpubFunction,

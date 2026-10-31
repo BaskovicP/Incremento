@@ -97,6 +97,10 @@ def get_extraction_draft_path(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "extraction_draft.json"
 
 
+def get_bookshelf_cover_cache_dir(addon_dir: str, profile: str) -> Path:
+    return get_user_files_dir(addon_dir, profile) / "bookshelf_cover_cache"
+
+
 def get_mcp_token_path(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "mcp_token"
 

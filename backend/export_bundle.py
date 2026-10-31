@@ -53,7 +53,7 @@ def should_skip_user_file(rel_path: str) -> bool:
         return False
 
     parts = [part for part in Path(rel).parts if part not in ("", ".")]
-    if "__pycache__" in parts:
+    if "__pycache__" in parts or (parts and parts[0] == "bookshelf_cover_cache"):
         return True
 
     name = parts[-1] if parts else ""
