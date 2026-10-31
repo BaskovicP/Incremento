@@ -250,7 +250,13 @@ def test_document_manager_commits_details_under_the_actual_managed_filename(tmp_
     else:
         monkeypatch.setattr(manager, "ensure_epub_extracted", lambda *_a, **_kw: {"title": "Book", "sections": []})
     source = tmp_path / ("book." + kind)
-    source.write_bytes(b"%PDF-1.4\n" if kind == "pdf" else b"Synthetic EPUB")
+    if kind == "pdf":
+        import pymupdf
+        with pymupdf.open() as document:
+            document.new_page()
+            document.save(source)
+    else:
+        source.write_bytes(b"Synthetic EPUB")
     col = MagicMock()
     col.find_notes.return_value = []
     col.new_note.return_value.id = 34

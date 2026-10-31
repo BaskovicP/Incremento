@@ -1296,13 +1296,13 @@ def add_pdf_card(
     document_details: dict | None = None,
 ) -> int:
     """Copy PDF to media, create note, return card id."""
-    validate_pdf_file(pdf_path)
     if document_details is not None:
         try:
             from .document_lists import normalize_document_details
         except ImportError:
             from document_lists import normalize_document_details
         document_details = normalize_document_details(document_details)
+    validate_pdf_file(pdf_path)
     ensure_pdf_note_type(col)
     profile = profile or _paths.get_active_profile()
 
