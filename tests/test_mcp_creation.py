@@ -118,6 +118,21 @@ def test_source_card_creation_and_document_import_undo_after_restart(tmp_path):
             call('undo_change',undo_id=pdf_import['undo_id'])
             assert not pdf_copy.exists()
             assert pdf.read_bytes()==original_pdf
+            broken=root/'broken.pdf'
+            broken.write_bytes(b'%PDF-1.7 damaged download response')
+            notes_before=col.find_notes('')
+            files_before=set(folder.iterdir())
+            try:
+                call('import_documents',documents=[
+                    {'kind':'pdf','path':str(pdf),'title':'Valid first file'},
+                    {'kind':'pdf','path':str(broken),'title':'Damaged second file'}])
+            except ValueError as exc:
+                assert 'readable PDF' in str(exc), str(exc)
+            else:
+                raise AssertionError('MCP imported a damaged PDF with a valid header')
+            assert col.find_notes('')==notes_before
+            assert set(folder.iterdir())==files_before
+            assert pdf.read_bytes()==original_pdf
             card=col.get_card(card_ids[0]);card.reps=1;col.update_card(card)
             from backend.mcp_service import ToolError
             try:

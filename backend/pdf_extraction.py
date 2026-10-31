@@ -13,6 +13,10 @@ class ExtractionLimit(RuntimeError):
     """Extraction exceeded its page, time or UTF-8 output budget."""
 
 
+class PdfValidationError(ValueError):
+    """A fixed, user-facing explanation for an unreadable or locked PDF."""
+
+
 @dataclass
 class ExtractionBudget:
     cancelled: Callable[[], bool] = lambda: False

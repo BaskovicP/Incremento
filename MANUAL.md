@@ -564,6 +564,18 @@ page and five minutes per DjVuLibre command.
 
 ### What a PDF card stores
 
+PDF imports and replacements check that the file has a PDF header, a readable
+page tree, and at least one page that can be opened before creating or relinking
+a card. Empty or unreadable files and PDFs requiring a password are rejected with an
+explanation. Scanned and blank pages are allowed; selectable text is not required.
+This opening check does not verify every page or guarantee that a download is
+complete.
+
+If an existing PDF cannot be opened, the main reader shows **Choose Replacement
+PDF**. Obtain a readable copy and use that action to keep the existing card,
+tags, reading history, and saved links. An invalid replacement leaves the current
+card and its file references intact. The original source file is never overwritten.
+
 Each PDF note includes:
 
 - **Title**

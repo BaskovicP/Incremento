@@ -219,8 +219,12 @@ class McpCreation:
                     raise ValueError("Choose an absolute local PDF/EPUB file path.")
                 raw = self._bounded_bytes(path, 48*1024*1024)
                 source_hashes[index] = hashlib.sha256(raw).hexdigest()
-                if item["kind"] == "pdf" and not raw.startswith(b"%PDF-"):
-                    raise ValueError("The selected file is not a PDF.")
+                if item["kind"] == "pdf":
+                    try:
+                        from .pdf_manager import validate_pdf_file
+                    except ImportError:
+                        from pdf_manager import validate_pdf_file
+                    validate_pdf_file(str(path), allow_qt=False)
                 if item["kind"] == "epub":
                     self._validate_epub(path)
             elif not item.get("url"):

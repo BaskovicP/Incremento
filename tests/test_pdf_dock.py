@@ -306,6 +306,22 @@ def test_missing_pdf_screen_uses_selected_language_and_escapes_filename(monkeypa
     assert "<x>.pdf" not in html
 
 
+@pytest.mark.parametrize('command,expected', [
+    ('incremento_pdf_repair_missing:42', True),
+    ('incremento_pdf_repair_missing:99', False),
+    ('incremento_pdf_repair_missing:garbage', False),
+    ('incremento_pdf_repair_missing:', True),  # Existing missing-file screen.
+])
+def test_pdf_replacement_action_rejects_a_stale_or_malformed_card(monkeypatch, command, expected):
+    repaired = []
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 42)
+    monkeypatch.setattr(pdf_dock, '_repair_missing_pdf', lambda: repaired.append(42))
+
+    pdf_dock._handle_pdf_js_message(command)
+
+    assert repaired == ([42] if expected else [])
+
+
 def test_pdf_bridge_rejects_static_prefix_and_stale_card(monkeypatch):
     messages = []
     monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 42)

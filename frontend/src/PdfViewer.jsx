@@ -3502,9 +3502,15 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
         <div
           role="alert"
           aria-live="assertive"
-          style={{ color: 'red', padding: '4px 8px', textAlign: 'center' }}
+          style={{ color: '#fca5a5', padding: '12px 16px', textAlign: 'center' }}
         >
-          {tr(error)}
+          <p>{tr(error)}</p>
+          {error === 'reader_load_error' && !readingOnly && (
+            <button type="button"
+              onClick={() => window.pycmd?.(`incremento_pdf_repair_missing:${cardIdRef.current}`)}>
+              {tr('reader_choose_replacement_pdf')}
+            </button>
+          )}
         </div>
       )}
 

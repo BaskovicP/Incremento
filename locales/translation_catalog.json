@@ -3299,9 +3299,33 @@
     },
     {
       "component": "addon",
+      "key": "backend_pdf_password_required",
+      "form": "",
+      "source": "This PDF requires a password. Save an unlocked copy and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "backend_pdf_replacement_missing",
       "form": "",
       "source": "Replacement PDF was not found.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_pdf_unreadable",
+      "form": "",
+      "source": "This file is not a readable PDF. It may be damaged, incomplete, or a download error saved as a PDF. Download a fresh copy and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "backend_pdf_validation_unavailable",
+      "form": "",
+      "source": "PDF validation is unavailable. Install PyMuPDF or import the PDF through Anki.",
       "tokens": [],
       "markup": []
     },
@@ -40123,6 +40147,14 @@
     },
     {
       "component": "reader",
+      "key": "reader_choose_replacement_pdf",
+      "form": "",
+      "source": "Choose Replacement PDF",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_close",
       "form": "",
       "source": "Close",
@@ -40774,7 +40806,7 @@
       "component": "reader",
       "key": "reader_load_error",
       "form": "",
-      "source": "Could not load this PDF.",
+      "source": "Could not open this PDF. The file may be damaged, incomplete, password-protected, or unavailable. Check the file or download a fresh copy, then choose a replacement PDF.",
       "tokens": [],
       "markup": []
     },

@@ -893,3 +893,59 @@ def test_picked_hex_matching_a_legacy_swatch_keeps_its_hex_identity(tmp_path):
     sync(tmp_path)
     sync(tmp_path)
     assert load_highlights(str(tmp_path), PROFILE, CARD)[0]['color'] == '#00c850'
+
+
+@pytest.mark.parametrize('replacement', [False, True], ids=['import', 'replacement'])
+@pytest.mark.parametrize('payload', [
+    b'',
+    b'<html>A download error, not a PDF</html>',
+    b'Too many downloads at the same time from the same IP address...' + b'\0' * 8192,
+    b'%PDF-1.7\n' + b'\0' * 8192 + b'\n%%EOF',
+    b'%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n'
+    b'2 0 obj<</Type/Pages/Count 0/Kids[]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF',
+], ids=['empty', 'html', 'failed-download', 'damaged-with-pdf-header', 'zero-pages'])
+def test_unreadable_pdf_is_rejected_before_collection_or_storage_changes(tmp_path, replacement, payload):
+    from unittest.mock import MagicMock
+    import pdf_manager
+
+    source = tmp_path / 'download.pdf'
+    source.write_bytes(payload)
+    addon = tmp_path / 'addon'
+    col = MagicMock()
+    with pytest.raises(ValueError, match='PDF'):
+        if replacement:
+            pdf_manager.replace_pdf_card_file(str(addon), col, CARD, str(source), profile=PROFILE)
+        else:
+            # Precomputed empty text must not bypass document validation.
+            pdf_manager.add_pdf_card(str(addon), col, str(source), 'Book', profile=PROFILE,
+                                     precomputed_page_texts=[])
+
+    assert col.mock_calls == []
+    assert not addon.exists()
+    assert source.read_bytes() == payload
+
+
+def test_pdf_validation_accepts_image_only_or_blank_pages_without_modifying_the_file(tmp_path):
+    import pdf_manager
+
+    filename = tmp_path / 'scanned.pdf'
+    with fitz.open() as doc:
+        doc.new_page()
+        doc.new_page()
+        doc.save(filename)
+    original = filename.read_bytes()
+
+    assert pdf_manager.validate_pdf_file(str(filename)) == 2
+    assert filename.read_bytes() == original
+
+
+def test_pdf_validation_explains_password_protection(tmp_path):
+    import pdf_manager
+
+    filename = tmp_path / 'protected.pdf'
+    with fitz.open() as doc:
+        doc.new_page()
+        doc.save(filename, encryption=fitz.PDF_ENCRYPT_AES_256, owner_pw='owner', user_pw='reader')
+
+    with pytest.raises(ValueError, match='password'):
+        pdf_manager.validate_pdf_file(str(filename))

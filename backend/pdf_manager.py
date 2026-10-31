@@ -14,10 +14,10 @@ from PyQt6.QtPdf import QPdfDocument
 
 try:
     from .i18n import t
-    from .pdf_extraction import ExtractionBudget, ExtractionLimit, bounded_text_process
+    from .pdf_extraction import ExtractionBudget, ExtractionLimit, PdfValidationError, bounded_text_process
 except ImportError:
     from i18n import t
-    from pdf_extraction import ExtractionBudget, ExtractionLimit, bounded_text_process
+    from pdf_extraction import ExtractionBudget, ExtractionLimit, PdfValidationError, bounded_text_process
 
 
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -224,6 +224,47 @@ def pdf_storage_abspath(
     except ValueError:
         return ""
     return str(candidate)
+
+
+def validate_pdf_file(pdf_path: str, *, allow_qt: bool = True) -> int:
+    """Check the header, page tree and first page before any import side effects.
+
+    Text extraction is deliberately unnecessary: scanned and blank PDFs are valid.
+    This is an opening check, not an exhaustive check of every page's resources.
+    """
+    with open(pdf_path, "rb") as source:
+        if b"%PDF-" not in source.read(1024):
+            raise PdfValidationError(t("backend_pdf_unreadable"))
+    try:
+        import fitz
+    except ImportError:
+        fitz = None
+    if fitz is not None:
+        try:
+            with fitz.open(pdf_path) as document:
+                if document.needs_pass:
+                    raise PdfValidationError(t("backend_pdf_password_required"))
+                if not document.is_pdf or document.page_count <= 0:
+                    raise PdfValidationError(t("backend_pdf_unreadable"))
+                document.load_page(0)
+                return document.page_count
+        except PdfValidationError:
+            raise
+        except Exception:
+            raise PdfValidationError(t("backend_pdf_unreadable")) from None
+
+    if not allow_qt:
+        raise PdfValidationError(t("backend_pdf_validation_unavailable"))
+    document = QPdfDocument(None)
+    try:
+        document.load(pdf_path)
+        if document.error() == QPdfDocument.Error.IncorrectPassword:
+            raise PdfValidationError(t("backend_pdf_password_required"))
+        if document.pageCount() <= 0:
+            raise PdfValidationError(t("backend_pdf_unreadable"))
+        return document.pageCount()
+    finally:
+        document.close()
 
 
 def _copy_to_pdf_dir(
@@ -1255,6 +1296,7 @@ def add_pdf_card(
     document_details: dict | None = None,
 ) -> int:
     """Copy PDF to media, create note, return card id."""
+    validate_pdf_file(pdf_path)
     if document_details is not None:
         try:
             from .document_lists import normalize_document_details
@@ -1497,11 +1539,12 @@ def replace_pdf_card_file(
     allow_qt: bool = True,
 ) -> str:
     """Copy a replacement PDF into storage and relink an existing PDF card."""
-    ensure_pdf_note_type(col)
     cid = int(card_id)
     profile_name = str(profile or _paths.get_active_profile())
     if not pdf_path or not os.path.exists(pdf_path):
         raise FileNotFoundError(t("backend_pdf_replacement_missing"))
+    validate_pdf_file(pdf_path, allow_qt=allow_qt)
+    ensure_pdf_note_type(col)
 
     card = col.get_card(cid)
     if card is None:

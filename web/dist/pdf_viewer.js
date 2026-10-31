@@ -8711,7 +8711,7 @@
   const reader_pdf_bookmarks$2 = "PDF Bookmarks";
   const reader_add_current_page$2 = "Add current page";
   const reader_no_bookmarks$2 = "No bookmarks yet.";
-  const reader_load_error$2 = "Could not load this PDF.";
+  const reader_load_error$2 = "Could not open this PDF. The file may be damaged, incomplete, password-protected, or unavailable. Check the file or download a fresh copy, then choose a replacement PDF.";
   const reader_page_error$2 = "Could not open this PDF page.";
   const reader_render_error$2 = "Could not render this PDF page.";
   const reader_add_highlight_note$2 = "Add highlight note";
@@ -8860,6 +8860,7 @@
   const reader_style_dashed$2 = "Dashed";
   const reader_style_dotted$2 = "Dotted";
   const reader_style_strikeout$2 = "Strikethrough";
+  const reader_choose_replacement_pdf$2 = "Choose Replacement PDF";
   const en = {
     reader_pdf_focus_mode_hint: reader_pdf_focus_mode_hint$2,
     reader_pdf_focus_mode: reader_pdf_focus_mode$2,
@@ -9089,7 +9090,8 @@
     reader_style_squiggly: reader_style_squiggly$2,
     reader_style_dashed: reader_style_dashed$2,
     reader_style_dotted: reader_style_dotted$2,
-    reader_style_strikeout: reader_style_strikeout$2
+    reader_style_strikeout: reader_style_strikeout$2,
+    reader_choose_replacement_pdf: reader_choose_replacement_pdf$2
   };
   const reader_pdf_focus_mode_hint$1 = "Sakrijte lijevi Anki prikaz i proširite PDF preko pune raspoložive širine. Radi na zaslonima Špilovi i Pregled te tijekom ponavljanja. Gumbi za odgovore ostaju vidljivi, a odabir se sprema.";
   const reader_pdf_focus_mode$1 = "Fokus na PDF";
@@ -9172,7 +9174,7 @@
   const reader_pdf_bookmarks$1 = "Oznake mjesta u PDF-u";
   const reader_add_current_page$1 = "Dodaj trenutačnu stranicu";
   const reader_no_bookmarks$1 = "Još nema oznaka mjesta.";
-  const reader_load_error$1 = "Nije moguće učitati ovaj PDF.";
+  const reader_load_error$1 = "Nije moguće otvoriti ovaj PDF. Datoteka je možda oštećena, nepotpuna, zaštićena lozinkom ili nedostupna. Provjerite datoteku ili preuzmite novu kopiju, a zatim odaberite zamjenski PDF.";
   const reader_page_error$1 = "Nije moguće otvoriti ovu stranicu PDF-a.";
   const reader_render_error$1 = "Nije moguće prikazati ovu stranicu PDF-a.";
   const reader_add_highlight_note$1 = "Dodaj bilješku oznaci";
@@ -9322,6 +9324,7 @@
   const reader_style_dashed$1 = "Isprekidano";
   const reader_style_dotted$1 = "Točkasto";
   const reader_style_strikeout$1 = "Precrtano";
+  const reader_choose_replacement_pdf$1 = "Odaberi zamjenski PDF";
   const hr = {
     reader_pdf_focus_mode_hint: reader_pdf_focus_mode_hint$1,
     reader_pdf_focus_mode: reader_pdf_focus_mode$1,
@@ -9553,7 +9556,8 @@
     reader_style_squiggly: reader_style_squiggly$1,
     reader_style_dashed: reader_style_dashed$1,
     reader_style_dotted: reader_style_dotted$1,
-    reader_style_strikeout: reader_style_strikeout$1
+    reader_style_strikeout: reader_style_strikeout$1,
+    reader_choose_replacement_pdf: reader_choose_replacement_pdf$1
   };
   const reader_pdf_focus_mode_hint = "隐藏左侧 Anki 区域，让 PDF 占满可用宽度。可在牌组列表、概览和复习时使用。回答按钮仍保持可见，您的选择会自动保存。";
   const reader_pdf_focus_mode = "PDF 专注模式";
@@ -9634,7 +9638,7 @@
   const reader_pdf_bookmarks = "PDF 书签";
   const reader_add_current_page = "添加当前页";
   const reader_no_bookmarks = "暂无书签。";
-  const reader_load_error = "无法加载此 PDF。";
+  const reader_load_error = "无法打开此 PDF。文件可能已损坏、下载不完整、受密码保护或无法访问。请检查文件或重新下载，然后选择替换 PDF。";
   const reader_page_error = "无法打开此 PDF 页面。";
   const reader_render_error = "无法呈现此 PDF 页面。";
   const reader_add_highlight_note = "添加高亮笔记";
@@ -9782,6 +9786,7 @@
   const reader_style_dashed = "虚线";
   const reader_style_dotted = "点线";
   const reader_style_strikeout = "删除线";
+  const reader_choose_replacement_pdf = "选择替换 PDF";
   const zhHans = {
     reader_pdf_focus_mode_hint,
     reader_pdf_focus_mode,
@@ -10009,7 +10014,8 @@
     reader_style_squiggly,
     reader_style_dashed,
     reader_style_dotted,
-    reader_style_strikeout
+    reader_style_strikeout,
+    reader_choose_replacement_pdf
   };
   const CATALOGS = { en, hr, "zh-Hans": zhHans };
   function normalizeReaderLocale(value) {
@@ -15708,13 +15714,26 @@
               ]
             }
           ),
-          error && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          error && /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "div",
             {
               role: "alert",
               "aria-live": "assertive",
-              style: { color: "red", padding: "4px 8px", textAlign: "center" },
-              children: tr(error)
+              style: { color: "#fca5a5", padding: "12px 16px", textAlign: "center" },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: tr(error) }),
+                error === "reader_load_error" && !readingOnly && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: () => {
+                      var _a;
+                      return (_a = window.pycmd) == null ? void 0 : _a.call(window, `incremento_pdf_repair_missing:${cardIdRef.current}`);
+                    },
+                    children: tr("reader_choose_replacement_pdf")
+                  }
+                )
+              ]
             }
           ),
           colorPopoverHighlight && /* @__PURE__ */ jsxRuntimeExports.jsxs(

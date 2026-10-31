@@ -78,7 +78,7 @@
   "reader_pdf_bookmarks": "PDF 书签",
   "reader_add_current_page": "添加当前页",
   "reader_no_bookmarks": "暂无书签。",
-  "reader_load_error": "无法加载此 PDF。",
+  "reader_load_error": "无法打开此 PDF。文件可能已损坏、下载不完整、受密码保护或无法访问。请检查文件或重新下载，然后选择替换 PDF。",
   "reader_page_error": "无法打开此 PDF 页面。",
   "reader_render_error": "无法呈现此 PDF 页面。",
   "reader_add_highlight_note": "添加高亮笔记",
@@ -225,5 +225,6 @@
   "reader_style_squiggly": "波浪线",
   "reader_style_dashed": "虚线",
   "reader_style_dotted": "点线",
-  "reader_style_strikeout": "删除线"
+  "reader_style_strikeout": "删除线",
+  "reader_choose_replacement_pdf": "选择替换 PDF"
 }

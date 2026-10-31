@@ -13,6 +13,18 @@ import { createPdfPageWindow } from '../src/pdfPageWindow.mjs';
 import { pdfPageTextSource } from '../src/pdfTextCache.mjs';
 import { retainPdfPage, releasePdfPage } from '../src/pdfPageResources.mjs';
 
+test('PDF load failures offer a translated replacement action in the main reader', () => {
+  const source = readFileSync(new URL('../src/PdfViewer.jsx', import.meta.url), 'utf8');
+  const errorPanel = source.slice(source.indexOf('      {error && ('), source.indexOf('      {colorPopoverHighlight'));
+  assert.match(errorPanel, /error === 'reader_load_error' && !readingOnly/);
+  assert.match(errorPanel, /incremento_pdf_repair_missing:\$\{cardIdRef.current\}/);
+  assert.match(errorPanel, /tr\('reader_choose_replacement_pdf'\)/);
+  for (const locale of ['en', 'hr', 'zh-Hans']) {
+    const catalog = JSON.parse(readFileSync(new URL(`../src/locales/${locale}.json`, import.meta.url), 'utf8'));
+    assert.ok(catalog.reader_choose_replacement_pdf);
+  }
+});
+
 test('rendering keeps PDF spaces, narrow letters, and compressed OCR spans selectable', async () => {
   const source = readFileSync(new URL('../src/usePdfRender.js', import.meta.url), 'utf8');
   const start = source.indexOf('  const renderTextLayer = useCallback(');

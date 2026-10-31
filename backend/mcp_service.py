@@ -22,6 +22,7 @@ try:
     from .mcp_collection import collection_tools, COLLECTION_EXT_WRITES
     from .mcp_library import library_tools
     from .mcp_operations import operation_tools, JOB_TOOLS
+    from .pdf_extraction import PdfValidationError
 except ImportError:
     import db
     import document_lists
@@ -32,6 +33,7 @@ except ImportError:
     from mcp_collection import collection_tools, COLLECTION_EXT_WRITES
     from mcp_library import library_tools
     from mcp_operations import operation_tools, JOB_TOOLS
+    from pdf_extraction import PdfValidationError
 
 
 class ToolError(ValueError):
@@ -313,7 +315,7 @@ class McpService(McpWorkflows):
             raise
         except UndoError as error:
             raise ToolError(str(error)) from None
-        except (WorkflowError, AnkiToolError) as error:
+        except (WorkflowError, AnkiToolError, PdfValidationError) as error:
             raise ToolError(str(error)) from None
         except ValueError:
             raise ToolError("Invalid input or a conflicting state change. Read the current state and retry.") from None

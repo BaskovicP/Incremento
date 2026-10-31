@@ -3456,7 +3456,9 @@ def _handle_pdf_js_message(msg: str) -> None:
         except Exception:
             pass
     elif msg.startswith(_MSG_REPAIR_MISSING):
-        _repair_missing_pdf()
+        target = msg[len(_MSG_REPAIR_MISSING):]
+        if not target or target == str(current_pdf_card_id()):
+            _repair_missing_pdf()
     elif msg.startswith(_MSG_REGENERATE_COVER):
         _regenerate_pdf_cover()
     elif msg.startswith(_MSG_SNAPSHOT):

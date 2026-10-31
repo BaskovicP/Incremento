@@ -142,6 +142,43 @@ class TestPdfStorageAbspath:
             assert pdf_manager.pdf_storage_abspath("pdfs/stored.pdf") == str(pdf_dir / "stored.pdf")
 
 
+@pytest.mark.parametrize('pages,password,error', [
+    (2, False, None), (0, False, 'readable PDF'), (0, True, 'password'),
+])
+def test_validation_uses_qt_when_pymupdf_is_unavailable_and_always_closes(
+    tmp_path, monkeypatch, pages, password, error,
+):
+    from types import SimpleNamespace
+    source = tmp_path / 'document.pdf'
+    source.write_bytes(b'%PDF-1.7\n')
+    doc = MagicMock()
+    doc.pageCount.return_value = pages
+    doc.error.return_value = 'password' if password else 'none'
+    factory = MagicMock(return_value=doc)
+    factory.Error = SimpleNamespace(IncorrectPassword='password')
+    monkeypatch.setitem(sys.modules, 'fitz', None)
+    monkeypatch.setattr(pdf_manager, 'QPdfDocument', factory)
+
+    if error:
+        with pytest.raises(ValueError, match=error):
+            pdf_manager.validate_pdf_file(str(source))
+    else:
+        assert pdf_manager.validate_pdf_file(str(source)) == 2
+    doc.close.assert_called_once_with()
+
+
+def test_validation_without_a_parser_fails_closed_in_non_qt_operations(tmp_path, monkeypatch):
+    source = tmp_path / 'document.pdf'
+    source.write_bytes(b'%PDF-1.7\n')
+    qt = MagicMock()
+    monkeypatch.setitem(sys.modules, 'fitz', None)
+    monkeypatch.setattr(pdf_manager, 'QPdfDocument', qt)
+
+    with pytest.raises(ValueError, match='validation is unavailable'):
+        pdf_manager.validate_pdf_file(str(source), allow_qt=False)
+    qt.assert_not_called()
+
+
 class TestPdfDisplayLabelFromFilename:
     def test_strips_uuid_suffix_and_extension(self):
         filename = f"very_long_pdf_title_for_reading-{('a' * 32)}.pdf"
@@ -337,6 +374,12 @@ class TestRenderPdfCoverMedia:
 
 
 class TestAddPdfCard:
+    @pytest.fixture(autouse=True)
+    def readable_source(self, monkeypatch):
+        # These adapter tests replace the file-copy/extraction boundaries. Real
+        # source validation and failure safety are covered with real PDFs.
+        monkeypatch.setattr(pdf_manager, 'validate_pdf_file', lambda *a, **kw: 1)
+
     def test_relinks_unique_missing_matching_card_instead_of_creating_duplicate(self, tmp_path):
         pdf_dir = tmp_path / "pdfs"
         pdf_dir.mkdir()
@@ -1126,6 +1169,10 @@ class TestPdfDueSourceCards:
 
 
 class TestReplacePdfCardFile:
+    @pytest.fixture(autouse=True)
+    def readable_source(self, monkeypatch):
+        monkeypatch.setattr(pdf_manager, 'validate_pdf_file', lambda *a, **kw: 1)
+
     def test_relinks_note_and_refreshes_text_index(self, tmp_path):
         replacement_pdf = tmp_path / "replacement.pdf"
         replacement_pdf.write_bytes(b"%PDF replacement")
