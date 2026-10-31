@@ -756,6 +756,13 @@ def list_available_video_subtitles(addon_dir: str, profile: str, video_url: str)
     raise RuntimeError(last_err or "Could not fetch subtitles.")
 
 
+def validated_subtitle_language(value: str) -> str:
+    language = str(value or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,34}", language):
+        raise ValueError("Choose one subtitle language code, such as en or en-US.")
+    return language
+
+
 def _run_ytdlp_subtitle_download(
     addon_dir: str,
     profile: str,
@@ -763,7 +770,9 @@ def _run_ytdlp_subtitle_download(
     *,
     language: str,
     automatic: bool = False,
+    output_directory: str | None = None,
 ) -> Path:
+    language = validated_subtitle_language(language)
     yt_dlp_cmd = _yt_dlp_cmd()
     if not yt_dlp_cmd:
         raise RuntimeError(
@@ -838,6 +847,10 @@ def _run_ytdlp_subtitle_download(
                         path.name,
                     ),
                 )[0]
+                if output_directory is not None:
+                    target = _unique_target_path(Path(output_directory), preferred.stem, preferred.suffix)
+                    shutil.copyfile(preferred, target)
+                    return target
                 final_relpath = import_local_subtitle_file(
                     addon_dir,
                     profile,
@@ -859,6 +872,7 @@ def download_video_subtitle(
     *,
     language: str,
     automatic: bool = False,
+    output_directory: str | None = None,
 ) -> dict[str, str]:
     relpath = str(
         _run_ytdlp_subtitle_download(
@@ -867,6 +881,7 @@ def download_video_subtitle(
             video_url,
             language=str(language or "").strip(),
             automatic=bool(automatic),
+            **({"output_directory": output_directory} if output_directory is not None else {}),
         )
     ).replace("\\", "/")
     label = _subtitle_track_label(str(language or "").strip(), bool(automatic))
@@ -1586,6 +1601,7 @@ def import_local_video_file(
     encode_mode: str = "h264_high",
     progress_cb: Callable[[int, str], None] | None = None,
     created_relpath_cb: Callable[[str], None] | None = None,
+    output_directory: str | None = None,
 ) -> str:
     """
     Import a local video file into user_files/videos and return relpath.
@@ -1602,7 +1618,7 @@ def import_local_video_file(
         supported = ", ".join(sorted(_VIDEO_EXTS))
         raise ValueError(f"Unsupported local video format: {ext or '(none)'} (supported: {supported})")
 
-    out_dir = _paths.get_videos_dir(addon_dir, profile)
+    out_dir = Path(output_directory) if output_directory is not None else _paths.get_videos_dir(addon_dir, profile)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     mode = (encode_mode or "h264_high").strip().lower()
@@ -1769,6 +1785,7 @@ def download_and_compress_video(
     max_height: int | None = None,
     original_quality: bool = False,
     created_relpath_cb: Callable[[str], None] | None = None,
+    output_directory: str | None = None,
 ) -> str:
     """
     Download a YouTube/Vimeo video into user_files/videos/.
@@ -1779,7 +1796,7 @@ def download_and_compress_video(
     if not video_key:
         raise ValueError("Could not extract a valid YouTube or Vimeo video ID.")
 
-    out_dir = _paths.get_videos_dir(addon_dir, profile)
+    out_dir = Path(output_directory) if output_directory is not None else _paths.get_videos_dir(addon_dir, profile)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     yt_dlp_cmd, ffmpeg_bin = _video_tools()

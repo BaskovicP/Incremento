@@ -458,6 +458,14 @@ def test_shipped_config_keys_are_explicitly_known() -> None:
     assert set(shipped) <= diagnostics._KNOWN_CONFIG_KEYS
 
 
+def test_mcp_diagnostics_export_only_connection_permission_booleans():
+    snapshot = diagnostics.sanitize_config({"mcp_enabled": True, "mcp_allow_writes": False,
+                                            "mcp_token": "private-connection-secret"})
+    assert snapshot["settings"]["mcp_enabled"] is True
+    assert snapshot["settings"]["mcp_allow_writes"] is False
+    assert "private-connection-secret" not in json.dumps(snapshot)
+
+
 def test_preview_size_registry_redacts_profile_names_while_workspace_toggle_stays_visible():
     settings = diagnostics.sanitize_config({
         "pdf_link_preview_size_by_profile": {"session_card_count": {"width": 640, "height": 480}},

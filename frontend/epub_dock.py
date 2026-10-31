@@ -2250,7 +2250,7 @@ def _build_page_script(
         const noteButton = document.getElementById('incremento-epub-highlight-note-btn');
         const resizeButton = document.getElementById('incremento-epub-highlight-resize-btn');
         const deleteButton = document.getElementById('incremento-epub-highlight-delete-btn');
-        const hasNote = String(target.dataset.note || '').trim().length > 0;
+        const hasNote = target.dataset.notePresent === '1';
         if (noteButton) {{
           noteButton.dataset.hasNote = hasNote ? '1' : '0';
           noteButton.title = hasNote ? STATE.messages.editHighlightNote : STATE.messages.addHighlightNote;
@@ -2266,11 +2266,11 @@ def _build_page_script(
         }}
         positionHighlightActionMenu(target, menu);
       }}
-      function updateHighlightNodeNote(target, note) {{
+      function updateHighlightNodeNote(target, note, noteHtml) {{
         if (!target) return;
         const trimmed = String(note || '').trim();
         target.dataset.note = String(note || '');
-        target.dataset.notePresent = trimmed ? '1' : '0';
+        target.dataset.notePresent = trimmed || String(noteHtml || '').includes('<img ') ? '1' : '0';
         target.title = trimmed || STATE.messages.highlightActions;
       }}
       function openHighlightActionMenu(target) {{
@@ -2515,7 +2515,7 @@ def _build_page_script(
         if (stored) stored.note = String(note || '');
         if (stored) stored.note_html = String(noteHtml || '');
         const targets = highlightNodesById(id);
-        targets.forEach(function(target) {{ updateHighlightNodeNote(target, note); }});
+        targets.forEach(function(target) {{ updateHighlightNodeNote(target, note, noteHtml); }});
         const target = window._incrementoEpubHighlightActionTarget;
         if (target && targets.indexOf(target) >= 0) {{
           syncHighlightActionMenu(target);
@@ -2545,7 +2545,7 @@ def _build_page_script(
           wrapper.dataset.startOffset = String(startOffset);
           wrapper.dataset.endOffset = String(endOffset);
           applyHighlightStyle(wrapper, hl.style, color);
-          updateHighlightNodeNote(wrapper, hl.note || '');
+          updateHighlightNodeNote(wrapper, hl.note || '', hl.note_html || '');
           wrapper.appendChild(range.extractContents());
           range.insertNode(wrapper);
           if (!firstWrapper) firstWrapper = wrapper;
@@ -5589,7 +5589,8 @@ def _current_section_highlights() -> list[dict]:
 def _edit_current_epub_highlight_note(hl_id: str) -> None:
     if _current_epub_card_id is None:
         return
-    context = (_active_profile(), _current_epub_card_id, _current_epub_section_index, _epub_dock)
+    profile, card_id, filename, dock = _active_profile(), _current_epub_card_id, _current_epub_filename, _epub_dock
+    collection = getattr(mw, 'col', None)
     highlight = next(
         (row for row in _current_section_highlights() if str(row.get("id") or "") == str(hl_id or "")),
         None,
@@ -5597,47 +5598,40 @@ def _edit_current_epub_highlight_note(hl_id: str) -> None:
     if not highlight:
         showInfo(t("reader_epub_highlight_missing"))
         return
-    dialog = HighlightNoteDialog(
-        mw,
-        title=t("reader_epub_highlight_note_title"),
-        excerpt=str(highlight.get("text") or ""),
-        current_note=str(highlight.get("note") or ""),
-        current_note_html=str(highlight.get("note_html") or ""),
-    )
-    if not dialog.exec():
-        return
-    if context != (_active_profile(), _current_epub_card_id, _current_epub_section_index, _epub_dock):
-        return
-    try:
-        updated = update_highlight_note(
-            _ADDON_DIR,
-            context[0],
-            int(context[1]),
-            str(highlight.get("id") or ""),
-            dialog.note_text(),
-            note_html=dialog.note_html(),
-        )
-    except Exception as exc:
-        showInfo(t("reader_epub_highlight_note_save_failed", error=exc))
-        return
-    if not updated:
-        showInfo(t("reader_epub_highlight_update_failed"))
-        return
-    escaped_id = json.dumps(str(updated.get("id") or ""))
-    escaped_note = json.dumps(str(updated.get("note") or ""))
-    escaped_html = json.dumps(str(updated.get("note_html") or ""))
-    try:
-        if _epub_dock is not None:
+    expected = (str(highlight.get('note') or ''), str(highlight.get('note_html') or ''))
+    target_id = str(highlight.get('id') or '')
+
+    def is_current():
+        return (_active_profile() == profile and getattr(mw, 'col', None) is collection
+                and _current_epub_card_id == card_id and _current_epub_filename == filename and _epub_dock is dock)
+
+    def save(dialog):
+        try:
+            updated = update_highlight_note(_ADDON_DIR, profile, int(card_id), target_id,
+                dialog.note_text(), note_html=dialog.note_html(), expected_note=expected)
+        except Exception as exc:
+            return t('reader_epub_highlight_note_save_failed', error=exc)
+        if not updated:
+            return t('reader_note_editor_changed')
+        escaped_id = json.dumps(str(updated.get('id') or ''))
+        escaped_note = json.dumps(str(updated.get('note') or ''))
+        escaped_html = json.dumps(str(updated.get('note_html') or ''))
+        try:
             _run_epub_javascript(
-                _epub_dock._view.page(),
-                "window.incrementoUpdateEpubHighlightNote && "
-                f"window.incrementoUpdateEpubHighlightNote({escaped_id}, {escaped_note}, {escaped_html});"
+                dock._view.page(), 'window.incrementoUpdateEpubHighlightNote && '
+                f'window.incrementoUpdateEpubHighlightNote({escaped_id}, {escaped_note}, {escaped_html});'
             )
-    except Exception:
-        pass
-    _update_sources_panel()
-    _refresh_epub_references()
-    tooltip(t("reader_epub_highlight_note_saved"))
+        except Exception:
+            pass
+        _update_sources_panel()
+        _refresh_epub_references()
+        tooltip(t('reader_epub_highlight_note_saved'))
+        return None
+
+    HighlightNoteDialog.show_for_annotation(mw,
+        key=(_ADDON_DIR, profile, id(collection), 'epub', int(card_id), target_id),
+        title=t('reader_epub_highlight_note_title'), excerpt=str(highlight.get('text') or ''),
+        current_note=expected[0], current_note_html=expected[1], is_current=is_current, save=save)
 
 
 def _recolor_current_epub_highlight(hl_id):

@@ -83,7 +83,7 @@ def test_native_dialog_resumes_after_authenticated_browser_response_without_anot
             worker.start()
             return True
         frontend.open_companion_url = open_browser
-        dialog = frontend.WebpageToPdfDialog()
+        dialog = frontend.WebpageToPdfDialog(addon_dir=output)
         dialog._url_edit.setText('https://example.test/article')
         dialog._title_edit.setText('Original title')
         dialog._style_combo.setCurrentIndex(dialog._style_combo.findData('article'))

@@ -4,11 +4,14 @@ Use **Incremento -> Export Full Backup -> Export Now…** to create a single ZIP
 
 ## What the backup contains
 
+MCP connection tokens (`mcp_token`) are excluded. Pair Codex or Claude again after restoring into a new profile or installation; enabling MCP still requires its saved opt-in preference and the open profile.
+
 The ZIP now includes:
 
 - `anki/all_decks.apkg` - all cards from the currently open Anki profile, with scheduling and referenced Anki media
 - `user_files/<ProfileName>/` - the Incremento runtime folder for the currently open Anki profile, including:
   - `incremento.db`
+  - `mcp_history.json` and `mcp_undo_files/` (private persistent undo/redo history and recovery copies, when present)
   - `pdfs/`
   - `epubs/` (including managed Markdown learning documents)
   - `markdown_backups/` (one previous edited version per Markdown document)
@@ -62,3 +65,11 @@ Common add-on paths:
 - Legacy SimpleTex credentials and their temporary writes remain excluded. Local LaTeX-OCR software and model caches are outside the profile backup; run **Set up / repair local LaTeX-OCR** after moving to another computer.
 - The export is read-only. It does not delete or modify existing data.
 - If the active Anki profile changes while export is running, Incremento aborts instead of combining two profiles.
+
+MCP 1.4 full profile backups also retain the private semantic corpus (`mcp_semantic_index.json`), smart-list rules (`mcp_smart_lists.json`), OCR source fingerprints/text (`mcp_ocr_sources.json`), and compressed/native recovery assets under `mcp_undo_files/`. These contain private study content. Connection tokens remain excluded and must be paired again after restore. Installed OCR executables remain external dependencies and are not bundled.
+
+## Reversible MCP exports and restores
+
+`preview_operation` exposes selected APKG/CSV export, full backup ZIP export/restore, automatic backup policy, and privacy-safe support ZIP export. Outputs require new filenames and remain reversible through persistent MCP history. MCP-created full backups use the same native-compatible schema-2 format. Restore preflights/stages the ZIP, preserves the current MCP token, permissions, history and retained recovery assets, and checkpoints the collection, supplemental state, settings and affected files first. Undo/redo after restart uses retained bytes without rereading the source ZIP. Leave review and close writing editors before restoring; with a configured sync account, turn automatic collection and media sync off first. The MCP does not initiate sync. The bounded MCP restoration requires matching current supplemental schema; migrate older backups in a separate profile using the native restore workflow.
+
+Native workflow limits are documented in **AI connections (MCP)** in `MANUAL.md`: full collection and file checkpoints have explicit count/byte ceilings and reject intervening edits. These retained collection packages and UI receipts contain private data and must not be shared as support artifacts.

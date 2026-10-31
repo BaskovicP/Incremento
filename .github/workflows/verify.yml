@@ -55,6 +55,7 @@ jobs:
         working-directory: frontend
       - run: npm run lint
         working-directory: frontend
+      - run: node --test tests/mcp_connector.test.mjs
       - run: npm test
         working-directory: chrome_extensions/incremento_companion
       - run: npm test

@@ -227,5 +227,6 @@ def test_shipped_specs_do_not_require_internal_content_id_field():
         "Incremento Local File",
         "Incremento SuperMemo",
         "Incremento SuperMemo Cloze",
+        "Incremento MCP Q/A",
     }
     assert all("Incremento_Content_ID" not in spec.fields for spec in specs)

@@ -18,3 +18,49 @@ test('corrupt, active, stale and oversized markup falls back to literal plain te
   }
   assert.equal(annotationNoteTree('<b>literal</b>', ''), null);
 });
+
+const imageSource = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAD0lEQVR4nGP4z8DA8J8BAAf/Af8Bf4mnAAAAAElFTkSuQmCC';
+const image = `<img src="${imageSource}" width="2" height="1" alt="">`;
+test('embedded raster images render with bounded dimensions alongside searchable captions or alone', () => {
+  const tree = annotationNoteTree('A landmark', `<p>${image}</p><p>A landmark</p>`);
+  assert.equal(tree[0].children[0].tag, 'img');
+  assert.equal(tree[0].children[0].src, imageSource);
+  assert.equal(tree[0].children[0].width, 2);
+  assert.equal(tree[0].children[0].height, 1);
+  assert.equal(annotationNoteTree('', image)[0].tag, 'img');
+});
+
+test('image grammar rejects remote URLs, active formats, extra attributes and excessive dimensions', () => {
+  for (const invalid of [image.replace(imageSource, 'https://example.com/tracker'),
+    image.replace(imageSource, 'data:image/svg+xml;base64,PHN2Zz4='),
+    image.replace(imageSource, 'data:image/png;base64,YmFk'),
+    image.replace('width="2"', 'width="99999"'), image.replace('alt=""', 'onerror="bad()"'),
+    image.repeat(5)]) {
+    assert.equal(annotationNoteTree('', invalid), null);
+  }
+});
+
+test('intentionally stretched image dimensions are retained', () => {
+  const markup = image.replace('width="2" height="1"', 'width="120" height="80"');
+  const node = annotationNoteTree('', markup)[0];
+  assert.equal(node.width, 120);
+  assert.equal(node.height, 80);
+});
+
+test('canonical image wrapping and centered paragraphs are inert layout choices', () => {
+  for (const side of ['left', 'right']) {
+    const wrapped = image.replace('alt=""', `alt="" style="float:${side}"`);
+    const tree = annotationNoteTree('Caption', `<p>${wrapped}Caption</p>`);
+    assert.equal(tree[0].children[0].float, side);
+  }
+  assert.equal(annotationNoteTree('Caption', `<p align="center">${image}</p><p>Caption</p>`)[0].align, 'center');
+  assert.equal(annotationNoteTree('', image.replace('alt=""', 'alt="" style="position:fixed"')), null);
+});
+
+test('own-line images keep left, center, or right alignment as safe paragraph metadata', () => {
+  for (const alignment of ['left', 'center', 'right']) {
+    const tree = annotationNoteTree('Caption', `<p align="${alignment}">${image}</p><p>Caption</p>`);
+    assert.equal(tree[0].align, alignment);
+  }
+  assert.equal(annotationNoteTree('', `<p align="left;position:fixed">${image}</p>`), null);
+});

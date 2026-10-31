@@ -64,6 +64,71 @@ def test_invalid_membership_rolls_back_reason_and_existing_membership(tmp_path):
     assert library.load_document_library(root, "A")["books"][("epub", "book.epub")] == original
 
 
+def test_bulk_grouping_is_additive_shared_by_document_and_profile_scoped(tmp_path):
+    import document_lists as library
+
+    root = str(tmp_path)
+    existing = library.create_document_list(root, "A", "Reference")
+    target = library.create_document_list(root, "A", "Maths")
+    original = {"reason": "A recommendation", "source": "Lecture", "list_ids": [existing]}
+    library.save_document_details(root, "A", "pdf", "one.pdf", original)
+    documents = [("pdf", "one.pdf"), ("epub", "two.epub"), ("pdf", "pdfs/one.pdf")]
+
+    assert library.add_documents_to_list(root, "A", documents, target) == (("pdf", "one.pdf"), ("epub", "two.epub"))
+    library.add_documents_to_list(root, "A", documents, target)
+
+    books = library.load_document_library(root, "A")["books"]
+    assert books == {("pdf", "one.pdf"): {**original, "list_ids": [existing, target]},
+                     ("epub", "two.epub"): {"reason": "", "source": "", "list_ids": [target]}}
+    assert library.load_document_library(root, "B") == {"lists": [], "books": {}}
+
+
+def test_bulk_grouping_rolls_back_every_document_if_one_has_too_many_lists(tmp_path, monkeypatch):
+    import document_lists as library
+
+    monkeypatch.setattr(library, "MAX_BOOK_LISTS", 2)
+    root = str(tmp_path)
+    ids = [library.create_document_list(root, "A", name) for name in ("One", "Two", "Three")]
+    original = {"reason": "Keep this", "source": "A friend", "list_ids": ids[:2]}
+    library.save_document_details(root, "A", "pdf", "full.pdf", original)
+    before = library.load_document_library(root, "A")
+
+    with pytest.raises(ValueError):
+        library.add_documents_to_list(root, "A", [("pdf", "new.pdf"), ("pdf", "full.pdf")], ids[2])
+
+    assert library.load_document_library(root, "A") == before
+
+
+def test_bulk_grouping_cancelled_during_transaction_rolls_back_all_memberships(tmp_path):
+    from concurrent.futures import CancelledError
+    import threading
+    import document_lists as library
+
+    root = str(tmp_path)
+    target = library.create_document_list(root, "A", "Maths")
+    cancel = threading.Event()
+    conn = db.get_connection(root, "A")
+    conn.create_function("cancel_grouping", 0, lambda: cancel.set() or 0)
+    conn.execute("CREATE TEMP TRIGGER cancel_grouping AFTER INSERT ON document_library_books "
+                 "BEGIN SELECT cancel_grouping(); END")
+
+    with pytest.raises(CancelledError):
+        library.add_documents_to_list(root, "A", [("pdf", "one.pdf"), ("pdf", "two.pdf")], target,
+                                      cancel_event=cancel)
+
+    assert library.load_document_library(root, "A")["books"] == {}
+
+
+@pytest.mark.parametrize("documents,target", [([("pdf", "../bad.pdf")], 1), ([("web", "one.pdf")], 1),
+                                             ([("pdf", "one.pdf")], True)])
+def test_bulk_grouping_validates_before_opening_storage(tmp_path, documents, target):
+    import document_lists as library
+
+    with pytest.raises(ValueError):
+        library.add_documents_to_list(str(tmp_path), "A", documents, target)
+    assert not (tmp_path / "user_files").exists()
+
+
 @pytest.mark.parametrize("details", [
     {"reason": "x" * 2001}, {"source": "x" * 501}, {"source": "bad\x00source"},
     {"list_ids": [True]}, {"list_ids": [-1]}, {"list_ids": list(range(1, 66))},

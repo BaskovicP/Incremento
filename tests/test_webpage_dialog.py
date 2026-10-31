@@ -294,6 +294,10 @@ def _browser_fallback_dialog(monkeypatch, tmp_path):
     state._links_check = SimpleNamespace(isChecked=lambda: False)
     state._cleanup_check = Control()
     state._cleanup_check.isChecked = lambda: False
+    state._profile = "First"
+    state._document_details = None
+    state._book_details = Control()
+    state._book_details.details = lambda: {"reason": "Read about maths", "source": "A blog", "list_ids": [1]}
     state._import_generation = 0
     state._capture_cancel = threading.Event()
     state._pdf_path = None
@@ -503,7 +507,55 @@ def test_cancelled_saved_pdf_picker_does_not_start_work(monkeypatch, tmp_path):
     assert state._import_btn.enabled and state._saved_pdf_btn.enabled
 
 
-def test_browser_fallback_guidance_fits_in_all_bundled_languages():
+@pytest.mark.parametrize("route", ["direct", "browser-verification", "browser-saved-pdf"])
+def test_webpage_import_retains_the_selected_details_across_all_conversion_routes(monkeypatch, tmp_path, route):
+    state, namespace, _profile, _opened, accepted, _pending, finish = _browser_fallback_dialog(monkeypatch, tmp_path)
+    expected = {"reason": "Practise multiplication", "source": "A maths blog", "list_ids": [3, 7]}
+    state._book_details.details = lambda: expected.copy()
+
+    def render(path, **_options):
+        if route == "browser-verification" and not state._handoff_ticket:
+            raise WebpageVerificationRequired()
+        Path(path).write_bytes(b"%PDF-1.7\nArticle")
+
+    namespace["render_webpage_to_pdf"] = render
+    if route == "browser-saved-pdf":
+        (tmp_path / "browser.pdf").write_bytes(b"%PDF-1.7\nArticle")
+        state._on_saved_pdf()
+    else:
+        state._on_import()
+    assert not state._book_details.enabled
+    # Pending conversion must retain the original choices, even if a later
+    # editor state is observed before the completion callback.
+    state._book_details.details = lambda: {"reason": "Later edit", "source": "", "list_ids": []}
+    if route == "browser-verification":
+        namespace["browser_pdf_handoffs"].submit(state._handoff_ticket, "https://example.org/article",
+                                               "<article>Verified article</article>")
+        namespace["render_webpage_to_pdf"] = lambda path, **_kw: Path(path).write_bytes(b"%PDF-1.7\nArticle")
+        state._poll_browser_handoff()
+    elif route == "browser-saved-pdf":
+        finish()
+    assert accepted == [True]
+    assert state.document_details == expected
+    Path(state.pdf_path).unlink()
+
+
+@pytest.mark.parametrize("route", ["direct", "browser-saved-pdf"])
+def test_webpage_import_rejects_an_editor_from_a_previous_profile(monkeypatch, tmp_path, route):
+    state, namespace, profile, _opened, accepted, pending, _finish = _browser_fallback_dialog(monkeypatch, tmp_path)
+    profile["name"] = "Second"
+    namespace["render_webpage_to_pdf"] = lambda *_a, **_kw: pytest.fail("must reject before conversion")
+    if route == "direct":
+        state._on_import()
+    else:
+        state._on_saved_pdf()
+    assert accepted == pending == []
+    assert state._document_details is None
+    assert state._status_lbl.text_value == namespace["_t"]("imports_topic_profile_changed")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_browser_fallback_guidance_fits_in_all_bundled_languages(tmp_path):
     script = dedent('''
         import importlib
         from pathlib import Path
@@ -524,7 +576,7 @@ def test_browser_fallback_guidance_fits_in_all_bundled_languages():
             i18n.initialize_language(language)
             for font_size in (13, 18):
                 app.setFont(QFont('Arial', font_size))
-                dialog = module.WebpageToPdfDialog()
+                dialog = module.WebpageToPdfDialog(addon_dir=sys.argv[1])
                 dialog._status_lbl.setText(i18n.t('imports_webpage_access_blocked', status=429))
                 dialog.show()
                 for _ in range(3):
@@ -538,7 +590,7 @@ def test_browser_fallback_guidance_fits_in_all_bundled_languages():
         assert not failures, failures
     ''')
     result = subprocess.run(
-        [sys.executable, "-c", script], cwd=Path(__file__).resolve().parents[1],
+        [sys.executable, "-c", script, str(tmp_path)], cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, "QT_QPA_PLATFORM": "offscreen"}, capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr
@@ -920,6 +972,7 @@ def test_import_routes_selected_options_and_drops_results_after_closing(tmp_path
         _dynamic_check=SimpleNamespace(isChecked=lambda: True), _links_check=SimpleNamespace(isChecked=lambda: True),
         _import_generation=0, _import_btn=control, _progress=control, _status_lbl=control,
         _set_busy=lambda _busy: None,
+        _capture_document_details=lambda: True,
         _stop_browser_handoff=lambda: None,
         accept=lambda: accepted.append(True))
     state._import_current = lambda generation, profile: state._import_generation == generation and profile == "First"

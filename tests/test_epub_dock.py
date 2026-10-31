@@ -1800,17 +1800,18 @@ def test_edit_current_epub_highlight_note_updates_live_view(monkeypatch):
     js_calls = []
     updates = []
     tooltips = []
+    pending = []
 
     class _FakeDialog:
-        def __init__(self, parent, *, title, excerpt, current_note, current_note_html):
+        @classmethod
+        def show_for_annotation(cls, parent, *, title, excerpt, current_note, current_note_html, **callbacks):
             assert parent is epub_dock.mw
             assert title == "EPUB Highlight Note"
             assert excerpt == "Quoted text"
             assert current_note == ""
             assert current_note_html == ""
-
-        def exec(self):
-            return True
+            pending.append(callbacks)
+            return cls()
 
         def note_text(self):
             return "New note"
@@ -1841,7 +1842,7 @@ def test_edit_current_epub_highlight_note_updates_live_view(monkeypatch):
     monkeypatch.setattr(
         epub_dock,
         "update_highlight_note",
-        lambda addon_dir, profile, card_id, hl_id, note, *, note_html: (
+        lambda addon_dir, profile, card_id, hl_id, note, *, note_html, expected_note: (
             updates.append((addon_dir, profile, card_id, hl_id, note, note_html)) or
             {"id": hl_id, "note": note, "note_html": note_html}
         ),
@@ -1852,20 +1853,26 @@ def test_edit_current_epub_highlight_note_updates_live_view(monkeypatch):
     monkeypatch.setattr(epub_dock, "_epub_dock", types.SimpleNamespace(_view=_FakeView()))
 
     epub_dock._edit_current_epub_highlight_note("hl-1")
-
+    assert updates == [], 'Opening an editor must return before the user saves'
+    assert pending[0]['is_current']()
+    pending[0]['save'](_FakeDialog())
     assert updates == [("/tmp/addon", "TestProfile", 42, "hl-1", "New note", '<p><b>New</b> note</p>')]
     assert any("incrementoUpdateEpubHighlightNote" in js for js in js_calls if isinstance(js, str))
     assert "sources" in js_calls
     assert tooltips == ["EPUB highlight note saved."]
 
 
-@pytest.mark.parametrize('change', ['profile', 'card', 'section', 'dock', 'cancel'])
-def test_epub_note_editor_drops_cancelled_or_retired_document_edits(monkeypatch, change):
+@pytest.mark.parametrize('change', ['profile', 'card', 'section', 'dock', 'cancel', 'filename', 'collection'])
+def test_modeless_epub_note_allows_section_navigation_but_rejects_retired_documents(monkeypatch, change):
     profile = ['A']
     writes = []
+    pending = []
+    collection = object()
+    monkeypatch.setattr(epub_dock, 'mw', types.SimpleNamespace(col=collection))
     monkeypatch.setattr(epub_dock, '_active_profile', lambda: profile[0])
     monkeypatch.setattr(epub_dock, '_current_epub_card_id', 42)
     monkeypatch.setattr(epub_dock, '_current_epub_section_index', 3)
+    monkeypatch.setattr(epub_dock, '_current_epub_filename', 'book.epub')
     monkeypatch.setattr(epub_dock, '_epub_dock', object())
     monkeypatch.setattr(epub_dock, '_current_section_highlights', lambda: [
         {'id': 'h', 'text': 'source', 'note': 'Saved note', 'note_html': '<b>Saved</b> note'}])
@@ -1879,16 +1886,28 @@ def test_epub_note_editor_drops_cancelled_or_retired_document_edits(monkeypatch,
             monkeypatch.setattr(epub_dock, '_current_epub_section_index', 4)
         elif change == 'dock':
             monkeypatch.setattr(epub_dock, '_epub_dock', object())
+        elif change == 'filename':
+            monkeypatch.setattr(epub_dock, '_current_epub_filename', 'different.epub')
+        elif change == 'collection':
+            epub_dock.mw.col = object()
         return change != 'cancel'
 
-    def dialog(_parent, **kwargs):
+    def show(_parent, **kwargs):
         assert kwargs['current_note_html'] == '<b>Saved</b> note'
-        return types.SimpleNamespace(exec=accept, note_text=lambda: 'Changed', note_html=lambda: '<b>Changed</b>')
+        pending.append(kwargs)
 
-    monkeypatch.setattr(epub_dock, 'HighlightNoteDialog', dialog)
+    monkeypatch.setattr(epub_dock, 'HighlightNoteDialog', types.SimpleNamespace(show_for_annotation=show))
     monkeypatch.setattr(epub_dock, 'update_highlight_note', lambda *args, **kwargs: writes.append((args, kwargs)))
+    monkeypatch.setattr(epub_dock, '_update_sources_panel', lambda: None)
+    monkeypatch.setattr(epub_dock, '_refresh_epub_references', lambda: None)
     epub_dock._edit_current_epub_highlight_note('h')
     assert writes == []
+    if accept() and pending[0]['is_current']():
+        pending[0]['save'](types.SimpleNamespace(note_text=lambda: 'Changed', note_html=lambda: '<b>Changed</b>'))
+    assert len(writes) == (1 if change == 'section' else 0)
+    if writes:
+        assert writes[0][0][1:4] == ('A', 42, 'h')
+        assert writes[0][1]['expected_note'] == ('Saved note', '<b>Saved</b> note')
 
 
 def test_current_card_epub_search_hits_use_section_title_fallback(monkeypatch):

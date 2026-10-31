@@ -69,9 +69,9 @@ msgstr "清理孤立 PDF 文件…"
 msgid "root_menu_cleanup_orphan_videos"
 msgstr "清理孤立视频文件…"
 
-#. Menu or action: Clean Up Unused Incremento Data…
+#. Menu or action: Clean Up Unused Data & Images…
 msgid "root_menu_cleanup_profile_data"
-msgstr "清理未使用的 Incremento 数据…"
+msgstr "清理未使用的数据和图片…"
 
 #. Menu or action: Clean Up Stale Progress / Search Index / OCR Rows…
 msgid "root_menu_cleanup_stale_rows"
@@ -1128,7 +1128,7 @@ msgstr "活动配置文件：{profile}"
 
 #. Cleanup UI: The following unused Incremento files and stale records can be cleaned:
 msgid "root_cleanup_profile_explanation"
-msgstr "可以清理以下未使用的 Incremento 文件和过期记录："
+msgstr "可以清理以下未使用的文件和过期的 Incremento 记录："
 
 #. Cleanup UI: • PDF files: {count}
 msgid "root_cleanup_pdf_files"
@@ -1332,7 +1332,22 @@ msgid "root_menu_cleanup_pdf_snapshots"
 msgstr "清理未使用的 PDF 截图…"
 
 msgid "root_pdf_snapshot_cleanup_close_add"
-msgstr "清理 PDF 截图前请关闭添加卡片窗口，以免删除尚未保存的图片。"
+msgstr "清理未使用的图片前请关闭添加卡片窗口，以免删除尚未保存的图片。"
+
+msgid "root_cleanup_unused_images"
+msgstr "• Anki 媒体中未使用的图片附件：{count}（{size}）"
+
+msgid "root_cleanup_unused_images_trash_note"
+msgstr "未使用的图片会移至 Anki 媒体回收站。清空回收站前仍可恢复。"
+
+msgid "root_unused_images_cleanup_stale"
+msgstr "当前 Anki 配置文件已更改。未移除任何未使用的图片。"
+
+msgid "root_unused_images_cleanup_complete"
+msgstr "已将 {count} 张未使用的图片（{size}）移至 Anki 媒体回收站。"
+
+msgid "root_unused_images_cleanup_failed"
+msgstr "无法清理未使用的图片：\n{error}"
 
 msgid "root_pdf_snapshot_cleanup_invalid_draft"
 msgstr "无法安全读取已保存的摘录草稿。清理已取消。"

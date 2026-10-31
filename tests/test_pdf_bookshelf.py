@@ -1382,10 +1382,11 @@ def bookshelf_reveal_menu(monkeypatch, tmp_path):
     monkeypatch.setattr(pdf_bookshelf, "QMenu", Menu)
 
     def show(entry):
-        item = SimpleNamespace(data=lambda _role: entry)
+        item = SimpleNamespace(data=lambda _role: entry, isSelected=lambda: False)
         selected = []
         dialog = SimpleNamespace(
             _profile=profile,
+            _selected_library_entries=lambda: [entry],
             _list=SimpleNamespace(
                 itemAt=lambda _position: item,
                 setCurrentItem=selected.append,

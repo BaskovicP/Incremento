@@ -19,9 +19,16 @@ Incremento supports Anki 24.11 and newer. Optional features that depend on Anki'
 - Exports a privacy-safe support bundle with redacted settings, recent typed events, version data, and code fingerprints for easier bug reports
 - Keeps runtime content and databases isolated per Anki profile
 - Includes a browser bridge and companion Chrome/Brave extension for capture, import, and playback synchronization
+- Connects Codex and Claude through an opt-in local MCP endpoint for search, document reading, lists, tags, note text, priorities, bookmarks, annotations, knowledge-tree links, statistics, and saved scheduling rules, plus source-linked card creation, document imports, writing edits, resource links, reviewed batches, and undo/redo that survives Anki restarts
 - Detects Incremento card-format changes without touching the collection, then explains and requests consent before any Anki full-sync-requiring update
 
 ## Install
+
+### Connect Codex or Claude
+
+After installing the add-on, open **Incremento → AI connections…**, enable local MCP, and apply. Use **Copy setup prompt** in the Codex or Claude Code tab and paste it into an assistant with local computer access to apply and verify the setup. For Claude Desktop, save and install the `.mcpb` connector and paste the connection token. Claude Desktop supplies the connector's Node runtime; Codex connects directly over HTTP with no additional runtime to install.
+
+Write access is a separate opt-in. The 97 tools cover search, documents, lists, tags, card authoring/cloning, OCR, rich text/media, scheduling, deck and note-type management, meaning search, audits and smart lists. `list_operation_types` also exposes 50 reviewed workflows across 16 areas: sessions/reviewer, filtered decks/Review All, settings/presets, FSRS/deck options, reader/player state, annotations/snapshots/citations, additional imports, video/captions, source relinking/PDF sync, image occlusion, note types, exports/backups, maintenance, timers/jobs, and administration status. Every MCP data change retains persistent undo/redo across Anki restarts. Sync, profile switching and add-on installation/removal are refused because their external effects cannot meet that contract. Keep Anki open on the paired profile. See **AI connections (MCP)** in [MANUAL.md](MANUAL.md) for recovery limits and setup; Codex and Claude have separate complete copyable setup prompts.
 
 ### Install from AnkiWeb (recommended)
 
@@ -182,7 +189,7 @@ Maintainers can turn a sanitized incident into an evidence-backed patch candidat
   "invariant": "Never duplicate a card already in the live queue.",
   "relevant_paths": ["backend/session.py"],
   "environment": {
-    "addon_version": "1.4.0",
+    "addon_version": "1.5.0",
     "anki_version": "25.09.2",
     "os_family": "macos",
     "python_version": "3.12"

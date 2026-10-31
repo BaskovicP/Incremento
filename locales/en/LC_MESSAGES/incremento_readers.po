@@ -2105,7 +2105,7 @@ msgid "reader_selected_text_label"
 msgstr "Selected text:"
 
 msgid "reader_text_note_label"
-msgstr "Text note:"
+msgstr "Note:"
 
 msgid "reader_click_result_hint"
 msgstr "Click a result to jump to that part of the {document}."
@@ -4683,3 +4683,157 @@ msgstr "More filters"
 
 msgid "reader_library_add_reason"
 msgstr "+ Add why you saved it"
+
+
+msgid "reader_library_add_selected_to_list"
+msgstr "Add selected to list…"
+
+msgid "reader_library_multi_select_hint"
+msgstr "Ctrl/Cmd-click to select documents; Shift-click for a range. Use Ctrl/Cmd+A to select all."
+
+msgid "reader_library_selected_books"
+msgid_plural "reader_library_selected_books_plural"
+msgstr[0] "{count} document selected"
+msgstr[1] "{count} documents selected"
+
+msgid "reader_library_grouping"
+msgstr "Updating lists…"
+
+msgid "reader_library_group_error"
+msgstr "Could not add the selected documents to the list. Check that the list still exists and no document exceeds the 64-list limit. Existing lists and unsaved notes have been kept."
+
+msgid "reader_library_list_picker_help"
+msgstr "Tick every list for this book. Selected lists stay visible on the right while you search."
+
+msgid "reader_library_find_lists"
+msgstr "Search lists…"
+
+msgid "reader_library_all_lists"
+msgstr "All lists"
+
+msgid "reader_library_selected_lists"
+msgstr "Selected lists"
+
+msgid "reader_library_selected_lists_count"
+msgstr "Selected lists ({count}/{maximum})"
+
+msgid "reader_library_list_matches"
+msgstr "{count} of {total} lists shown"
+
+msgid "reader_library_remove_selected_lists"
+msgstr "Remove selected"
+
+msgid "reader_library_list_summary_more"
+msgstr "{names} · +{count} more"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_width"
+msgstr "Image width"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_remove"
+msgstr "Remove image"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_size"
+msgstr "{size} KiB stored"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_hint"
+msgstr "Paste an image (Cmd/Ctrl+V). Drag a corner to keep proportions; drag an edge to stretch. Hold Shift to switch. Images are compressed automatically (up to 80 KiB)."
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_failed"
+msgstr "This image could not be pasted. Copy a smaller bitmap image or remove another image from this note, then try again."
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_pixels"
+msgstr " px"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_resize_right"
+msgstr "Stretch image width"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_resize_bottom"
+msgstr "Stretch image height"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_resize_corner"
+msgstr "Resize image proportionally"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_resize_help"
+msgstr "Drag the corner to keep proportions, or an edge to stretch. Hold Shift to switch. Use arrow keys on a focused handle; Escape cancels a drag."
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement"
+msgstr "Image placement"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_block"
+msgstr "Own line (recommended)"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_inline"
+msgstr "Inline with text"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_left"
+msgstr "Wrap text (image left)"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_right"
+msgstr "Wrap text (image right)"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_help"
+msgstr "Own line separates the image from its caption. Inline places it inside a sentence. Wrap left/right lets text flow beside it. Use Write above/below for captions."
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_write_above"
+msgstr "Write above"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_write_below"
+msgstr "Write below"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_wrap_narrow"
+msgstr "This leaves a narrow text column. Choose Own line or reduce the image width."
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_alignment"
+msgstr "Align image"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_align_left"
+msgstr "Left"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_align_center"
+msgstr "Center"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_align_right"
+msgstr "Right"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_alignment_choice"
+msgstr "Align image: {alignment}"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_editor_save"
+msgstr "Save"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_editor_stale"
+msgstr "The original document or profile changed. Your draft is still here. Return to the original document, or copy your draft and reopen the annotation before saving."
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_editor_changed"
+msgstr "This annotation was changed elsewhere or deleted. Your draft is still here. Copy it before closing; reopen the annotation if it still exists to review the latest version."
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_editor_save_failed"
+msgstr "Could not save this annotation: {error}\nYour draft is still open."

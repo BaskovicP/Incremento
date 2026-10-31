@@ -14,20 +14,26 @@ def test_saved_rich_note_renders_updates_and_opens_links_through_the_reader_brid
     if runtime is None:
         pytest.skip('Optional webpage browser component has not been explicitly installed')
     script = dedent(r'''
-        import json, re, sys
+        import base64, json, re, sys
         from pathlib import Path
         from urllib.parse import urlsplit
         sys.path.insert(0, sys.argv[1])
         from playwright.sync_api import sync_playwright, expect
         import pymupdf
         root = Path.cwd()
+        with pymupdf.open() as picture:
+            image_page = picture.new_page(width=200, height=120)
+            image_page.draw_rect(image_page.rect, fill=(.3, .6, .4))
+            image_page.insert_text((20, 60), 'Landmark')
+            source = 'data:image/png;base64,' + base64.b64encode(image_page.get_pixmap().tobytes('png')).decode()
+        image = f'<img src="{source}" width="200" height="120" alt="">'
         with pymupdf.open() as pdf:
             document_page = pdf.new_page(width=600, height=900)
             document_page.insert_text((40, 100), 'Source passage', fontsize=18)
             rect = document_page.search_for('Source passage')[0]
             data = pdf.tobytes()
             highlight = {'id': 'rich', 'page': 1, 'color': 'yellow', 'text': 'Source passage',
-                'note': 'Formatted link', 'note_html': '<p><b>Formatted</b> <a href="https://example.com/note">link</a></p>',
+                'note': 'Formatted link', 'note_html': '<p>' + image + '</p><p><b>Formatted</b> <a href="https://example.com/note">link</a></p>',
                 'rects': [{'x': rect.x0, 'y': rect.y0, 'w': rect.width, 'h': rect.height}]}
         with sync_playwright() as p:
             browser = p.chromium.launch(executable_path=sys.argv[2], headless=True, chromium_sandbox=True)
@@ -59,6 +65,8 @@ def test_saved_rich_note_renders_updates_and_opens_links_through_the_reader_brid
             box = source.evaluate('node => {const r = node.getBoundingClientRect(); return {x: r.x, y: r.y, width: r.width, height: r.height};}')
             page.mouse.move(box['x'] + min(8, box['width'] / 2), box['y'] + box['height'] / 2)
             expect(page.get_by_role('tooltip').locator('b')).to_have_text('Formatted')
+            expect(page.get_by_role('tooltip').locator('img')).to_be_visible()
+            assert page.get_by_role('tooltip').locator('img').evaluate('img => img.naturalWidth') == 200
             page.get_by_role('button', name='Show controls', exact=True).click()
             panel_button = page.get_by_role('button', name=re.compile(r'Highlights \('))
             panel_button.click()
@@ -68,6 +76,35 @@ def test_saved_rich_note_renders_updates_and_opens_links_through_the_reader_brid
             opened = page.evaluate("testCommands.filter(c => c.startsWith('incremento_pdf_open_link:'))")
             assert json.loads(opened[-1].split(':', 1)[1]) == {'cardId': 42, 'url': 'https://example.com/note'}
             assert page.url == 'http://incremento.test/web/pdf_dock.html'
+            page.evaluate("html => window.incrementoUpdatePdfHighlightNote('rich', '', html)", '<p>' + image + '</p>')
+            expect(page.get_by_role('button', name='Edit note', exact=True)).to_be_visible()
+            expect(page.locator('img')).to_have_count(1)
+            assert page.locator('img').evaluate('img => img.naturalWidth') == 200
+            page.evaluate("html => window.incrementoUpdatePdfHighlightNote('rich', '', html)",
+                          '<p>' + image.replace('height="120"', 'height="60"') + '</p>')
+            expect(page.locator('img')).to_have_attribute('height', '60')
+            assert page.locator('img').evaluate('img => Math.abs(img.getBoundingClientRect().width / img.getBoundingClientRect().height - 200/60) < .01')
+            for side in ('left', 'right'):
+                caption = 'A landmark with a recognisable outline and a short description.'
+                wrapped = image.replace('alt=""', f'alt="" style="float:{side}"')
+                page.evaluate("data => window.incrementoUpdatePdfHighlightNote('rich', data.note, data.html)",
+                              {'note': caption, 'html': '<p>' + wrapped + caption + '</p>'})
+                expect(page.locator('img')).to_have_css('float', side)
+                assert page.locator('img').evaluate('img => img.parentElement.parentElement.getBoundingClientRect().height >= img.getBoundingClientRect().height'), 'A floating image must stay inside its own note'
+            page.set_viewport_size({'width': 420, 'height': 800})
+            expect(page.locator('img')).to_have_css('float', 'none')
+            page.set_viewport_size({'width': 900, 'height': 800})
+            expect(page.locator('img')).to_have_css('float', 'right')
+            for alignment in ('left', 'center', 'right'):
+                page.evaluate("html => window.incrementoUpdatePdfHighlightNote('rich', 'Caption', html)",
+                              f'<p align="{alignment}">' + image + '</p><p>Caption</p>')
+                expect(page.locator('img').locator('..')).to_have_css('text-align', alignment)
+                assert page.locator('img').evaluate("""(img, alignment) => {
+                    const image = img.getBoundingClientRect(), paragraph = img.parentElement.getBoundingClientRect();
+                    if (alignment === 'left') return Math.abs(image.left - paragraph.left) < 2;
+                    if (alignment === 'right') return Math.abs(image.right - paragraph.right) < 2;
+                    return Math.abs((image.left + image.right) / 2 - (paragraph.left + paragraph.right) / 2) < 2;
+                }""", alignment)
             page.evaluate("window.incrementoUpdatePdfHighlightNote('rich','Changed note','<p><u>Changed</u> note</p>')")
             expect(page.locator('u').filter(has_text='Changed')).to_be_visible()
             expect(link).to_have_count(0)

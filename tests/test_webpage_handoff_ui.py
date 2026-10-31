@@ -21,11 +21,15 @@ def test_webpage_import_offers_its_saved_pdf_only_after_success(tmp_path, handof
         if outcome == "profile-switch":
             profile[0] = "Second"
         return True
+    details = {"reason": "Practise mental maths", "source": "A blog", "list_ids": [1]}
     dialog = SimpleNamespace(exec=exec_dialog, pdf_path=str(pdf), title_text="My article", tags_to_apply=["topic"],
-                             source_url="https://example.org/article", browser_handoff_completed=handoff)
+                             source_url="https://example.org/article", browser_handoff_completed=handoff,
+                             document_details=details)
     def add(*_args, **kwargs):
         assert kwargs["tags"] == ["topic"]
         assert kwargs["metadata"]["source_link"] == "https://example.org/article"
+        assert kwargs["document_details"] == details
+        assert kwargs["profile"] == "First"
         if outcome == "save-failed":
             raise OSError("Synthetic import failure")
         events.append("saved")
@@ -38,7 +42,7 @@ def test_webpage_import_offers_its_saved_pdf_only_after_success(tmp_path, handof
         return SimpleNamespace(show=lambda: events.append("result"))
     namespace = {
         "mw": SimpleNamespace(col=object()), "_ADDON_DIR": str(tmp_path),
-        "_active_profile": lambda: profile[0], "WebpageToPdfDialog": lambda _parent: dialog,
+        "_active_profile": lambda: profile[0], "WebpageToPdfDialog": lambda _parent, **_kw: dialog,
         "add_pdf_card": add, "activate_anki_window": lambda _window: events.append("focus"),
         "WebpagePdfResultDialog": result_dialog,
         "_open_pdf_card": lambda cid: events.append(("open", cid)),

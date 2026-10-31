@@ -69,9 +69,9 @@ msgstr "Clean Up Orphaned PDF Files…"
 msgid "root_menu_cleanup_orphan_videos"
 msgstr "Clean Up Orphaned Video Files…"
 
-#. Menu or action: Clean Up Unused Incremento Data…
+#. Menu or action: Clean Up Unused Data & Images…
 msgid "root_menu_cleanup_profile_data"
-msgstr "Clean Up Unused Incremento Data…"
+msgstr "Clean Up Unused Data & Images…"
 
 #. Menu or action: Clean Up Stale Progress / Search Index / OCR Rows…
 msgid "root_menu_cleanup_stale_rows"
@@ -1145,7 +1145,7 @@ msgstr "Active profile: {profile}"
 
 #. Cleanup UI: The following unused Incremento files and stale records can be cleaned:
 msgid "root_cleanup_profile_explanation"
-msgstr "The following unused Incremento files and stale records can be cleaned:"
+msgstr "The following unused files and stale Incremento records can be cleaned:"
 
 #. Cleanup UI: • PDF files: {count}
 msgid "root_cleanup_pdf_files"
@@ -1349,7 +1349,22 @@ msgid "root_menu_cleanup_pdf_snapshots"
 msgstr "Clean Up Unused PDF Screenshots…"
 
 msgid "root_pdf_snapshot_cleanup_close_add"
-msgstr "Close Add Cards before cleaning PDF screenshots so an unsaved image is not removed."
+msgstr "Close Add Cards before cleaning unused images so an unsaved image is not removed."
+
+msgid "root_cleanup_unused_images"
+msgstr "• Unused image attachments in Anki media: {count} ({size})"
+
+msgid "root_cleanup_unused_images_trash_note"
+msgstr "Unused images move to Anki's media trash. You can restore them until you empty the trash."
+
+msgid "root_unused_images_cleanup_stale"
+msgstr "The active Anki profile changed. No unused images were removed."
+
+msgid "root_unused_images_cleanup_complete"
+msgstr "Moved {count} unused images ({size}) to Anki's media trash."
+
+msgid "root_unused_images_cleanup_failed"
+msgstr "Could not clean up unused images:\n{error}"
 
 msgid "root_pdf_snapshot_cleanup_invalid_draft"
 msgstr "The saved extraction draft could not be read safely. Cleanup was cancelled."

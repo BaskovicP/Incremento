@@ -1,3 +1,5 @@
+import {hasAnnotationNote} from './annotationNote.mjs';
+
 /** Only the tooltip subscribes; pointer movement never rerenders the reader. */
 export function createPdfHighlightTooltip({schedule = run => window.requestAnimationFrame(run),
   cancel = id => window.cancelAnimationFrame(id)} = {}) {
@@ -10,7 +12,7 @@ export function createPdfHighlightTooltip({schedule = run => window.requestAnima
     getSnapshot: () => value,
     show(highlight, event) {
       const note = String(highlight?.note || '').trim();
-      if (!note) return;
+      if (!hasAnnotationNote(highlight)) return;
       stop(); publish({id: String(highlight.id || ''), note,
         ...(highlight.note_html ? {html: String(highlight.note_html)} : {}),
         x: Number(event?.clientX || 0), y: Number(event?.clientY || 0)});

@@ -19,6 +19,7 @@ import {DEFAULT_PDF_LINK_PREVIEW_ZOOM, normalizePdfLinkPreviewZoom, normalizePdf
 import { normalizePdfHighlightRects, pdfHighlightAtClientPoint } from './pdfHighlightRects.mjs';
 import { HL_COLORS, HL_SOLID, highlightSolidColor, normalizeHighlightColor } from './highlightColors.mjs';
 import {ANNOTATION_STYLES, annotationStyle, withAnnotationStyle} from './annotationStyles.mjs';
+import {hasAnnotationNote} from './annotationNote.mjs';
 import { pushPdfLinkHistory, takePdfLinkHistory } from './pdfLinkHistory.mjs';
 import { capturePdfFindStartPage, pdfFindReturnDelta } from './pdfFindHistory.mjs';
 import { pdfAnchorScrollRatio } from './pdfAnchorLocation.mjs';
@@ -710,7 +711,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     ? (highlightIndex.sortedByPage.get(page) || NO_HIGHLIGHTS)
     : sortedHighlights;
   const highlightsForPanel = useMemo(() => highlightsNotesOnly
-    ? scopedHighlightsForPanel.filter((h) => String(h.note || '').trim())
+    ? scopedHighlightsForPanel.filter(hasAnnotationNote)
     : scopedHighlightsForPanel, [scopedHighlightsForPanel, highlightsNotesOnly]);
   const missingCardHighlightCount = highlightIndex.missingCards;
   const highlightPanelPage = pageWindow(highlightsForPanel.length, highlightPanelOffset);
@@ -3343,6 +3344,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {highlightsForPanel.slice(highlightPanelPage.start, highlightPanelPage.end).map((hl) => {
                 const note = String(hl.note || '').trim();
+                const hasNote = hasAnnotationNote(hl);
                 const excerpt = String(hl.text || tr('reader_no_text')).trim();
                 const linkedNoteId = Number(hl.linked_note_id || 0);
                 const hasLinkedCard = Number.isInteger(linkedNoteId) && linkedNoteId > 0;
@@ -3424,7 +3426,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                         {hasLinkedCard ? tr('reader_preview_card') : tr('reader_create_card')}
                       </button>}
                       <button
-                        title={note ? tr('reader_edit_note_tooltip') : tr('reader_add_note_tooltip')}
+                        title={hasNote ? tr('reader_edit_note_tooltip') : tr('reader_add_note_tooltip')}
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
@@ -3441,7 +3443,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                           flexShrink: 0,
                         }}
                       >
-                        {note ? tr('reader_edit_note') : tr('reader_add_note')}
+                        {hasNote ? tr('reader_edit_note') : tr('reader_add_note')}
                       </button>
                       <button
                         title={tr('reader_delete_highlight')}
@@ -3464,7 +3466,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                         {tr('reader_delete')}
                       </button>
                     </div>
-                    {note && highlightsNotesOnly ? (
+                    {hasNote && highlightsNotesOnly ? (
                       <>
                         <div style={{ fontSize: 12, lineHeight: 1.35, color: 'rgb(191,219,254)' }}>
                           <AnnotationNote note={note} html={hl.note_html} onOpenLink={url => window.pycmd(
@@ -3479,7 +3481,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                         <div style={{ fontSize: 12, lineHeight: 1.35 }}>
                           {excerpt}
                         </div>
-                        {note && (
+                        {hasNote && (
                           <div style={{ fontSize: 12, lineHeight: 1.35, color: 'rgb(147,197,253)', marginTop: 6 }}>
                             <AnnotationNote note={note} html={hl.note_html} onOpenLink={url => window.pycmd(
                               'incremento_pdf_open_link:' + JSON.stringify({cardId: cardIdRef.current, url}))} />

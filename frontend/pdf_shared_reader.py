@@ -294,12 +294,26 @@ class SharedPdfReader:
         highlight = next((row for row in self.storage('load_highlights') if row['id'] == highlight_id), None)
         if not highlight:
             return
-        dialog = s.HighlightNoteDialog(self.owner, title=s.t('reader_pdf_highlight_note_title'),
-            excerpt=str(highlight.get('text') or ''), current_note=str(highlight.get('note') or ''),
-            current_note_html=str(highlight.get('note_html') or ''))
-        if dialog.exec() and self.current():
-            self.storage('update_highlight_note', highlight_id, dialog.note_text(), note_html=dialog.note_html())
+        profile, card_id, filename = self.state.profile, self.state.card_id, self.state.filename
+        collection = getattr(getattr(s, 'mw', None), 'col', None)
+        expected = (str(highlight.get('note') or ''), str(highlight.get('note_html') or ''))
+
+        def is_current():
+            return (self.current() and self.state.card_id == card_id and self.state.filename == filename
+                    and getattr(getattr(s, 'mw', None), 'col', None) is collection)
+
+        def save(dialog):
+            updated = s.update_highlight_note(s._ADDON_DIR, profile, card_id, highlight_id,
+                dialog.note_text(), note_html=dialog.note_html(), expected_note=expected)
+            if updated is None:
+                return s.t('reader_note_editor_changed')
             self.on_change('highlights')
+            return None
+
+        s.HighlightNoteDialog.show_for_annotation(getattr(s, 'mw', self.owner),
+            key=(s._ADDON_DIR, profile, id(collection), 'pdf', card_id, highlight_id),
+            title=s.t('reader_pdf_highlight_note_title'), excerpt=str(highlight.get('text') or ''),
+            current_note=expected[0], current_note_html=expected[1], is_current=is_current, save=save)
 
     def citation_page(self, page):
         label = self.page_labels[page - 1] if 0 < page <= len(self.page_labels) else ''

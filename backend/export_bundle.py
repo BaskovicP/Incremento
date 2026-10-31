@@ -10,6 +10,7 @@ from pathlib import Path
 
 
 TRANSIENT_USER_FILE_NAMES = {
+    "mcp_token",
     ".ds_store",
     "lock",
     "lockfile",
@@ -56,6 +57,8 @@ def should_skip_user_file(rel_path: str) -> bool:
         return True
 
     name = parts[-1] if parts else ""
+    if name.casefold().startswith(".mcp-"):
+        return True
     if name.casefold() == "simpletex_credentials.json" or name.casefold().startswith(".simpletex_credentials-"):
         return True
     return name.casefold() in TRANSIENT_USER_FILE_NAMES

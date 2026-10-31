@@ -407,6 +407,8 @@ class IncrementoSettingsDialog(QDialog):
         current_prefer_web_card_resume_in_original_page: bool = True,
         current_track_web_window_with_extension: bool = True,
         current_companion_browser: str = "chrome",
+        current_mcp_enabled: bool = False,
+        current_mcp_allow_writes: bool = False,
         current_web_search_engine: str = "google",
         current_search_remember_logins: bool = False,
         current_use_fail_pass_on_items: bool = True,
@@ -1378,6 +1380,16 @@ class IncrementoSettingsDialog(QDialog):
         )
         advanced_hint.setWordWrap(True)
         advanced_layout.addWidget(advanced_hint)
+        advanced_layout.addWidget(_section_title(t("mcp_connections_title")))
+        self._mcp_enabled_cb = QCheckBox(t("mcp_connections_enable"))
+        self._mcp_enabled_cb.setChecked(current_mcp_enabled)
+        advanced_layout.addWidget(self._mcp_enabled_cb)
+        self._mcp_writes_cb = QCheckBox(t("mcp_connections_writes"))
+        self._mcp_writes_cb.setChecked(current_mcp_allow_writes)
+        advanced_layout.addWidget(self._mcp_writes_cb)
+        mcp_hint = QLabel(t("mcp_connections_settings_hint"))
+        mcp_hint.setWordWrap(True)
+        advanced_layout.addWidget(mcp_hint)
 
         advanced_layout.addWidget(_section_title(t('settings_profile_sqlite_database')))
 
@@ -2129,6 +2141,14 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def companion_browser(self) -> str:
         return configured_companion_browser({"companion_browser": self._companion_browser_combo.currentData()})
+
+    @property
+    def mcp_enabled(self) -> bool:
+        return self._mcp_enabled_cb.isChecked()
+
+    @property
+    def mcp_allow_writes(self) -> bool:
+        return self._mcp_writes_cb.isChecked()
 
     @property
     def web_search_engine(self) -> str:

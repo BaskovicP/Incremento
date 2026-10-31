@@ -109,13 +109,17 @@ def test_text_mark_style_round_trips_native_pdf_and_note_edits(tmp_path, style, 
     assert len(native_rows(filename)) == 1
 
 
-def test_rich_note_survives_native_sync_while_outside_text_edit_clears_stale_formatting(tmp_path):
+@pytest.mark.parametrize('note,markup', [
+    ('Bold note', '<p><b>Bold</b> note</p>'),
+    ('', '<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAD0lEQVR4nGP4z8DA8J8BAAf/Af8Bf4mnAAAAAElFTkSuQmCC" width="2" height="1" alt=""></p>'),
+])
+def test_rich_note_survives_native_sync_while_outside_text_edit_clears_stale_formatting(tmp_path, note, markup):
     filename = pdf_file(tmp_path)
-    highlight = {**local_highlight('Bold note'), 'note_html': '<p><b>Bold</b> note</p>'}
+    highlight = {**local_highlight(note), 'note_html': markup}
     add_highlight(str(tmp_path), PROFILE, CARD, highlight)
     sync(tmp_path)
     sync(tmp_path)
-    assert native_rows(filename)[0]['note'] == 'Bold note'
+    assert native_rows(filename)[0]['note'] == note
     assert load_highlights(str(tmp_path), PROFILE, CARD)[0]['note_html'] == highlight['note_html']
 
     def edit(doc):

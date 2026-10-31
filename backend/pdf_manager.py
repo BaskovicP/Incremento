@@ -231,13 +231,15 @@ def _copy_to_pdf_dir(
     *,
     profile: str | None = None,
     created_relpath_cb: Callable[[str], None] | None = None,
+    addon_dir: str | None = None,
 ) -> str:
     """Copy *pdf_path* into the profile PDF dir; return the stored filename.
 
     Stored filenames always get a UUID suffix so repeated imports never reuse
     an older file just because the basename matches.
     """
-    pdf_dir = get_pdf_dir(profile)
+    pdf_dir = get_pdf_dir(profile) if addon_dir is None else str(_paths.get_pdf_dir(addon_dir,profile or _paths.get_active_profile()))
+    os.makedirs(pdf_dir,exist_ok=True)
     raw_name = os.path.basename(pdf_path)
     stem, ext = os.path.splitext(raw_name)
     stem = _safe_pdf_stem(stem, fallback="document")
@@ -1491,6 +1493,8 @@ def replace_pdf_card_file(
     pdf_path: str,
     *,
     profile: str | None = None,
+    created_relpath_cb: Callable[[str],None] | None = None,
+    allow_qt: bool = True,
 ) -> str:
     """Copy a replacement PDF into storage and relink an existing PDF card."""
     ensure_pdf_note_type(col)
@@ -1507,10 +1511,14 @@ def replace_pdf_card_file(
         raise RuntimeError(t("backend_document_note_missing", kind="PDF"))
 
     original_filename = str(note["PDF_Filename"] or "").strip()
-    media_filename = _copy_to_pdf_dir(pdf_path, profile=profile_name)
-    dest_path = os.path.join(get_pdf_dir(profile_name), media_filename)
+    if created_relpath_cb is None:
+        media_filename = _copy_to_pdf_dir(pdf_path, profile=profile_name)
+        dest_path = os.path.join(get_pdf_dir(profile_name), media_filename)
+    else:
+        media_filename=_copy_to_pdf_dir(pdf_path,profile=profile_name,addon_dir=addon_dir,created_relpath_cb=created_relpath_cb)
+        dest_path=str(_paths.get_pdf_dir(addon_dir,profile_name)/media_filename)
     try:
-        page_texts = extract_pdf_pages_text(dest_path)
+        page_texts = extract_pdf_pages_text(dest_path) if allow_qt else extract_pdf_pages_text(dest_path,allow_qt=False)
         cover_media = render_pdf_cover_media(
             col,
             dest_path,

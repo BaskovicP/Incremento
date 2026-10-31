@@ -2221,14 +2221,15 @@ def _choose_pdf_highlight_color(data: dict) -> None:
 def _edit_pdf_highlight_note(hl_id: str) -> None:
     card_id = current_pdf_card_id()
     profile = _active_profile()
-    generation = _pdf_annotation_generation
+    filename, dock = _current_pdf_filename, _pdf_dock
+    collection = getattr(mw, 'col', None)
     if card_id is None:
         showInfo(t("reader_pdf_highlight_card_missing"))
         return
     highlight = next(
         (
             row
-            for row in load_highlights(_ADDON_DIR, _active_profile(), int(card_id))
+            for row in load_highlights(_ADDON_DIR, profile, int(card_id))
             if str(row.get("id") or "") == str(hl_id or "")
         ),
         None,
@@ -2236,45 +2237,39 @@ def _edit_pdf_highlight_note(hl_id: str) -> None:
     if not highlight:
         showInfo(t("reader_pdf_highlight_missing"))
         return
-    dialog = HighlightNoteDialog(
-        mw,
-        title=t("reader_pdf_highlight_note_title"),
-        excerpt=str(highlight.get("text") or ""),
-        current_note=str(highlight.get("note") or ""),
-        current_note_html=str(highlight.get("note_html") or ""),
-    )
-    if not dialog.exec():
-        return
-    if _active_profile() != profile or current_pdf_card_id() != card_id or _pdf_annotation_generation != generation:
-        return
-    try:
-        updated = update_highlight_note(
-            _ADDON_DIR,
-            profile,
-            int(card_id),
-            str(highlight.get("id") or ""),
-            dialog.note_text(),
-            note_html=dialog.note_html(),
-        )
-    except Exception as exc:
-        showInfo(t("reader_pdf_highlight_note_save_failed", error=exc))
-        return
-    if not updated:
-        showInfo(t("reader_pdf_highlight_update_failed"))
-        return
-    escaped_id = json.dumps(str(updated.get("id") or ""))
-    escaped_note = json.dumps(str(updated.get("note") or ""))
-    escaped_html = json.dumps(str(updated.get("note_html") or ""))
-    try:
-        if _pdf_dock is not None:
-            _pdf_dock._view.page().runJavaScript(
-                "window.incrementoUpdatePdfHighlightNote && "
-                f"window.incrementoUpdatePdfHighlightNote({escaped_id}, {escaped_note}, {escaped_html});"
+    expected = (str(highlight.get('note') or ''), str(highlight.get('note_html') or ''))
+    target_id = str(highlight.get('id') or '')
+
+    def is_current():
+        return (_active_profile() == profile and getattr(mw, 'col', None) is collection
+                and current_pdf_card_id() == card_id and _current_pdf_filename == filename and _pdf_dock is dock)
+
+    def save(dialog):
+        try:
+            updated = update_highlight_note(_ADDON_DIR, profile, int(card_id), target_id,
+                dialog.note_text(), note_html=dialog.note_html(), expected_note=expected)
+        except Exception as exc:
+            return t('reader_pdf_highlight_note_save_failed', error=exc)
+        if not updated:
+            return t('reader_note_editor_changed')
+        escaped_id = json.dumps(str(updated.get('id') or ''))
+        escaped_note = json.dumps(str(updated.get('note') or ''))
+        escaped_html = json.dumps(str(updated.get('note_html') or ''))
+        try:
+            dock._view.page().runJavaScript(
+                'window.incrementoUpdatePdfHighlightNote && '
+                f'window.incrementoUpdatePdfHighlightNote({escaped_id}, {escaped_note}, {escaped_html});'
             )
-    except Exception:
-        pass
-    tooltip(t("reader_pdf_highlight_note_saved"))
-    _schedule_pdf_annotation_sync()
+        except Exception:
+            pass
+        tooltip(t('reader_pdf_highlight_note_saved'))
+        _schedule_pdf_annotation_sync()
+        return None
+
+    HighlightNoteDialog.show_for_annotation(mw,
+        key=(_ADDON_DIR, profile, id(collection), 'pdf', int(card_id), target_id),
+        title=t('reader_pdf_highlight_note_title'), excerpt=str(highlight.get('text') or ''),
+        current_note=expected[0], current_note_html=expected[1], is_current=is_current, save=save)
 
 
 def _current_pdf_highlight_by_id(hl_id: str) -> dict | None:

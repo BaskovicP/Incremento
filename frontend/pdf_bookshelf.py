@@ -34,6 +34,7 @@ from aqt.qt import (
     QIcon,
     QImageReader,
     QInputDialog,
+    QItemSelectionModel,
     QLabel,
     QLineEdit,
     QListView,
@@ -47,6 +48,7 @@ from aqt.qt import (
     QPushButton,
     QRect,
     QSize,
+    QSignalBlocker,
     QStyle,
     QStyleOptionViewItem,
     QStyledItemDelegate,
@@ -1468,6 +1470,9 @@ class _DocumentBookshelfDialog(QDialog):
         self._book_current_key = None
         self._library_scope: str | int = "all"
         self._library_lists = []
+        self._list_update_pending = False
+        self._selection_revision = 0
+        self._selection_restore_ids: set[int] = set()
         self._thumbnail_generation = 0
         self._thumbnail_queue: deque[tuple[QListWidgetItem, _BookshelfEntry]] = deque()
         self._thumbnail_cache = ByteLRU(24 * 1024 * 1024)
@@ -1530,7 +1535,6 @@ class _DocumentBookshelfDialog(QDialog):
         layout.addWidget(self._splitter, 1)
         sidebar = QWidget()
         sidebar.setMinimumWidth(150)
-        sidebar.setMaximumWidth(235)
         side_layout = QVBoxLayout(sidebar)
         side_layout.setContentsMargins(0, 0, 8, 0)
         side_heading = QHBoxLayout()
@@ -1682,7 +1686,15 @@ class _DocumentBookshelfDialog(QDialog):
             background_lightness
         )
         self._count_label.setStyleSheet(f"color: {muted_color};")
-        layout.addWidget(self._count_label)
+        count_row = QHBoxLayout()
+        count_row.addWidget(self._count_label, 1)
+        self._add_to_list_button = QPushButton(t("reader_library_add_selected_to_list"))
+        self._add_to_list_button.setAutoDefault(False)
+        self._add_to_list_button.setToolTip(t("reader_library_multi_select_hint"))
+        qconnect(self._add_to_list_button.clicked, self._add_selected_to_list)
+        count_row.addWidget(self._add_to_list_button)
+        self._add_to_list_button.setVisible(not self._selection_only)
+        layout.addLayout(count_row)
 
         self._list = QListWidget()
         self._list.setViewMode(QListView.ViewMode.IconMode)
@@ -1695,7 +1707,9 @@ class _DocumentBookshelfDialog(QDialog):
         self._list.setSpacing(8)
         self._list.setIconSize(QSize(_PREVIEW_WIDTH, _PREVIEW_HEIGHT))
         self._list.setGridSize(QSize(_TILE_WIDTH, _TILE_HEIGHT))
-        self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection if self._selection_only
+                                    else QAbstractItemView.SelectionMode.ExtendedSelection)
+        self._list.setAccessibleDescription(t("reader_library_multi_select_hint"))
         self._list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list.setStyleSheet(
@@ -1797,6 +1811,7 @@ class _DocumentBookshelfDialog(QDialog):
         qconnect(self._list.itemActivated, self._accept_item)
         qconnect(self._list.currentItemChanged, self._update_option_availability)
         qconnect(self._list.currentItemChanged, self._update_book_details)
+        qconnect(self._list.itemSelectionChanged, self._book_selection_changed)
         qconnect(self._list.customContextMenuRequested, self._show_context_menu)
         qconnect(
             self.finished,
@@ -1909,19 +1924,33 @@ class _DocumentBookshelfDialog(QDialog):
     def _entry_details(entry):
         return {"reason": entry.saved_reason, "source": entry.saved_source, "list_ids": list(entry.list_ids)}
 
+    def _selected_library_entries(self) -> list[_BookshelfEntry]:
+        return [entry for item in self._list.selectedItems()
+                if isinstance(entry := item.data(Qt.ItemDataRole.UserRole), _BookshelfEntry)]
+
+    def _book_selection_changed(self) -> None:
+        self._selection_revision += 1
+        self._selection_restore_ids.clear()
+        self._update_book_details()
+
     def _update_book_details(self, *_args) -> None:
-        entry = self._selected_entry()
+        selected = self._selected_library_entries()
+        entry = self._selected_entry() if len(selected) == 1 else None
         self._book_current_key = (entry.kind.lower(), entry.source_filename) if entry else None
-        enabled = bool(entry and entry.source_filename and self._library_available)
+        enabled = bool(entry and entry.source_filename and self._library_available and not self._list_update_pending)
         self._book_details.setEnabled(enabled)
-        self._book_title.setText(entry.title if entry else t("reader_library_select_book"))
-        self._book_kind.setText(entry.kind if entry else "")
-        item = self._list.currentItem()
-        self._book_cover.setPixmap(item.icon().pixmap(QSize(70, 96)) if item else QPixmap())
+        self._book_title.setText(entry.title if entry else
+            tn("reader_library_selected_books", len(selected)) if selected else t("reader_library_select_book"))
+        self._book_kind.setText(entry.kind if entry else t("reader_library_multi_select_hint") if selected else "")
+        self._book_kind.setWordWrap(True)
+        item = self._list.selectedItems()[0] if entry else None
+        self._book_cover.setPixmap(item.icon().pixmap(QSize(70, 96)) if item and entry else QPixmap())
         self._book_details.set_details(self._book_drafts.get(self._book_current_key, self._entry_details(entry))
                                        if entry else {})
         self._update_book_save_state()
         self._open_button.setEnabled(entry is not None)
+        self._add_to_list_button.setEnabled(bool(selected) and all(e.source_filename for e in selected)
+                                           and self._library_current() and not self._list_update_pending)
 
     def _book_details_changed(self) -> None:
         entry = self._selected_entry()
@@ -1943,14 +1972,15 @@ class _DocumentBookshelfDialog(QDialog):
             self._book_details.details()
         except ValueError:
             valid = False
-        self._save_book_button.setEnabled(changed and valid and self._library_current())
-        self._book_status.setText(t("reader_library_invalid_details") if not valid else
+        self._save_book_button.setEnabled(changed and valid and self._library_current() and not self._list_update_pending)
+        self._book_status.setText(t("reader_library_grouping") if self._list_update_pending else
+                                  t("reader_library_invalid_details") if not valid else
                                   t("reader_library_unsaved") if changed else
                                   t("reader_library_saved") if self._book_current_key else "")
 
     def _save_book_details(self, *_args) -> None:
         key = self._book_current_key
-        if not key or not self._library_current() or key not in self._book_drafts:
+        if not key or not self._library_current() or key not in self._book_drafts or self._list_update_pending:
             return
         try:
             details = _document_lists.normalize_document_details(self._book_drafts[key])
@@ -1966,6 +1996,60 @@ class _DocumentBookshelfDialog(QDialog):
         self._refresh_library_sidebar()
         self._refresh()
 
+    def _add_selected_to_list(self, *_args) -> None:
+        entries = self._selected_library_entries()
+        if not entries or not self._library_current() or self._list_update_pending:
+            return
+        if not self._library_lists:
+            self._create_library_list()
+        if not self._library_lists or not self._library_current():
+            return
+        name, accepted = QInputDialog.getItem(self, t("reader_library_add_selected_to_list"),
+            t("reader_library_lists"), [name for _key, name in self._library_lists], 0, False)
+        if not accepted or not self._library_current():
+            return
+        try:
+            list_id = next(key for key, label in self._library_lists if label == name)
+            documents = tuple(_document_lists.document_key(e.kind, e.source_filename) for e in entries)
+            for entry in entries:
+                details = self._book_drafts.get((entry.kind.lower(), entry.source_filename), self._entry_details(entry))
+                _document_lists.normalize_document_details({"list_ids": sorted(set(details["list_ids"]) | {list_id})})
+        except (ValueError, StopIteration):
+            tooltip(t("reader_library_group_error"), parent=self)
+            return
+        self._list_update_pending = True
+        self._update_book_details()
+        addon_dir, profile, cancel = self._addon_dir, self._profile, self._pdf_metadata_cancelled
+
+        def work():
+            return _document_lists.add_documents_to_list(addon_dir, profile, documents, list_id, cancel_event=cancel)
+
+        def complete(future):
+            self._list_update_pending = False
+            if not self._library_current():
+                return
+            try:
+                keys = set(future.result())
+            except Exception:
+                self._update_book_details()
+                tooltip(t("reader_library_group_error"), parent=self)
+                return
+            for key, draft in self._book_drafts.items():
+                if key in keys:
+                    draft["list_ids"] = sorted(set(draft["list_ids"]) | {list_id})
+            names = dict(self._library_lists)
+            self._entries = [replace(e, list_ids=tuple(sorted(set(e.list_ids) | {list_id})),
+                list_names=tuple(names[i] for i in sorted(set(e.list_ids) | {list_id}) if i in names))
+                if (e.kind.lower(), e.source_filename) in keys else e for e in self._entries]
+            self._refresh()
+
+        try:
+            mw.taskman.run_in_background(work, complete, uses_collection=False)
+        except Exception:
+            self._list_update_pending = False
+            self._update_book_details()
+            tooltip(t("reader_library_group_error"), parent=self)
+
     def done(self, result) -> None:
         drafts = getattr(self, "_book_drafts", {})
         if drafts and self._library_current():
@@ -1980,6 +2064,9 @@ class _DocumentBookshelfDialog(QDialog):
                 self._reference_mode = "main"
                 return
             if choice == QMessageBox.StandardButton.Save:
+                if self._list_update_pending:
+                    tooltip(t("reader_library_grouping"), parent=self)
+                    return
                 try:
                     for key, details in list(drafts.items()):
                         _document_lists.save_document_details(self._addon_dir, self._profile, *key, details)
@@ -2321,6 +2408,9 @@ class _DocumentBookshelfDialog(QDialog):
 
     def _refresh(self, *_args) -> None:
         current = self._list.currentItem()
+        selected_card_ids = {entry.card_id for entry in self._selected_library_entries()}
+        selected_card_ids.update(self._selection_restore_ids)
+        selection_revision = self._selection_revision
         current_entry = current.data(Qt.ItemDataRole.UserRole) if current else None
         preferred_card_id = (
             current_entry.card_id if isinstance(current_entry, _BookshelfEntry)
@@ -2328,7 +2418,9 @@ class _DocumentBookshelfDialog(QDialog):
         )
         if self._sort_reset_selection:
             preferred_card_id = None
+            selected_card_ids.clear()
         self._sort_reset_selection = False
+        self._selection_restore_ids = selected_card_ids.copy()
         kind = self._current_kind()
         visible_entries = _filter_bookshelf_entries(
             self._entries,
@@ -2355,7 +2447,9 @@ class _DocumentBookshelfDialog(QDialog):
         self._thumbnail_queue.clear()
         self._thumbnail_visible.clear()
         self._thumbnail_attempted.clear()
+        blocker = QSignalBlocker(self._list)
         self._list.clear()
+        blocker.unblock()
         reason_view = hasattr(self, "_view_combo") and self._view_combo.currentData() == "reasons"
         if hasattr(self, "_view_combo"):
             self._list.setViewMode(QListView.ViewMode.ListMode if reason_view else QListView.ViewMode.IconMode)
@@ -2370,6 +2464,7 @@ class _DocumentBookshelfDialog(QDialog):
             if (generation != self._thumbnail_generation or self._pdf_metadata_cancelled.is_set()
                     or str(_active_profile() or "") != self._profile):
                 return
+            blocker = QSignalBlocker(self._list)
             for entry in visible_entries[offset:offset + 40]:
                 metric_text = ""
                 if counts is not None:
@@ -2453,8 +2548,11 @@ class _DocumentBookshelfDialog(QDialog):
                 item.setToolTip(item_tooltip)
                 item.setIcon(placeholder)
                 self._list.addItem(item)
+                if entry.card_id in selected_card_ids and selection_revision == self._selection_revision:
+                    item.setSelected(True)
                 if entry.card_id == preferred_card_id:
                     selected_item = item
+            blocker.unblock()
             if offset + 40 < len(visible_entries):
                 QTimer.singleShot(0, lambda: populate(offset + 40))
                 return
@@ -2464,9 +2562,13 @@ class _DocumentBookshelfDialog(QDialog):
             if selected_item is None and self._list.count():
                 selected_item = self._list.item(0)
             if selected_item is not None:
-                self._list.setCurrentItem(selected_item)
+                self._list.setCurrentItem(selected_item, QItemSelectionModel.SelectionFlag.NoUpdate)
+                if not self._list.selectedItems() and selection_revision == self._selection_revision:
+                    selected_item.setSelected(True)
                 self._list.scrollToItem(selected_item)
             self._update_option_availability()
+            self._update_book_details()
+            self._selection_restore_ids.clear()
 
             self._thumbnail_timer.start()
 
@@ -2491,9 +2593,18 @@ class _DocumentBookshelfDialog(QDialog):
         entry = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
         if not isinstance(entry, _BookshelfEntry):
             return
-        self._list.setCurrentItem(item)
+        if item.isSelected():
+            self._list.setCurrentItem(item, QItemSelectionModel.SelectionFlag.NoUpdate)
+        else:
+            self._list.setCurrentItem(item)
 
         menu = QMenu(self)
+        if len(self._selected_library_entries()) > 1:
+            action = menu.addAction(t("reader_library_add_selected_to_list"))
+            action.setEnabled(self._add_to_list_button.isEnabled())
+            qconnect(action.triggered, self._add_selected_to_list)
+            menu.exec(self._list.viewport().mapToGlobal(position))
+            return
         reveal_key = (
             "reader_pdf_sync_reveal_finder" if sys.platform == "darwin" else
             "reader_pdf_sync_reveal_explorer" if sys.platform.startswith("win") else
@@ -2876,18 +2987,22 @@ class _DocumentBookshelfDialog(QDialog):
         return self._reference_mode
 
     def _accept_item(self, item: QListWidgetItem) -> None:
+        if len(self._selected_library_entries()) > 1:
+            return
         entry = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
         if isinstance(entry, _BookshelfEntry):
             self._list.setCurrentItem(item)
             self.accept()
 
     def _accept_current(self) -> None:
-        item = self._list.currentItem()
-        if item is not None:
-            self._accept_item(item)
+        items = self._list.selectedItems()
+        if len(items) == 1:
+            self._accept_item(items[0])
 
     def _selected_entry(self) -> _BookshelfEntry | None:
         item = self._list.currentItem()
+        if item is None or not item.isSelected():
+            item = next(iter(self._list.selectedItems()), None)
         entry = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
         return entry if isinstance(entry, _BookshelfEntry) else None
 

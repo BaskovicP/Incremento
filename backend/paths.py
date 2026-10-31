@@ -97,6 +97,29 @@ def get_extraction_draft_path(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "extraction_draft.json"
 
 
+def get_mcp_token_path(addon_dir: str, profile: str) -> Path:
+    return get_user_files_dir(addon_dir, profile) / "mcp_token"
+
+
+def get_mcp_history_path(addon_dir: str, profile: str) -> Path:
+    return get_user_files_dir(addon_dir, profile) / "mcp_history.json"
+
+
+def get_mcp_runtime_state_path(addon_dir: str, profile: str) -> Path:
+    return get_user_files_dir(addon_dir, profile) / "mcp_runtime_state.json"
+
+
+def get_mcp_undo_files_dir(addon_dir: str, profile: str) -> Path:
+    return get_user_files_dir(addon_dir, profile) / "mcp_undo_files"
+
+
+def get_mcp_library_path(addon_dir: str, profile: str, kind: str) -> Path:
+    names={"semantic":"mcp_semantic_index.json","smart_lists":"mcp_smart_lists.json","ocr":"mcp_ocr_sources.json"}
+    if kind not in names:
+        raise ValueError("Unknown MCP library store.")
+    return get_user_files_dir(addon_dir, profile) / names[kind]
+
+
 def get_simpletex_credentials_path(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "simpletex_credentials.json"
 

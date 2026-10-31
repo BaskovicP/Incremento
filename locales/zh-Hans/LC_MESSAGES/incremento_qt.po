@@ -2218,3 +2218,102 @@ msgstr "搜索已取消。"
 
 msgid "search_all_failed"
 msgstr "搜索失败：{error}"
+
+msgid "mcp_connections_title"
+msgstr "AI 连接…"
+
+msgid "mcp_connections_hint"
+msgstr "将本地 Codex 或 Claude 客户端连接到当前 Anki 配置。请求的文本会发送给该客户端及其 AI 提供商。Anki 必须保持打开。私有 MCP 撤销历史会在重启 Anki 后保留。"
+
+msgid "mcp_connections_enable"
+msgstr "启用本地 MCP 连接"
+
+msgid "mcp_connections_writes"
+msgstr "允许可撤销的 MCP 更改"
+
+msgid "mcp_connections_apply"
+msgstr "应用连接设置"
+
+msgid "mcp_connections_token"
+msgstr "私密连接令牌"
+
+msgid "mcp_connections_copy_token"
+msgstr "复制令牌"
+
+msgid "mcp_connections_client_setup"
+msgstr "Codex 和 Claude 设置"
+
+msgid "mcp_connections_export"
+msgstr "保存 Claude Desktop 连接器…"
+
+msgid "mcp_connections_failed"
+msgstr "无法配置连接。请检查端口 8767 是否可用及配置目录是否可写。导出连接器时请选择新文件名。"
+
+msgid "mcp_connections_ready"
+msgstr "连接地址：http://127.0.0.1:8767/mcp。访问仅限当前配置。修改权限后请重新连接客户端。"
+
+msgid "mcp_connections_disabled"
+msgstr "MCP 连接已禁用。"
+
+msgid "mcp_connections_steps"
+msgstr "Codex：将以下条目合并到用户 MCP 配置。Claude Code：运行下方注册命令一次。Claude Desktop：保存连接器，在 Settings → Extensions 中安装 .mcpb 文件，并在提示时粘贴令牌。请勿将凭据放入共享文件。"
+
+msgid "mcp_connections_exported"
+msgstr "连接器已保存。请在 Claude Desktop 中安装并粘贴复制的令牌。"
+
+msgid "mcp_connections_settings_hint"
+msgstr "保存后，打开 Incremento → AI 连接… 获取 Codex 配置和 Claude Desktop 连接器。连接需要当前配置，且仅限本机。"
+
+msgid "mcp_connections_bundle_filter"
+msgstr "MCP 连接包 (*.mcpb)"
+
+msgid "mcp_connections_copy_config"
+msgstr "复制配置"
+
+msgid "mcp_connections_copy_command"
+msgstr "复制命令"
+
+msgid "mcp_connections_codex_config"
+msgstr "Codex MCP 配置"
+
+msgid "mcp_connections_claude_command"
+msgstr "Claude Code 注册命令"
+
+msgid "mcp_connections_codex_steps"
+msgstr "将这份完整设置提示复制到 Codex 或可访问本机的助手中。提示包含配置，并要求助手代为应用和验证。"
+
+msgid "mcp_connections_claude_code_steps"
+msgstr "将这份完整设置提示复制到 Claude Code 或可访问本机的助手中。提示包含注册命令，并要求助手代为运行和验证。"
+
+msgid "mcp_connections_claude_desktop_steps"
+msgstr "1. 保存连接器，在 Claude Desktop 中通过 Settings → Extensions → Advanced settings → Install Extension 安装 .mcpb 文件。\n2. 复制下方令牌并在提示时粘贴。\n3. 重新连接 Claude Desktop。"
+
+msgid "mcp_connections_copy_setup_prompt"
+msgstr "复制设置提示"
+
+msgid "mcp_connections_codex_prompt"
+msgstr "Codex 设置提示"
+
+msgid "mcp_connections_claude_code_prompt"
+msgstr "Claude Code 设置提示"
+
+msgid "mcp_connections_codex_setup_prompt"
+msgstr "在本机为 Codex 配置本地 Incremento MCP 服务器。请使用本地文件或终端工具立即完成设置，不要只解释操作步骤。\n\n1. 如果设置了 CODEX_HOME，请使用 $CODEX_HOME/config.toml；否则使用 ~/.codex/config.toml。先读取现有文件，私密备份，并保留所有无关设置和 MCP 服务器。仅使用下方配置添加或替换 mcp_servers.incremento 条目。确保 TOML 有效且没有重复表。\n2. 保持本地连接。保密令牌，不要在回复中重复。保留现有沙盒和审批设置。\n3. 验证保存的配置。如果本地工具允许，检查经过身份验证的 MCP 连接并调用 get_context，仅执行读取操作。设置期间不要修改 Anki 笔记、标签、书单或计划。\n4. 如果支持，请刷新 MCP 连接。如果仍需重新连接客户端或在 Anki 中操作，请说明确切的剩余步骤。仅报告实际完成和验证的工作。\n\n如果没有本地计算机访问权限，请说明无法在当前聊天中修改本机配置，并让我将同一提示粘贴到本地助手中。不要声称设置已经完成。\n\n配置：\n```toml\n{configuration}```"
+
+msgid "mcp_connections_claude_code_setup_prompt"
+msgstr "在本机为 Claude Code 配置本地 Incremento MCP 服务器。请使用本地终端工具立即运行下方注册命令，不要只解释操作步骤。\n\n1. 使用下方命令将 Incremento 注册到 Claude Code 的私有用户范围。如果该范围已有 incremento 注册，仅更新这一注册，保留其他所有服务器和设置。如果 Claude Code CLI 不可用，请报告缺少的前提条件。\n2. 保持本地连接。保密令牌，不要在回复中重复。保留现有沙盒和审批设置。\n3. 验证注册。如果本地工具允许，检查经过身份验证的 MCP 连接并调用 get_context，仅执行读取操作。设置期间不要修改 Anki 笔记、标签、书单或计划。\n4. 如果支持，请刷新 MCP 连接。如果仍需重新连接客户端或在 Anki 中操作，请说明确切的剩余步骤。仅报告实际完成和验证的工作。\n\n如果没有本地计算机访问权限，请说明无法在当前聊天中对本机运行设置，并让我将同一提示粘贴到本地助手中。不要声称设置已经完成。\n\n注册命令：\n```sh\n{command}\n```"
+
+msgid "mcp_undo_tags"
+msgstr "通过 MCP 更改标签"
+
+msgid "mcp_undo_batch"
+msgstr "Incremento MCP 批量更改"
+
+msgid "mcp_undo_source_cards"
+msgstr "Incremento MCP 来源卡片"
+
+msgid "mcp_undo_imports"
+msgstr "Incremento MCP 文档导入"
+
+msgid "mcp_undo_creation_reverse"
+msgstr "Incremento MCP 创建撤销"

@@ -141,6 +141,7 @@ from .backend.item_skip import (
     store_timed_item_skip as _store_timed_item_skip,
 )
 from .backend import browser_bridge as _browser_bridge_mod
+from .frontend.mcp_connections import McpController, show_mcp_connections
 from .frontend.browser_capture_source import dispatch_browser_capture, open_browser_capture_note, render_browser_capture_source
 from .backend import diagnostics as _diagnostics_mod
 from .backend.decks import create_topics_deck as _create_topics_deck
@@ -360,6 +361,7 @@ _initialize_language(
 _ADDON_DIR = os.path.dirname(__file__)
 
 _shortcut_actions: dict[str, list[object]] = {}
+_runtime_shortcuts: dict[str, str] = resolved_runtime_shortcuts({})
 _topic_postpone_timer: QTimer | None = None
 _item_skip_timer: QTimer | None = None
 _menu: QMenu | None = None
@@ -459,12 +461,13 @@ def _register_shortcut_action(action_id: str, action_obj) -> None:
 
 
 def _apply_shortcuts_from_config() -> None:
+    global _runtime_shortcuts
     cfg, _config_changed = _migrate_persisted_config(mw.addonManager, __name__)
     user_shortcuts = cfg.get("shortcuts") or {}
-    runtime_shortcuts = resolved_runtime_shortcuts(user_shortcuts)
+    _runtime_shortcuts = resolved_runtime_shortcuts(user_shortcuts)
 
     for action_id, action_targets in _shortcut_actions.items():
-        shortcut_text = runtime_shortcuts.get(action_id, "")
+        shortcut_text = _runtime_shortcuts.get(action_id, "")
         seq = QKeySequence(shortcut_text) if shortcut_text else QKeySequence()
         for action_obj in action_targets:
             if hasattr(action_obj, "setShortcut"):
@@ -474,10 +477,7 @@ def _apply_shortcuts_from_config() -> None:
 
 
 def _configured_shortcut_text(action_id: str) -> str:
-    cfg = _load_addon_config(mw.addonManager, __name__)
-    user_shortcuts = cfg.get("shortcuts") or {}
-    runtime_shortcuts = resolved_runtime_shortcuts(user_shortcuts)
-    return str(runtime_shortcuts.get(action_id, "") or "").strip()
+    return str(_runtime_shortcuts.get(action_id, "") or "").strip()
 
 
 def _event_matches_shortcut_text(event, shortcut_text: str) -> bool:
@@ -3374,6 +3374,42 @@ gui_hooks.profile_did_open.append(
 )
 gui_hooks.profile_will_close.append(_browser_bridge_mod.stop_browser_bridge)
 
+_mcp_controller = McpController(
+    mw, _ADDON_DIR,
+    lambda: _load_addon_config(mw.addonManager, __name__),
+    lambda config: _save_mcp_settings(config),
+    actions=lambda: _describe_mcp_native_actions(),
+    open_writing_cards=lambda: [_writing_dock_mod.current_writing_card_id()] if _writing_dock_mod.current_writing_card_id() is not None else [],
+)
+gui_hooks.profile_did_open.append(_mcp_controller.configure)
+gui_hooks.profile_will_close.append(_mcp_controller.close_profile)
+
+
+def _save_mcp_settings(config) -> None:
+    """Persist through the canonical boundary and refresh existing UI adapters."""
+    _save_addon_config(mw.addonManager,__name__,config)
+    profile=_active_profile()
+    _study_workspace_mod.apply_settings(config)
+    color=_pdf_dock_mod.configured_reader_default_highlight_color(config,profile)
+    _pdf_dock_mod.refresh_default_highlight_color(profile,color)
+    _epub_dock_mod.refresh_default_highlight_color(profile,color)
+    _pdf_dock_mod.apply_pdf_focus_preference(config)
+    _epub_dock_mod.apply_epub_focus_preference(config)
+    _configure_companion_browser(config)
+    _selection_search_mod.configure_search(config)
+    _apply_shortcuts_from_config()
+    _add_card_dock_mod.refresh_add_card_dock_controls()
+    _sync_reviewer_priority_badge()
+
+
+def _describe_mcp_native_actions() -> list[dict]:
+    from .frontend.mcp_actions import describe_actions
+    return describe_actions(globals().get("_menu"), _shortcut_actions)
+
+
+def _open_mcp_connections() -> None:
+    show_mcp_connections(_mcp_controller, mw)
+
 
 def _dispatch_prepared_pdf_import(normalized, success, failure, *, is_cancelled):
     from .frontend.pdf_import import start_prepared_pdf_import
@@ -5741,7 +5777,7 @@ def addWebpageFunction() -> None:
     from .frontend.file_shell import activate_anki_window
 
     profile = _active_profile()
-    dlg = WebpageToPdfDialog(mw)
+    dlg = WebpageToPdfDialog(mw, addon_dir=_ADDON_DIR)
     if not dlg.exec():
         return
     pdf_path = str(dlg.pdf_path or "")
@@ -5754,6 +5790,8 @@ def addWebpageFunction() -> None:
             pdf_path,
             dlg.title_text,
             tags=dlg.tags_to_apply,
+            profile=profile,
+            document_details=dlg.document_details,
             metadata=build_incremento_metadata(
                 source_type="Web",
                 source_title=dlg.title_text,
@@ -6692,7 +6730,7 @@ def _scan_orphan_videos() -> tuple[str, list[str], int]:
 
 def cleanupNonActiveProfileDataFunction() -> None:
     """
-    Clean orphan files, stale rows, and unused Anki-media PDF screenshots together.
+    Clean orphan files, stale rows, and unused Anki-media images together.
     """
     from anki.collection import OpChanges
     from aqt.operations import CollectionOp
@@ -6731,7 +6769,7 @@ def cleanupNonActiveProfileDataFunction() -> None:
         stale_counts = _count_stale_progress_rows()
         stale_text_index_counts = _count_stale_document_text_index_rows()
         stale_ocr_counts = _count_stale_ocr_rows()
-        snapshot_preview = _pdf_snapshot_cleanup_mod.find_unused_pdf_snapshots(
+        unused_image_preview = _pdf_snapshot_cleanup_mod.find_unused_attached_images(
             collection,
             protected_fields=_snapshot_cleanup_draft_fields(profile),
         )
@@ -6748,7 +6786,7 @@ def cleanupNonActiveProfileDataFunction() -> None:
         and stale_total <= 0
         and stale_text_index_total <= 0
         and stale_ocr_total <= 0
-        and not snapshot_preview.filenames
+        and not unused_image_preview.filenames
     ):
         showInfo(_t("root_cleanup_profile_none"))
         return
@@ -6768,11 +6806,8 @@ def cleanupNonActiveProfileDataFunction() -> None:
         "",
         _t("root_cleanup_pdf_files", count=len(orphan_pdfs)),
         _t("root_cleanup_video_files", count=len(orphan_videos)),
-        _t(
-            "root_cleanup_snapshot_files",
-            count=len(snapshot_preview.filenames),
-            size=format_size(snapshot_preview.total_bytes),
-        ),
+        _t("root_cleanup_unused_images", count=len(unused_image_preview.filenames),
+           size=format_size(unused_image_preview.total_bytes)),
         _t("root_cleanup_progress_rows", count=stale_total, pdf=stale_counts.get('pdf_progress', 0), video=stale_counts.get('video_progress', 0), web=stale_counts.get('web_progress', 0)),
         _t("root_cleanup_index_rows", count=stale_text_index_total, pdf=stale_text_index_counts.get('pdf_text_index', 0), epub=stale_text_index_counts.get('epub_text_index', 0)),
         _t("root_cleanup_cache_rows", count=stale_ocr_total, notes=stale_ocr_counts.get('note_ocr_index_missing_note', 0), cards=stale_ocr_counts.get('note_ocr_index_missing_card', 0)),
@@ -6787,8 +6822,8 @@ def cleanupNonActiveProfileDataFunction() -> None:
         lines.append(_t("root_cleanup_video_folder", path=videos_dir))
     if total_bytes > 0:
         lines.append(_t("root_cleanup_recoverable_space", size=total_str))
-    if snapshot_preview.filenames:
-        lines.append(_t("root_cleanup_snapshot_trash_note"))
+    if unused_image_preview.filenames:
+        lines.append(_t("root_cleanup_unused_images_trash_note"))
     if protected_pdfs:
         lines.append("")
         lines.append(_t("root_cleanup_skipped_pdfs_heading"))
@@ -6814,7 +6849,7 @@ def cleanupNonActiveProfileDataFunction() -> None:
     if not askUser("\n".join(lines), title=_t("root_menu_cleanup_profile_data")):
         return
     if profile != _active_profile() or collection is not mw.col:
-        showInfo(_t("root_pdf_snapshot_cleanup_stale"))
+        showInfo(_t("root_unused_images_cleanup_stale"))
         return
     if _snapshot_cleanup_add_cards_is_open():
         showInfo(_t("root_pdf_snapshot_cleanup_close_add"))
@@ -6890,44 +6925,44 @@ def cleanupNonActiveProfileDataFunction() -> None:
         if len(errors) > 20:
             summary.append("• " + _t("root_more_failures", count=len(errors) - 20))
 
-    if not snapshot_preview.filenames:
+    if not unused_image_preview.filenames:
         showInfo("\n".join(summary))
         return
 
-    def remove_snapshots(col):
+    def remove_unused_images(col):
         if col is not collection or profile != _active_profile():
-            raise RuntimeError(_t("root_pdf_snapshot_cleanup_stale"))
-        return _pdf_snapshot_cleanup_mod.trash_unused_pdf_snapshots(
+            raise RuntimeError(_t("root_unused_images_cleanup_stale"))
+        return _pdf_snapshot_cleanup_mod.trash_unused_attached_images(
             col,
-            snapshot_preview.filenames,
+            unused_image_preview.filenames,
             protected_fields=_snapshot_cleanup_draft_fields(profile),
             empty_changes_factory=OpChanges,
         )
 
-    def snapshots_removed(result) -> None:
+    def unused_images_removed(result) -> None:
         if profile != _active_profile() or collection is not mw.col:
             return
         summary.append("")
         summary.append(
             _t(
-                "root_pdf_snapshot_cleanup_complete",
+                "root_unused_images_cleanup_complete",
                 count=len(result.filenames),
                 size=format_size(result.total_bytes),
             )
         )
         showInfo("\n".join(summary))
 
-    def snapshots_failed(exc: Exception) -> None:
+    def unused_images_failed(exc: Exception) -> None:
         if profile != _active_profile() or collection is not mw.col:
             return
         summary.append("")
-        summary.append(_t("root_pdf_snapshot_cleanup_failed", error=exc))
+        summary.append(_t("root_unused_images_cleanup_failed", error=exc))
         showInfo("\n".join(summary))
 
     (
-        CollectionOp(mw, remove_snapshots)
-        .success(snapshots_removed)
-        .failure(snapshots_failed)
+        CollectionOp(mw, remove_unused_images)
+        .success(unused_images_removed)
+        .failure(unused_images_failed)
         .run_in_background()
     )
 
@@ -7253,6 +7288,8 @@ def openSettingsFunction() -> None:
         current_prefer_web_card_resume_in_original_page=configured_prefer_web_card_resume_in_original_page(cfg),
         current_track_web_window_with_extension=configured_track_web_window_with_extension(cfg),
         current_companion_browser=configured_companion_browser(cfg),
+        current_mcp_enabled=cfg.get("mcp_enabled", False),
+        current_mcp_allow_writes=cfg.get("mcp_allow_writes", False),
         current_web_search_engine=cfg.get("web_search_engine", "google"),
         current_search_remember_logins=cfg.get("search_remember_logins", False),
         current_use_fail_pass_on_items=_configured_use_fail_pass_on_items(cfg),
@@ -7350,6 +7387,8 @@ def openSettingsFunction() -> None:
     cfg["prefer_web_card_resume_in_original_page"] = dlg.prefer_web_card_resume_in_original_page
     cfg["track_web_window_with_extension"] = dlg.track_web_window_with_extension
     cfg["companion_browser"] = dlg.companion_browser
+    cfg["mcp_enabled"] = dlg.mcp_enabled
+    cfg["mcp_allow_writes"] = dlg.mcp_allow_writes
     cfg["web_search_engine"] = dlg.web_search_engine
     cfg["search_remember_logins"] = dlg.search_remember_logins
     cfg["use_fail_pass_on_items"] = dlg.use_fail_pass_on_items
@@ -7399,6 +7438,7 @@ def openSettingsFunction() -> None:
     _pdf_dock_mod.refresh_default_highlight_color(settings_profile, default_color)
     _epub_dock_mod.refresh_default_highlight_color(settings_profile, default_color)
     _configure_companion_browser(cfg)
+    _mcp_controller.configure()
     _selection_search_mod.configure_search(cfg)
     if extract_default_type_changed:
         _add_card_dock_mod.set_current_extract_options(
@@ -7881,6 +7921,11 @@ def _build_incremento_menu() -> None:
     qconnect(_searchAllAction.triggered, _open_search_all)
     _menu.addAction(_searchAllAction)
     _register_shortcut_action("search_all", _searchAllAction)
+
+    _mcpConnectionsAction = QAction(_t("mcp_connections_title"), mw)
+    _mcpConnectionsAction.setProperty("incremento_translation_key", "mcp_connections_title")
+    qconnect(_mcpConnectionsAction.triggered, _open_mcp_connections)
+    _menu.addAction(_mcpConnectionsAction)
 
     _menu.addSeparator()
 

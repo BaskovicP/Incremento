@@ -352,6 +352,7 @@ def import_notebook_citations(
     *,
     entries: list[dict[str, object]] | None = None,
     fitz_module=None,
+    pdf_path_resolver=None,
 ) -> dict[str, object]:
     try:
         fitz = fitz_module if fitz_module is not None else __import__("fitz")
@@ -385,7 +386,7 @@ def import_notebook_citations(
         if card_id <= 0:
             continue
         stored_filename = str(selected.get("stored_filename") or "").strip()
-        pdf_path = pdf_storage_abspath(stored_filename)
+        pdf_path = pdf_path_resolver(stored_filename) if pdf_path_resolver else pdf_storage_abspath(stored_filename)
         pdf_report = {
             "card_id": card_id,
             "title": str(selected.get("title") or f"Card {card_id}"),

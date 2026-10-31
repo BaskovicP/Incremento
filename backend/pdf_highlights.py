@@ -121,13 +121,22 @@ def update_highlight_note(
     note: str,
     *,
     note_html: str = '',
+    expected_note: tuple[str, str] | None = None,
 ) -> dict | None:
     target_id = str(hl_id or "")
     updated_note, markup = normalize_note(note, note_html)
     conn = get_connection(addon_dir, profile)
+    expected_values = ()
+    condition = ''
+    if expected_note is not None:
+        previous = conn.execute('SELECT note, note_html FROM pdf_highlights WHERE card_id=? AND id=?',
+                                (int(card_id), target_id)).fetchone()
+        if previous is None or normalize_note(*previous) != normalize_note(*expected_note):
+            return None
+        condition, expected_values = ' AND note=? AND note_html=?', tuple(previous)
     with conn:
-        changed = conn.execute('UPDATE pdf_highlights SET note=?, note_html=? WHERE card_id=? AND id=?',
-                               (updated_note, markup, int(card_id), target_id)).rowcount
+        changed = conn.execute('UPDATE pdf_highlights SET note=?, note_html=? WHERE card_id=? AND id=?' + condition,
+                               (updated_note, markup, int(card_id), target_id, *expected_values)).rowcount
     if not changed:
         return None
     return next((row for row in load_highlights(addon_dir, profile, int(card_id)) if row['id'] == target_id), None)

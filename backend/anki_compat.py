@@ -177,6 +177,98 @@ def answer_reviewer_card(reviewer, ease: int) -> None:
     method(int(ease))
 
 
+def mcp_reviewer_state(main_window, *, include_runtime=False) -> dict:
+    """Bounded public data for the explicitly requested MCP reviewer controls."""
+    reviewer = getattr(main_window, "reviewer", None)
+    card = getattr(reviewer, "card", None)
+    result = {
+        "screen": str(getattr(main_window, "state", "deckBrowser")),
+        "card_id": str(card.id) if card and main_window.state == "review" else None,
+        "deck_id": str(main_window.col.decks.selected()),
+        "side": str(getattr(reviewer, "state", "question")),
+    }
+    if include_runtime and result["card_id"]:
+        import base64
+        queue = reviewer._v3.queued_cards.__class__()
+        queue.CopyFrom(reviewer._v3.queued_cards)
+        del queue.cards[1:]
+        queue.cards[0].states.CopyFrom(reviewer._v3.states)
+        raw = queue.SerializeToString()
+        if len(raw) > 65536:
+            raise AnkiCompatibilityError("Reviewer scheduling context exceeds its checkpoint budget")
+        result["queue"] = base64.b64encode(raw).decode()
+        result["answered_ids"] = list(reviewer._answeredIds[-500:])
+    return result
+
+
+def mcp_restore_reviewer(main_window, state) -> None:
+    """Restore the exact shown card without advancing or submitting a review."""
+    import base64
+    from anki.scheduler.v3 import QueuedCards
+    from aqt.reviewer import V3CardInfo
+
+    if state.get("screen") != "review" or not state.get("card_id"):
+        return
+    reviewer = main_window.reviewer
+    if state.get("queue"):
+        raw = base64.b64decode(state["queue"], validate=True)
+        if len(raw) > 65536:
+            raise AnkiCompatibilityError("Invalid reviewer checkpoint size")
+        queue = QueuedCards.FromString(raw)
+        if len(queue.cards) != 1 or str(queue.cards[0].card.id) != state["card_id"]:
+            raise AnkiCompatibilityError("Reviewer checkpoint identity changed")
+        reviewer._v3 = V3CardInfo.from_queue(queue)
+        reviewer.card = main_window.col.get_card(int(state["card_id"]))
+        reviewer.card.start_timer()
+        reviewer._answeredIds = [int(cid) for cid in state.get("answered_ids", [])]
+    elif not reviewer.card or str(reviewer.card.id) != state["card_id"]:
+        raise AnkiCompatibilityError("The original reviewer scheduling context is unavailable")
+    reviewer._showQuestion()
+    if state.get("side") == "answer":
+        reviewer._showAnswer()
+
+
+def mcp_show_reviewer_side(main_window, card_id: str, side: str) -> None:
+    reviewer = main_window.reviewer
+    if main_window.state != "review" or not reviewer.card or str(reviewer.card.id) != str(card_id):
+        raise AnkiCompatibilityError("The requested card is not the active review card")
+    method = getattr(reviewer, "_showAnswer" if side == "answer" else "_showQuestion", None)
+    if not callable(method):
+        raise AnkiCompatibilityError("Reviewer side control is unavailable")
+    method()
+
+
+def mcp_prepare_answer(main_window, card_id: str, rating: int, topic_choice=None):
+    """Use the same pre-answer hooks and scheduling states as the native UI."""
+    from aqt import gui_hooks
+
+    reviewer = main_window.reviewer
+    if (
+        main_window.state != "review"
+        or not reviewer.card
+        or str(reviewer.card.id) != str(card_id)
+        or reviewer.state != "answer"
+    ):
+        raise AnkiCompatibilityError("Show the active card answer before submitting a review")
+    choice = {"more": 1, "same": 2, "less": 3}.get(topic_choice, rating)
+    proceed, ease = gui_hooks.reviewer_will_answer_card((True, choice), reviewer, reviewer.card)
+    if not proceed:
+        raise AnkiCompatibilityError("A native reviewer hook declined this answer")
+    answer = main_window.col.sched.build_answer(card=reviewer.card, states=reviewer._v3.states, rating=ease)
+    return answer, ease
+
+
+def mcp_finish_answer(main_window, card_id: str, ease: int) -> None:
+    from aqt import gui_hooks
+
+    reviewer = main_window.reviewer
+    if not reviewer.card or str(reviewer.card.id) != str(card_id):
+        raise AnkiCompatibilityError("The reviewer moved while answering")
+    reviewer.card.load()
+    gui_hooks.reviewer_did_answer_card(reviewer, reviewer.card, ease)
+    reviewer._answeredIds.append(reviewer.card.id)
+
+
 def install_one_shot_next_card_override(
     reviewer,
     replacement_factory: Callable[[Callable[[], None], Callable[[], None]], Callable[[], None]],
@@ -255,11 +347,11 @@ def pause_reviewer_auto_advance(reviewer):
     Current Anki exposes a public timer refresh. Older unsupported variants stay
     paused rather than risking a delayed automatic answer after the visit.
     """
-    if getattr(reviewer, 'auto_advance_enabled', False) is not True:
+    if getattr(reviewer, "auto_advance_enabled", False) is not True:
         return lambda: None
-    card_id = getattr(getattr(reviewer, 'card', None), 'id', None)
-    side = getattr(reviewer, 'state', None)
-    refresh = getattr(reviewer, 'auto_advance_if_enabled', None)
+    card_id = getattr(getattr(reviewer, "card", None), "id", None)
+    side = getattr(reviewer, "state", None)
+    refresh = getattr(reviewer, "auto_advance_if_enabled", None)
     reviewer.auto_advance_enabled = False
     if not callable(refresh):
         return lambda: None
@@ -268,18 +360,22 @@ def pause_reviewer_auto_advance(reviewer):
     except Exception:
         return lambda: None
     restored = False
+
     def restore():
         nonlocal restored
         if restored:
             return
         restored = True
-        if (getattr(getattr(reviewer, 'card', None), 'id', None) != card_id
-                or getattr(reviewer, 'state', None) != side
-                or getattr(reviewer, 'auto_advance_enabled', False)):
+        if (
+            getattr(getattr(reviewer, "card", None), "id", None) != card_id
+            or getattr(reviewer, "state", None) != side
+            or getattr(reviewer, "auto_advance_enabled", False)
+        ):
             return
         reviewer.auto_advance_enabled = True
         try:
             refresh()
         except Exception:
             reviewer.auto_advance_enabled = False
+
     return restore

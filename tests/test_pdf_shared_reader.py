@@ -145,9 +145,13 @@ def test_editing_a_side_highlight_note_updates_the_shared_note(reader):
     from backend.pdf_highlights import update_highlight_note
     reader.service.update_highlight_note = update_highlight_note
     reader.service.t = lambda key: key
-    reader.service.HighlightNoteDialog = lambda *a, **kw: SimpleNamespace(exec=lambda: True, note_text=lambda: 'Shared note',
-                                                                        note_html=lambda: '<b>Shared note</b>')
+    pending = []
+    reader.service.HighlightNoteDialog = SimpleNamespace(show_for_annotation=lambda *a, **kw: pending.append(kw))
     send(reader, 'incremento_pdf_hl_note', {'id': 'note'})
+    assert not reader.service.load_highlights(reader.service._ADDON_DIR, 'A', 7)[0].get('note')
+    reader.state.page = 8
+    assert pending[0]['is_current']()
+    pending[0]['save'](SimpleNamespace(note_text=lambda: 'Shared note', note_html=lambda: '<b>Shared note</b>'))
     assert reader.service.load_highlights(reader.service._ADDON_DIR, 'A', 7)[0]['note'] == 'Shared note'
     assert reader.service.load_highlights(reader.service._ADDON_DIR, 'A', 7)[0]['note_html'] == '<b>Shared note</b>'
 
@@ -156,11 +160,11 @@ def test_profile_switch_during_note_dialog_cannot_save_the_old_note(reader):
     highlight = {'id': 'note', 'page': 4, 'text': 'Passage', 'rects': [{'x': 1, 'y': 1, 'w': 5, 'h': 2}]}
     send(reader, 'incremento_pdf_hl_add', {'cardId': 7, 'highlight': highlight})
     reader.service.t = lambda key: key
-    def accept():
-        reader.profile[0] = 'B'
-        return True
-    reader.service.HighlightNoteDialog = lambda *a, **kw: SimpleNamespace(exec=accept, note_text=lambda: 'Stale', note_html=lambda: '')
+    pending = []
+    reader.service.HighlightNoteDialog = SimpleNamespace(show_for_annotation=lambda *a, **kw: pending.append(kw))
     send(reader, 'incremento_pdf_hl_note', {'id': 'note'})
+    reader.profile[0] = 'B'
+    assert not pending[0]['is_current']()
     assert not reader.service.load_highlights(reader.service._ADDON_DIR, 'A', 7)[0].get('note')
 
 

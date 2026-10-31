@@ -7,6 +7,17 @@ from unittest.mock import Mock
 import pytest
 
 
+def test_mcp_settings_default_off_and_restore_both_permissions():
+    dialog = IncrementoSettingsDialog({})
+    assert dialog.mcp_enabled is False
+    assert dialog.mcp_allow_writes is False
+    restored = IncrementoSettingsDialog({}, current_mcp_enabled=True, current_mcp_allow_writes=True)
+    assert restored.mcp_enabled is True
+    assert restored.mcp_allow_writes is True
+    restored._mcp_writes_cb.setChecked(False)
+    assert restored.mcp_allow_writes is False
+
+
 class _Signal:
     def __init__(self):
         self._callbacks = []

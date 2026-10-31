@@ -3064,3 +3064,47 @@ def test_reader_shortcuts_target_the_focused_side_pane_without_moving_the_main_p
     pdf_dock.trigger_viewer_action(action)
     assert len(beside) == 1
     assert primary == []
+
+
+@pytest.mark.parametrize('change', ['navigation', 'profile', 'card', 'filename', 'dock', 'collection', 'cancel'])
+def test_modeless_pdf_annotation_allows_navigation_and_keeps_the_original_save_target(monkeypatch, change):
+    profile, pending, writes = ['One'], [], []
+    collection = object()
+    main = types.SimpleNamespace(col=collection)
+    dock = types.SimpleNamespace(_view=types.SimpleNamespace(page=lambda: types.SimpleNamespace(runJavaScript=lambda _js: None)))
+    monkeypatch.setattr(pdf_dock, 'mw', main)
+    monkeypatch.setattr(pdf_dock, '_active_profile', lambda: profile[0])
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 7)
+    monkeypatch.setattr(pdf_dock, '_current_pdf_filename', 'book.pdf')
+    monkeypatch.setattr(pdf_dock, '_pdf_dock', dock)
+    monkeypatch.setattr(pdf_dock, '_pdf_annotation_generation', 1)
+    monkeypatch.setattr(pdf_dock, 'load_highlights', lambda *args: [
+        {'id': 'h', 'text': 'source', 'note': 'Original', 'note_html': '<b>Original</b>'}])
+    monkeypatch.setattr(pdf_dock, 'HighlightNoteDialog', types.SimpleNamespace(
+        show_for_annotation=lambda *args, **kwargs: pending.append(kwargs)))
+    def update(*args, **kwargs):
+        writes.append((args, kwargs))
+        return {'id': 'h', 'note': args[4], 'note_html': kwargs['note_html']}
+    monkeypatch.setattr(pdf_dock, 'update_highlight_note', update)
+    monkeypatch.setattr(pdf_dock, '_schedule_pdf_annotation_sync', lambda: None)
+    monkeypatch.setattr(pdf_dock, 'tooltip', lambda _message: None)
+    pdf_dock._edit_pdf_highlight_note('h')
+    assert writes == [], 'Opening an annotation must return without waiting for a dialog'
+    if change == 'navigation':
+        monkeypatch.setattr(pdf_dock, '_pdf_annotation_generation', 2)
+    elif change == 'profile':
+        profile[0] = 'Two'
+    elif change == 'card':
+        monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 8)
+    elif change == 'filename':
+        monkeypatch.setattr(pdf_dock, '_current_pdf_filename', 'different.pdf')
+    elif change == 'dock':
+        monkeypatch.setattr(pdf_dock, '_pdf_dock', object())
+    elif change == 'collection':
+        main.col = object()
+    if change != 'cancel' and pending[0]['is_current']():
+        pending[0]['save'](types.SimpleNamespace(note_text=lambda: 'Edited', note_html=lambda: '<i>Edited</i>'))
+    assert len(writes) == (1 if change == 'navigation' else 0)
+    if writes:
+        assert writes[0][0][1:4] == ('One', 7, 'h')
+        assert writes[0][1]['expected_note'] == ('Original', '<b>Original</b>')

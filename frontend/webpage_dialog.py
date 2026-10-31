@@ -478,10 +478,12 @@ class WebpagePdfResultDialog(QDialog):
 class WebpageToPdfDialog(QDialog):
     """Capture a public URL as an offline PDF for import."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, *, addon_dir: str):
         super().__init__(parent)
         self.setWindowTitle(_t("imports_webpage_to_pdf"))
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(760)
+        self._profile = _active_profile()
+        self._document_details = None
 
         self._pdf_path: str | None = None
         self._title: str | None = None
@@ -492,8 +494,14 @@ class WebpageToPdfDialog(QDialog):
         self._handoff_timer = None
         self._browser_handoff_completed = False
 
-        layout = QVBoxLayout(self)
+        content = QHBoxLayout(self)
+        layout = QVBoxLayout()
+        content.addLayout(layout, 1)
         layout.setSpacing(8)
+        from .document_details import BookDetailsEditor
+        self._book_details = BookDetailsEditor(addon_dir, self._profile, self)
+        self._book_details.setMinimumWidth(270)
+        content.addWidget(self._book_details, 1, Qt.AlignmentFlag.AlignTop)
 
         # URL
         layout.addWidget(QLabel(_t("imports_url_label")))
@@ -580,6 +588,18 @@ class WebpageToPdfDialog(QDialog):
             button.setEnabled(not busy)
         self._progress.setVisible(busy)
         self._cleanup_check.setEnabled(not busy and self._style_combo.currentData() == "website")
+        self._book_details.setEnabled(not busy)
+
+    def _capture_document_details(self) -> bool:
+        if _active_profile() != self._profile:
+            self._status_lbl.setText(_t("imports_topic_profile_changed"))
+            return False
+        try:
+            self._document_details = self._book_details.details()
+        except ValueError:
+            self._status_lbl.setText(_t("reader_library_invalid_details"))
+            return False
+        return True
 
     def _browser_source_url(self) -> str:
         url = self._url_edit.text().strip()
@@ -603,6 +623,8 @@ class WebpageToPdfDialog(QDialog):
     def _on_saved_pdf(self) -> None:
         from aqt import mw
 
+        if not self._capture_document_details():
+            return
         self._browser_handoff_tags = None
         self._browser_handoff_completed = False
 
@@ -763,6 +785,8 @@ class WebpageToPdfDialog(QDialog):
         if not url:
             self._status_lbl.setText(_t("imports_webpage_enter_url"))
             return
+        if not self._capture_document_details():
+            return
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
 
@@ -825,6 +849,10 @@ class WebpageToPdfDialog(QDialog):
         self.accept()
 
     # ── Public properties ─────────────────────────────────────────────────────
+
+    @property
+    def document_details(self) -> dict:
+        return self._document_details if self._document_details is not None else self._book_details.details()
 
     @property
     def pdf_path(self) -> str | None:

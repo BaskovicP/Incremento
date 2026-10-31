@@ -10160,6 +10160,274 @@
     },
     {
       "component": "addon",
+      "key": "mcp_connections_apply",
+      "form": "",
+      "source": "Apply connection settings",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_bundle_filter",
+      "form": "",
+      "source": "MCP Bundle (*.mcpb)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_claude_code_prompt",
+      "form": "",
+      "source": "Claude Code setup prompt",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_claude_code_setup_prompt",
+      "form": "",
+      "source": "Set up the local Incremento MCP server for Claude Code on this computer. Use your local terminal tools to run the registration below now, rather than only describing the steps.\n\n1. Register Incremento in Claude Code's private user scope using the command below. If a user-scoped incremento registration already exists, update only that registration and preserve all other servers and settings. If the Claude Code CLI is unavailable, report the missing prerequisite.\n2. Keep the connection local. Keep the token private and do not repeat it in your reply. Preserve the existing sandbox and approval settings.\n3. Verify the registration. If local tools allow it, check the authenticated MCP connection and call get_context using only read operations. Do not change Anki notes, tags, lists, or schedules during setup.\n4. Refresh the MCP connection if supported. If a client reconnect or Anki action is still necessary, tell me the exact remaining step. Report what you actually configured and verified.\n\nIf you do not have local computer access, say that you cannot run setup on this computer from this chat and ask me to paste this same prompt into a local assistant. Do not claim that setup has been completed.\n\nRegistration command:\n```sh\n{command}\n```",
+      "tokens": [
+        "{command}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_claude_code_steps",
+      "form": "",
+      "source": "Copy this complete setup prompt into Claude Code or an assistant with local computer access. It includes the registration command and asks the assistant to run and verify it for you.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_claude_command",
+      "form": "",
+      "source": "Claude Code registration command",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_claude_desktop_steps",
+      "form": "",
+      "source": "1. Save the connector and install its .mcpb file in Claude Desktop: Settings → Extensions → Advanced settings → Install Extension.\n2. Copy the token below and paste it when prompted.\n3. Reconnect Claude Desktop.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_client_setup",
+      "form": "",
+      "source": "Codex and Claude setup",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_codex_config",
+      "form": "",
+      "source": "Codex MCP configuration",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_codex_prompt",
+      "form": "",
+      "source": "Codex setup prompt",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_codex_setup_prompt",
+      "form": "",
+      "source": "Set up the local Incremento MCP server for Codex on this computer. Use your local file or terminal tools to perform the setup now, rather than only describing the steps.\n\n1. Use $CODEX_HOME/config.toml if CODEX_HOME is set; otherwise use ~/.codex/config.toml. Read the existing file first. Back it up privately, preserve all unrelated settings and MCP servers, and add or replace only the mcp_servers.incremento entry with the configuration below. Keep the TOML valid and avoid duplicate tables.\n2. Keep the connection local. Keep the token private and do not repeat it in your reply. Preserve the existing sandbox and approval settings.\n3. Validate the saved configuration. If local tools allow it, check the authenticated MCP connection and call get_context using only read operations. Do not change Anki notes, tags, lists, or schedules during setup.\n4. Refresh the MCP connection if supported. If a client reconnect or Anki action is still necessary, tell me the exact remaining step. Report what you actually configured and verified.\n\nIf you do not have local computer access, say that you cannot edit this computer's configuration from this chat and ask me to paste this same prompt into a local assistant. Do not claim that setup has been completed.\n\nConfiguration:\n```toml\n{configuration}```",
+      "tokens": [
+        "{configuration}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_codex_steps",
+      "form": "",
+      "source": "Copy this complete setup prompt into Codex or an assistant with local computer access. It includes the configuration and asks the assistant to apply and verify it for you.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_copy_command",
+      "form": "",
+      "source": "Copy command",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_copy_config",
+      "form": "",
+      "source": "Copy configuration",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_copy_setup_prompt",
+      "form": "",
+      "source": "Copy setup prompt",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_copy_token",
+      "form": "",
+      "source": "Copy token",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_disabled",
+      "form": "",
+      "source": "MCP connections are disabled.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_enable",
+      "form": "",
+      "source": "Enable local MCP connections",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_export",
+      "form": "",
+      "source": "Save Claude Desktop connector…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_exported",
+      "form": "",
+      "source": "Connector saved. Install it in Claude Desktop and paste the copied token.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_failed",
+      "form": "",
+      "source": "Could not configure the connection. Check that port 8767 is free and the profile is writable. Choose a new filename when exporting a connector.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_hint",
+      "form": "",
+      "source": "Connect a local Codex or Claude client to the open Anki profile. Requested text is sent to that client and its AI provider. Anki must remain open. Private MCP undo history survives restarting Anki.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_ready",
+      "form": "",
+      "source": "Connected endpoint: http://127.0.0.1:8767/mcp. Access is limited to this profile. Reopen the client connection after changing permissions.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_settings_hint",
+      "form": "",
+      "source": "After saving, open Incremento → AI connections… for Codex configuration and the Claude Desktop connector. Connections require the current profile and are local to this computer.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_steps",
+      "form": "",
+      "source": "Codex: merge the following entry into your user MCP configuration. Claude Code: run the registration command below once. Claude Desktop: save the connector, install its .mcpb file in Settings → Extensions, and paste the copied token when prompted. Keep credentials out of shared files.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_title",
+      "form": "",
+      "source": "AI connections…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_token",
+      "form": "",
+      "source": "Private connection token",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_connections_writes",
+      "form": "",
+      "source": "Allow reversible MCP changes",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_undo_batch",
+      "form": "",
+      "source": "Incremento MCP batch",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_undo_creation_reverse",
+      "form": "",
+      "source": "Incremento MCP creation reversal",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_undo_imports",
+      "form": "",
+      "source": "Incremento MCP document imports",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_undo_source_cards",
+      "form": "",
+      "source": "Incremento MCP source cards",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "mcp_undo_tags",
+      "form": "",
+      "source": "Change tags via MCP",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "onboarding_add_document_action",
       "form": "",
       "source": "Add PDF / DjVu…",
@@ -13918,9 +14186,25 @@
     },
     {
       "component": "addon",
+      "key": "reader_library_add_selected_to_list",
+      "form": "",
+      "source": "Add selected to list…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_library_all_books",
       "form": "",
       "source": "All books",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_all_lists",
+      "form": "",
+      "source": "All lists",
       "tokens": [],
       "markup": []
     },
@@ -13968,6 +14252,30 @@
     },
     {
       "component": "addon",
+      "key": "reader_library_find_lists",
+      "form": "",
+      "source": "Search lists…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_group_error",
+      "form": "",
+      "source": "Could not add the selected documents to the list. Check that the list still exists and no document exceeds the 64-list limit. Existing lists and unsaved notes have been kept.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_grouping",
+      "form": "",
+      "source": "Updating lists…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_library_import_hint",
       "form": "",
       "source": "Lists, reason, and source are optional and saved separately for each selected file.",
@@ -14000,10 +14308,40 @@
     },
     {
       "component": "addon",
+      "key": "reader_library_list_matches",
+      "form": "",
+      "source": "{count} of {total} lists shown",
+      "tokens": [
+        "{count}",
+        "{total}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_library_list_name",
       "form": "",
       "source": "List name:",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_list_picker_help",
+      "form": "",
+      "source": "Tick every list for this book. Selected lists stay visible on the right while you search.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_list_summary_more",
+      "form": "",
+      "source": "{names} · +{count} more",
+      "tokens": [
+        "{count}",
+        "{names}"
+      ],
       "markup": []
     },
     {
@@ -14027,6 +14365,14 @@
       "key": "reader_library_more_filters",
       "form": "",
       "source": "More filters",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_multi_select_hint",
+      "form": "",
+      "source": "Ctrl/Cmd-click to select documents; Shift-click for a range. Use Ctrl/Cmd+A to select all.",
       "tokens": [],
       "markup": []
     },
@@ -14109,6 +14455,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_library_remove_selected_lists",
+      "form": "",
+      "source": "Remove selected",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_library_rename_list",
       "form": "",
       "source": "Rename list…",
@@ -14153,6 +14507,85 @@
       "form": "",
       "source": "Select a book",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_selected_books",
+      "form": "few",
+      "source": "{count} documents selected",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_selected_books",
+      "form": "many",
+      "source": "{count} documents selected",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_selected_books",
+      "form": "one",
+      "source": "{count} document selected",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_selected_books",
+      "form": "other",
+      "source": "{count} documents selected",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_selected_books",
+      "form": "two",
+      "source": "{count} documents selected",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_selected_books",
+      "form": "zero",
+      "source": "{count} documents selected",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_selected_lists",
+      "form": "",
+      "source": "Selected lists",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_library_selected_lists_count",
+      "form": "",
+      "source": "Selected lists ({count}/{maximum})",
+      "tokens": [
+        "{count}",
+        "{maximum}"
+      ],
       "markup": []
     },
     {
@@ -16280,6 +16713,40 @@
     },
     {
       "component": "addon",
+      "key": "reader_note_editor_changed",
+      "form": "",
+      "source": "This annotation was changed elsewhere or deleted. Your draft is still here. Copy it before closing; reopen the annotation if it still exists to review the latest version.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_editor_save",
+      "form": "",
+      "source": "Save",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_editor_save_failed",
+      "form": "",
+      "source": "Could not save this annotation: {error}\nYour draft is still open.",
+      "tokens": [
+        "{error}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_editor_stale",
+      "form": "",
+      "source": "The original document or profile changed. Your draft is still here. Return to the original document, or copy your draft and reopen the annotation before saving.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_note_formatting",
       "form": "",
       "source": "Note formatting",
@@ -16294,6 +16761,202 @@
       "tokens": [
         "{number}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_align_center",
+      "form": "",
+      "source": "Center",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_align_left",
+      "form": "",
+      "source": "Left",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_align_right",
+      "form": "",
+      "source": "Right",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_alignment",
+      "form": "",
+      "source": "Align image",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_alignment_choice",
+      "form": "",
+      "source": "Align image: {alignment}",
+      "tokens": [
+        "{alignment}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_failed",
+      "form": "",
+      "source": "This image could not be pasted. Copy a smaller bitmap image or remove another image from this note, then try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_hint",
+      "form": "",
+      "source": "Paste an image (Cmd/Ctrl+V). Drag a corner to keep proportions; drag an edge to stretch. Hold Shift to switch. Images are compressed automatically (up to 80 KiB).",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_pixels",
+      "form": "",
+      "source": " px",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_placement",
+      "form": "",
+      "source": "Image placement",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_placement_block",
+      "form": "",
+      "source": "Own line (recommended)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_placement_help",
+      "form": "",
+      "source": "Own line separates the image from its caption. Inline places it inside a sentence. Wrap left/right lets text flow beside it. Use Write above/below for captions.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_placement_inline",
+      "form": "",
+      "source": "Inline with text",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_placement_left",
+      "form": "",
+      "source": "Wrap text (image left)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_placement_right",
+      "form": "",
+      "source": "Wrap text (image right)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_remove",
+      "form": "",
+      "source": "Remove image",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_resize_bottom",
+      "form": "",
+      "source": "Stretch image height",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_resize_corner",
+      "form": "",
+      "source": "Resize image proportionally",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_resize_help",
+      "form": "",
+      "source": "Drag the corner to keep proportions, or an edge to stretch. Hold Shift to switch. Use arrow keys on a focused handle; Escape cancels a drag.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_resize_right",
+      "form": "",
+      "source": "Stretch image width",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_size",
+      "form": "",
+      "source": "{size} KiB stored",
+      "tokens": [
+        "{size}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_width",
+      "form": "",
+      "source": "Image width",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_wrap_narrow",
+      "form": "",
+      "source": "This leaves a narrow text column. Choose Own line or reduce the image width.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_write_above",
+      "form": "",
+      "source": "Write above",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_note_image_write_below",
+      "form": "",
+      "source": "Write below",
+      "tokens": [],
       "markup": []
     },
     {
@@ -19588,7 +20251,7 @@
       "component": "addon",
       "key": "reader_text_note_label",
       "form": "",
-      "source": "Text note:",
+      "source": "Note:",
       "tokens": [],
       "markup": []
     },
@@ -24539,7 +25202,7 @@
       "component": "addon",
       "key": "root_cleanup_profile_explanation",
       "form": "",
-      "source": "The following unused Incremento files and stale records can be cleaned:",
+      "source": "The following unused files and stale Incremento records can be cleaned:",
       "tokens": [],
       "markup": []
     },
@@ -24698,6 +25361,25 @@
       "tokens": [
         "{size}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_cleanup_unused_images",
+      "form": "",
+      "source": "• Unused image attachments in Anki media: {count} ({size})",
+      "tokens": [
+        "{count}",
+        "{size}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_cleanup_unused_images_trash_note",
+      "form": "",
+      "source": "Unused images move to Anki's media trash. You can restore them until you empty the trash.",
+      "tokens": [],
       "markup": []
     },
     {
@@ -25222,7 +25904,7 @@
       "component": "addon",
       "key": "root_menu_cleanup_profile_data",
       "form": "",
-      "source": "Clean Up Unused Incremento Data…",
+      "source": "Clean Up Unused Data & Images…",
       "tokens": [],
       "markup": []
     },
@@ -25888,7 +26570,7 @@
       "component": "addon",
       "key": "root_pdf_snapshot_cleanup_close_add",
       "form": "",
-      "source": "Close Add Cards before cleaning PDF screenshots so an unsaved image is not removed.",
+      "source": "Close Add Cards before cleaning unused images so an unsaved image is not removed.",
       "tokens": [],
       "markup": []
     },
@@ -26283,6 +26965,35 @@
       "key": "root_topic_postponed_session",
       "form": "",
       "source": "Topic postponed to later in this review.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_unused_images_cleanup_complete",
+      "form": "",
+      "source": "Moved {count} unused images ({size}) to Anki's media trash.",
+      "tokens": [
+        "{count}",
+        "{size}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_unused_images_cleanup_failed",
+      "form": "",
+      "source": "Could not clean up unused images:\n{error}",
+      "tokens": [
+        "{error}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_unused_images_cleanup_stale",
+      "form": "",
+      "source": "The active Anki profile changed. No unused images were removed.",
       "tokens": [],
       "markup": []
     },

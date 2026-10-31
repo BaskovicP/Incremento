@@ -7251,54 +7251,6 @@
     })));
     return display.get(highlights);
   }
-  function createPdfHighlightTooltip({
-    schedule = (run) => window.requestAnimationFrame(run),
-    cancel = (id) => window.cancelAnimationFrame(id)
-  } = {}) {
-    const listeners = /* @__PURE__ */ new Set();
-    let value = null, position = null, frame = null;
-    const publish = (next) => {
-      value = next;
-      for (const listener of listeners) listener();
-    };
-    const stop = () => {
-      if (frame !== null) cancel(frame);
-      frame = null;
-      position = null;
-    };
-    return {
-      subscribe(listener) {
-        listeners.add(listener);
-        return () => listeners.delete(listener);
-      },
-      getSnapshot: () => value,
-      show(highlight, event) {
-        const note = String((highlight == null ? void 0 : highlight.note) || "").trim();
-        if (!note) return;
-        stop();
-        publish({
-          id: String(highlight.id || ""),
-          note,
-          ...highlight.note_html ? { html: String(highlight.note_html) } : {},
-          x: Number((event == null ? void 0 : event.clientX) || 0),
-          y: Number((event == null ? void 0 : event.clientY) || 0)
-        });
-      },
-      move(event) {
-        if (!value) return;
-        position = { x: Number((event == null ? void 0 : event.clientX) ?? value.x), y: Number((event == null ? void 0 : event.clientY) ?? value.y) };
-        if (frame === null) frame = schedule(() => {
-          frame = null;
-          if (value && position) publish({ ...value, ...position });
-          position = null;
-        });
-      },
-      hide() {
-        stop();
-        if (value) publish(null);
-      }
-    };
-  }
   const MAX_EXTERNAL_URL_CHARS = 4096;
   const PDFJS_LINK_ANNOTATION_TYPE = 2;
   function normalizeExternalHttpUrl(rawUrl) {
@@ -7377,16 +7329,63 @@
   const tags = /* @__PURE__ */ new Set(["p", "br", "b", "i", "u", "s", "ul", "ol", "li", "a"]);
   const entities = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#x27;": "'" };
   const decode = (text) => text.replace(/&(?:amp|lt|gt|quot|#x27);/g, (value) => entities[value]);
+  const hasAnnotationNote = (highlight) => Boolean(String((highlight == null ? void 0 : highlight.note) || "").trim() || String((highlight == null ? void 0 : highlight.note_html) || "").includes("<img "));
+  function imageNode(token) {
+    const match = /^<img src="(data:image\/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2}))" width="([1-9]\d{0,2})" height="([1-9]\d{0,2})" alt=""(?: style="float:(left|right)")?>$/.exec(token);
+    if (!match || match[3].length > 109228) return null;
+    let data;
+    try {
+      data = atob(match[3]);
+    } catch {
+      return null;
+    }
+    if (data.length > 81920) return null;
+    const byte = (index) => data.charCodeAt(index);
+    const short = (index) => byte(index) * 256 + byte(index + 1);
+    const long = (index) => short(index) * 65536 + short(index + 2);
+    let width = 0, height = 0;
+    if (match[2] === "png" && data.startsWith("PNG\r\n\n\0\0\0\rIHDR") && data.length >= 45 && data.endsWith("\0\0\0\0IEND®B`")) {
+      width = long(16);
+      height = long(20);
+    } else if (match[2] === "jpeg" && data.startsWith("ÿØ") && data.endsWith("ÿÙ")) {
+      for (let offset = 2; offset + 4 <= data.length; ) {
+        const size = short(offset + 2), marker = byte(offset + 1);
+        if (byte(offset) !== 255 || size < 2 || offset + 2 + size > data.length) break;
+        if ((marker === 192 || marker === 194) && size >= 8) {
+          height = short(offset + 5);
+          width = short(offset + 7);
+          break;
+        }
+        offset += size + 2;
+      }
+    }
+    const displayWidth = Number(match[4]), displayHeight = Number(match[5]);
+    if (Math.min(width, height) < 1 || Math.max(width, height) > 960 || displayWidth > 640 || displayHeight > 960) return null;
+    return {
+      tag: "img",
+      src: match[1],
+      width: displayWidth,
+      height: displayHeight,
+      ...match[6] ? { float: match[6] } : {},
+      children: []
+    };
+  }
   function annotationNoteTree(note, html) {
     const markup = String(html || "");
     if (!markup || markup.length > 262144) return null;
     const root = { children: [] }, stack = [root];
-    let plain = "";
+    let plain = "", images = 0;
     for (const token of markup.match(/<[^>]*>|[^<]+|</g) || []) {
       if (!token.startsWith("<")) {
         const text = decode(token);
         stack.at(-1).children.push(text);
         plain += text;
+        continue;
+      }
+      if (token.startsWith("<img ")) {
+        const node2 = imageNode(token);
+        if (!node2 || ++images > 4) return null;
+        stack.at(-1).children.push(node2);
         continue;
       }
       const closing = /^<\/(\w+)>$/.exec(token);
@@ -7396,9 +7395,13 @@
         stack.pop();
         continue;
       }
-      const opening = /^<(\w+)(?: href="([^"]*)")?>$/.exec(token);
+      const opening = /^<(\w+)(?: href="([^"]*)")?(?: align="(left|center|right)")?>$/.exec(token);
       if (!opening || !tags.has(opening[1]) || stack.length > 64) return null;
       const tag = opening[1], node = { tag, children: [] };
+      if (opening[3]) {
+        if (tag !== "p") return null;
+        node.align = opening[3];
+      }
       if (tag === "a") {
         node.href = normalizeExternalHttpUrl(decode(opening[2] || ""));
         if (!node.href) return null;
@@ -7410,15 +7413,90 @@
     if (stack.length !== 1 || plain.replace(/\u00a0/g, " ").trim() !== String(note || "").trim()) return null;
     return root.children;
   }
+  function createPdfHighlightTooltip({
+    schedule = (run) => window.requestAnimationFrame(run),
+    cancel = (id) => window.cancelAnimationFrame(id)
+  } = {}) {
+    const listeners = /* @__PURE__ */ new Set();
+    let value = null, position = null, frame = null;
+    const publish = (next) => {
+      value = next;
+      for (const listener of listeners) listener();
+    };
+    const stop = () => {
+      if (frame !== null) cancel(frame);
+      frame = null;
+      position = null;
+    };
+    return {
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      getSnapshot: () => value,
+      show(highlight, event) {
+        const note = String((highlight == null ? void 0 : highlight.note) || "").trim();
+        if (!hasAnnotationNote(highlight)) return;
+        stop();
+        publish({
+          id: String(highlight.id || ""),
+          note,
+          ...highlight.note_html ? { html: String(highlight.note_html) } : {},
+          x: Number((event == null ? void 0 : event.clientX) || 0),
+          y: Number((event == null ? void 0 : event.clientY) || 0)
+        });
+      },
+      move(event) {
+        if (!value) return;
+        position = { x: Number((event == null ? void 0 : event.clientX) ?? value.x), y: Number((event == null ? void 0 : event.clientY) ?? value.y) };
+        if (frame === null) frame = schedule(() => {
+          frame = null;
+          if (value && position) publish({ ...value, ...position });
+          position = null;
+        });
+      },
+      hide() {
+        stop();
+        if (value) publish(null);
+      }
+    };
+  }
   function AnnotationNote({ note, html, onOpenLink }) {
     const tree = annotationNoteTree(note, html);
+    const root = reactExports.useRef(null);
+    const [compact, setCompact] = reactExports.useState(false);
+    const hasFloat = Boolean(tree && String(html || "").includes(' style="float:'));
+    reactExports.useLayoutEffect(() => {
+      if (!hasFloat || !root.current) return;
+      const measure = () => {
+        if (root.current) setCompact(root.current.getBoundingClientRect().width < 360);
+      };
+      measure();
+      const observer = new ResizeObserver(measure);
+      observer.observe(root.current);
+      return () => observer.disconnect();
+    }, [hasFloat]);
     if (!tree) return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { whiteSpace: "pre-wrap" }, children: note });
     const render = (node, key) => {
       if (typeof node === "string") return node;
       const props = { key };
       let tag = node.tag;
-      if (tag === "p") props.style = { margin: "0 0 4px", whiteSpace: "pre-wrap" };
+      if (tag === "p") props.style = {
+        margin: "0 0 4px",
+        whiteSpace: "pre-wrap",
+        ...node.align ? { textAlign: node.align, clear: "both" } : {}
+      };
       if (tag === "ul" || tag === "ol") props.style = { margin: "4px 0", paddingLeft: 22 };
+      if (tag === "img") {
+        Object.assign(props, {
+          src: node.src,
+          width: node.width,
+          height: node.height,
+          alt: "",
+          style: { maxWidth: "100%", height: "auto", aspectRatio: `${node.width} / ${node.height}`, verticalAlign: "middle" }
+        });
+        if (node.float) Object.assign(props.style, compact ? { display: "block", float: "none", margin: "0 auto 8px" } : { float: node.float, margin: node.float === "left" ? "0 10px 6px 0" : "0 0 6px 10px" });
+      }
       if (tag === "a") {
         props.style = { color: "inherit", textDecoration: "underline" };
         props.title = node.href;
@@ -7431,9 +7509,9 @@
           };
         } else tag = "span";
       }
-      return reactExports.createElement(tag, props, tag === "br" ? void 0 : node.children.map(render));
+      return reactExports.createElement(tag, props, tag === "br" || tag === "img" ? void 0 : node.children.map(render));
     };
-    return tree.map(render);
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: root, style: { display: "flow-root", overflowWrap: "anywhere" }, children: tree.map(render) });
   }
   function PdfHighlightTooltip({ tooltip }) {
     const note = reactExports.useSyncExternalStore(tooltip.subscribe, tooltip.getSnapshot);
@@ -7443,6 +7521,8 @@
       left: note.x + 14,
       top: note.y + 16,
       maxWidth: 280,
+      maxHeight: "min(320px, 60vh)",
+      overflow: "hidden",
       padding: "8px 10px",
       background: "rgba(20,20,20,0.96)",
       border: "1px solid rgba(147,197,253,0.45)",
@@ -10220,7 +10300,7 @@
       showHighlightControls && displayHighlights.map((h) => {
         if (!h.rects.length) return null;
         const r = h.rects[0];
-        const hasNote = !!String(h.note || "").trim();
+        const hasNote = hasAnnotationNote(h);
         return /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "div",
           {
@@ -12637,7 +12717,7 @@
     const filledSegments = Math.round(progressPct / 100 * progressSegments);
     const sortedHighlights = highlightIndex.sorted;
     const scopedHighlightsForPanel = highlightsScope === "page" ? highlightIndex.sortedByPage.get(page) || NO_HIGHLIGHTS : sortedHighlights;
-    const highlightsForPanel = reactExports.useMemo(() => highlightsNotesOnly ? scopedHighlightsForPanel.filter((h) => String(h.note || "").trim()) : scopedHighlightsForPanel, [scopedHighlightsForPanel, highlightsNotesOnly]);
+    const highlightsForPanel = reactExports.useMemo(() => highlightsNotesOnly ? scopedHighlightsForPanel.filter(hasAnnotationNote) : scopedHighlightsForPanel, [scopedHighlightsForPanel, highlightsNotesOnly]);
     const missingCardHighlightCount = highlightIndex.missingCards;
     const highlightPanelPage = pageWindow(highlightsForPanel.length, highlightPanelOffset);
     reactExports.useEffect(() => {
@@ -15401,6 +15481,7 @@
                 ] }),
                 highlightsForPanel.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, opacity: 0.75 }, children: highlightsNotesOnly ? highlightsScope === "page" ? tr("reader_no_highlight_notes_page") : tr("reader_no_highlight_notes") : tr("reader_no_highlights") }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: highlightsForPanel.slice(highlightPanelPage.start, highlightPanelPage.end).map((hl) => {
                   const note = String(hl.note || "").trim();
+                  const hasNote = hasAnnotationNote(hl);
                   const excerpt = String(hl.text || tr("reader_no_text")).trim();
                   const linkedNoteId = Number(hl.linked_note_id || 0);
                   const hasLinkedCard = Number.isInteger(linkedNoteId) && linkedNoteId > 0;
@@ -15492,7 +15573,7 @@
                           /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "button",
                             {
-                              title: note ? tr("reader_edit_note_tooltip") : tr("reader_add_note_tooltip"),
+                              title: hasNote ? tr("reader_edit_note_tooltip") : tr("reader_add_note_tooltip"),
                               onClick: (e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -15508,7 +15589,7 @@
                                 padding: "1px 7px",
                                 flexShrink: 0
                               },
-                              children: note ? tr("reader_edit_note") : tr("reader_add_note")
+                              children: hasNote ? tr("reader_edit_note") : tr("reader_add_note")
                             }
                           ),
                           /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -15534,14 +15615,14 @@
                             }
                           )
                         ] }),
-                        note && highlightsNotesOnly ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                        hasNote && highlightsNotesOnly ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(191,219,254)" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AnnotationNote, { note, html: hl.note_html, onOpenLink: (url) => window.pycmd(
                             "incremento_pdf_open_link:" + JSON.stringify({ cardId: cardIdRef.current, url })
                           ) }) }),
                           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 11, lineHeight: 1.35, color: "rgba(229,231,235,0.72)", marginTop: 6 }, children: tr("reader_highlight_excerpt", { excerpt }) })
                         ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35 }, children: excerpt }),
-                          note && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(147,197,253)", marginTop: 6 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AnnotationNote, { note, html: hl.note_html, onOpenLink: (url) => window.pycmd(
+                          hasNote && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(147,197,253)", marginTop: 6 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AnnotationNote, { note, html: hl.note_html, onOpenLink: (url) => window.pycmd(
                             "incremento_pdf_open_link:" + JSON.stringify({ cardId: cardIdRef.current, url })
                           ) }) })
                         ] })

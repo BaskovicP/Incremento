@@ -345,6 +345,8 @@ _EVENT_SCHEMAS: dict[str, dict[str, str]] = {
 }
 
 _KNOWN_CONFIG_KEYS = {
+    "mcp_enabled",
+    "mcp_allow_writes",
     "pdf_link_preview_zoom_by_profile",
     "companion_browser",
     "web_search_engine",

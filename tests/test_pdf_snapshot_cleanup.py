@@ -17,6 +17,8 @@ def _name(image):
 
 SNAPSHOT = _name(b"image")
 SECOND = _name(b"more")
+UNUSED_IMAGE = "pasted-landmark.jpg"
+PROTECTED_IMAGE = "unsaved-draft.webp"
 
 
 class _Media:
@@ -131,6 +133,51 @@ def test_cleanup_skips_modified_image_even_if_name_matches_generated_pattern(tmp
     assert media.trashed == []
 
 
+def test_unused_image_preview_includes_ordinary_images_but_protects_drafts(tmp_path):
+    (tmp_path / SNAPSHOT).write_bytes(b"image")
+    (tmp_path / UNUSED_IMAGE).write_bytes(b"photo")
+    (tmp_path / PROTECTED_IMAGE).write_bytes(b"draft")
+    (tmp_path / "not-an-image.txt").write_bytes(b"text")
+    symlink = tmp_path / "linked.png"
+    symlink.symlink_to(tmp_path / UNUSED_IMAGE)
+    media = _Media(
+        tmp_path,
+        [SNAPSHOT, UNUSED_IMAGE, PROTECTED_IMAGE, "not-an-image.txt", symlink.name],
+    )
+
+    preview = pdf_snapshot_cleanup.find_unused_attached_images(
+        SimpleNamespace(media=media),
+        protected_fields=[f'<img src="{PROTECTED_IMAGE}">'],
+    )
+
+    assert preview.filenames == (SNAPSHOT, UNUSED_IMAGE)
+    assert preview.total_bytes == 10
+    assert media.trashed == []
+
+
+def test_unused_image_cleanup_rechecks_references_and_moves_only_approved_images_to_trash(tmp_path):
+    (tmp_path / UNUSED_IMAGE).write_bytes(b"photo")
+    (tmp_path / PROTECTED_IMAGE).write_bytes(b"draft")
+    media = _Media(tmp_path, [UNUSED_IMAGE, PROTECTED_IMAGE])
+    collection = SimpleNamespace(media=media)
+    preview = pdf_snapshot_cleanup.find_unused_attached_images(collection)
+    assert preview.filenames == (UNUSED_IMAGE, PROTECTED_IMAGE)
+
+    media.unused = [PROTECTED_IMAGE]
+    changes = object()
+    removed = pdf_snapshot_cleanup.trash_unused_attached_images(
+        collection,
+        preview.filenames,
+        protected_fields=[f'<img src="{PROTECTED_IMAGE}">'],
+        empty_changes_factory=lambda: changes,
+    )
+
+    assert removed.filenames == ()
+    assert removed.total_bytes == 0
+    assert removed.changes is changes
+    assert media.trashed == []
+
+
 def test_utils_menu_exposes_one_cleanup_action_for_all_unused_data():
     source = (Path(__file__).resolve().parents[1] / "__init__.py").read_text(encoding="utf-8")
     menu = source.split("def _build_incremento_menu()", 1)[1]
@@ -158,7 +205,8 @@ def test_unified_cleanup_uses_one_confirmation_for_orphan_files_and_media(
     if include_orphan_pdf:
         (tmp_path / "orphan.pdf").write_bytes(b"pdf")
     (tmp_path / SNAPSHOT).write_bytes(b"image")
-    media = _Media(tmp_path, [SNAPSHOT])
+    (tmp_path / UNUSED_IMAGE).write_bytes(b"photo")
+    media = _Media(tmp_path, [SNAPSHOT, UNUSED_IMAGE])
     collection = SimpleNamespace(media=media)
     prompts = []
     messages = []
@@ -227,7 +275,7 @@ def test_unified_cleanup_uses_one_confirmation_for_orphan_files_and_media(
     namespace["cleanupNonActiveProfileDataFunction"]()
 
     assert len(prompts) == 1
-    assert "root_cleanup_snapshot_files" in prompts[0]
+    assert "root_cleanup_unused_images" in prompts[0]
     assert not (tmp_path / "orphan.pdf").exists()
-    assert media.trashed == [SNAPSHOT]
+    assert media.trashed == [SNAPSHOT, UNUSED_IMAGE]
     assert len(messages) == 1
