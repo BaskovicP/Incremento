@@ -559,6 +559,28 @@ def test_native_import_dialog_passes_each_files_details_to_its_manager(tmp_path,
         assert editor._reason.toPlainText()==''
         editor._reason.setPlainText('Found on a favourite blog')
         editor._source.setText('A blog')
+        if kind=='pdf':
+            # PDF creation now follows worker preparation and a serialized
+            # collection operation. Keep this test focused on per-file details.
+            from concurrent.futures import Future
+            from aqt import operations
+            col.add_custom_undo_entry=lambda _label:1
+            col.merge_undo_entries=lambda _step:object()
+            manager.prepare_pdf_import=lambda path,**kw:types.SimpleNamespace(
+                path=path,page_texts=['Synthetic text'],close=lambda:None)
+            def run_worker(work,done,**options):
+                assert options=={'uses_collection':False}
+                future=Future()
+                future.set_result(work())
+                done(future)
+            aqt.mw.taskman.run_in_background=run_worker
+            class CollectionOp:
+                def __init__(self,parent,op):self.op=op
+                def success(self,callback):self.done=callback;return self
+                def failure(self,callback):self.fail=callback;return self
+                def run_in_background(self):self.done(self.op(col))
+            operations.CollectionOp=CollectionOp
+            dialog._set_duplicate_names(set())
         dialog._start_add()
         for _ in range(10):app.processEvents()
         assert len(calls)==2

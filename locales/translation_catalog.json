@@ -5137,6 +5137,14 @@
     },
     {
       "component": "addon",
+      "key": "imports_close",
+      "form": "",
+      "source": "Close",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_companion_browser_unavailable",
       "form": "",
       "source": "Could not open the selected Companion browser. Check Companion browser in Incremento Settings → Review.",
@@ -5464,6 +5472,22 @@
       "key": "imports_download_requirements",
       "form": "",
       "source": "Requires yt-dlp and ffmpeg installed on your system.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_duplicate_check_failed",
+      "form": "",
+      "source": "Could not check existing PDF names. Check for duplicates before importing.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_duplicate_check_pending",
+      "form": "",
+      "source": "Checking existing PDF names. Please try Add again in a moment.",
       "tokens": [],
       "markup": []
     },
@@ -6571,6 +6595,56 @@
     },
     {
       "component": "addon",
+      "key": "imports_pin_lists",
+      "form": "",
+      "source": "Pin lists",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pin_lists_help",
+      "form": "",
+      "source": "Reuse the selected lists for the next imported document. Each document keeps its own reason and source.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pin_tags",
+      "form": "",
+      "source": "Pin tags",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_pin_tags_help",
+      "form": "",
+      "source": "Keep these tags for the next webpage in this import window.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_possible_duplicate",
+      "form": "",
+      "source": "⚠ {filename} — Possible duplicate",
+      "tokens": [
+        "{filename}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_possible_duplicate_help",
+      "form": "",
+      "source": "A PDF with the same name or title may already exist, or another queued file has this name. Compare it before importing. Tick Add to import it anyway.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_preview",
       "form": "",
       "source": "Preview",
@@ -6677,6 +6751,38 @@
       "key": "imports_priority_title",
       "form": "",
       "source": "Set Priority",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_queue_add",
+      "form": "",
+      "source": "Add to queue / update selected",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_queue_help",
+      "form": "",
+      "source": "Select a queued webpage to edit its tags and details, then import it. Cleanup is available for each webpage.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_queue_remove",
+      "form": "",
+      "source": "Remove from queue",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_queue_saved",
+      "form": "",
+      "source": "PDF saved. Import the next webpage or close this window. Selected lists are kept.",
       "tokens": [],
       "markup": []
     },
@@ -7171,6 +7277,14 @@
       "key": "imports_starting",
       "form": "",
       "source": "Starting",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_stop",
+      "form": "",
+      "source": "Stop import",
       "tokens": [],
       "markup": []
     },
@@ -8033,6 +8147,14 @@
       "tokens": [
         "{seconds}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_queue",
+      "form": "",
+      "source": "Webpage import queue",
+      "tokens": [],
       "markup": []
     },
     {
@@ -10969,6 +11091,17 @@
     },
     {
       "component": "addon",
+      "key": "reader_bookshelf_basic_tooltip",
+      "form": "",
+      "source": "{title}\n{kind}\nSelect Details for more information. Double-click to read.",
+      "tokens": [
+        "{kind}",
+        "{title}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_bookshelf_browse_tags",
       "form": "",
       "source": "Browse tags",
@@ -10988,6 +11121,74 @@
       "key": "reader_bookshelf_browse_tags_hint",
       "form": "",
       "source": "Show tags used by documents in this bookshelf, with the most common tags first.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_cards_created",
+      "form": "few",
+      "source": "{count} cards created",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_cards_created",
+      "form": "many",
+      "source": "{count} cards created",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_cards_created",
+      "form": "one",
+      "source": "{count} card created",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_cards_created",
+      "form": "other",
+      "source": "{count} cards created",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_cards_created",
+      "form": "two",
+      "source": "{count} cards created",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_cards_created",
+      "form": "zero",
+      "source": "{count} cards created",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_cards_unavailable",
+      "form": "",
+      "source": "Cards created unavailable",
       "tokens": [],
       "markup": []
     },
@@ -11253,6 +11454,54 @@
     },
     {
       "component": "addon",
+      "key": "reader_bookshelf_display",
+      "form": "",
+      "source": "Display…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_display_cards",
+      "form": "",
+      "source": "Cards created",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_display_hint",
+      "form": "",
+      "source": "Choose what appears below each book. The title and active sort value stay visible. Defaults: read progress, cards created, and page count.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_display_pages",
+      "form": "",
+      "source": "Page count",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_display_priority",
+      "form": "",
+      "source": "Priority",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_display_title",
+      "form": "",
+      "source": "Information beneath books",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_bookshelf_document_count",
       "form": "few",
       "source": "{count} documents",
@@ -11421,6 +11670,66 @@
     },
     {
       "component": "addon",
+      "key": "reader_bookshelf_estimated_pages",
+      "form": "few",
+      "source": "About {count} pages",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_estimated_pages",
+      "form": "many",
+      "source": "About {count} pages",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_estimated_pages",
+      "form": "one",
+      "source": "About {count} page",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_estimated_pages",
+      "form": "other",
+      "source": "About {count} pages",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_estimated_pages",
+      "form": "two",
+      "source": "About {count} pages",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_estimated_pages",
+      "form": "zero",
+      "source": "About {count} pages",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_bookshelf_file_check_failed",
       "form": "",
       "source": "Could not check PDF files. Enable the missing-files filter to try again.",
@@ -11440,6 +11749,14 @@
       "key": "reader_bookshelf_filter_tags_placeholder",
       "form": "",
       "source": "Filter by tags — type a name or browse available tags…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_info_loading",
+      "form": "",
+      "source": "Loading book info…",
       "tokens": [],
       "markup": []
     },
@@ -11565,6 +11882,14 @@
       "key": "reader_bookshelf_no_tags",
       "form": "",
       "source": "No document tags are available.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_pages_unavailable",
+      "form": "",
+      "source": "Page count unavailable",
       "tokens": [],
       "markup": []
     },
@@ -11714,6 +12039,34 @@
     },
     {
       "component": "addon",
+      "key": "reader_bookshelf_read_to_estimated_page",
+      "form": "",
+      "source": "Read to about page {page}",
+      "tokens": [
+        "{page}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_read_to_page",
+      "form": "",
+      "source": "Read to page {page}",
+      "tokens": [
+        "{page}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_read_unavailable",
+      "form": "",
+      "source": "Read progress unavailable",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_bookshelf_reverse_order",
       "form": "",
       "source": "Reverse order",
@@ -11849,6 +12202,66 @@
       "form": "",
       "source": "Document Bookshelf",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_total_pages",
+      "form": "few",
+      "source": "Contains {count} pages",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_total_pages",
+      "form": "many",
+      "source": "Contains {count} pages",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_total_pages",
+      "form": "one",
+      "source": "Contains {count} page",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_total_pages",
+      "form": "other",
+      "source": "Contains {count} pages",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_total_pages",
+      "form": "two",
+      "source": "Contains {count} pages",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_bookshelf_total_pages",
+      "form": "zero",
+      "source": "Contains {count} pages",
+      "tokens": [
+        "{count}"
+      ],
       "markup": []
     },
     {
@@ -12235,6 +12648,46 @@
       "key": "reader_comment_label",
       "form": "",
       "source": "Comment:",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_connection_note",
+      "form": "",
+      "source": "Connection note (optional, up to 2,000 characters)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_connection_note_failed",
+      "form": "",
+      "source": "Could not save the connection note. Your text is kept; try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_connection_note_invalid",
+      "form": "",
+      "source": "Connection notes must be plain text of at most 2,000 characters.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_connection_note_placeholder",
+      "form": "",
+      "source": "For example: This place also talks about X.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_connection_note_save",
+      "form": "",
+      "source": "Save note",
       "tokens": [],
       "markup": []
     },
@@ -14268,6 +14721,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_library_details",
+      "form": "",
+      "source": "Details",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_library_edit_lists",
       "form": "",
       "source": "Edit lists",
@@ -14310,7 +14771,7 @@
       "component": "addon",
       "key": "reader_library_intro",
       "form": "",
-      "source": "Select a book to view its lists and saved reason. Double-click or choose Open book to read.",
+      "source": "Use Display… to choose the information below each cover. Select a book and click Details for more information. Double-click or choose Open book to read.",
       "tokens": [],
       "markup": []
     },
@@ -34368,6 +34829,14 @@
     },
     {
       "component": "addon",
+      "key": "study_card_hierarchy",
+      "form": "",
+      "source": "Card hierarchy",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "study_card_hint",
       "form": "",
       "source": "Open a passage or recording without leaving this review.",
@@ -34937,6 +35406,14 @@
     },
     {
       "component": "addon",
+      "key": "study_parent",
+      "form": "",
+      "source": "Parent",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "study_pause",
       "form": "",
       "source": "Pause",
@@ -35302,6 +35779,14 @@
       "key": "study_segment_finished",
       "form": "",
       "source": "Segment finished. Return to the passage, replay, or continue.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "study_show_in_tree",
+      "form": "",
+      "source": "Show in tree",
       "tokens": [],
       "markup": []
     },

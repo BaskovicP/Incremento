@@ -27,6 +27,8 @@ CONFIG_SCHEMA_VERSION = 3
 DOCUMENT_MIX_VERSION = 2
 DEFAULT_TOPIC_DONE_TAG = "topic/done"
 DEFAULT_LEARNING_LEECH_TAG = "learning_leech"
+DEFAULT_BOOKSHELF_CAPTION_FIELDS = ("read_progress", "cards_created", "page_count")
+BOOKSHELF_CAPTION_FIELDS = (*DEFAULT_BOOKSHELF_CAPTION_FIELDS, "lists", "reason", "source", "tags", "priority", "format")
 DEFAULT_REVIEWER_BUTTON_VISIBILITY = {
     "done": True,
     "postpone": True,
@@ -90,6 +92,13 @@ def _bool(value: Any, default: bool) -> bool:
         if normalized in {"0", "false", "no", "off", ""}:
             return False
     return bool(default)
+
+
+def normalize_bookshelf_caption_fields(value: Any) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return list(DEFAULT_BOOKSHELF_CAPTION_FIELDS)
+    selected = {field for field in value if isinstance(field, str)}
+    return [field for field in BOOKSHELF_CAPTION_FIELDS if field in selected]
 
 
 def normalize_pdf_controls_preferences(value: Any) -> dict:
@@ -442,6 +451,7 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     config["day_end_time"] = configured_day_end_time(config)
     config["ui_language"] = normalize_language_choice(config.get("ui_language"))
     config['study_workspace_enabled'] = configured_study_workspace_enabled(config)
+    config['bookshelf_caption_fields'] = normalize_bookshelf_caption_fields(config.get('bookshelf_caption_fields'))
     config["config_schema_version"] = CONFIG_SCHEMA_VERSION
     config["extract_default_type"] = configured_extract_default_type(config)
     config["topic_done_tag"] = configured_topic_done_tag(config)

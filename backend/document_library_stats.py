@@ -25,7 +25,7 @@ def load_document_statistics(
     metric: str,
     cancelled=None,
 ) -> dict[int, int]:
-    """Count annotations, due attachments, or document-plus-attachment reviews.
+    """Count linked cards, annotations, due attachments, or reviews.
 
     Attachments include the same direct and nested relationships as Review All.
     Each card contributes once per document, even when it has several links.
@@ -37,7 +37,7 @@ def load_document_statistics(
             raise CancelledError()
 
     check_cancelled()
-    if metric not in {"annotations", "due", "reviews"}:
+    if metric not in {"cards", "annotations", "due", "reviews"}:
         raise ValueError("Unsupported document statistic")
     documents = list(dict.fromkeys(
         (int(card_id), kind) for card_id, kind in documents
@@ -72,6 +72,9 @@ def load_document_statistics(
         if metric == "reviews":
             attached.add(card_id)
         cards_by_document[card_id] = attached
+    check_cancelled()
+    if metric == "cards":
+        return {card_id: len(attached) for card_id, attached in cards_by_document.items()}
     all_ids = sorted(set().union(*cards_by_document.values()))
     values = {}
     for start in range(0, len(all_ids), 500):

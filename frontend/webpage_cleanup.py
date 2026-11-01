@@ -60,7 +60,7 @@ CLEANUP_SCRIPT = r"""(() => {
 
 def create_cleanup_preview(page, parent=None):
     """Host the existing isolated page; saving prints this exact edited DOM."""
-    from aqt.qt import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox
+    from aqt.qt import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox, Qt
     from PyQt6.QtWebEngineWidgets import QWebEngineView
     from PyQt6.QtWebEngineCore import QWebEngineScript
     try:
@@ -69,6 +69,7 @@ def create_cleanup_preview(page, parent=None):
         from backend.i18n import t
 
     dialog = QDialog(parent)
+    dialog.setWindowModality(Qt.WindowModality.WindowModal)
     dialog.setWindowTitle(t("imports_webpage_cleanup_title"))
     dialog.resize(1100, 800)
     layout = QVBoxLayout(dialog)

@@ -38,6 +38,52 @@ def test_card_resource_context_uses_the_note_title_without_rendered_reader_instr
     assert note['Front'] == 'PDF open in sidebar · select text to fill fields'
 
 
+def test_card_resources_include_the_live_profile_scoped_tree_path_without_mutating_it(tmp_path):
+    root = str(tmp_path)
+    rows = [dict(card_id=cid, parent_card_id=parent, node_kind='topic', sort_order=0)
+            for cid, parent in ((1, None), (2, 1), (3, 2))]
+    db.set_knowledge_tree_structure(root, 'A', rows)
+    col = Collection({1: Note('Basic', Front='<b>Biology &amp; life</b>'),
+                      2: Note('Basic', Front='Immunology'),
+                      3: Note('Basic', Front='Macrophages?', Incremento_Parent_Card_ID='99')})
+    before = db.get_knowledge_tree_nodes(root, 'A')
+    result = load_card_resources(root, 'A', col, 3)
+    assert result['hierarchy'] == [dict(card_id=1, title='Biology & life'),
+                                   dict(card_id=2, title='Immunology'),
+                                   dict(card_id=3, title='Macrophages?')]
+    assert load_card_resources(root, 'B', col, 3)['hierarchy'] == []
+    assert db.get_knowledge_tree_nodes(root, 'A') == before
+    assert col.notes[3]['Incremento_Parent_Card_ID'] == '99'
+
+
+def test_tree_path_omits_deleted_ancestors_and_keeps_a_live_root(tmp_path):
+    from study_resources import load_card_hierarchy
+    root = str(tmp_path)
+    db.set_knowledge_tree_structure(root, 'A', [
+        dict(card_id=cid, parent_card_id=parent, node_kind='topic', sort_order=0)
+        for cid, parent in ((1, None), (2, 1), (3, 2))])
+    col = Collection({1: Note('Basic', Front='Root'), 3: Note('Basic', Front='Current')})
+    assert load_card_hierarchy(root, 'A', col, 3) == [dict(card_id=1, title='Root'), dict(card_id=3, title='Current')]
+    assert load_card_hierarchy(root, 'A', col, 1) == [dict(card_id=1, title='Root')]
+    assert load_card_hierarchy(root, 'A', col, 99) == []
+
+
+@pytest.mark.parametrize('cycle', [False, True])
+def test_tree_path_bounds_deep_or_cyclic_ancestry_and_long_titles(monkeypatch, cycle):
+    import study_resources
+    reads = []
+    def row(_root, _profile, cid):
+        reads.append(cid)
+        return dict(card_id=cid, parent_card_id=1 if cycle and cid==3 else cid+1)
+    monkeypatch.setattr(study_resources, 'get_knowledge_tree_node', row)
+    col = Collection({cid: Note('Basic', Front='x'*5000) for cid in range(1, 100)})
+    path = study_resources.load_card_hierarchy('unused', 'A', col, 1)
+    assert len(path) == (3 if cycle else 64)
+    assert path[-1]['card_id'] == 1
+    assert len(reads) == len(set(reads)) == len(path)
+    assert all(len(item['title']) == 240 for item in path)
+
+
 def test_card_finds_its_textbook_passage_and_the_passages_recording(tmp_path):
     root = str(tmp_path)
     pdf = get_pdf_dir(root, "A") / "geometry.pdf"

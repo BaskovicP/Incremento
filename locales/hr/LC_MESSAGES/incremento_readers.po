@@ -3708,6 +3708,21 @@ msgstr "Odaberi PDF referencu"
 msgid "reader_reference_links"
 msgstr "Povezani PDF-ovi"
 
+msgid "reader_connection_note"
+msgstr "Bilješka o poveznici (neobavezno, do 2.000 znakova)"
+
+msgid "reader_connection_note_placeholder"
+msgstr "Na primjer: I ovaj odlomak govori o X."
+
+msgid "reader_connection_note_save"
+msgstr "Spremi bilješku"
+
+msgid "reader_connection_note_invalid"
+msgstr "Bilješka o poveznici mora biti običan tekst s najviše 2.000 znakova."
+
+msgid "reader_connection_note_failed"
+msgstr "Bilješku o poveznici nije moguće spremiti. Tekst je sačuvan; pokušajte ponovno."
+
 msgid "reader_reference_links_hint"
 msgstr "Odaberite referencu za pregled ili otvaranje uz čitanje. Dodajte PDF za povezivanje ovog izvora s dokumentom i stranicom."
 
@@ -4664,7 +4679,7 @@ msgid "reader_library_add_epub"
 msgstr "+ Dodaj EPUB"
 
 msgid "reader_library_intro"
-msgstr "Odaberite knjigu za prikaz popisa i spremljenog razloga. Za čitanje dvaput kliknite ili odaberite Otvori knjigu."
+msgstr "Odaberite Prikaz… za odabir podataka ispod svake naslovnice. Odaberite knjigu i kliknite Detalji za više informacija. Za čitanje dvaput kliknite ili odaberite Otvori knjigu."
 
 msgid "reader_library_cover_view"
 msgstr "Naslovnice"
@@ -4877,3 +4892,72 @@ msgstr "Ova je bilješka izmijenjena drugdje ili izbrisana. Nacrt je i dalje ovd
 #: frontend/highlight_note_dialog.py
 msgid "reader_note_editor_save_failed"
 msgstr "Bilješku nije moguće spremiti: {error}\nNacrt je i dalje otvoren."
+
+msgid "study_show_in_tree"
+msgstr "Prikaži u stablu"
+
+msgid "study_parent"
+msgstr "Roditelj"
+
+msgid "study_card_hierarchy"
+msgstr "Hijerarhija kartice"
+
+msgid "reader_library_details"
+msgstr "Detalji"
+
+msgid "reader_bookshelf_basic_tooltip"
+msgstr "{title}\n{kind}\nZa više informacija odaberite Detalji. Za čitanje dvaput kliknite."
+
+msgid "reader_bookshelf_info_loading"
+msgstr "Učitavanje podataka o knjizi…"
+
+msgid "reader_bookshelf_read_to_page"
+msgstr "Pročitano do str. {page}"
+
+msgid "reader_bookshelf_read_to_estimated_page"
+msgstr "Pročitano do oko str. {page}"
+
+msgid "reader_bookshelf_read_unavailable"
+msgstr "Napredak nije dostupan"
+
+msgid "reader_bookshelf_cards_unavailable"
+msgstr "Broj kartica nije dostupan"
+
+msgid "reader_bookshelf_pages_unavailable"
+msgstr "Broj stranica nije dostupan"
+
+msgid "reader_bookshelf_cards_created"
+msgid_plural "reader_bookshelf_cards_created_plural"
+msgstr[0] "{count} izrađena kartica"
+msgstr[1] "{count} izrađene kartice"
+msgstr[2] "{count} izrađenih kartica"
+
+msgid "reader_bookshelf_total_pages"
+msgid_plural "reader_bookshelf_total_pages_plural"
+msgstr[0] "Sadrži {count} stranicu"
+msgstr[1] "Sadrži {count} stranice"
+msgstr[2] "Sadrži {count} stranica"
+
+msgid "reader_bookshelf_estimated_pages"
+msgid_plural "reader_bookshelf_estimated_pages_plural"
+msgstr[0] "Oko {count} stranice"
+msgstr[1] "Oko {count} stranice"
+msgstr[2] "Oko {count} stranica"
+
+msgid "reader_bookshelf_display"
+msgstr "Prikaz…"
+
+msgid "reader_bookshelf_display_title"
+msgstr "Podaci ispod knjiga"
+
+msgid "reader_bookshelf_display_hint"
+msgstr "Odaberite što se prikazuje ispod svake knjige. Naslov i vrijednost aktivnog poretka ostaju vidljivi. Zadano: napredak čitanja, izrađene kartice i broj stranica."
+
+msgid "reader_bookshelf_display_cards"
+msgstr "Izrađene kartice"
+
+msgid "reader_bookshelf_display_pages"
+msgstr "Broj stranica"
+
+msgid "reader_bookshelf_display_priority"
+msgstr "Prioritet"

@@ -1566,3 +1566,63 @@ msgstr "重置"
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_save"
 msgstr "保存 PDF"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_pin_tags"
+msgstr "固定标签"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_pin_tags_help"
+msgstr "在此导入窗口中为下一个网页保留这些标签。"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_queue_add"
+msgstr "加入队列 / 更新所选项"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_queue_remove"
+msgstr "从队列移除"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_webpage_queue"
+msgstr "网页导入队列"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_queue_help"
+msgstr "选择队列中的网页，编辑其标签和详情，然后导入。每个网页均可单独清理。"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_queue_saved"
+msgstr "PDF 已保存。请导入下一个网页或关闭此窗口。已保留所选列表。"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_close"
+msgstr "关闭"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_stop"
+msgstr "停止导入"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_possible_duplicate"
+msgstr "⚠ {filename} — 可能重复"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_possible_duplicate_help"
+msgstr "可能已有同名或同标题的 PDF，或队列中有另一个同名文件。请在导入前比较。如仍需导入，请勾选“添加”。"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_duplicate_check_failed"
+msgstr "无法检查已有 PDF 的名称。请在导入前检查是否重复。"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_duplicate_check_pending"
+msgstr "正在检查已有 PDF 的名称。请稍后再次点击“添加”。"
+
+#: frontend/document_details.py
+msgid "imports_pin_lists"
+msgstr "固定列表"
+
+#: frontend/document_details.py
+msgid "imports_pin_lists_help"
+msgstr "为下一个导入的文档保留所选列表。每个文档保留各自的原因和来源。"

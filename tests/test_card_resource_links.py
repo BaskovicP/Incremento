@@ -113,8 +113,10 @@ def test_all_saved_locations_remain_visible_after_multiple_batches(tmp_path, mon
 
 
 def test_unlink_undo_restores_a_missing_resource_without_reading_its_file(tmp_path, monkeypatch):
+    from document_links import set_document_link_note
     links, col = setup_resources(tmp_path, monkeypatch)
     link_id = links.save_card_resource_links(str(tmp_path), 'A', col, 1, [dict(kind='pdf', card_id=7, page=3)])[0]
+    assert set_document_link_note(str(tmp_path), 'A', link_id, source_card_id=1, connection_note='Related idea')
     token = links.unlink_card_resource(str(tmp_path), 'A', 1,
         dict(location=dict(kind='pdf', card_id=7, page=3), owner_card_id=1, link_id=link_id))
     (tmp_path / 'book.pdf').unlink()
@@ -122,6 +124,7 @@ def test_unlink_undo_restores_a_missing_resource_without_reading_its_file(tmp_pa
         links.restore_card_resource_link(str(tmp_path), 'B', col, 1, token)
     assert links.restore_card_resource_link(str(tmp_path), 'A', col, 1, token)
     assert list_document_links(str(tmp_path), 'A', 1)[0]['target_page'] == 3
+    assert list_document_links(str(tmp_path), 'A', 1)[0]['connection_note'] == 'Related idea'
 
 
 @pytest.mark.parametrize('kind', ['pdf', 'video'])

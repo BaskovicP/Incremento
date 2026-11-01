@@ -102,6 +102,16 @@ def test_library_fails_closed_on_cancellation_and_symlink_escape(library):
     assert rows[0]["percent"] is None and reads == []
 
 
+def test_visible_document_progress_does_not_open_or_query_other_books(library):
+    collection, profiles, reads, root = library
+    rows = documents.document_progress_from_collection(collection, str(root), "Synthetic", card_ids=[2])
+    assert [(row["card_id"], row["read"], row["total"]) for row in rows] == [(2, 2, 4)]
+    assert reads == [], "An offscreen PDF must not be opened for an EPUB's summary"
+    profiles.clear()
+    assert documents.document_progress_from_collection(collection, str(root), "Synthetic", card_ids=[]) == []
+    assert profiles == []
+
+
 def test_epub_metadata_budget_and_path_containment(tmp_path):
     root = paths.get_epub_extract_root(str(tmp_path), "Synthetic")
     folder = root / "book.epub"

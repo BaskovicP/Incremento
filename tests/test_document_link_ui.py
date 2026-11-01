@@ -43,7 +43,7 @@ def link_ui(monkeypatch, tmp_path):
         patch.setitem(sys.modules, package.__name__ + '.pdf_page_links', SimpleNamespace(pdf_page_count=lambda path: 10))
         patch.setitem(sys.modules, 'aqt.operations', SimpleNamespace(QueryOp=Query))
         patch.setitem(sys.modules, 'aqt.qt', SimpleNamespace(**{name: object for name in (
-            'QDialog', 'QHBoxLayout', 'QInputDialog', 'QLabel', 'QListWidget', 'QPushButton', 'QVBoxLayout', 'Qt')}))
+            'QDialog', 'QHBoxLayout', 'QInputDialog', 'QLabel', 'QListWidget', 'QPlainTextEdit', 'QPushButton', 'QVBoxLayout', 'Qt')}))
         spec = importlib.util.spec_from_file_location(package.__name__ + '.document_link_ui',
             Path(package.__path__[0]) / 'document_link_ui.py')
         module = importlib.util.module_from_spec(spec)
@@ -94,11 +94,13 @@ def test_confirmed_preview_saves_its_page_and_precise_spot_only_after_validation
     link_ui.module.link_pdf({'card_id': 7, 'kind': 'pdf', 'page': 3}, show_after=False)
     assert list_document_links(link_ui.root, 'A', 7) == []
     target = link_ui.module.resolve_pdf_reference(link_ui.root, 'A', link_ui.col, 8)
-    callbacks[0]({**target, 'page': 4, 'page_y': .65, 'scroll_ratio': .25})
+    callbacks[0]({**target, 'page': 4, 'page_y': .65, 'scroll_ratio': .25,
+                  'connection_note': 'This place also talks about X.'})
     assert list_document_links(link_ui.root, 'A', 7) == []
     link_ui.finish()
     row = list_document_links(link_ui.root, 'A', 7)[0]
     assert (row['target_card_id'], row['target_page'], row['target_y'], row['target_scroll']) == (8, 4, .65, .25)
+    assert row['connection_note'] == 'This place also talks about X.'
 
 
 def test_replaced_target_cannot_be_saved_as_the_document_the_user_previewed(link_ui, monkeypatch):

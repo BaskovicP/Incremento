@@ -870,6 +870,13 @@ def _migration_23_document_library(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_24_document_link_notes(conn: sqlite3.Connection) -> None:
+    _begin_migration_script(conn, """
+        ALTER TABLE document_links ADD COLUMN connection_note TEXT NOT NULL DEFAULT ''
+            CHECK(length(connection_note) <= 2000);
+    """)
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
@@ -893,6 +900,7 @@ _SCHEMA_MIGRATIONS = (
     (21, "annotation_note_formatting", _migration_21_annotation_note_formatting),
     (22, "annotation_styles", _migration_22_annotation_styles),
     (23, "document_library", _migration_23_document_library),
+    (24, "document_link_notes", _migration_24_document_link_notes),
 )
 
 

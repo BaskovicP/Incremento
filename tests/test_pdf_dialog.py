@@ -149,11 +149,12 @@ def test_folder_import_includes_pdf_and_djvu_case_insensitively(monkeypatch, tmp
     assert [Path(path).name for path in dialog._start_folder_import.call_args.args[0]] == ["first.pdf", "second.DJVU", "third.djv"]
 
 
-def test_djvu_import_dispatches_to_background_conversion_without_synchronous_pdf_import():
-    dialog = types.SimpleNamespace(_process_djvu_file=Mock())
-    entries = [("book.DJVU", "Book", ["topic"], False, 25.0)]
+@pytest.mark.parametrize("filename,ocr", [("book.DJVU", False), ("scan.pdf", True)])
+def test_document_import_dispatches_to_preparation_before_creating_a_card(filename, ocr):
+    dialog = types.SimpleNamespace(_process_prepared_file=Mock())
+    entries = [(filename, "Book", ["topic"], ocr, 25.0)]
     pdf_dialog.AddPdfDialog._process_files(dialog, entries, 0)
-    dialog._process_djvu_file.assert_called_once_with(entries, 0)
+    dialog._process_prepared_file.assert_called_once_with(entries, 0)
 
 
 class _FakeCheckBox:
@@ -189,7 +190,8 @@ def test_bulk_ocr_choice_updates_every_possible_row_and_future_detection():
 
 
 @pytest.mark.parametrize("switched", [False, True])
-def test_prepared_djvu_is_cleaned_and_never_imported_after_dialog_close_or_profile_switch(monkeypatch, switched):
+@pytest.mark.parametrize("filename", ["book.djvu", "scan.pdf"])
+def test_prepared_document_is_cleaned_and_never_imported_after_dialog_close_or_profile_switch(monkeypatch, switched, filename):
     prepared = types.SimpleNamespace(close=Mock())
     taskman = types.SimpleNamespace(run_in_background=Mock())
     collection = object()
@@ -205,7 +207,7 @@ def test_prepared_djvu_is_cleaned_and_never_imported_after_dialog_close_or_profi
         _set_row_status=Mock(), _update_add_progress=Mock(), _show_error=Mock(),
     )
     dialog._request_current = lambda: pdf_dialog.AddPdfDialog._request_current(dialog)
-    pdf_dialog.AddPdfDialog._process_djvu_file(dialog, [("book.djvu", "Book", [], False, 50)], 0)
+    pdf_dialog.AddPdfDialog._process_prepared_file(dialog, [(filename, "Book", [], False, 50)], 0)
     assert taskman.run_in_background.call_count == 1
     if switched:
         profile["name"] = "Other"
@@ -230,7 +232,7 @@ def test_djvu_import_captures_selected_compression_before_background_work(monkey
         _set_row_status=Mock(), _update_add_progress=Mock(),
         _djvu_compression=types.SimpleNamespace(choice_for=choices.get),
     )
-    pdf_dialog.AddPdfDialog._process_djvu_file(dialog, [("book.djvu", "Book", [], False, 50)], 0)
+    pdf_dialog.AddPdfDialog._process_prepared_file(dialog, [("book.djvu", "Book", [], False, 50)], 0)
     choices["book.djvu"] = "original"
     tasks.run_in_background.call_args.args[0]()
     assert prepare.call_args.kwargs["compression"] == "black_white"

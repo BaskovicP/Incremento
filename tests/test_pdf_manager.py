@@ -8,6 +8,8 @@ import os
 import sys
 import tempfile
 import shutil
+from pathlib import Path
+from types import SimpleNamespace
 import pytest
 from unittest.mock import MagicMock, patch, call
 
@@ -687,6 +689,105 @@ class TestExtractPdfPagesTextQtFallback:
 
 # ---------------------------------------------------------------------------
 # ocr_pdf_in_place
+
+
+@pytest.mark.parametrize("cancel_at", ["before", "ocr", "after", None])
+def test_pdf_preparation_owns_only_temporary_copy_and_discards_cancelled_work(tmp_path, monkeypatch, cancel_at):
+    from concurrent.futures import CancelledError
+    source = tmp_path / "scan.pdf"
+    source.write_bytes(b"original PDF")
+    cancelled = [cancel_at == "before"]
+    copies = []
+    def ocr(path, **kwargs):
+        copies.append(Path(path))
+        assert Path(path) != source
+        Path(path).write_bytes(b"searchable PDF")
+        if cancel_at == "ocr":
+            cancelled[0] = True
+        return True
+    def extract(path, **kwargs):
+        if cancel_at == "after":
+            cancelled[0] = True
+        return ["Recognized text"]
+    monkeypatch.setattr(pdf_manager, "validate_pdf_file", lambda *_a, **_kw: 1)
+    monkeypatch.setattr(pdf_manager, "ocr_pdf_in_place", ocr)
+    monkeypatch.setattr(pdf_manager, "extract_pdf_pages_text", extract)
+    if cancel_at:
+        with pytest.raises(CancelledError):
+            pdf_manager.prepare_pdf_import(str(source), do_ocr=True, cancel_cb=lambda: cancelled[0])
+        assert all(not path.exists() for path in copies)
+    else:
+        prepared = pdf_manager.prepare_pdf_import(str(source), do_ocr=True, cancel_cb=lambda: cancelled[0])
+        assert prepared.page_texts == ["Recognized text"]
+        assert Path(prepared.path).read_bytes() == b"searchable PDF"
+        prepared.close()
+        assert not Path(prepared.path).exists()
+    assert source.read_bytes() == b"original PDF"
+
+
+def test_pdf_import_names_match_stored_uuid_filenames_and_titles_case_insensitively():
+    col = SimpleNamespace(
+        models=SimpleNamespace(by_name=lambda _name: {"id": 42, "flds": [{"name": "Title"}, {"name": "PDF_Filename"}]}),
+        db=SimpleNamespace(all=lambda query, mid: [("<b>Renamed book</b>\x1fMy_Book-" + "a" * 32 + ".pdf",)]),
+    )
+    keys = pdf_manager.pdf_import_name_keys(col)
+    assert pdf_manager.pdf_import_name_key("MY BOOK.PDF") in keys
+    assert pdf_manager.pdf_import_name_key("Renamed book.pdf") in keys
+    assert pdf_manager.pdf_import_name_key("Different.pdf") not in keys
+
+
+def test_pdf_import_name_keeps_periods_in_titles_and_decodes_anki_html():
+    col = SimpleNamespace(
+        models=SimpleNamespace(by_name=lambda _name: {"id": 42, "flds": [{"name": "Title"}]}),
+        db=SimpleNamespace(all=lambda *_args: [("Chapter 1. Science &amp; Nature",)]),
+    )
+    assert pdf_manager.pdf_import_name_key("Chapter 1. Science & Nature.pdf") in pdf_manager.pdf_import_name_keys(col)
+
+
+def test_cancelling_active_ocr_kills_and_reaps_the_process(monkeypatch):
+    from concurrent.futures import CancelledError
+    cancelled = [False]
+    process = MagicMock()
+    process.pid = 12345
+    process.poll.side_effect = lambda: 0 if process.kill.called else None
+    def wait(**kwargs):
+        if process.kill.called:
+            return 0
+        cancelled[0] = True
+        raise pdf_manager.subprocess.TimeoutExpired(["ocr"], 0.1)
+    process.wait.side_effect = wait
+    launch = MagicMock(return_value=process)
+    monkeypatch.setattr(pdf_manager.subprocess, "Popen", launch)
+    kill_group = MagicMock()
+    if os.name != "nt":
+        monkeypatch.setattr(pdf_manager.os, "killpg", kill_group)
+    else:
+        monkeypatch.setattr(pdf_manager.subprocess, "run", MagicMock())
+    with pytest.raises(CancelledError):
+        pdf_manager._run_ocr_process(["ocr"], 10, lambda: cancelled[0])
+    process.kill.assert_called_once()
+    assert process.wait.call_args.kwargs == {}
+    assert launch.call_args.kwargs["start_new_session"] == (os.name != "nt")
+    if os.name != "nt":
+        assert kill_group.call_args.args[0] == 12345
+
+
+def test_cancelling_ocr_rendering_closes_the_temporary_pdf(monkeypatch):
+    from concurrent.futures import CancelledError
+    cancelled = [False]
+    class Document:
+        close = MagicMock()
+        def __len__(self):
+            return 2
+        def load_page(self, _index):
+            return SimpleNamespace(get_pixmap=lambda **_kw: SimpleNamespace(
+                save=lambda _path: cancelled.__setitem__(0, True)))
+    doc = Document()
+    monkeypatch.setattr(pdf_manager, "_find_bin", lambda *_args: "synthetic-tesseract")
+    monkeypatch.setitem(sys.modules, "fitz", SimpleNamespace(open=lambda _path: doc, Matrix=lambda *_a: None))
+    with pytest.raises(CancelledError):
+        pdf_manager.ocr_pdf_in_place("synthetic.pdf", cancel_cb=lambda: cancelled[0])
+    doc.close.assert_called_once()
 # ---------------------------------------------------------------------------
 
 

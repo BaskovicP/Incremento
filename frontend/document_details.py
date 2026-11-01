@@ -167,7 +167,7 @@ class DocumentListPickerDialog(QDialog):
 class BookDetailsEditor(QWidget):
     changed = pyqtSignal()
 
-    def __init__(self, addon_dir: str, profile: str, parent=None, *, available_lists=None):
+    def __init__(self, addon_dir: str, profile: str, parent=None, *, available_lists=None, allow_list_pin=False):
         super().__init__(parent)
         self._addon_dir, self._profile = addon_dir, profile
         self._loading = False
@@ -179,6 +179,13 @@ class BookDetailsEditor(QWidget):
         row = QHBoxLayout()
         row.addWidget(QLabel(t("reader_library_lists")))
         row.addStretch()
+        self._pin_lists = None
+        if allow_list_pin:
+            self._pin_lists = QPushButton(t("imports_pin_lists"))
+            self._pin_lists.setAutoDefault(False)
+            self._pin_lists.setCheckable(True)
+            self._pin_lists.setToolTip(t("imports_pin_lists_help"))
+            row.addWidget(self._pin_lists)
         self._edit_lists = QPushButton(t("reader_library_edit_lists"))
         self._edit_lists.setAutoDefault(False)
         self._edit_lists.clicked.connect(self._choose_lists)
@@ -222,6 +229,9 @@ class BookDetailsEditor(QWidget):
 
     def details(self) -> dict:
         return library.normalize_document_details(self.raw_details())
+
+    def pinned_list_ids(self) -> list[int]:
+        return sorted(self._list_ids) if self._pin_lists is not None and self._pin_lists.isChecked() else []
 
     def set_details(self, details: dict) -> None:
         self._loading = True
@@ -278,21 +288,22 @@ class ImportBookDetails(BookDetailsEditor):
     """Keep separate unsaved details for each selected import file."""
 
     def __init__(self, addon_dir: str, profile: str, parent=None):
-        super().__init__(addon_dir, profile, parent)
+        super().__init__(addon_dir, profile, parent, allow_list_pin=True)
         self._drafts: dict[str, dict] = {}
         self._path: str | None = None
         self.setEnabled(False)
         self.setToolTip(t("reader_library_import_hint"))
 
     def set_path(self, path: str | None) -> None:
+        defaults = {"list_ids": self.pinned_list_ids()} if path else {}
         if self._path:
             self._drafts[self._path] = self.raw_details()
         self._path = path
         self.setEnabled(bool(path))
-        self.set_details(self._drafts.get(path, {}))
+        self.set_details(self._drafts.get(path, defaults))
         self.setAccessibleName(Path(path).name if path else t("reader_library_select_book"))
 
     def for_path(self, path: str) -> dict:
         if self._path:
             self._drafts[self._path] = self.raw_details()
-        return library.normalize_document_details(self._drafts.get(path, {}))
+        return library.normalize_document_details(self._drafts.get(path, {"list_ids": self.pinned_list_ids()}))

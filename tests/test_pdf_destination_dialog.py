@@ -22,7 +22,8 @@ def destination(monkeypatch, tmp_path):
         pass
     with monkeypatch.context() as patch:
         patch.setitem(sys.modules, 'aqt.operations', SimpleNamespace(QueryOp=Query))
-        patch.setitem(sys.modules, 'aqt.qt', SimpleNamespace(QDialog=Dialog, QVBoxLayout=object, Qt=object))
+        patch.setitem(sys.modules, 'aqt.qt', SimpleNamespace(QDialog=Dialog, QLabel=object,
+            QPlainTextEdit=object, QVBoxLayout=object, Qt=object))
         path = Path(__file__).resolve().parents[1] / 'frontend/pdf_destination_dialog.py'
         spec = importlib.util.spec_from_file_location('_destination_dialog_test', path)
         module = importlib.util.module_from_spec(spec)
@@ -43,6 +44,7 @@ def destination(monkeypatch, tmp_path):
     dialog._snapshot, dialog._nonce = snapshot, dialog.state.nonce
     dialog._source_current = lambda: source_current[0]
     dialog._closed, dialog._saving, dialog.selected_location = False, False, None
+    dialog.note_editor = None
     dialog.view = SimpleNamespace(stop=lambda: None)
     dialog.page = SimpleNamespace(runJavaScript=scripts.append, deleteLater=lambda: None)
     dialog.accept = lambda: accepted.append(dialog.selected_location)

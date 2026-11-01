@@ -2070,7 +2070,7 @@ class TestConnectionSwitching:
         conn = db.get_connection(addon_dir, "TestProfile")
 
         assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 23
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 24
         migrations = conn.execute(
             "SELECT version, name FROM schema_migrations ORDER BY version"
         ).fetchall()
@@ -2098,6 +2098,7 @@ class TestConnectionSwitching:
             (21, "annotation_note_formatting"),
             (22, "annotation_styles"),
             (23, "document_library"),
+            (24, "document_link_notes"),
         ]
 
     def test_worker_thread_gets_a_distinct_connection(self):

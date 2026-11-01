@@ -1572,3 +1572,63 @@ msgstr "Reset"
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_save"
 msgstr "Save PDF"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_pin_tags"
+msgstr "Pin tags"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_pin_tags_help"
+msgstr "Keep these tags for the next webpage in this import window."
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_queue_add"
+msgstr "Add to queue / update selected"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_queue_remove"
+msgstr "Remove from queue"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_webpage_queue"
+msgstr "Webpage import queue"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_queue_help"
+msgstr "Select a queued webpage to edit its tags and details, then import it. Cleanup is available for each webpage."
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_queue_saved"
+msgstr "PDF saved. Import the next webpage or close this window. Selected lists are kept."
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_close"
+msgstr "Close"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_stop"
+msgstr "Stop import"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_possible_duplicate"
+msgstr "⚠ {filename} — Possible duplicate"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_possible_duplicate_help"
+msgstr "A PDF with the same name or title may already exist, or another queued file has this name. Compare it before importing. Tick Add to import it anyway."
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_duplicate_check_failed"
+msgstr "Could not check existing PDF names. Check for duplicates before importing."
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_duplicate_check_pending"
+msgstr "Checking existing PDF names. Please try Add again in a moment."
+
+#: frontend/document_details.py
+msgid "imports_pin_lists"
+msgstr "Pin lists"
+
+#: frontend/document_details.py
+msgid "imports_pin_lists_help"
+msgstr "Reuse the selected lists for the next imported document. Each document keeps its own reason and source."

@@ -1,6 +1,7 @@
 """A supplemental study visit over the still-active Anki review card."""
 from pathlib import Path
 from copy import deepcopy
+from html import escape
 import secrets
 from threading import Event
 
@@ -51,6 +52,46 @@ _resource_context = None
 _resource_request = None
 _review_resources = None
 _resource_failed = False
+_invoke_tree_action = None
+_reveal_tree_card = None
+
+
+def register_tree_navigation(*, invoke_action, reveal_card):
+    global _invoke_tree_action, _reveal_tree_card
+    _invoke_tree_action, _reveal_tree_card = invoke_action, reveal_card
+
+
+def _hierarchy_model(path, *, command='', failed=False):
+    if failed:
+        status = t('study_resource_unavailable')
+    elif path is None:
+        status = t('study_loading')
+    else:
+        status = '' if path else t('root_reviewer_card_not_in_tree')
+    entries = [dict(item, title=item['title'] or t('reader_card_number', number=item['card_id']),
+                    command=command + ':ancestor_' + str(item['card_id']), current=index == len(path)-1)
+               for index, item in enumerate(path or [])]
+    parent_status = t('root_menu_go_parent_tree') if len(entries)>1 else t('root_reviewer_card_at_tree_top')
+    return dict(label=t('study_card_hierarchy'), path=entries, status=status,
+        actions=[dict(key='parent', label=t('study_parent'), disabled=len(entries)<2,
+                      status=parent_status if entries else status, command=command + ':parent'),
+                 dict(key='tree', label=t('study_show_in_tree'), disabled=not entries,
+                      status=t('root_menu_reveal_current_tree') if entries else status, command=command + ':tree')])
+
+
+def _open_hierarchy(command, path):
+    if not path:
+        return
+    if command == 'tree' and _invoke_tree_action is not None:
+        _invoke_tree_action('reveal_current_knowledge_tree')
+    elif command == 'parent' and len(path)>1 and _invoke_tree_action is not None:
+        _invoke_tree_action('go_to_parent_knowledge_tree')
+    elif command.startswith('ancestor_') and _reveal_tree_card is not None:
+        raw = command.removeprefix('ancestor_')
+        if raw.isascii() and raw.isdigit() and len(raw)<=16:
+            card_id = int(raw)
+            if any(item['card_id'] == card_id for item in path):
+                _reveal_tree_card(card_id)
 
 
 def _context():
@@ -79,6 +120,7 @@ class StudyWorkspace(QDialog):
         self._compact_resources = source is None
         self.active_sheet = None
         self._card_title = ''
+        self._hierarchy = None
         try:
             cfg = load_addon_config(mw.addonManager, _ADDON_PKG)
             self._layout_preferences = deepcopy(cfg['study_layout_by_profile'].get(self.visit.profile, {}))
@@ -166,6 +208,18 @@ class StudyWorkspace(QDialog):
         self._stage_colors = style_stage_bar(self.stage_bar, self.stage_buttons)
         self._recording_icon = 'video'
         header.addWidget(self.stage_bar)
+        self.tree_actions = QWidget(self)
+        self.tree_actions.setObjectName('study-tree-actions')
+        tree_actions = QHBoxLayout(self.tree_actions)
+        tree_actions.setContentsMargins(0, 0, 0, 0)
+        self.parent_button = QPushButton(t('study_parent'), self.tree_actions)
+        self.tree_button = QPushButton(t('study_show_in_tree'), self.tree_actions)
+        for button, command in ((self.parent_button, 'parent'), (self.tree_button, 'tree')):
+            button.setAutoDefault(False)
+            button.clicked.connect(lambda _=False, command=command: self._open_hierarchy(command))
+            tree_actions.addWidget(button)
+        tree_actions.addStretch(1)
+        header.addWidget(self.tree_actions)
         self.stage_buttons['card'].setEnabled(bool(self.visit.card_id))
         if not self.visit.card_id:
             self.stage_buttons['card'].setToolTip(t('study_no_active_card'))
@@ -188,6 +242,17 @@ class StudyWorkspace(QDialog):
         self.focus_escape.activated.connect(self.leave_focus)
         self.focus_escape.setEnabled(False)
         layout.addWidget(header_panel)
+        self.hierarchy_path = QLabel(self)
+        self.hierarchy_path.setObjectName('study-hierarchy-path')
+        self.hierarchy_path.setTextFormat(Qt.TextFormat.RichText)
+        self.hierarchy_path.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        self.hierarchy_path.setOpenExternalLinks(False)
+        self.hierarchy_path.setWordWrap(True)
+        self.hierarchy_path.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Minimum)
+        self.hierarchy_path.setContentsMargins(16, 6, 16, 6)
+        self.hierarchy_path.setAccessibleName(t('study_card_hierarchy'))
+        self.hierarchy_path.linkActivated.connect(self._open_hierarchy)
+        layout.addWidget(self.hierarchy_path)
         self.body_stack = QStackedWidget(self)
         layout.addWidget(self.body_stack, 1)
         self.study_body = QWidget(self.body_stack)
@@ -407,6 +472,7 @@ class StudyWorkspace(QDialog):
             QListWidget#study-resource-list::item:selected {{ background: {c['selected']}; color: {c['accent']}; border-color: {c['accent']}; }}
             QFrame#study-resource-panel QPushButton, QFrame#study-player-panel QPushButton,
             QFrame#study-context QPushButton, QPushButton#study-more-resources,
+            QWidget#study-tree-actions QPushButton,
             QPushButton#study-focus-textbook, QFrame#study-header > QPushButton {{ padding: 5px 10px; border: 1px solid {c['border']}; border-radius: 6px; background: {c['paper']}; color: {c['ink']}; }}
             QFrame#study-resource-panel QPushButton#study-open-resource {{ background: {c['selected']}; color: {c['accent']}; font-weight: 600; }}
             QFrame#study-resource-panel QPushButton:hover, QFrame#study-player-panel QPushButton:hover,
@@ -436,7 +502,8 @@ class StudyWorkspace(QDialog):
         if self.focus_stage is not None:
             return
         orientation = Qt.Orientation.Vertical if self.width() < 880 else Qt.Orientation.Horizontal
-        header_minimum = self.stage_bar.minimumSizeHint().width() + self.link_resources_button.sizeHint().width() + 64
+        header_minimum = (self.stage_bar.minimumSizeHint().width() + self.tree_actions.minimumSizeHint().width()
+                          + self.link_resources_button.sizeHint().width() + 80)
         self.header_panel.layout().setDirection(QBoxLayout.Direction.TopToBottom if self.width() < max(520, header_minimum)
                                                else QBoxLayout.Direction.LeftToRight)
         self.stage_bar.setMinimumHeight(self.stage_bar.minimumSizeHint().height())
@@ -540,6 +607,7 @@ class StudyWorkspace(QDialog):
             super().reject()
 
     def _sync_panels(self, *_):
+        self._sync_hierarchy()
         states = self.availability()
         for stage, state in states.items():
             button = self.stage_buttons[stage]
@@ -597,6 +665,23 @@ class StudyWorkspace(QDialog):
         self.resource_intro.setText(t('study_card_hint') if self._items else
             t('study_no_textbooks' if self.source['kind'] == 'card' and self.visit.stage == 'book' else 'study_no_recordings'))
         self._adapt_panels()
+
+    def _sync_hierarchy(self):
+        model = _hierarchy_model(self._hierarchy, failed=self._resources_failed)
+        self.tree_actions.setVisible(bool(self.visit.card_id))
+        for button, action in zip((self.parent_button, self.tree_button), model['actions']):
+            button.setEnabled(not action['disabled'])
+            button.setToolTip(action['status'])
+            button.setAccessibleDescription(action['status'])
+        self.hierarchy_path.setVisible(bool(self.visit.card_id) and self.focus_stage is None)
+        self.hierarchy_path.setText(' <span aria-hidden="true">›</span> '.join(
+            '<a href="ancestor_' + str(item['card_id']) + '">' +
+            ('<b>' + escape(item['title']) + '</b>' if item['current'] else escape(item['title'])) + '</a>'
+            for item in model['path']) or escape(model['status']))
+
+    def _open_hierarchy(self, command):
+        if self.current():
+            _open_hierarchy(command, self._hierarchy)
 
     def _picker_context_menu(self, point):
         menu = QMenu(self)
@@ -794,6 +879,7 @@ class StudyWorkspace(QDialog):
         def ready(result):
             self._resources_known = True
             self._resources_failed = False
+            self._hierarchy = result.get('hierarchy', [])
             if result.get('card_title'):
                 self._card_title = result['card_title']
                 self.context_title.setText(display_resource_title(self._card_title))
@@ -1094,6 +1180,7 @@ class StudyWorkspace(QDialog):
         profile, card_id = self.visit.profile, self.visit.card_id
         def ready(result):
             self._documents = result['documents']
+            self._hierarchy = result.get('hierarchy', [])
             self._recordings = result['recordings']
             self._resources_known = True
             self.status.setText(t('study_links_saved'))
@@ -1361,7 +1448,9 @@ def refresh_reviewer_navigation():
         resources_label=t('study_resources'), hint=t('study_card_hint'), tiles=[book, video],
         summary=t('study_linked_summary', documents=states['book'].get('count', 0), recordings=states['video'].get('count', 0)),
         link_action=dict(label=t('study_link_resources'), command=command + ':link'),
-        manage_action=dict(label=t('study_manage_links'), command=command + ':manage'))
+        manage_action=dict(label=t('study_manage_links'), command=command + ':manage'),
+        hierarchy=_hierarchy_model(result.get('hierarchy', []) if result is not None else None,
+                                   command=command, failed=_resource_failed))
     mw.reviewer.web.eval(reviewer_navigation_script(routes, t('study_resources'), workspace=workspace))
 
 
@@ -1377,6 +1466,8 @@ def on_js_message(handled, message, context):
             show_resources()
         elif parts[1] == 'retry':
             check_reviewer_resources(force=True)
+        elif parts[1] in ('tree', 'parent') or parts[1].startswith('ancestor_'):
+            _open_hierarchy(parts[1], (_review_resources or {}).get('hierarchy'))
         elif parts[1] in ('link', 'manage'):
             if _window is None:
                 _window = StudyWorkspace(initial_stage='card')

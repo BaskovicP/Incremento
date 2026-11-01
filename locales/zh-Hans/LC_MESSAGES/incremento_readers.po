@@ -3632,6 +3632,21 @@ msgstr "选择 PDF 参考文档"
 msgid "reader_reference_links"
 msgstr "链接的 PDF"
 
+msgid "reader_connection_note"
+msgstr "关联笔记（可选，最多 2,000 个字符）"
+
+msgid "reader_connection_note_placeholder"
+msgstr "例如：这里也讨论了 X。"
+
+msgid "reader_connection_note_save"
+msgstr "保存笔记"
+
+msgid "reader_connection_note_invalid"
+msgstr "关联笔记必须为纯文本，且不超过 2,000 个字符。"
+
+msgid "reader_connection_note_failed"
+msgstr "无法保存关联笔记。文本已保留，请重试。"
+
 msgid "reader_reference_links_hint"
 msgstr "选择参考文档以预览或在阅读旁打开。添加 PDF 可将此来源链接到文档及其页面。"
 
@@ -4586,7 +4601,7 @@ msgid "reader_library_add_epub"
 msgstr "+ 添加 EPUB"
 
 msgid "reader_library_intro"
-msgstr "选择书籍查看所属书单及保存原因。双击或选择“打开书籍”即可阅读。"
+msgstr "点击“显示…”选择每本书封面下方的信息。选择书籍并点击“详情”查看更多信息。双击或选择“打开书籍”即可阅读。"
 
 msgid "reader_library_cover_view"
 msgstr "封面"
@@ -4797,3 +4812,66 @@ msgstr "此批注已在别处更改或删除。草稿仍保留在此处。关闭
 #: frontend/highlight_note_dialog.py
 msgid "reader_note_editor_save_failed"
 msgstr "无法保存此批注：{error}\n草稿仍保持打开状态。"
+
+msgid "study_show_in_tree"
+msgstr "在知识树中显示"
+
+msgid "study_parent"
+msgstr "父卡片"
+
+msgid "study_card_hierarchy"
+msgstr "卡片层级"
+
+msgid "reader_library_details"
+msgstr "详情"
+
+msgid "reader_bookshelf_basic_tooltip"
+msgstr "{title}\n{kind}\n点击“详情”查看更多信息，双击即可阅读。"
+
+msgid "reader_bookshelf_info_loading"
+msgstr "正在加载书籍信息…"
+
+msgid "reader_bookshelf_read_to_page"
+msgstr "已读至第 {page} 页"
+
+msgid "reader_bookshelf_read_to_estimated_page"
+msgstr "约已读至第 {page} 页"
+
+msgid "reader_bookshelf_read_unavailable"
+msgstr "阅读进度不可用"
+
+msgid "reader_bookshelf_cards_unavailable"
+msgstr "已建卡片数不可用"
+
+msgid "reader_bookshelf_pages_unavailable"
+msgstr "页数不可用"
+
+msgid "reader_bookshelf_cards_created"
+msgid_plural "reader_bookshelf_cards_created_plural"
+msgstr[0] "已创建 {count} 张卡片"
+
+msgid "reader_bookshelf_total_pages"
+msgid_plural "reader_bookshelf_total_pages_plural"
+msgstr[0] "共 {count} 页"
+
+msgid "reader_bookshelf_estimated_pages"
+msgid_plural "reader_bookshelf_estimated_pages_plural"
+msgstr[0] "约 {count} 页"
+
+msgid "reader_bookshelf_display"
+msgstr "显示…"
+
+msgid "reader_bookshelf_display_title"
+msgstr "书籍下方的信息"
+
+msgid "reader_bookshelf_display_hint"
+msgstr "选择每本书下方显示的信息。书名和当前排序值始终显示。默认显示阅读进度、已建卡片数和页数。"
+
+msgid "reader_bookshelf_display_cards"
+msgstr "已建卡片数"
+
+msgid "reader_bookshelf_display_pages"
+msgstr "页数"
+
+msgid "reader_bookshelf_display_priority"
+msgstr "优先级"

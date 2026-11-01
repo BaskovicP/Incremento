@@ -75,7 +75,10 @@ def test_metadata_and_attachment_scans_wait_for_advanced_filters(tmp_path, compl
         else:
             assert dialog._duplicates_only_cb.isEnabled()
             assert dialog._entries[0].metadata_title == 'Embedded title'
-            assert 'Embedded title' in dialog._list.item(0).toolTip()
+            # Metadata now belongs to the click-open details pane.
+            assert 'Embedded title' not in dialog._list.item(0).toolTip()
+            dialog._details_button.click()
+            assert 'Embedded title' in dialog._book_kind.text()
             # Badge counts still wait until duplicate mode is selected.
             import aqt.operations
             operations = []

@@ -1,7 +1,9 @@
 import json
+import html
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -9,6 +11,8 @@ import uuid
 from concurrent.futures import CancelledError
 from collections.abc import Callable
 from pathlib import Path
+from dataclasses import dataclass
+from contextlib import closing
 
 from PyQt6.QtPdf import QPdfDocument
 
@@ -58,6 +62,67 @@ def _pdf_filename_lookup_key(filename: str) -> str:
     if match:
         stem = match.group("label").strip("._-")
     return stem.casefold()
+
+
+def pdf_import_name_key(value: str) -> str:
+    """Comparable title/original filename, including managed UUID filenames."""
+    if not re.search(r"\.(pdf|djvu|djv)$", value, re.IGNORECASE):
+        value += ".pdf"
+    return re.sub(r"[\W_]+", " ", _pdf_filename_lookup_key(value)).strip()
+
+
+def pdf_import_name_keys(col) -> set[str]:
+    """Read PDF names in a QueryOp, without opening any document files."""
+    model = col.models.by_name(PDF_NOTE_TYPE)
+    if not model:
+        return set()
+    indexes = [i for i, field in enumerate(model["flds"]) if field["name"] in {"Title", "PDF_Filename"}]
+    keys = set()
+    for (raw_fields,) in col.db.all("SELECT flds FROM notes WHERE mid = ?", model["id"]):
+        fields = raw_fields.split("\x1f")
+        for index in indexes:
+            if index < len(fields):
+                key = pdf_import_name_key(html.unescape(_plain_first_field(fields[index])))
+                if key:
+                    keys.add(key)
+    return keys
+
+
+@dataclass
+class PreparedPdfImport:
+    directory: tempfile.TemporaryDirectory
+    path: str
+    page_texts: list[str]
+
+    def close(self) -> None:
+        self.directory.cleanup()
+
+
+def prepare_pdf_import(source_path: str, *, do_ocr=False, progress_cb=None, cancel_cb=None) -> PreparedPdfImport:
+    """Prepare a private copy before any managed file or Anki note exists."""
+    def check():
+        if cancel_cb and cancel_cb():
+            raise CancelledError()
+
+    check()
+    validate_pdf_file(source_path)
+    directory = tempfile.TemporaryDirectory(prefix="incremento-pdf-import-")
+    try:
+        path = str(Path(directory.name) / Path(source_path).name)
+        with open(source_path, "rb") as source, open(path, "xb") as target:
+            while chunk := source.read(1024 * 1024):
+                check()
+                target.write(chunk)
+        check()
+        if do_ocr:
+            ocr_pdf_in_place(path, progress_cb=progress_cb, cancel_cb=cancel_cb)
+        check()
+        texts = extract_pdf_pages_text(path, cancelled=cancel_cb)
+        check()
+        return PreparedPdfImport(directory, path, texts)
+    except BaseException:
+        directory.cleanup()
+        raise
 
 
 def _find_exact_live_pdf_card_by_filename(col, filename: str) -> int | None:
@@ -1092,7 +1157,45 @@ def _find_bin(*candidates: str) -> str | None:
     return next((c for c in candidates if c and os.path.isfile(c)), None)
 
 
-def ocr_pdf_in_place(pdf_path: str, progress_cb=None) -> bool:
+def _run_ocr_process(args, timeout, cancel_cb=None):
+    if cancel_cb is None:
+        return subprocess.run(args, capture_output=True, timeout=timeout).returncode
+    if cancel_cb():
+        raise CancelledError()
+    process = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               start_new_session=os.name != "nt")
+    deadline = time.monotonic() + timeout
+    try:
+        while True:
+            if cancel_cb():
+                raise CancelledError()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(args, timeout)
+            try:
+                return process.wait(timeout=min(0.1, remaining))
+            except subprocess.TimeoutExpired:
+                continue
+    finally:
+        if process.poll() is None:
+            # ocrmypdf can own Tesseract children; stop only this job's tree.
+            if os.name != "nt":
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            else:
+                try:
+                    subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+                except (OSError, subprocess.TimeoutExpired):
+                    pass
+            if process.poll() is None:
+                process.kill()
+        process.wait()
+
+
+def ocr_pdf_in_place(pdf_path: str, progress_cb=None, *, cancel_cb=None) -> bool:
     """OCR a scanned PDF and replace it with a searchable version.
 
     Pipeline:
@@ -1106,6 +1209,12 @@ def ocr_pdf_in_place(pdf_path: str, progress_cb=None) -> bool:
     """
     import tempfile
     from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def check():
+        if cancel_cb and cancel_cb():
+            raise CancelledError()
+
+    check()
 
     # --- preferred pipeline: tesseract + PyMuPDF ---------------------------
     tesseract = _find_bin(
@@ -1129,16 +1238,18 @@ def ocr_pdf_in_place(pdf_path: str, progress_cb=None) -> bool:
                 out_bases: list[str] = []
                 total_pages = 0
                 try:
-                    doc = fitz.open(pdf_path)
-                    total_pages = len(doc)
-                    mat = fitz.Matrix(200 / 72, 200 / 72)  # 200 DPI
-                    for i in range(total_pages):
-                        pix = doc.load_page(i).get_pixmap(matrix=mat)
-                        img_path = os.path.join(tmpdir, f"p{i:04d}.png")
-                        pix.save(img_path)
-                        img_paths.append(img_path)
-                        out_bases.append(os.path.join(tmpdir, f"p{i:04d}"))
-                    doc.close()
+                    with closing(fitz.open(pdf_path)) as doc:
+                        total_pages = len(doc)
+                        mat = fitz.Matrix(200 / 72, 200 / 72)  # 200 DPI
+                        for i in range(total_pages):
+                            check()
+                            pix = doc.load_page(i).get_pixmap(matrix=mat)
+                            img_path = os.path.join(tmpdir, f"p{i:04d}.png")
+                            pix.save(img_path)
+                            img_paths.append(img_path)
+                            out_bases.append(os.path.join(tmpdir, f"p{i:04d}"))
+                except CancelledError:
+                    raise
                 except Exception:
                     total_pages = 0
 
@@ -1152,12 +1263,8 @@ def ocr_pdf_in_place(pdf_path: str, progress_cb=None) -> bool:
                     failed = False
 
                     def _ocr_page(i: int):
-                        proc = subprocess.run(
-                            [tesseract, img_paths[i], out_bases[i], "pdf"],
-                            capture_output=True,
-                            timeout=120,
-                        )
-                        return i, proc.returncode == 0
+                        code = _run_ocr_process([tesseract, img_paths[i], out_bases[i], "pdf"], 120, cancel_cb)
+                        return i, code == 0
 
                     try:
                         with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -1171,22 +1278,27 @@ def ocr_pdf_in_place(pdf_path: str, progress_cb=None) -> bool:
                                 done_count += 1
                                 if progress_cb:
                                     progress_cb(done_count, total_pages)
+                    except CancelledError:
+                        raise
                     except Exception:
                         failed = True
 
                     if not failed and len(page_pdfs) == total_pages:
                         # Step 3: merge with PyMuPDF (no pdfunite needed)
                         try:
-                            merged_doc = fitz.open()
-                            for i in range(total_pages):
-                                with fitz.open(page_pdfs[i]) as part:
-                                    merged_doc.insert_pdf(part)
-                            merged_path = os.path.join(tmpdir, "merged.pdf")
-                            merged_doc.save(merged_path)
-                            merged_doc.close()
+                            with closing(fitz.open()) as merged_doc:
+                                for i in range(total_pages):
+                                    check()
+                                    with fitz.open(page_pdfs[i]) as part:
+                                        merged_doc.insert_pdf(part)
+                                merged_path = os.path.join(tmpdir, "merged.pdf")
+                                merged_doc.save(merged_path)
                             if os.path.getsize(merged_path) > 0:
+                                check()
                                 shutil.move(merged_path, pdf_path)
                                 return True
+                        except CancelledError:
+                            raise
                         except Exception:
                             pass
 
@@ -1204,14 +1316,13 @@ def ocr_pdf_in_place(pdf_path: str, progress_cb=None) -> bool:
     fd, tmp_path = _tempfile.mkstemp(suffix=".pdf")
     os.close(fd)
     try:
-        proc = subprocess.run(
-            [ocrmypdf, "--skip-text", "--quiet", pdf_path, tmp_path],
-            capture_output=True,
-            timeout=300,
-        )
-        if proc.returncode == 0 and os.path.getsize(tmp_path) > 0:
+        code = _run_ocr_process([ocrmypdf, "--skip-text", "--quiet", pdf_path, tmp_path], 300, cancel_cb)
+        check()
+        if code == 0 and os.path.getsize(tmp_path) > 0:
             shutil.move(tmp_path, pdf_path)
             return True
+    except CancelledError:
+        raise
     except Exception:
         pass
     finally:

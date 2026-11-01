@@ -5,7 +5,7 @@ from pathlib import Path
 
 from aqt import mw
 from aqt.operations import QueryOp
-from aqt.qt import QDialog, QVBoxLayout, Qt
+from aqt.qt import QDialog, QLabel, QPlainTextEdit, QVBoxLayout, Qt
 from aqt.utils import tooltip
 
 try:
@@ -14,6 +14,7 @@ try:
     from ..backend.pdf_reader_state import PdfReaderState, maximum_reference_page
     from ..backend.pdf_reference import resolve_pdf_reference
     from ..backend.pdf_manager import get_pdf_daily_limit_status
+    from ..backend.document_links import normalize_connection_note
     from .pdf_page_links import pdf_page_count
 except ImportError:
     from backend.i18n import t
@@ -21,13 +22,14 @@ except ImportError:
     from backend.pdf_reader_state import PdfReaderState, maximum_reference_page
     from backend.pdf_reference import resolve_pdf_reference
     from backend.pdf_manager import get_pdf_daily_limit_status
+    from backend.document_links import normalize_connection_note
     from pdf_page_links import pdf_page_count
 
 _ADDON_DIR = str(Path(__file__).resolve().parent.parent)
 
 
 class PdfDestinationDialog(QDialog):
-    def __init__(self, snapshot, *, profile, max_page, is_current, initial_location=None):
+    def __init__(self, snapshot, *, profile, max_page, is_current, initial_location=None, connection_note=None):
         super().__init__(mw)
         from .pdf_reference_workspace import create_reference_view
         self.setWindowTitle(t('reader_destination_title'))
@@ -45,7 +47,20 @@ class PdfDestinationDialog(QDialog):
             self, snapshot, self.state, self.command, choosing=True)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.view)
+        layout.addWidget(self.view, 1)
+        self.note_editor = None
+        if connection_note is not None:
+            label = QLabel(t('reader_connection_note'), self)
+            label.setWordWrap(True)
+            layout.addWidget(label)
+            self.note_editor = QPlainTextEdit(self)
+            self.note_editor.setObjectName('connection-note')
+            self.note_editor.setAccessibleName(t('reader_connection_note'))
+            self.note_editor.setPlaceholderText(t('reader_connection_note_placeholder'))
+            self.note_editor.setPlainText(normalize_connection_note(connection_note))
+            self.note_editor.setMaximumHeight(90)
+            label.setBuddy(self.note_editor)
+            layout.addWidget(self.note_editor)
         self.finished.connect(lambda *_: self._dispose())
 
     def current(self):
@@ -54,6 +69,8 @@ class PdfDestinationDialog(QDialog):
 
     def _set_pending(self, value):
         self._saving = value
+        if self.note_editor is not None:
+            self.note_editor.setEnabled(not value)
         self.page.runJavaScript('window.incrementoReferencePickPending?.(' + json.dumps(value) + ');')
 
     def command(self, action, payload=None):
@@ -67,6 +84,11 @@ class PdfDestinationDialog(QDialog):
         point = payload.get('page_y')
         if (type(point) not in (int, float) or not 0 <= point <= 1
                 or type(payload.get('page')) is not int or payload['page'] != self.state.page):
+            return
+        try:
+            note = normalize_connection_note(self.note_editor.toPlainText()) if self.note_editor is not None else ''
+        except ValueError:
+            tooltip(t('reader_connection_note_invalid'))
             return
         location = replace(self.state)
         self._set_pending(True)
@@ -82,7 +104,10 @@ class PdfDestinationDialog(QDialog):
                                                count_current_page=False, persist_usage=False)
             if location.page > maximum_reference_page(status):
                 raise ValueError('Destination page is locked')
-            return {**snapshot, 'page': location.page, 'scroll_ratio': location.scroll_ratio, 'page_y': point}
+            selected = {**snapshot, 'page': location.page, 'scroll_ratio': location.scroll_ratio, 'page_y': point}
+            if self.note_editor is not None:
+                selected['connection_note'] = note
+            return selected
         def ready(selected):
             if self.current() and selected is not None:
                 self.selected_location = selected

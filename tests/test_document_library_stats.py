@@ -54,7 +54,8 @@ def test_annotation_counts_use_only_the_selected_document_kind_and_profile(stats
     assert b.conn.total_changes == 10
 
 
-@pytest.mark.parametrize("metric,expected", [("due", {1: 1, 2: 1}), ("reviews", {1: 14, 2: 3})])
+@pytest.mark.parametrize("metric,expected", [("due", {1: 1, 2: 1}), ("reviews", {1: 14, 2: 3}),
+                                           ("cards", {1: 2, 2: 1})])
 def test_library_counts_include_live_nested_cards_once_and_reviews_include_document(stats_boundary, metric, expected):
     b = stats_boundary
     result = b.stats.load_document_statistics("/synthetic", "Captured", [(1, "PDF"), (2, "EPUB")],
@@ -64,8 +65,10 @@ def test_library_counts_include_live_nested_cards_once_and_reviews_include_docum
     if metric == "due":
         assert all("is:due" in query and "-is:suspended" in query and "-is:buried" in query
                    for query in b.searches)
-    else:
+    elif metric == "reviews":
         assert len(b.reads) == 1
+    else:
+        assert b.reads == b.searches == []
     assert b.conn.total_changes == 10
 
 

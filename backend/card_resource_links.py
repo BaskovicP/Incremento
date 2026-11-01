@@ -17,7 +17,7 @@ MAX_BATCH = 32
 MAX_LIBRARY = 500
 _RESTORE_COLUMNS = {
     'pdf': ('document_links', 'source_card_id,source_content_id,source_kind,source_page,quote,'
-            'target_card_id,target_content_id,target_page,target_scroll,source_y,target_y'),
+            'target_card_id,target_content_id,target_page,target_scroll,source_y,target_y,connection_note'),
     'recording': ('recording_links', 'source_card_id,source_content_id,source_kind,source_position,source_json,'
                   'recording_card_id,recording_content_id,start,end,label'),
 }

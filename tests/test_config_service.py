@@ -2,6 +2,22 @@ import config_service
 import pytest
 
 
+@pytest.mark.parametrize('value,expected', [
+    (None, ['read_progress', 'cards_created', 'page_count']),
+    ('tags', ['read_progress', 'cards_created', 'page_count']),
+    ({'tags': True}, ['read_progress', 'cards_created', 'page_count']),
+    ([], []),
+    (['tags', 'page_count', 'tags', 'unknown', None, {}], ['page_count', 'tags']),
+])
+def test_bookshelf_caption_choices_default_to_the_three_stats_and_allow_title_only(value, expected):
+    raw = {'bookshelf_caption_fields': value, 'future': {'keep': True}}
+    normalized = config_service.normalize_config(raw)
+    assert normalized['bookshelf_caption_fields'] == expected
+    assert normalized['future'] == raw['future']
+    assert raw['bookshelf_caption_fields'] == value
+    assert config_service.normalize_config(normalized) == normalized
+
+
 @pytest.mark.parametrize('value,expected', [(True, True), (False, False), ('off', False), ('true', True), (None, True)])
 def test_study_workspace_preference_normalizes_without_changing_saved_links_or_layouts(value, expected):
     raw = dict(study_workspace_enabled=value, future_setting={'keep': True},

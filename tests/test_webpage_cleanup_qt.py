@@ -9,8 +9,8 @@ from textwrap import dedent
 import pytest
 
 
-@pytest.mark.parametrize("outcome", ["save", "cancel", "profile-switch"])
-def test_offline_cleanup_prints_edited_dom_or_aborts_without_pdf(tmp_path, outcome):
+@pytest.mark.parametrize("outcome", ["save", "cancel", "preview-cancel", "owner-close", "profile-switch"])
+def test_inactive_anki_cleanup_stays_above_its_import_and_saves_or_aborts(tmp_path, outcome):
     script = dedent(r'''
         import importlib
         import faulthandler
@@ -18,8 +18,8 @@ def test_offline_cleanup_prints_edited_dom_or_aborts_without_pdf(tmp_path, outco
         import sys
         import threading
         from pathlib import Path
-        from types import ModuleType
-        from aqt.qt import QApplication, QTimer
+        from types import ModuleType, SimpleNamespace
+        from aqt.qt import QApplication, QDialog, QTimer, Qt
         from PyQt6.QtQuick import QQuickWindow, QSGRendererInterface
         from PyQt6.QtWebEngineCore import QWebEngineScript, QWebEnginePage, QWebEngineProfile
         from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -50,15 +50,31 @@ def test_offline_cleanup_prints_edited_dom_or_aborts_without_pdf(tmp_path, outco
         source.write_text(resources.build_offline_webpage_html(html, '', timeout_sec=0))
         profile = ['First']
         module._active_profile = lambda: profile[0]
+        owner = QDialog(main_view)
+        owner.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        owner.show()
+        # Capture finishes while Anki is inactive: no active window is available
+        # to infer which import dialog owns the preview.
+        module.QApplication = SimpleNamespace(activeWindow=lambda: None)
+        module._prepare_in_background = lambda *_args: (source.read_text(), None)
         cancel = threading.Event()
         errors = []
         acted = []
         def interact():
             for dialog in app.topLevelWidgets():
                 view = dialog.findChild(QWebEngineView)
-                if not dialog.isVisible() or view is None or acted:
+                if not dialog.isVisible() or not hasattr(dialog, 'save_button') or view is None or acted:
                     continue
                 acted.append(True)
+                try:
+                    assert dialog.parent() is owner, 'Preview lost its import window'
+                    assert dialog.windowHandle().transientParent() is owner.windowHandle()
+                    assert dialog.windowModality() == Qt.WindowModality.WindowModal
+                    assert app.activeModalWidget() is dialog
+                except AssertionError as exc:
+                    errors.append(exc)
+                    dialog.reject()
+                    return
                 # The trusted ApplicationWorld picker must work while original
                 # page scripts remain disabled and its strict CSP is retained.
                 # Qt's top-level order varies; bind this preview before the
@@ -71,6 +87,10 @@ def test_offline_cleanup_prints_edited_dom_or_aborts_without_pdf(tmp_path, outco
                         preview.save_button.click()
                     elif outcome == 'cancel':
                         cancel.set()
+                    elif outcome == 'preview-cancel':
+                        preview.reject()
+                    elif outcome == 'owner-close':
+                        owner.close()
                     else:
                         profile[0] = 'Second'
                 view.page().runJavaScript("document.querySelector('nav').dispatchEvent(new MouseEvent('click', {bubbles:true})); getComputedStyle(document.querySelector('nav')).display",
@@ -80,8 +100,8 @@ def test_offline_cleanup_prints_edited_dom_or_aborts_without_pdf(tmp_path, outco
         poll.start(50)
         def run():
             try:
-                module._print_offline_snapshot(str(directory / 'result.pdf'), str(source), wait_ms=0, timeout_ms=10000,
-                    screen_media=True, edit_before_save=True, cancel_event=cancel)
+                module.render_webpage_to_pdf(str(directory / 'result.pdf'), html=source.read_text(), wait_ms=0, timeout_ms=10000,
+                    style='website', edit_before_save=True, cancel_event=cancel, parent=owner)
                 assert outcome == 'save', 'Cancelled preview returned success'
             except RuntimeError as exc:
                 expected = 'profile' if outcome == 'profile-switch' else 'cancel'
@@ -101,10 +121,11 @@ def test_offline_cleanup_prints_edited_dom_or_aborts_without_pdf(tmp_path, outco
         assert acted, 'Preview never became available'
         assert (directory / 'result.pdf').exists() == (outcome == 'save')
     ''')
-    # Keep desktop accessibility services out of the offscreen WebEngine fixture.
+    # The offscreen macOS platform has no native surface for GPU compositing.
+    # Keep desktop accessibility services out of the WebEngine fixture too.
     result = subprocess.run([sys.executable, '-c', script, str(Path(__file__).resolve().parents[1]), str(tmp_path), outcome],
         env=dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_OPENGL='software', QT_QUICK_BACKEND='software',
-                 QTWEBENGINE_CHROMIUM_FLAGS='--disable-gpu --disable-renderer-accessibility'),
+                 QTWEBENGINE_CHROMIUM_FLAGS='--disable-gpu --disable-gpu-compositing --disable-renderer-accessibility'),
         capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
     if outcome == 'save':

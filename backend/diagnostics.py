@@ -355,6 +355,7 @@ _KNOWN_CONFIG_KEYS = {
     "add_card_item_tags",
     "add_card_topic_tags",
     "automatic_backups",
+    "bookshelf_caption_fields",
     "auto_create_topics_deck",
     "auto_create_topics_deck_profiles",
     "auto_timer_card_types",

@@ -74,6 +74,7 @@ from .backend.video_manager import (
     import_local_video_file,
 )
 from .backend.audio_manager import add_audio_card
+from .backend.study_resources import load_card_hierarchy as _load_card_hierarchy
 from .backend.writing_manager import (
     WRITING_FILE_FIELD,
     WRITING_NOTE_TYPE,
@@ -4132,22 +4133,37 @@ def _reveal_current_card_in_knowledge_tree() -> None:
 
 
 def _go_to_parent_in_knowledge_tree() -> None:
+    from aqt.operations import QueryOp
+
     card_id = _current_reviewer_card_id()
     if card_id is None:
         tooltip(_t("root_reviewer_no_active_card"))
         return
 
-    row = get_knowledge_tree_node(_ADDON_DIR, _active_profile(), int(card_id))
-    if row is None:
-        tooltip(_t("root_reviewer_card_not_in_tree"))
-        return
+    profile, collection = _active_profile(), mw.col
 
-    parent_card_id = row.get("parent_card_id")
-    if parent_card_id is None:
-        tooltip(_t("root_reviewer_card_at_tree_top"))
-        return
+    def current():
+        return (_active_profile() == profile and mw.col is collection
+                and _current_reviewer_card_id() == card_id)
 
-    _open_knowledge_tree(select_card_id=int(parent_card_id))
+    def loaded(path):
+        if not current():
+            return
+        if not path:
+            tooltip(_t("root_reviewer_card_not_in_tree"))
+        elif len(path) < 2:
+            tooltip(_t("root_reviewer_card_at_tree_top"))
+        else:
+            _open_knowledge_tree(select_card_id=path[-2]['card_id'])
+
+    def load(col):
+        return _load_card_hierarchy(_ADDON_DIR, profile, col, card_id) if col is collection else []
+
+    def failed(_error):
+        if current():
+            tooltip(_t('study_resource_unavailable'))
+
+    QueryOp(parent=mw, op=load, success=loaded).failure(failed).run_in_background()
 
 
 _branch_study_reads = None
@@ -5776,41 +5792,65 @@ def addWebpageFunction() -> None:
     from .frontend.webpage_dialog import WebpagePdfResultDialog, WebpageToPdfDialog
     from .backend.pdf_manager import add_pdf_card
     from .frontend.file_shell import activate_anki_window
+    from aqt.operations import CollectionOp
+    from types import SimpleNamespace
 
-    profile = _active_profile()
-    dlg = WebpageToPdfDialog(mw, addon_dir=_ADDON_DIR)
-    if not dlg.exec():
-        return
-    pdf_path = str(dlg.pdf_path or "")
-    try:
-        if _active_profile() != profile:
-            return
-        card_id = add_pdf_card(
-            _ADDON_DIR,
-            mw.col,
-            pdf_path,
-            dlg.title_text,
-            tags=dlg.tags_to_apply,
-            profile=profile,
-            document_details=dlg.document_details,
-            metadata=build_incremento_metadata(
-                source_type="Web",
-                source_title=dlg.title_text,
-                source_link=dlg.source_url or "",
-            ),
-        )
-        if dlg.browser_handoff_completed:
-            activate_anki_window(mw)
-        result = WebpagePdfResultDialog(mw, dlg.title_text, profile, lambda: _open_pdf_card(card_id))
-        result.show()
-    except Exception as e:
-        showInfo(_t("root_webpage_pdf_failed", error=e))
-    finally:
-        if pdf_path:
+    profile, collection = _active_profile(), mw.col
+
+    def save_pdf(dlg):
+        pdf_path = str(dlg.pdf_path or "")
+        title, url, tags = dlg.title_text, dlg.source_url, list(dlg.tags_to_apply)
+        details = dlg.document_details
+        generation = dlg._import_generation
+        handoff = dlg.browser_handoff_completed
+        cancelled = dlg._capture_cancel
+
+        def cleanup():
             try:
                 os.remove(pdf_path)
             except OSError:
                 pass
+
+        def operation(col):
+            if col is not collection or _active_profile() != profile or cancelled.is_set():
+                raise RuntimeError(_t("imports_webpage_cancelled"))
+            undo_step = col.add_custom_undo_entry(_t("imports_webpage_to_pdf"))
+            card_id = add_pdf_card(
+                _ADDON_DIR, col, pdf_path, title, tags=tags, profile=profile,
+                document_details=details,
+                metadata=build_incremento_metadata(source_type="Web", source_title=title, source_link=url or ""),
+            )
+            return SimpleNamespace(card_id=card_id, changes=col.merge_undo_entries(undo_step))
+
+        def success(result):
+            cleanup()
+            if not dlg._import_current(generation, profile):
+                return
+            dlg._cancel_btn.setEnabled(True)
+            dlg.prepare_next_import()
+            if handoff:
+                activate_anki_window(mw)
+            result_dialog = WebpagePdfResultDialog(mw, title, profile, lambda: _open_pdf_card(result.card_id))
+            result_dialog.show()
+
+        def failure(error):
+            cleanup()
+            if dlg._import_current(generation, profile):
+                dlg._cancel_btn.setEnabled(True)
+                dlg._set_busy(False)
+                dlg._status_lbl.setText(_t("root_webpage_pdf_failed", error=error))
+
+        # Once the bounded collection mutation is queued, it must finish before
+        # another import can start. Conversion remains freely cancellable.
+        dlg._cancel_btn.setEnabled(False)
+        try:
+            CollectionOp(dlg, operation).success(success).failure(failure).run_in_background()
+        except Exception as error:
+            failure(error)
+
+    dlg = WebpageToPdfDialog(mw, addon_dir=_ADDON_DIR, save_pdf=save_pdf)
+    dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+    dlg.show()
 
 
 def reindexPdfTextFunction() -> None:
@@ -7277,6 +7317,7 @@ def openSettingsFunction() -> None:
         current_reviewer_button_visibility=configured_reviewer_button_visibility(cfg),
         current_reviewer_button_group_visible=configured_reviewer_button_group_visible(cfg),
         current_study_workspace_enabled=cfg['study_workspace_enabled'],
+        current_bookshelf_caption_fields=cfg['bookshelf_caption_fields'],
         current_show_incremento_fields=configured_show_incremento_fields(cfg),
         current_day_end_time=cfg.get("day_end_time", "04:00"),
         current_remember_browser_card_scroll=configured_remember_browser_card_scroll(cfg),
@@ -7349,6 +7390,8 @@ def openSettingsFunction() -> None:
         cfg[reader_preference] = copy.deepcopy(latest_reader_config.get(reader_preference, {}))
     if dlg.reader_default_highlight_color_changed:
         cfg['reader_default_highlight_color_by_profile'][settings_profile] = dlg.reader_default_highlight_color
+    cfg['bookshelf_caption_fields'] = (dlg.bookshelf_caption_fields if dlg.bookshelf_caption_fields_changed
+                                      else latest_reader_config['bookshelf_caption_fields'])
     cfg["ui_language"] = dlg.ui_language
     cfg["shortcuts"] = dlg.shortcuts_map
     cfg["extract_notetype"] = dlg.extract_notetype_name
@@ -7800,6 +7843,10 @@ def _build_incremento_menu() -> None:
     )
     _menu.addAction(_goToParentTreeAction)
     _register_shortcut_action("go_to_parent_knowledge_tree", _goToParentTreeAction)
+    _study_workspace_mod.register_tree_navigation(
+        invoke_action=_invoke_shortcut_action,
+        reveal_card=lambda card_id: _open_knowledge_tree(select_card_id=card_id),
+    )
 
     _menu.addSeparator()
 

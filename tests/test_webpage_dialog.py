@@ -318,6 +318,23 @@ def _browser_fallback_dialog(monkeypatch, tmp_path):
     return state, namespace, profile, opened, accepted, pending, finish
 
 
+def test_stopping_webpage_import_keeps_form_open_and_rejects_late_pdf(monkeypatch, tmp_path):
+    dialog, namespace, _profile, _opened, accepted, _pending, finish = _browser_fallback_dialog(monkeypatch, tmp_path)
+    source = tmp_path / "browser.pdf"
+    source.write_bytes(b"%PDF-1.7\nArticle")
+    dialog._on_saved_pdf()
+    cancel = dialog._capture_cancel
+    dialog._stop_import()
+    assert cancel.is_set()
+    assert dialog._import_btn.enabled
+    assert dialog.document_details["list_ids"] == [1]
+    assert dialog.tags_to_apply == ["topic", "reading"]
+    finish()
+    assert accepted == []
+    assert dialog.pdf_path is None
+    assert list(tmp_path.iterdir()) == [source]
+
+
 def test_blocked_webpage_automatically_opens_browser_and_waits_for_verification(monkeypatch, tmp_path):
     state, namespace, _profile, opened, accepted, pending, _finish = _browser_fallback_dialog(monkeypatch, tmp_path)
     def blocked(*_a, **_kw):
@@ -360,7 +377,7 @@ def test_browser_verification_automatically_finishes_the_original_import(monkeyp
     if outcome == "success":
         assert calls == [{"url": "https://example.org/article", "html": "<article>Verified article</article>",
                           "style": "article", "include_links": False, "prefer_snapshot": True,
-                          "cancel_event": state._capture_cancel, "edit_before_save": False}]
+                          "cancel_event": state._capture_cancel, "edit_before_save": False, "parent": state}]
         assert state.browser_handoff_completed
         assert state.title_text == "My article" and state.tags_to_apply == ["topic", "reading"]
         Path(state.pdf_path).unlink()
@@ -974,7 +991,7 @@ def test_import_routes_selected_options_and_drops_results_after_closing(tmp_path
         _set_busy=lambda _busy: None,
         _capture_document_details=lambda: True,
         _stop_browser_handoff=lambda: None,
-        accept=lambda: accepted.append(True))
+            _conversion_ready=lambda: accepted.append(True))
     state._import_current = lambda generation, profile: state._import_generation == generation and profile == "First"
     def render(output, **options):
         Path(output).write_bytes(b"%PDF-fixture")
@@ -993,6 +1010,7 @@ def test_import_routes_selected_options_and_drops_results_after_closing(tmp_path
     assert options["dynamic"] is True
     assert options["include_links"] is True
     assert options["timeout_ms"] == 90000
+    assert options["parent"] is state
     assert bool(accepted) is not closed
     assert Path(output).exists() is not closed
     if not closed:
@@ -1018,6 +1036,7 @@ def test_cleanup_choice_is_retained_through_verification_even_if_controls_change
     state._poll_browser_handoff()
 
     assert [options["edit_before_save"] for options in calls] == [True, True]
+    assert all(options["parent"] is state for options in calls)
     assert accepted == [True]
     Path(state.pdf_path).unlink()
 
