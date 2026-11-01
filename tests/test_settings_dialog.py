@@ -18,6 +18,23 @@ def test_mcp_settings_default_off_and_restore_both_permissions():
     assert restored.mcp_allow_writes is False
 
 
+def test_bookshelf_display_settings_load_edit_and_restore_the_three_default_stats():
+    dialog = IncrementoSettingsDialog({})
+    assert dialog.bookshelf_caption_fields == ['read_progress', 'cards_created', 'page_count']
+    assert dialog.bookshelf_caption_fields_changed is False
+    restored = IncrementoSettingsDialog({}, current_bookshelf_caption_fields=['tags'])
+    options = restored._bookshelf_display_options
+    assert restored.bookshelf_caption_fields == ['tags']
+    options._checkboxes['page_count'].setChecked(True)
+    assert restored.bookshelf_caption_fields == ['page_count', 'tags']
+    assert restored.bookshelf_caption_fields_changed is True
+    options._defaults_button.clicked.emit()
+    assert restored.bookshelf_caption_fields == ['read_progress', 'cards_created', 'page_count']
+    for checkbox in options._checkboxes.values():
+        checkbox.setChecked(False)
+    assert restored.bookshelf_caption_fields == []
+
+
 class _Signal:
     def __init__(self):
         self._callbacks = []
@@ -489,7 +506,8 @@ def test_review_settings_loads_shared_cutoff_and_exposes_edits(saved):
 
 @pytest.mark.parametrize("accepted,save_fails", [(True, False), (False, False), (True, True)], ids=["save", "cancel", "save-failed"])
 @pytest.mark.parametrize('edit_annotation_default', [False, True], ids=['keep-reader-default', 'edit-reader-default'])
-def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save_fails, edit_annotation_default):
+@pytest.mark.parametrize('edit_bookshelf_display', [False, True], ids=['keep-bookshelf-display', 'edit-bookshelf-display'])
+def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save_fails, edit_annotation_default, edit_bookshelf_display):
     import ast
     import builtins
     import copy
@@ -510,6 +528,7 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         "pdf_focus_mode": True,
         "epub_focus_mode": True,
         "study_workspace_enabled": False,
+        "bookshelf_caption_fields": ['tags'],
         "reader_default_highlight_color_by_profile": {'A': 'yellow', 'B': 'purple'},
     })
     original = copy.deepcopy(saved)
@@ -524,6 +543,7 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         # A background side pane can change its own controls while Settings is open.
         saved['pdf_controls_collapsed_by_profile'] = {'A': {'main': False, 'side': True}}
         saved['epub_controls_collapsed_by_profile'] = {'A': {'main': False}}
+        saved['bookshelf_caption_fields'] = ['reason']
         saved['reader_default_highlight_color_by_profile']['A'] = '#abcdef'
         saved['pdf_link_preview_size_by_profile'] = {'A': {'width': 760, 'height': 500}}
         saved['study_layout_by_profile'] = {'A': {'book': {'focus': True, 'horizontal': .65}}}
@@ -538,10 +558,14 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         assert kwargs["current_epub_focus_mode"] is True
         assert kwargs['current_study_workspace_enabled'] is False
         assert kwargs['current_reader_default_highlight_color'] == 'yellow'
+        assert kwargs['current_bookshelf_caption_fields'] == ['tags']
         dialog = IncrementoSettingsDialog(shortcuts, current_day_end_time=kwargs["current_day_end_time"],
             current_pdf_focus_mode=kwargs["current_pdf_focus_mode"],
             current_epub_focus_mode=kwargs["current_epub_focus_mode"],
-            current_study_workspace_enabled=kwargs['current_study_workspace_enabled'])
+            current_study_workspace_enabled=kwargs['current_study_workspace_enabled'],
+            current_bookshelf_caption_fields=kwargs['current_bookshelf_caption_fields'])
+        if edit_bookshelf_display:
+            dialog._bookshelf_display_options.set_fields(None)
         dialog._study_workspace_enabled_cb.setChecked(True)
         if edit_annotation_default:
             combo = dialog._reader_default_highlight_color_combo
@@ -572,6 +596,7 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
     namespace["openSettingsFunction"]()
 
     assert saved == {**original, 'pdf_controls_collapsed_by_profile': {'A': {'main': False, 'side': True}},
+                     'bookshelf_caption_fields': ['reason'],
                      'pdf_link_preview_size_by_profile': {'A': {'width': 760, 'height': 500}},
                      'reader_default_highlight_color_by_profile': {'A': '#abcdef', 'B': 'purple'},
                      'epub_controls_collapsed_by_profile': {'A': {'main': False}},
@@ -586,6 +611,8 @@ def test_settings_cutoff_changes_only_on_ok_and_preserves_presets(accepted, save
         assert stored["search_remember_logins"] is True
         assert stored["pdf_focus_mode"] is False
         assert stored["epub_focus_mode"] is False
+        assert stored['bookshelf_caption_fields'] == (
+            ['read_progress', 'cards_created', 'page_count'] if edit_bookshelf_display else ['reason'])
         assert stored['study_workspace_enabled'] is True
         namespace['_study_workspace_mod'].apply_settings.assert_called_once_with(stored)
         assert stored['reader_default_highlight_color_by_profile'] == {

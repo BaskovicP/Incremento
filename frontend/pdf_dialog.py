@@ -45,10 +45,12 @@ try:
     from ..backend.i18n import t as _t
     from ..backend import paths as _paths
     from ..backend import djvu_manager as _djvu_manager
+    from ..backend.pdf_manager import pdf_import_name_key, pdf_import_name_keys
 except ImportError:
     from backend.i18n import t as _t
     from backend import paths as _paths
     from backend import djvu_manager as _djvu_manager  # type: ignore[no-redef]
+    from backend.pdf_manager import pdf_import_name_key, pdf_import_name_keys
 
 
 def _resolve_pdf_storage_abspath(
@@ -110,6 +112,10 @@ class AddPdfDialog(QDialog):
         self._ocr_checks: dict[str, QCheckBox] = {}
         self._ocr_bulk_choice: bool | None = None
         self._import_checks: dict[str, QCheckBox] = {}
+        self._duplicate_names: set[str] = set()
+        self._duplicate_paths: set[str] = set()
+        self._paths_by_name: dict[str, set[str]] = {}
+        self._duplicate_check_pending = True
         self._lower_priority_more_important = self._load_priority_direction()
         self._priority_spins: dict[str, QDoubleSpinBox] = {}
         self._folder_pending_paths: list[str] = []
@@ -314,8 +320,51 @@ class AddPdfDialog(QDialog):
         main_layout.addWidget(self._buttons)
 
         self._on_title_mode_changed(True)
+        QTimer.singleShot(0, self._load_duplicate_names)
 
     # ── File management ───────────────────────────────────────────────────────
+
+    def _load_duplicate_names(self) -> None:
+        if not self._request_current():
+            return
+        from aqt.operations import QueryOp
+        def failure(_error):
+            if self._request_current():
+                self._duplicate_check_pending = False
+                self._show_error(_t("imports_duplicate_check_failed"))
+        try:
+            QueryOp(self, pdf_import_name_keys).success(self._set_duplicate_names).failure(failure).run_in_background()
+        except Exception as error:
+            failure(error)
+
+    def _set_duplicate_names(self, keys: set[str]) -> None:
+        if not self._request_current():
+            return
+        self._duplicate_names = keys
+        self._duplicate_check_pending = False
+        for path in self._pdf_paths:
+            self._warn_duplicate(path)
+
+    def _warn_duplicate(self, path: str) -> None:
+        key = pdf_import_name_key(Path(path).name)
+        same_queued_name = len(self._paths_by_name.get(key, ())) > 1
+        row = self._find_row(path)
+        if row < 0:
+            return
+        item = self._table.item(row, 1)
+        if not key or (key not in self._duplicate_names and not same_queued_name):
+            if path in self._duplicate_paths:
+                item.setText(Path(path).name)
+                item.setToolTip(path)
+                item.setData(Qt.ItemDataRole.ForegroundRole, None)
+                self._duplicate_paths.discard(path)
+            return
+        item.setText(_t("imports_possible_duplicate", filename=Path(path).name))
+        item.setToolTip(path + "\n" + _t("imports_possible_duplicate_help"))
+        item.setForeground(QColor("#b7791f"))
+        if path not in self._duplicate_paths:
+            self._import_checks[path].setChecked(False)
+            self._duplicate_paths.add(path)
 
     def _last_dir(self) -> str:
         if self._pdf_paths:
@@ -403,6 +452,9 @@ class AddPdfDialog(QDialog):
         if row_idx is None or row_idx < 0 or row_idx > self._table.rowCount():
             row_idx = self._table.rowCount()
         self._pdf_paths.insert(row_idx, path)
+        key = pdf_import_name_key(Path(path).name)
+        matching = self._paths_by_name.setdefault(key, set())
+        matching.add(path)
         self._table.insertRow(row_idx)
         self._table.setRowHeight(row_idx, 42)
 
@@ -442,6 +494,10 @@ class AddPdfDialog(QDialog):
 
         self._has_text[path] = state.get("has_text") if state else None
         self._set_ocr_cell_from_state(path, row_idx, state)
+        self._warn_duplicate(path)
+        if len(matching) == 2:
+            for other in matching - {path}:
+                self._warn_duplicate(other)
         self._apply_filter_to_row(row_idx)
         if state and state.get("preview_pixmap") is not None:
             self._preview_cache[path] = state["preview_pixmap"]
@@ -538,6 +594,14 @@ class AddPdfDialog(QDialog):
         self._priority_spins.pop(path, None)
         if path in self._pdf_paths:
             self._pdf_paths.remove(path)
+        self._duplicate_paths.discard(path)
+        key = pdf_import_name_key(Path(path).name)
+        matching = self._paths_by_name.get(key, set())
+        matching.discard(path)
+        if len(matching) == 1:
+            self._warn_duplicate(next(iter(matching)))
+        if not matching:
+            self._paths_by_name.pop(key, None)
         if not self._pdf_paths:
             self._djvu_compression.set_path(None)
             self._preview_lbl.setPixmap(QPixmap())
@@ -824,6 +888,9 @@ class AddPdfDialog(QDialog):
     # ── Adding files ──────────────────────────────────────────────────────────
 
     def _start_add(self) -> None:
+        if self._duplicate_check_pending:
+            self._show_error(_t("imports_duplicate_check_pending"))
+            return
         if not self._pdf_paths:
             self._show_error(_t("imports_pdf_djvu_choose_file"))
             return
@@ -915,103 +982,7 @@ class AddPdfDialog(QDialog):
             self.accept()
             return
 
-        path, title, tags, do_ocr, priority = entries[idx]
-        if _djvu_manager.is_djvu(path):
-            self._process_djvu_file(entries, idx)
-            return
-        deck = self._deck_combo.currentText()
-        self._update_add_progress(idx, len(entries), path, phase=_t("imports_starting"))
-
-        try:
-            from ..backend import pdf_manager as _pdf_manager
-            from ..backend.db import replace_pdf_text_index
-            from ..backend.priority_manager import set_priority
-            from ..backend import paths as _paths
-            from ..backend.paths import get_active_profile as _active_profile
-        except Exception:
-            import pdf_manager as _pdf_manager
-            from db import replace_pdf_text_index
-            from priority_manager import set_priority
-            import paths as _paths
-            from paths import get_active_profile as _active_profile
-
-        self._set_row_status(path, _t("imports_ocr_running") if do_ocr else _t("imports_adding"))
-
-        document_details = self._document_details_by_path.get(path)
-        if document_details and not any(document_details.values()):
-            document_details = None
-        try:
-            cid = _pdf_manager.add_pdf_card(
-                self._addon_dir,
-                mw.col,
-                path,
-                title,
-                deck_name=deck,
-                tags=tags,
-                profile=self._profile,
-                document_details=document_details,
-            )
-            set_priority(self._addon_dir, self._profile, cid, priority)
-        except Exception as e:
-            self.failed.append((path, str(e)))
-            self._set_row_status(path, "✗", color="red")
-            self._update_add_progress(idx + 1, len(entries), path, phase=_t("imports_failed"))
-            self._process_files(entries, idx + 1)
-            return
-
-        if not do_ocr:
-            self.created.append((path, title))
-            self._set_row_status(path, "✓", color="#4caf50")
-            self._update_add_progress(idx + 1, len(entries), path, phase=_t("imports_done"))
-            self._process_files(entries, idx + 1)
-            return
-
-        # OCR path: copy is already in pdf_dir; OCR it in background, then re-index
-        note = mw.col.get_note(mw.col.get_card(cid).nid)
-        dest_path = _resolve_pdf_storage_abspath(
-            note["PDF_Filename"],
-            pdf_dir=str(_paths.get_pdf_dir(self._addon_dir, _active_profile())),
-            storage_abspath_resolver=getattr(_pdf_manager, "pdf_storage_abspath", None),
-        )
-
-        def _progress(current, total, _path=path):
-            mw.taskman.run_on_main(
-                lambda c=current, t=total, p=_path: (
-                    self._set_row_status(p, _t("imports_ocr_progress", current=c, total=t)),
-                    self._update_add_progress(
-                        idx,
-                        len(entries),
-                        p,
-                        phase=_t("imports_ocr_progress", current=c, total=t),
-                    ),
-                )
-            )
-
-        def ocr_task():
-            success = _pdf_manager.ocr_pdf_in_place(dest_path, progress_cb=_progress)
-            if success:
-                return _pdf_manager.extract_pdf_pages_text(dest_path)
-            return []
-
-        def ocr_done(fut) -> None:
-            if not self._request_current():
-                return
-            ocr_ok = False
-            try:
-                page_texts = fut.result()
-                if page_texts:
-                    replace_pdf_text_index(self._addon_dir, self._profile, cid, page_texts)
-                    ocr_ok = True
-            except Exception:
-                pass
-            self.created.append((path, title))
-            status = "✓" if ocr_ok else _t("imports_ocr_no_text")
-            color = "#4caf50" if ocr_ok else "#ff9800"
-            self._set_row_status(path, status, color=color)
-            self._update_add_progress(idx + 1, len(entries), path, phase=_t("imports_done"))
-            self._process_files(entries, idx + 1)
-
-        mw.taskman.run_in_background(ocr_task, ocr_done)
+        self._process_prepared_file(entries, idx)
 
     def _on_finished(self, _result) -> None:
         self._djvu_compression.stop()
@@ -1019,36 +990,47 @@ class AddPdfDialog(QDialog):
         self._cancel_event.set()
 
     def _request_current(self) -> bool:
-        return (not self._closed and _paths.get_active_profile() == self._profile
+        return (not self._closed and not self._cancel_event.is_set() and _paths.get_active_profile() == self._profile
                 and mw.col is self._collection)
 
-    def _process_djvu_file(self, entries: list, idx: int) -> None:
+    def _process_prepared_file(self, entries: list, idx: int) -> None:
         """Convert off the collection queue, then serialize the bounded import."""
         if not self._request_current():
             return
         path, title, tags, do_ocr, priority = entries[idx]
         deck = self._deck_combo.currentText()
-        compression = self._djvu_compression.choice_for(path)
+        is_djvu = _djvu_manager.is_djvu(path)
+        compression = self._djvu_compression.choice_for(path) if is_djvu else None
         profile, collection = self._profile, self._collection
         document_details = getattr(self, "_document_details_by_path", {}).get(path)
         cancelled = self._cancel_event
         addon_dir = self._addon_dir
         self._cancel_btn.setEnabled(True)
-        self._set_row_status(path, _t("imports_djvu_converting"))
-        self._update_add_progress(idx, len(entries), path, phase=_t("imports_djvu_converting"))
+        phase = _t("imports_djvu_converting") if is_djvu else _t("imports_ocr_running") if do_ocr else _t("imports_starting")
+        self._set_row_status(path, phase)
+        self._update_add_progress(idx, len(entries), path, phase=phase)
 
         def progress(current, total):
             def update():
                 if self._request_current():
-                    self._set_row_status(path, _t("imports_djvu_progress", current=current, total=total))
+                    status = (_t("imports_djvu_progress", current=current, total=total) if is_djvu
+                              else _t("imports_ocr_progress", current=current, total=total))
+                    self._set_row_status(path, status)
                     self._update_add_progress(idx, len(entries), path,
-                                              phase=_t("imports_djvu_progress", current=current, total=total))
+                                              phase=status)
             mw.taskman.run_on_main(update)
 
         def prepare():
-            return _djvu_manager.prepare_djvu_pdf(path, do_ocr=do_ocr, compression=compression, progress_cb=progress,
-                                                  cancel_cb=lambda: cancelled.is_set()
-                                                  or _paths.get_active_profile() != profile)
+            def cancel_cb():
+                return cancelled.is_set() or _paths.get_active_profile() != profile
+            if is_djvu:
+                return _djvu_manager.prepare_djvu_pdf(path, do_ocr=do_ocr, compression=compression,
+                                                      progress_cb=progress, cancel_cb=cancel_cb)
+            try:
+                from ..backend.pdf_manager import prepare_pdf_import
+            except ImportError:
+                from backend.pdf_manager import prepare_pdf_import
+            return prepare_pdf_import(path, do_ocr=do_ocr, progress_cb=progress, cancel_cb=cancel_cb)
 
         def failure(exc):
             if self._request_current():
@@ -1078,7 +1060,7 @@ class AddPdfDialog(QDialog):
                 def operation(col):
                     if col is not collection or cancelled.is_set() or _paths.get_active_profile() != profile:
                         raise _djvu_manager.DjvuImportError(_t("backend_djvu_cancelled"))
-                    undo_step = col.add_custom_undo_entry(_t("imports_djvu_undo"))
+                    undo_step = col.add_custom_undo_entry(_t("imports_djvu_undo") if is_djvu else _t("imports_pdf_title"))
                     cid = pdf_manager.add_pdf_card(addon_dir, col, prepared.path, title, deck_name=deck,
                                                   tags=tags, profile=profile,
                                                   document_details=document_details,
@@ -1091,7 +1073,7 @@ class AddPdfDialog(QDialog):
                     if not self._request_current():
                         return
                     self.created.append((path, title))
-                    has_text = any(text.strip() for text in prepared.page_texts)
+                    has_text = not do_ocr or any(text.strip() for text in prepared.page_texts)
                     self._set_row_status(path, "✓" if has_text else _t("imports_ocr_no_text"),
                                          color="#4caf50" if has_text else "#ff9800")
                     self._update_add_progress(idx + 1, len(entries), path, phase=_t("imports_done"))

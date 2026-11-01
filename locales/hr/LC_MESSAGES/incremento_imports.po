@@ -1578,3 +1578,63 @@ msgstr "Vrati sve"
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_save"
 msgstr "Spremi PDF"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_pin_tags"
+msgstr "Zadrži oznake"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_pin_tags_help"
+msgstr "Zadrži ove oznake za sljedeću mrežnu stranicu u ovom prozoru za uvoz."
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_queue_add"
+msgstr "Dodaj u red / ažuriraj odabrano"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_queue_remove"
+msgstr "Ukloni iz reda"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_webpage_queue"
+msgstr "Red za uvoz mrežnih stranica"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_queue_help"
+msgstr "Odaberite mrežnu stranicu u redu, uredite oznake i pojedinosti te je uvezite. Svaku stranicu možete zasebno očistiti."
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_queue_saved"
+msgstr "PDF je spremljen. Uvezite sljedeću mrežnu stranicu ili zatvorite prozor. Odabrani popisi su zadržani."
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_close"
+msgstr "Zatvori"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_stop"
+msgstr "Zaustavi uvoz"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_possible_duplicate"
+msgstr "⚠ {filename} — Mogući duplikat"
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_possible_duplicate_help"
+msgstr "PDF s istim nazivom ili naslovom možda već postoji ili druga datoteka u redu ima isti naziv. Usporedite ih prije uvoza. Označite Dodaj ako ga ipak želite uvesti."
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_duplicate_check_failed"
+msgstr "Nije moguće provjeriti postojeće nazive PDF-ova. Prije uvoza provjerite duplikate."
+
+#: frontend/webpage_dialog.py frontend/pdf_dialog.py
+msgid "imports_duplicate_check_pending"
+msgstr "Provjeravaju se postojeći nazivi PDF-ova. Uskoro ponovno kliknite Dodaj."
+
+#: frontend/document_details.py
+msgid "imports_pin_lists"
+msgstr "Zadrži popise"
+
+#: frontend/document_details.py
+msgid "imports_pin_lists_help"
+msgstr "Zadrži odabrane popise za sljedeći uvezeni dokument. Svaki dokument zadržava vlastiti razlog i izvor."

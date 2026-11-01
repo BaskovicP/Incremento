@@ -128,6 +128,20 @@ class TestUpdateHighlight:
         ) is False
         assert load_highlights(str(tmp_path), "TestProfile", 1) == []
 
+    def test_resize_without_recolor_keeps_exact_imported_rgb(self, tmp_path):
+        highlight = make_hl(color='#1a334d', rects=[{'x': 1, 'y': 2, 'w': 30, 'h': 10}])
+        highlight['pdf_annotation'] = {'kind': 'Highlight', 'name': 'imported',
+                                       'color': [.1001, .2001, .3001], 'opacity': .6}
+        add_highlight(str(tmp_path), 'TestProfile', 1, highlight)
+        resized = {**highlight, 'rects': [{'x': 1, 'y': 2, 'w': 50, 'h': 10}]}
+
+        assert update_highlight(str(tmp_path), 'TestProfile', 1, resized)
+
+        saved = load_highlights(str(tmp_path), 'TestProfile', 1)[0]
+        assert saved['rects'] == resized['rects']
+        assert saved['color'] == highlight['color']
+        assert saved['pdf_annotation'] == {**highlight['pdf_annotation'], RESIZE_REVISION_KEY: 1}
+
 
 class TestRemoveHighlight:
     def test_removes_specific_highlight(self, tmp_path):

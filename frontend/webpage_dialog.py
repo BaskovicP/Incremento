@@ -17,6 +17,8 @@ from aqt.qt import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QProgressBar,
     QSizePolicy,
@@ -245,6 +247,7 @@ def render_webpage_to_pdf(
     cancel_event=None,
     prefer_snapshot: bool = False,
     edit_before_save: bool = False,
+    parent=None,
 ) -> None:
     source_url = str(url or "").strip()
     html_text = str(html or "")
@@ -252,6 +255,9 @@ def render_webpage_to_pdf(
         raise ValueError(_t("imports_webpage_missing_source"))
     profile = _active_profile()
     edit_before_save = bool(edit_before_save and style == "website")
+    # Keep the originating window across capture's event loop/app switches.
+    if edit_before_save and parent is None:
+        parent = QApplication.activeWindow()
     html_text, wikipedia_pdf = _prepare_in_background(source_url, html_text, timeout_ms, style, dynamic, include_links, cancel_event, prefer_snapshot, edit_before_save)
     if _active_profile() != profile:
         raise RuntimeError(_t("imports_topic_profile_changed"))
@@ -269,7 +275,7 @@ def render_webpage_to_pdf(
         ) as snapshot:
             snapshot_path = snapshot.name
             snapshot.write(html_text)
-        options = {"edit_before_save": True, "cancel_event": cancel_event} if edit_before_save else {}
+        options = {"edit_before_save": edit_before_save, "cancel_event": cancel_event, "parent": parent}
         _print_offline_snapshot(pdf_path, snapshot_path, wait_ms=wait_ms, timeout_ms=timeout_ms, screen_media=style == "website", **options)
     finally:
         try:
@@ -281,7 +287,9 @@ def render_webpage_to_pdf(
 
 
 def _print_offline_snapshot(pdf_path: str, snapshot_path: str, *, wait_ms: int, timeout_ms: int, screen_media: bool = False,
-                            edit_before_save: bool = False, cancel_event=None) -> None:
+                            edit_before_save: bool = False, cancel_event=None, parent=None) -> None:
+    if parent is not None and sip.isdeleted(parent):
+        raise RuntimeError(_t("imports_webpage_cancelled"))
     document_url = QUrl.fromLocalFile(os.path.realpath(snapshot_path)).toString()
 
     profile = QWebEngineProfile()
@@ -305,7 +313,7 @@ def _print_offline_snapshot(pdf_path: str, snapshot_path: str, *, wait_ms: int, 
         script.setWorldId(QWebEngineScript.ScriptWorldId.ApplicationWorld)
         script.setSourceCode(CLEANUP_SCRIPT)
         page.scripts().insert(script)
-        preview = create_cleanup_preview(page, QApplication.activeWindow())
+        preview = create_cleanup_preview(page, parent)
     if screen_media:
         # Emulate screen CSS without executing any script from the webpage.
         from PyQt6.QtWebEngineCore import QWebEngineScript
@@ -389,7 +397,7 @@ def _print_offline_snapshot(pdf_path: str, snapshot_path: str, *, wait_ms: int, 
         page.runJavaScript("globalThis.incrementoCleanup && incrementoCleanup.finish()",
                            QWebEngineScript.ScriptWorldId.ApplicationWorld, lambda _result: _start_print())
 
-    captured_profile = _active_profile() if edit_before_save else None
+    captured_profile = _active_profile()
     def _check_cancelled() -> None:
         if _active_profile() != captured_profile:
             _finish_error(_t("imports_topic_profile_changed"))
@@ -400,8 +408,9 @@ def _print_offline_snapshot(pdf_path: str, snapshot_path: str, *, wait_ms: int, 
     if preview is not None:
         preview.save_button.clicked.connect(_save_preview)
         preview.rejected.connect(lambda: _finish_error(_t("imports_webpage_cancelled")))
-        cancellation.timeout.connect(_check_cancelled)
-        cancellation.start(100)
+        preview.destroyed.connect(lambda: _finish_error(_t("imports_webpage_cancelled")))
+    cancellation.timeout.connect(_check_cancelled)
+    cancellation.start(100)
 
     def _on_timeout() -> None:
         seconds = max(1, int(timeout_ms) // 1000)
@@ -420,7 +429,7 @@ def _print_offline_snapshot(pdf_path: str, snapshot_path: str, *, wait_ms: int, 
         timeout.stop()
         cancellation.stop()
         # Qt requires every page to be destroyed before its profile.
-        if preview is not None:
+        if preview is not None and not sip.isdeleted(preview):
             sip.delete(preview)
         sip.delete(page)
         sip.delete(profile)
@@ -478,12 +487,13 @@ class WebpagePdfResultDialog(QDialog):
 class WebpageToPdfDialog(QDialog):
     """Capture a public URL as an offline PDF for import."""
 
-    def __init__(self, parent=None, *, addon_dir: str):
+    def __init__(self, parent=None, *, addon_dir: str, save_pdf=None):
         super().__init__(parent)
         self.setWindowTitle(_t("imports_webpage_to_pdf"))
         self.setMinimumWidth(760)
         self._profile = _active_profile()
         self._document_details = None
+        self._save_pdf = save_pdf
 
         self._pdf_path: str | None = None
         self._title: str | None = None
@@ -493,13 +503,16 @@ class WebpageToPdfDialog(QDialog):
         self._handoff_ticket = None
         self._handoff_timer = None
         self._browser_handoff_completed = False
+        self._busy = False
+        self._editing_item = None
 
         content = QHBoxLayout(self)
         layout = QVBoxLayout()
         content.addLayout(layout, 1)
         layout.setSpacing(8)
         from .document_details import BookDetailsEditor
-        self._book_details = BookDetailsEditor(addon_dir, self._profile, self)
+        self._book_details = BookDetailsEditor(addon_dir, self._profile, self, allow_list_pin=True)
+        self._book_details._pin_lists.setChecked(True)
         self._book_details.setMinimumWidth(270)
         content.addWidget(self._book_details, 1, Qt.AlignmentFlag.AlignTop)
 
@@ -541,6 +554,27 @@ class WebpageToPdfDialog(QDialog):
 
         self._tag_edit = QuickTagEdit()
         layout.addWidget(self._tag_edit)
+        self._pin_tags = QPushButton(_t("imports_pin_tags"))
+        self._pin_tags.setCheckable(True)
+        self._pin_tags.setAutoDefault(False)
+        self._pin_tags.setToolTip(_t("imports_pin_tags_help"))
+        layout.addWidget(self._pin_tags)
+
+        queue_row = QHBoxLayout()
+        self._queue_add = QPushButton(_t("imports_queue_add"))
+        self._queue_add.setAutoDefault(False)
+        self._queue_add.clicked.connect(self._queue_current)
+        self._queue_remove = QPushButton(_t("imports_queue_remove"))
+        self._queue_remove.setAutoDefault(False)
+        self._queue_remove.clicked.connect(self._remove_queued)
+        queue_row.addWidget(self._queue_add)
+        queue_row.addWidget(self._queue_remove)
+        layout.addLayout(queue_row)
+        self._queue = QListWidget()
+        self._queue.setAccessibleName(_t("imports_webpage_queue"))
+        self._queue.setMaximumHeight(120)
+        self._queue.currentItemChanged.connect(self._load_queued)
+        layout.addWidget(self._queue)
 
         # Status / progress
         self._status_lbl = QLabel("")
@@ -572,23 +606,130 @@ class WebpageToPdfDialog(QDialog):
         btn_row = QHBoxLayout()
         self._import_btn = QPushButton(_t("imports_import"))
         self._import_btn.setDefault(True)
-        cancel_btn = QPushButton(_t("imports_cancel"))
+        self._cancel_btn = QPushButton(_t("imports_close"))
         btn_row.addStretch()
         btn_row.addWidget(self._import_btn)
-        btn_row.addWidget(cancel_btn)
+        btn_row.addWidget(self._cancel_btn)
         layout.addLayout(btn_row)
 
         self._import_btn.clicked.connect(self._on_import)
-        cancel_btn.clicked.connect(self.reject)
+        self._cancel_btn.clicked.connect(self._cancel_or_close)
 
     # ── Slots ─────────────────────────────────────────────────────────────────
 
     def _set_busy(self, busy: bool) -> None:
+        self._busy = busy
         for button in (self._import_btn, self._open_browser_btn, self._saved_pdf_btn, self._setup_btn):
             button.setEnabled(not busy)
         self._progress.setVisible(busy)
         self._cleanup_check.setEnabled(not busy and self._style_combo.currentData() == "website")
         self._book_details.setEnabled(not busy)
+        # Older callers construct the conversion adapter without the queue UI.
+        for name in ("_url_edit", "_title_edit", "_tag_edit", "_pin_tags", "_style_combo",
+                     "_links_check", "_queue", "_queue_add", "_queue_remove"):
+            control = getattr(self, name, None)
+            if control is not None and hasattr(control, "setEnabled"):
+                control.setEnabled(not busy)
+        if hasattr(self, "_cancel_btn"):
+            self._cancel_btn.setText(_t("imports_stop") if busy else _t("imports_close"))
+
+    def _cancel_or_close(self) -> None:
+        if self._busy:
+            self._stop_import()
+        else:
+            self.reject()
+
+    def _stop_import(self) -> None:
+        self._stop_browser_handoff()
+        self._capture_cancel.set()
+        self._import_generation += 1
+        self._set_busy(False)
+        self._status_lbl.setText(_t("imports_webpage_cancelled"))
+
+    def _queue_draft(self) -> dict:
+        return {"url": self._browser_source_url(), "title": self._title_edit.text().strip(),
+                "tags": list(self._tag_edit.tags()), "details": self._book_details.details()}
+
+    def _save_queued(self) -> None:
+        if self._editing_item is not None:
+            draft = self._queue_draft()
+            self._editing_item.setData(Qt.ItemDataRole.UserRole, draft)
+            self._editing_item.setText(draft["title"] or draft["url"])
+
+    def _clear_draft(self) -> None:
+        lists = self._book_details.pinned_list_ids()
+        self._book_details.set_details({"list_ids": lists})
+        self._url_edit.clear()
+        self._title_edit.clear()
+        if not self._pin_tags.isChecked():
+            self._tag_edit.setTags([])
+
+    def _queue_current(self) -> None:
+        try:
+            if _active_profile() != self._profile:
+                return
+            draft = self._queue_draft()
+            if self._editing_item is None:
+                item = QListWidgetItem(draft["title"] or draft["url"])
+                item.setData(Qt.ItemDataRole.UserRole, draft)
+                self._queue.addItem(item)
+            else:
+                self._save_queued()
+            self._editing_item = None
+            self._queue.setCurrentRow(-1)
+            self._clear_draft()
+            self._status_lbl.setText(_t("imports_queue_help"))
+        except ValueError:
+            self._status_lbl.setText(_t("imports_webpage_browser_url_invalid"))
+
+    def _load_queued(self, item, _previous=None) -> None:
+        try:
+            self._save_queued()
+        except ValueError:
+            # Keep an invalid draft editable rather than silently losing it.
+            self._queue.blockSignals(True)
+            self._queue.setCurrentItem(self._editing_item)
+            self._queue.blockSignals(False)
+            self._status_lbl.setText(_t("imports_webpage_browser_url_invalid"))
+            return
+        self._editing_item = item
+        if item is None:
+            return
+        draft = item.data(Qt.ItemDataRole.UserRole)
+        self._url_edit.setText(draft["url"])
+        self._title_edit.setText(draft["title"])
+        self._tag_edit.setTags(draft["tags"])
+        self._book_details.set_details(draft["details"])
+
+    def _remove_queued(self) -> None:
+        row = self._queue.currentRow()
+        if row >= 0:
+            self._editing_item = None
+            self._queue.takeItem(row)
+            if self._queue.currentItem() is None:
+                self._clear_draft()
+
+    def prepare_next_import(self) -> bool:
+        """Advance only after the composition root has saved the current PDF."""
+        if _active_profile() != self._profile:
+            return False
+        item = self._editing_item
+        self._editing_item = None
+        self._queue.blockSignals(True)
+        if item is not None:
+            self._queue.takeItem(self._queue.row(item))
+        self._queue.setCurrentRow(-1)
+        self._queue.blockSignals(False)
+        self._clear_draft()
+        if self._queue.count():
+            self._queue.setCurrentRow(0)
+        self._pdf_path = self._title = self._source_url = None
+        self._document_details = None
+        self._browser_handoff_tags = None
+        self._browser_handoff_completed = False
+        self._set_busy(False)
+        self._status_lbl.setText(_t("imports_queue_saved"))
+        return True
 
     def _capture_document_details(self) -> bool:
         if _active_profile() != self._profile:
@@ -665,7 +806,7 @@ class WebpageToPdfDialog(QDialog):
             self._pdf_path = pdf_path
             self._title = title
             self._source_url = url
-            self.accept()
+            self._conversion_ready()
 
         try:
             mw.taskman.run_in_background(
@@ -758,7 +899,7 @@ class WebpageToPdfDialog(QDialog):
         try:
             render_webpage_to_pdf(pdf_path, url=url, html=html, style=style, include_links=include_links,
                                   prefer_snapshot=True, cancel_event=self._capture_cancel,
-                                  edit_before_save=cleanup)
+                                  edit_before_save=cleanup, parent=self)
             if not self._import_current(generation, profile):
                 os.remove(pdf_path)
                 return
@@ -775,12 +916,14 @@ class WebpageToPdfDialog(QDialog):
         self._title = title
         self._source_url = url
         self._browser_handoff_completed = True
-        self.accept()
+        self._conversion_ready()
 
     def _on_import(self):
         self._stop_browser_handoff()
         self._browser_handoff_tags = None
         self._browser_handoff_completed = False
+        if not self._url_edit.text().strip() and hasattr(self, "_queue") and self._queue.count():
+            self._queue.setCurrentRow(0)
         url = self._url_edit.text().strip()
         if not url:
             self._status_lbl.setText(_t("imports_webpage_enter_url"))
@@ -815,7 +958,7 @@ class WebpageToPdfDialog(QDialog):
         try:
             render_webpage_to_pdf(pdf_path, url=url, style=style, dynamic=dynamic, include_links=include_links,
                                   cancel_event=cancel_event, timeout_ms=90000 if dynamic else 45000,
-                                  edit_before_save=self._requested_cleanup)
+                                  edit_before_save=self._requested_cleanup, parent=self)
         except Exception as exc:
             try:
                 os.remove(pdf_path)
@@ -846,7 +989,13 @@ class WebpageToPdfDialog(QDialog):
         self._pdf_path = pdf_path
         self._title = title
         self._source_url = url
-        self.accept()
+        self._conversion_ready()
+
+    def _conversion_ready(self) -> None:
+        if getattr(self, "_save_pdf", None) is None:
+            self.accept()
+        else:
+            self._save_pdf(self)
 
     # ── Public properties ─────────────────────────────────────────────────────
 

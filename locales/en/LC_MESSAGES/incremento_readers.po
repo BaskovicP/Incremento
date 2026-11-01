@@ -3670,6 +3670,21 @@ msgstr "Choose a PDF reference"
 msgid "reader_reference_links"
 msgstr "Linked PDFs"
 
+msgid "reader_connection_note"
+msgstr "Connection note (optional, up to 2,000 characters)"
+
+msgid "reader_connection_note_placeholder"
+msgstr "For example: This place also talks about X."
+
+msgid "reader_connection_note_save"
+msgstr "Save note"
+
+msgid "reader_connection_note_invalid"
+msgstr "Connection notes must be plain text of at most 2,000 characters."
+
+msgid "reader_connection_note_failed"
+msgstr "Could not save the connection note. Your text is kept; try again."
+
 msgid "reader_reference_links_hint"
 msgstr "Select a reference to preview or open beside your reading. Add a PDF to link this source to a document and page."
 
@@ -4625,7 +4640,7 @@ msgid "reader_library_add_epub"
 msgstr "+ Add EPUB"
 
 msgid "reader_library_intro"
-msgstr "Select a book to view its lists and saved reason. Double-click or choose Open book to read."
+msgstr "Use Display… to choose the information below each cover. Select a book and click Details for more information. Double-click or choose Open book to read."
 
 msgid "reader_library_cover_view"
 msgstr "Covers"
@@ -4837,3 +4852,69 @@ msgstr "This annotation was changed elsewhere or deleted. Your draft is still he
 #: frontend/highlight_note_dialog.py
 msgid "reader_note_editor_save_failed"
 msgstr "Could not save this annotation: {error}\nYour draft is still open."
+
+msgid "study_show_in_tree"
+msgstr "Show in tree"
+
+msgid "study_parent"
+msgstr "Parent"
+
+msgid "study_card_hierarchy"
+msgstr "Card hierarchy"
+
+msgid "reader_library_details"
+msgstr "Details"
+
+msgid "reader_bookshelf_basic_tooltip"
+msgstr "{title}\n{kind}\nSelect Details for more information. Double-click to read."
+
+msgid "reader_bookshelf_info_loading"
+msgstr "Loading book info…"
+
+msgid "reader_bookshelf_read_to_page"
+msgstr "Read to page {page}"
+
+msgid "reader_bookshelf_read_to_estimated_page"
+msgstr "Read to about page {page}"
+
+msgid "reader_bookshelf_read_unavailable"
+msgstr "Read progress unavailable"
+
+msgid "reader_bookshelf_cards_unavailable"
+msgstr "Cards created unavailable"
+
+msgid "reader_bookshelf_pages_unavailable"
+msgstr "Page count unavailable"
+
+msgid "reader_bookshelf_cards_created"
+msgid_plural "reader_bookshelf_cards_created_plural"
+msgstr[0] "{count} card created"
+msgstr[1] "{count} cards created"
+
+msgid "reader_bookshelf_total_pages"
+msgid_plural "reader_bookshelf_total_pages_plural"
+msgstr[0] "Contains {count} page"
+msgstr[1] "Contains {count} pages"
+
+msgid "reader_bookshelf_estimated_pages"
+msgid_plural "reader_bookshelf_estimated_pages_plural"
+msgstr[0] "About {count} page"
+msgstr[1] "About {count} pages"
+
+msgid "reader_bookshelf_display"
+msgstr "Display…"
+
+msgid "reader_bookshelf_display_title"
+msgstr "Information beneath books"
+
+msgid "reader_bookshelf_display_hint"
+msgstr "Choose what appears below each book. The title and active sort value stay visible. Defaults: read progress, cards created, and page count."
+
+msgid "reader_bookshelf_display_cards"
+msgstr "Cards created"
+
+msgid "reader_bookshelf_display_pages"
+msgstr "Page count"
+
+msgid "reader_bookshelf_display_priority"
+msgstr "Priority"

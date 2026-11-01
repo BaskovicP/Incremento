@@ -5,6 +5,7 @@
     "ui_language": "auto",
     "shortcuts": {"document_contents": "Ctrl+Alt+T"},
     "onboarding_completed_version": 0,
+    "bookshelf_caption_fields": ["read_progress", "cards_created", "page_count"],
     "mcp_enabled": false,
     "mcp_allow_writes": false,
     "scheduler_presets": {},

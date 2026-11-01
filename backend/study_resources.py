@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 try:
-    from .db import get_connection
+    from .db import get_connection, get_knowledge_tree_node
     from .document_links import list_document_links
     from .epub_reference import resolve_epub_reference, validate_location, location_allowed
     from .epub_manager import get_epub_daily_limit_status
@@ -18,7 +18,7 @@ try:
     from .recording_links import normalize_source, list_recording_links, validate_segment
     from .video_manager import get_video_note_media, local_video_abspath, supported_local_video_extensions
 except ImportError:
-    from db import get_connection
+    from db import get_connection, get_knowledge_tree_node
     from document_links import list_document_links
     from epub_reference import resolve_epub_reference, validate_location, location_allowed
     from epub_manager import get_epub_daily_limit_status
@@ -203,6 +203,28 @@ def resolve_link_rows(addon_dir, profile, collection, rows):
     return result
 
 
+def load_card_hierarchy(addon_dir, profile, collection, card_id):
+    """Read only this card's ancestor chain, with bounded work and no repairs."""
+    path, seen = [], set()
+    while card_id is not None and card_id not in seen and len(seen) < 64:
+        seen.add(card_id)
+        row = get_knowledge_tree_node(addon_dir, profile, card_id)
+        if row is None:
+            break
+        try:
+            note = collection.get_note(collection.get_card(card_id).nid)
+        except Exception:
+            # Match the tree's promotion through deleted ancestors.
+            if not path:
+                return []
+        else:
+            raw = note_field(note, 'Title') or str(next(iter(note.fields), ''))[:4000]
+            title = ' '.join(unescape(re.sub(r'<[^>]*>', ' ', raw[:4000])).split())[:240]
+            path.append(dict(card_id=card_id, title=title))
+        card_id = row['parent_card_id']
+    return list(reversed(path))
+
+
 def load_card_resources(addon_dir, profile, collection, card_id):
     sources = source_locations(addon_dir, profile, collection, card_id)
     saved_documents = list_document_links(addon_dir, profile, card_id)
@@ -242,4 +264,5 @@ def load_card_resources(addon_dir, profile, collection, card_id):
     raw_title = note_field(note, 'Title') or str(next(iter(note.fields), ''))[:4000]
     card_title = ' '.join(unescape(re.sub(r'<[^>]*>', ' ', raw_title)).split())[:240]
     return dict(documents=documents, recordings=resolve_link_rows(
-        addon_dir, profile, collection, list(unique.values())[:MAX_LINKED_RESOURCES]), card_title=card_title)
+        addon_dir, profile, collection, list(unique.values())[:MAX_LINKED_RESOURCES]), card_title=card_title,
+        hierarchy=load_card_hierarchy(addon_dir, profile, collection, card_id))

@@ -141,10 +141,15 @@ def _progress_rows(connection, table, ids):
     return {int(row[0]): dict(zip(columns, row)) for row in cursor.fetchall()}
 
 
-def document_progress_from_collection(collection, addon_dir, profile, *, should_cancel=None, pdf_page_counter=None):
-    """Load the whole library in bounded batches off the UI thread; None=unknown."""
+def document_progress_from_collection(collection, addon_dir, profile, *, should_cancel=None, pdf_page_counter=None,
+                                      card_ids=None):
+    """Load all or selected documents off the UI thread; None=unknown."""
     if collection is None:
         return None
+    selected_ids = tuple(dict.fromkeys(int(cid) for cid in card_ids if int(cid) > 0)) if card_ids is not None else ()
+    if card_ids is not None and not selected_ids:
+        return []
+    selected_sql = f" AND c.id IN ({','.join('?' for _ in selected_ids)})" if selected_ids else ""
     cancelled = should_cancel or (lambda: False)
     count_pdf_pages = pdf_page_counter or _pdf_page_count
     try:
@@ -167,7 +172,7 @@ def document_progress_from_collection(collection, addon_dir, profile, *, should_
             rows = collection.db.all(
                 "SELECT c.id, n.mid, n.flds FROM cards c JOIN notes n ON n.id=c.nid "
                 f"WHERE n.mid IN ({','.join('?' for _ in models)}) AND c.id > ? "
-                "ORDER BY c.id LIMIT 200", *models, last_id,
+                + selected_sql + " ORDER BY c.id LIMIT 200", *models, last_id, *selected_ids,
             )
             if not rows:
                 return result

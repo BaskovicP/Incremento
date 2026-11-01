@@ -145,6 +145,44 @@ def test_resource_views_share_the_main_workspace_without_moving_the_live_reviewe
     ''')
 
 
+@pytest.mark.parametrize('stage', ['book', 'video'])
+@pytest.mark.parametrize('side', ['question', 'answer'])
+def test_returning_from_resources_preserves_the_full_height_of_anki_answer_controls(stage, side):
+    run_scene(f'stage={stage!r}; side={side!r}\n' + dedent('''
+        class BottomToolbar(QtWidgets.QFrame):
+            # Anki's BottomWebView.hide() collapses its height instead of hiding
+            # the QWidget. Keep that boundary behavior without a web renderer.
+            def hide(self):
+                self.setFixedHeight(1)
+        layout.removeWidget(bottom); bottom.setParent(None)
+        bottom=BottomToolbar()
+        buttons=QtWidgets.QHBoxLayout(bottom)
+        for label in ('Edit', 'Show Answer' if side=='question' else 'Again / Good', 'More'):
+            buttons.addWidget(QtWidgets.QPushButton(label))
+        bottom.setFixedHeight(80)
+        layout.addWidget(bottom)
+        mw.reviewer.bottom.web=bottom
+        mw.reviewer.state=side
+        ui.reviewer_shown(); drain(); app.processEvents()
+        height=bottom.height()
+        for leave in ('card', 'close'):
+            bridge(stage); drain(); w=ui._window; app.processEvents()
+            # A late native callback must not expose grading over the media.
+            bottom.setVisible(True); app.processEvents()
+            assert bottom.isHidden(), 'Media views must hide the entire answer bar'
+            if leave=='card':
+                click(w,'card')
+            else:
+                w.close()
+            app.processEvents()
+            assert bottom.isVisible() and bottom.height()==height, 'Returning must preserve the answer bar height'
+            for button in bottom.findChildren(QtWidgets.QPushButton):
+                assert button.isVisible() and bottom.rect().contains(button.geometry()), 'Answer and More controls must fit'
+            assert mw.reviewer.state==side and mw.reviewer.card.id==41
+        ui.reset()
+    '''))
+
+
 def test_resource_workspace_adapts_its_panels_without_reloading_media():
     run_scene('''
         mw.resize(1200,850)
@@ -179,6 +217,59 @@ def test_return_to_card_button_keeps_the_same_passage_and_player_ready():
         assert ui._window is w and w.reader is reader and w.player is player and player.pos==17.25
         w.close()
     ''')
+
+
+@pytest.mark.parametrize('side', ['question', 'answer'])
+def test_tree_actions_and_ancestor_links_keep_the_active_review_and_reject_unrelated_targets(side):
+    run_scene(f'side={side!r}\n' + dedent('''
+        actions, revealed = [], []
+        ui.register_tree_navigation(invoke_action=actions.append, reveal_card=revealed.append)
+        path=[dict(card_id=10,title='Root'),dict(card_id=20,title='Parent'),dict(card_id=41,title='Current')]
+        ui.load_card_resources=lambda *a: dict(documents=[document],recordings=[recording],hierarchy=path)
+        mw.reviewer.state=side; ui.reviewer_shown(); ui.check_reviewer_resources(force=True); drain()
+        bridge('tree'); bridge('parent'); bridge('ancestor_10')
+        assert actions==['reveal_current_knowledge_tree','go_to_parent_knowledge_tree']
+        assert revealed==[10]
+        for target in ('ancestor_999','ancestor_-1','ancestor_10extra','ancestor_１０'):
+            bridge(target)
+        bridge('tree',token='wrong'); bridge('parent',context=object())
+        assert len(actions)==2 and revealed==[10]
+        assert advances==[]
+        bridge('video'); drain(); w=ui._window
+        before_advances=list(advances)
+        assert w.tree_button.isEnabled() and w.parent_button.isEnabled()
+        assert w.hierarchy_path.isVisible() and 'Root' in w.hierarchy_path.text()
+        w.tree_button.click(); w.parent_button.click(); w.hierarchy_path.linkActivated.emit('ancestor_20')
+        assert actions==['reveal_current_knowledge_tree','go_to_parent_knowledge_tree']*2
+        assert revealed==[10,20]
+        assert w.visit.stage=='video' and not w.visit.closed
+        profile[0]='Other'
+        w.tree_button.click(); w.hierarchy_path.linkActivated.emit('ancestor_10'); bridge('parent')
+        assert len(actions)==4 and revealed==[10,20]
+        assert mw.reviewer.card.id==41 and mw.reviewer.state==side
+        assert web.toPlainText()=='Original question' and advances==before_advances
+        ui.reset()
+    '''))
+
+
+@pytest.mark.parametrize('in_tree', [False, True])
+def test_tree_root_and_unlinked_cards_explain_unavailable_parent_actions(in_tree):
+    run_scene(f'in_tree={in_tree!r}\n' + dedent('''
+        actions=[]
+        ui.register_tree_navigation(invoke_action=actions.append,reveal_card=lambda cid: actions.append(cid))
+        path=[dict(card_id=41,title='Root')] if in_tree else []
+        ui.load_card_resources=lambda *a: dict(documents=[document],recordings=[recording],hierarchy=path)
+        ui.check_reviewer_resources(force=True); drain()
+        bridge('video'); drain(); w=ui._window
+        assert w.tree_button.isEnabled()==in_tree
+        assert not w.parent_button.isEnabled() and w.parent_button.toolTip()
+        bridge('parent'); w.parent_button.click(); bridge('ancestor_999')
+        assert actions==[]
+        if not in_tree:
+            bridge('tree'); w.tree_button.click()
+            assert actions==[] and ui.t('root_reviewer_card_not_in_tree') in w.hierarchy_path.text()
+        w.close()
+    '''))
 
 
 def test_resource_surface_retirement_keeps_grading_hidden_after_leaving_review():
@@ -359,11 +450,12 @@ def test_native_stage_bar_fits_large_text_and_translated_labels(tmp_path):
                 ui.show_resources(source); w=ui._window; drain()
                 w.resize(800,600); app.processEvents()
                 assert w.width() <= 800, (locale,w.width())
-                for button in w.stage_buttons.values():
-                    assert not button.icon().isNull()
-                    icon=button.icon().pixmap(32,32).toImage()
-                    assert all(icon.pixelColor(icon.width()-1,y).alpha()==0 for y in range(icon.height())), 'Icon is clipped at its right edge'
-                    assert all(icon.pixelColor(x,icon.height()-1).alpha()==0 for x in range(icon.width())), 'Icon is clipped at its lower edge'
+                for button in [*w.stage_buttons.values(), w.parent_button, w.tree_button]:
+                    if button in w.stage_buttons.values():
+                        assert not button.icon().isNull()
+                        icon=button.icon().pixmap(32,32).toImage()
+                        assert all(icon.pixelColor(icon.width()-1,y).alpha()==0 for y in range(icon.height())), 'Icon is clipped at its right edge'
+                        assert all(icon.pixelColor(x,icon.height()-1).alpha()==0 for x in range(icon.width())), 'Icon is clipped at its lower edge'
                     assert button.isVisible()
                     assert button.width() >= button.fontMetrics().horizontalAdvance(button.text())+16
                     assert w.rect().contains(QtCore.QRect(button.mapTo(w,QtCore.QPoint(0,0)),button.size()))
@@ -371,7 +463,7 @@ def test_native_stage_bar_fits_large_text_and_translated_labels(tmp_path):
                 assert w.grab(QtCore.QRect(0,0,w.width(),150)).save(str(Path(preview_dir)/f'native-{locale}-{dark}.png'))
                 w.focus_book.click(); app.processEvents()
                 assert w.width() <= 800, (locale, w.width())
-                for button in [*w.stage_buttons.values(), w.exit_focus]:
+                for button in [*w.stage_buttons.values(), w.parent_button, w.tree_button, w.exit_focus]:
                     assert button.isVisible()
                     assert button.width() >= button.fontMetrics().horizontalAdvance(button.text())+16
                     assert w.rect().contains(QtCore.QRect(button.mapTo(w,QtCore.QPoint(0,0)),button.size()))

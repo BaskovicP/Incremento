@@ -311,6 +311,38 @@ def test_custom_hex_color_is_kept_in_database_and_exported_pdf(tmp_path):
     assert filename.read_bytes() == before
 
 
+@pytest.mark.parametrize('with_metadata', [False, True], ids=['before-sync', 'stale-metadata'])
+@pytest.mark.parametrize('color,rgb', [
+    ('blue', [30 / 255, 144 / 255, 1]),
+    ('#123456', [18 / 255, 52 / 255, 86 / 255]),
+])
+def test_first_recolor_replaces_synced_rgb_even_when_reader_metadata_is_stale(tmp_path, with_metadata, color, rgb):
+    filename = pdf_file(tmp_path)
+    original = local_highlight()
+    add_highlight(str(tmp_path), PROFILE, CARD, original)
+    sync(tmp_path)
+    synced = load_highlights(str(tmp_path), PROFILE, CARD)[0]
+    # A reader can still hold its pre-sync row, or the prior native color.
+    incoming = synced if with_metadata else original
+    assert update_highlight(str(tmp_path), PROFILE, CARD, {**incoming, 'color': color})
+
+    saved = load_highlights(str(tmp_path), PROFILE, CARD)[0]
+    assert saved['color'] == color
+    assert saved['pdf_annotation']['color'] == pytest.approx(rgb)
+    assert saved['pdf_annotation']['name'] == synced['pdf_annotation']['name']
+    assert saved['note'] == original['note']
+    assert saved['text'] == original['text']
+    assert saved['rects'] == original['rects']
+    assert saved['pdf_annotation']['opacity'] == synced['pdf_annotation']['opacity']
+    for _ in range(2):
+        assert sync(tmp_path)['conflicts'] == 0
+        rows = load_highlights(str(tmp_path), PROFILE, CARD)
+        assert len(rows) == 1
+        assert rows[0]['color'] == color
+        with fitz.open(filename) as doc:
+            assert doc[0].first_annot.colors['stroke'] == pytest.approx(rgb)
+
+
 def test_custom_native_pdf_color_is_imported_as_exact_hex(tmp_path):
     filename = pdf_file(tmp_path)
     def populate(doc):

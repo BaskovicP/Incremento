@@ -81,7 +81,7 @@ def test_epub_style_migration_preserves_legacy_marks_and_rolls_back_ddl():
         assert 'style' not in {r[1] for r in conn.execute('PRAGMA table_info(epub_highlights)')}
         assert conn.execute('PRAGMA user_version').fetchone()[0] == 21
         for _ in range(2):
-            assert initialize_schema(conn, bootstrap=db._create_tables, migrations=db._SCHEMA_MIGRATIONS) == 23
+            assert initialize_schema(conn, bootstrap=db._create_tables, migrations=db._SCHEMA_MIGRATIONS) == 24
         assert conn.execute('SELECT id,card_id,style FROM epub_highlights').fetchall() == [('legacy', 7, 'highlight')]
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute("UPDATE epub_highlights SET style='unsafe'")

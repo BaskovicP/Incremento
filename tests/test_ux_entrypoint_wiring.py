@@ -10,6 +10,49 @@ from textwrap import dedent
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_parent_tree_action_loads_ancestry_in_background_and_discards_changed_review_context(monkeypatch):
+    from types import SimpleNamespace
+    pending, opened, reads = [], [], []
+    class Query:
+        def __init__(self, parent, op, success):
+            self.op, self.success = op, success
+        def failure(self, callback):
+            return self
+        def run_in_background(self):
+            pending.append(self)
+    monkeypatch.setitem(sys.modules, 'aqt.operations', SimpleNamespace(QueryOp=Query))
+    state = dict(card=41, profile='A')
+    main = SimpleNamespace(col=object())
+    path = [dict(card_id=10, title='Parent'), dict(card_id=41, title='Current')]
+    def hierarchy(*args):
+        reads.append(args)
+        return path
+    namespace = dict(mw=main, _ADDON_DIR='synthetic', _active_profile=lambda: state['profile'],
+        _current_reviewer_card_id=lambda: state['card'], _load_card_hierarchy=hierarchy,
+        _open_knowledge_tree=lambda **kw: opened.append(kw['select_card_id']),
+        get_knowledge_tree_node=lambda *a: dict(parent_card_id=10), tooltip=lambda text: None, _t=lambda key: key)
+    tree = ast.parse((ROOT / '__init__.py').read_text())
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name=='_go_to_parent_in_knowledge_tree')
+    exec(compile(ast.Module(body=[function],type_ignores=[]), '<parent-action>', 'exec'), namespace)
+    action = namespace['_go_to_parent_in_knowledge_tree']
+    collection = main.col
+    action()
+    assert len(pending)==1 and opened==[] and reads==[]
+    query = pending.pop()
+    query.success(query.op(collection))
+    assert opened==[10] and reads==[('synthetic','A',collection,41)]
+    for changed in ('card','profile','collection'):
+        action()
+        query=pending.pop()
+        result=query.op(main.col)
+        if changed=='collection':
+            main.col=object()
+        else:
+            state[changed]=42 if changed=='card' else 'B'
+        query.success(result)
+        assert opened==[10], 'A stale Parent action cannot open another review context'
+
+
 def test_command_palette_has_a_default_shortcut_and_menu_wiring():
     settings_source = (ROOT / "frontend" / "settings_dialog.py").read_text(
         encoding="utf-8"

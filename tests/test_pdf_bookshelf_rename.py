@@ -53,10 +53,12 @@ shelf.mw = types.SimpleNamespace(col=col, taskman=types.SimpleNamespace(
     run_in_background=lambda work, done, **_kwargs: background.append((work, done))))
 shelf.tooltip = lambda message, **_kwargs: notices.append(message)
 reply = ['Deep Knowledge Ways', True]
-def prompt(*args, **kwargs):
-    prompts.append((args, kwargs))
-    return tuple(reply)
-QInputDialog.getText = prompt
+native_exec = QInputDialog.exec
+def prompt(self):
+    prompts.append(((self.parentWidget(), self.windowTitle(), self.labelText()), {'text': self.textValue()}))
+    self.setTextValue(reply[0])
+    return int(reply[1])
+QInputDialog.exec = prompt
 
 class Operation:
     def __init__(self, parent, op):
@@ -214,4 +216,37 @@ def test_failed_pdf_name_save_keeps_the_stored_name_and_bookshelf_unchanged():
         search('Deep Knowledge')
         assert ids() == []
         assert notices == [shelf.t('reader_bookshelf_pdf_name_failed')]
+    """)
+
+
+def test_pdf_name_prompt_has_room_for_long_titles_and_can_expand():
+    run_scenario("""
+        from aqt.qt import QLineEdit, QTimer, Qt
+        from PyQt6.QtTest import QTest
+        from dataclasses import replace
+
+        title = 'Biology - An Introduction to the Human Body - Quentin Doctor'
+        target = replace(target, title=title)
+        QInputDialog.exec = lambda self: native_exec(self)
+        observed = {}
+        def edit_name():
+            prompt = app.activeModalWidget()
+            field = prompt.findChild(QLineEdit)
+            observed['title'] = field.text()
+            observed['width'] = field.width()
+            observed['text_width'] = field.fontMetrics().horizontalAdvance(title)
+            before = field.width()
+            prompt.resize(prompt.width() + 200, prompt.height())
+            observed['growth'] = field.width() - before
+            QTest.keyClick(field, Qt.Key.Key_End)
+            QTest.keyClicks(field, ' - Revised')
+            QTest.keyClick(field, Qt.Key.Key_Return)
+        QTimer.singleShot(0, edit_name)
+        dialog._edit_pdf_name(target)
+
+        assert observed['title'] == title
+        assert observed['width'] >= max(600, observed['text_width'] + 24), observed
+        assert observed['growth'] >= 190, observed
+        operations.pop().finish()
+        assert col.get_note(second.id)['Title'] == title + ' - Revised'
     """)

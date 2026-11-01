@@ -101,6 +101,11 @@ def test_availability_labels_fit_and_disabled_tabs_do_not_dispatch(tmp_path):
               dict(stage='book', label='PDFs', count=1, status='1 linked', availability='ready', disabled=False, command='go:book'),
               dict(stage='video', label='Videos', count=0, status='Not linked', availability='empty', disabled=True, command='go:video')]
     workspace = dict(heading='Review card',state='Question not answered',resources_label='Study resources',hint='Open a passage or recording without leaving this review.',
+        hierarchy=dict(label='Card hierarchy',status='',actions=[
+            dict(key='parent',label='Parent',status='Show parent in the knowledge tree',command='go:parent',disabled=False),
+            dict(key='tree',label='Show in tree',status='Reveal current card',command='go:tree',disabled=False)],
+            path=[dict(title='<img src=x onerror=alert(1)> & a very long root title ' * 4,command='go:ancestor_10',current=False),
+                  dict(title='Current question',command='go:ancestor_41',current=True)]),
         link_action=dict(label='+ Link resources…',command='go:link'),
         manage_action=dict(label='Manage links…',command='go:manage'),tiles=[
         dict(stage='book',title='Geometry',detail='PDF · page 6',status='1 linked',action='Read passage',command='go:book'),
@@ -122,6 +127,14 @@ def test_availability_labels_fit_and_disabled_tabs_do_not_dispatch(tmp_path):
             for width in (360,1200):
                 page.set_viewport_size({'width':width,'height':750})
                 page.evaluate(data['script'])
+                for action in ('parent','tree'):
+                    page.locator('[data-study-action='+action+']').click()
+                    assert page.evaluate('commands.at(-1)')=='go:'+action
+                path=page.locator('.study-nav-hierarchy')
+                path.locator('button').first.click()
+                assert page.evaluate('commands.at(-1)')=='go:ancestor_10'
+                assert path.locator('img').count()==0
+                assert path.locator('[aria-current=page]').text_content()=='Current question'
                 video=page.locator('[data-study-stage=video]')
                 expect(video).to_be_disabled()
                 expect(video).to_contain_text('Videos0')

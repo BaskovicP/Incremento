@@ -30,6 +30,7 @@ from aqt.qt import (
     QComboBox,
     QCompleter,
     QDialog,
+    QDialogButtonBox,
     QEvent,
     QHBoxLayout,
     QIcon,
@@ -49,6 +50,7 @@ from aqt.qt import (
     QPixmap,
     QPushButton,
     QRect,
+    QScrollArea,
     QSize,
     QSignalBlocker,
     QStyle,
@@ -72,10 +74,12 @@ try:
     from ..backend.paths import get_active_profile as _active_profile
     from ..backend import document_lists as _document_lists
     from ..backend import bookshelf_cover_cache as _cover_cache
+    from ..backend.config_service import load_addon_config, save_addon_config, normalize_bookshelf_caption_fields
 except ImportError:
     from paths import get_active_profile as _active_profile
     import document_lists as _document_lists
     import bookshelf_cover_cache as _cover_cache
+    from config_service import load_addon_config, save_addon_config, normalize_bookshelf_caption_fields
 
 try:
     from ..backend.pdf_manager import (
@@ -95,6 +99,7 @@ try:
     )
     from ..backend.document_library import load_document_notes
     from ..backend.document_library_stats import load_document_statistics
+    from ..backend.document_statistics import document_progress_from_collection
     from ..backend.priority_manager import configured_priority_lower_is_more_important, get_all_priorities
 except ImportError:
     from pdf_manager import PDF_COVER_FIELD, PDF_NOTE_TYPE, pdf_storage_abspath  # type: ignore
@@ -105,6 +110,7 @@ except ImportError:
     )
     from document_library import load_document_notes  # type: ignore
     from document_library_stats import load_document_statistics  # type: ignore
+    from document_statistics import document_progress_from_collection  # type: ignore
     from priority_manager import configured_priority_lower_is_more_important, get_all_priorities  # type: ignore
 
 try:
@@ -114,9 +120,12 @@ except ImportError:
 
 
 _PREVIEW_WIDTH = 160
+_ADDON_PKG = __name__.split(".")[0] if "." in __name__ else "incremento"
+_SUMMARY_FIELDS = frozenset({"read_progress", "cards_created", "page_count"})
 _PREVIEW_HEIGHT = 220
 _TILE_WIDTH = 172
 _TILE_HEIGHT = 280
+_REASON_ROW_HEIGHT = 170
 # UI-thread-only, shared across shelf dialogs; never persisted or unbounded.
 _THUMBNAIL_CACHE = ByteLRU(24 * 1024 * 1024)
 _COVER_RENDER_VERSION = 1
@@ -156,6 +165,7 @@ _MAX_EXACT_TITLE_BUCKET = 128
 _MAX_PDF_METADATA_TITLE_CHARS = 2_048
 _ATTACHMENT_BADGE_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 _BOOK_METRIC_ROLE = int(Qt.ItemDataRole.UserRole) + 2
+_BOOK_SUMMARY_ROLE = int(Qt.ItemDataRole.UserRole) + 3
 _GENERIC_PDF_METADATA_TITLES = frozenset(
     {
         "document",
@@ -970,6 +980,40 @@ def _bookshelf_entry_has_attachment_badge(
     )
 
 
+def _bookshelf_summary_text(summary, fields=None, entry=None, *, reason_view=False) -> str:
+    fields = normalize_bookshelf_caption_fields(fields)
+    values = summary or {}
+    read, total, cards = values.get("read"), values.get("total"), values.get("cards")
+    estimated = values.get("unit") == "estimated_pages"
+    labels = {
+        "read_progress": t("reader_bookshelf_read_to_estimated_page" if estimated else "reader_bookshelf_read_to_page", page=read)
+        if read is not None else t("reader_bookshelf_read_unavailable"),
+        "cards_created": tn("reader_bookshelf_cards_created", cards) if cards is not None else t("reader_bookshelf_cards_unavailable"),
+        "page_count": tn("reader_bookshelf_estimated_pages" if estimated else "reader_bookshelf_total_pages", total)
+        if total is not None else t("reader_bookshelf_pages_unavailable"),
+    }
+    if entry:
+        labels.update({
+            "lists": " · ".join(entry.list_names) or t("reader_library_unlisted"),
+            "reason": entry.saved_reason or t("reader_library_add_reason"),
+            "source": entry.saved_source or t("reader_none"),
+            "tags": ", ".join(entry.tags[:20]) or t("reader_none"),
+            "priority": t("reader_bookshelf_priority_value", value=int(round(entry.priority)))
+                        if entry.priority is not None else t("reader_bookshelf_default_priority"),
+            "format": entry.kind,
+        })
+    lines = []
+    for field in fields:
+        if reason_view and field in {"lists", "reason"}:
+            continue
+        if field in _SUMMARY_FIELDS and summary is None:
+            if t("reader_bookshelf_info_loading") not in lines:
+                lines.append(t("reader_bookshelf_info_loading"))
+        elif field in labels:
+            lines.append(" ".join(labels[field].split())[:256])
+    return "\n".join(lines)
+
+
 class _BookshelfItemDelegate(QStyledItemDelegate):
     """Paint attachment status above Qt's cover/selection rendering."""
 
@@ -1097,17 +1141,24 @@ class _BookshelfItemDelegate(QStyledItemDelegate):
             font.setBold(False)
             painter.setFont(font)
             painter.setPen(muted)
-            names = " · ".join(entry.list_names) or t("reader_library_unlisted")
-            painter.drawText(QRect(x,y,width,line_height), Qt.AlignmentFlag.AlignLeft,
-                             painter.fontMetrics().elidedText(names, Qt.TextElideMode.ElideRight, width))
-            y += line_height+3
-            reason = " ".join(entry.saved_reason.split()) or t("reader_library_add_reason")
+            if reason_view:
+                names = " · ".join(entry.list_names) or t("reader_library_unlisted")
+                painter.drawText(QRect(x,y,width,line_height), Qt.AlignmentFlag.AlignLeft,
+                                 painter.fontMetrics().elidedText(names, Qt.TextElideMode.ElideRight, width))
+                y += line_height
+            if reason_view:
+                reason = " ".join(entry.saved_reason.split()) or t("reader_library_add_reason")
+                painter.drawText(QRect(x,y,width,line_height), Qt.AlignmentFlag.AlignLeft,
+                                 painter.fontMetrics().elidedText(reason, Qt.TextElideMode.ElideRight, width))
+                y += line_height
+            summary = index.data(_BOOK_SUMMARY_ROLE) or ""
+            painter.setPen(text)
+            for line in str(summary).splitlines():
+                painter.drawText(QRect(x,y,width,line_height), Qt.AlignmentFlag.AlignLeft,
+                                 painter.fontMetrics().elidedText(line, Qt.TextElideMode.ElideRight, width))
+                y += line_height
             metric = index.data(_BOOK_METRIC_ROLE)
-            lines = 1 if metric else 2
-            preview = painter.fontMetrics().elidedText(reason, Qt.TextElideMode.ElideRight, width*lines-20)
-            painter.drawText(QRect(x,y,width,line_height*lines), Qt.TextFlag.TextWordWrap, preview)
             if metric:
-                painter.setPen(text)
                 painter.drawText(QRect(x,rect.bottom()-line_height-5,width,line_height), Qt.AlignmentFlag.AlignLeft, str(metric))
             painter.setClipRect(rect)
             if initialized.state & QStyle.StateFlag.State_HasFocus:
@@ -1489,6 +1540,11 @@ class _DocumentBookshelfDialog(QDialog):
     ):
         super().__init__(parent)
         self._addon_dir = str(addon_dir)
+        try:
+            config = load_addon_config(mw.addonManager, _ADDON_PKG)
+        except Exception:
+            config = {}
+        self._caption_fields = normalize_bookshelf_caption_fields(config.get("bookshelf_caption_fields"))
         self._selection_only = bool(selection_only)
         self._reference_mode = "main"
         try:
@@ -1532,6 +1588,9 @@ class _DocumentBookshelfDialog(QDialog):
         self._statistics_cancelled = threading.Event()
         self._statistics_cache: dict[str, dict[int, int]] = {}
         self._statistics_pending = False
+        self._book_summaries: dict[int, dict] = {}
+        self._summary_pending = False
+        self._summary_cancelled = threading.Event()
         self._sort_generation = 0
         self._random_order: dict[int, int] = {}
         self._sort_reset_selection = False
@@ -1740,6 +1799,14 @@ class _DocumentBookshelfDialog(QDialog):
         qconnect(self._add_to_list_button.clicked, self._add_selected_to_list)
         count_row.addWidget(self._add_to_list_button)
         self._add_to_list_button.setVisible(not self._selection_only)
+        self._details_button = QPushButton(t("reader_library_details"))
+        self._details_button.setAutoDefault(False)
+        self._details_button.setCheckable(True)
+        count_row.addWidget(self._details_button)
+        self._display_button = QPushButton(t("reader_bookshelf_display"))
+        self._display_button.setAutoDefault(False)
+        qconnect(self._display_button.clicked, self._configure_display)
+        count_row.addWidget(self._display_button)
         layout.addLayout(count_row)
 
         self._list = QListWidget()
@@ -1799,10 +1866,16 @@ class _DocumentBookshelfDialog(QDialog):
             from .document_details import BookDetailsEditor
         except ImportError:
             from document_details import BookDetailsEditor
-        details_panel = QWidget()
+        details_panel = QScrollArea()
+        self._details_panel = details_panel
+        details_panel.setWidgetResizable(True)
+        details_panel.setFrameShape(QScrollArea.Shape.NoFrame)
+        details_panel.setAccessibleName(t("reader_library_details"))
         details_panel.setMinimumWidth(260)
         details_panel.setMaximumWidth(360)
-        details_layout = QVBoxLayout(details_panel)
+        details_content = QWidget()
+        details_panel.setWidget(details_content)
+        details_layout = QVBoxLayout(details_content)
         details_layout.setContentsMargins(16, 0, 0, 0)
         self._book_title = QLabel(t("reader_library_select_book"))
         self._book_title.setTextFormat(Qt.TextFormat.PlainText)
@@ -1814,7 +1887,7 @@ class _DocumentBookshelfDialog(QDialog):
         details_layout.addWidget(self._book_title)
         self._book_kind = QLabel()
         details_layout.addWidget(self._book_kind)
-        self._book_details = BookDetailsEditor(self._addon_dir, self._profile, details_panel, available_lists=[])
+        self._book_details = BookDetailsEditor(self._addon_dir, self._profile, details_content, available_lists=[])
         qconnect(self._book_details.changed, self._book_details_changed)
         details_layout.addWidget(self._book_details)
         save_row = QHBoxLayout()
@@ -1828,6 +1901,8 @@ class _DocumentBookshelfDialog(QDialog):
         details_layout.addStretch(1)
         self._splitter.addWidget(details_panel)
         self._splitter.setSizes([170, 790, 310])
+        details_panel.hide()
+        qconnect(self._details_button.toggled, details_panel.setVisible)
 
         self._filter_timer = QTimer(self)
         self._filter_timer.setSingleShot(True)
@@ -1864,6 +1939,7 @@ class _DocumentBookshelfDialog(QDialog):
             lambda *_args: self._pdf_metadata_cancelled.set(),
         )
         qconnect(self.finished, lambda *_args: self._statistics_cancelled.set())
+        qconnect(self.finished, lambda *_args: self._summary_cancelled.set())
         qconnect(self.finished, lambda *_args: self._missing_files_cancelled.set())
         qconnect(self.finished, self._release_thumbnails)
         self._search.installEventFilter(self)
@@ -1873,6 +1949,48 @@ class _DocumentBookshelfDialog(QDialog):
         self._reload_library_lists()
         self._refresh()
         self._search.setFocus()
+
+    def _configure_display(self, *_args) -> None:
+        if not self._library_current():
+            return
+        try:
+            from .settings_dialog import BookshelfDisplayOptions
+        except ImportError:
+            from settings_dialog import BookshelfDisplayOptions
+        captured_collection = mw.col
+        dialog = QDialog(self)
+        dialog.setWindowTitle(t("reader_bookshelf_display_title"))
+        dialog.resize(440, 440)
+        layout = QVBoxLayout(dialog)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        options = BookshelfDisplayOptions(self._caption_fields)
+        scroll.setWidget(options)
+        layout.addWidget(scroll, 1)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        qconnect(buttons.accepted, dialog.accept)
+        qconnect(buttons.rejected, dialog.reject)
+        layout.addWidget(buttons)
+        accepted = dialog.exec()
+        fields = options.fields
+        dialog.deleteLater()
+        if (not accepted or not self._library_current() or mw.col is not captured_collection
+                or fields == self._caption_fields):
+            return
+        try:
+            config = dict(load_addon_config(mw.addonManager, _ADDON_PKG))
+            config["bookshelf_caption_fields"] = fields
+            save_addon_config(mw.addonManager, _ADDON_PKG, config)
+        except Exception:
+            tooltip(t("settings_save_failed"), parent=self)
+            return
+        self._caption_fields = fields
+        self._summary_cancelled.set()
+        self._summary_cancelled = threading.Event()
+        self._summary_pending = False
+        self._book_summaries.clear()
+        self._refresh()
 
     def _library_current(self) -> bool:
         return (not self._pdf_metadata_cancelled.is_set()
@@ -1987,7 +2105,20 @@ class _DocumentBookshelfDialog(QDialog):
         self._book_details.setEnabled(enabled)
         self._book_title.setText(entry.title if entry else
             tn("reader_library_selected_books", len(selected)) if selected else t("reader_library_select_book"))
-        self._book_kind.setText(entry.kind if entry else t("reader_library_multi_select_hint") if selected else "")
+        metadata = [entry.kind] if entry else []
+        if entry:
+            metadata.append(t("reader_bookshelf_priority_value", value=int(round(entry.priority)))
+                            if entry.priority is not None else t("reader_bookshelf_priority_unset"))
+            tags_text = ", ".join(entry.tags[:20])
+            if len(entry.tags) > 20:
+                tags_text += " " + t("reader_bookshelf_more_tags", count=len(entry.tags) - 20)
+            if tags_text:
+                metadata.append(t("reader_tags") + " " + tags_text)
+            if entry.metadata_title:
+                metadata.append(t("reader_bookshelf_pdf_metadata_title", title=entry.metadata_title))
+        self._book_kind.setText("\n".join(filter(None, metadata)) if entry else
+                                t("reader_library_multi_select_hint") if selected else "")
+        self._book_kind.setTextFormat(Qt.TextFormat.PlainText)
         self._book_kind.setWordWrap(True)
         item = self._list.selectedItems()[0] if entry else None
         self._book_cover.setPixmap(item.icon().pixmap(QSize(70, 96)) if item and entry else QPixmap())
@@ -2497,11 +2628,15 @@ class _DocumentBookshelfDialog(QDialog):
         self._list.clear()
         blocker.unblock()
         reason_view = hasattr(self, "_view_combo") and self._view_combo.currentData() == "reasons"
+        line_height = self._list.fontMetrics().height()
+        caption_rows = len(set(self._caption_fields) - ({"lists", "reason"} if reason_view else set()))
+        tile_height = max(_TILE_HEIGHT, 180 + line_height * (3 + caption_rows))
+        reason_height = max(_REASON_ROW_HEIGHT, 28 + line_height * (5 + caption_rows))
         if hasattr(self, "_view_combo"):
             self._list.setViewMode(QListView.ViewMode.ListMode if reason_view else QListView.ViewMode.IconMode)
             self._list.setWrapping(not reason_view)
             self._list.setIconSize(QSize(48, 66) if reason_view else QSize(_PREVIEW_WIDTH, _PREVIEW_HEIGHT))
-            self._list.setGridSize(QSize() if reason_view else QSize(_TILE_WIDTH, _TILE_HEIGHT))
+            self._list.setGridSize(QSize() if reason_view else QSize(_TILE_WIDTH, tile_height))
 
         placeholder = self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon)
         selected_item = None
@@ -2528,16 +2663,21 @@ class _DocumentBookshelfDialog(QDialog):
                         if entry.priority is not None else t("reader_bookshelf_default_priority")
                     )
                 caption = [entry.title]
-                if entry.list_names:
+                if reason_view and entry.list_names:
                     caption.append(" · ".join(entry.list_names))
-                if entry.saved_reason:
+                if reason_view and entry.saved_reason:
                     preview = " ".join(entry.saved_reason.split())
                     caption.append(preview[:120] + ("…" if len(preview) > 120 else ""))
                 if metric_text:
                     caption.append(metric_text)
+                summary_text = _bookshelf_summary_text(self._book_summaries.get(entry.card_id),
+                    self._caption_fields, entry, reason_view=reason_view)
+                if summary_text:
+                    caption.append(summary_text)
                 item = QListWidgetItem("\n".join(caption))
                 item.setData(Qt.ItemDataRole.UserRole, entry)
                 item.setData(_BOOK_METRIC_ROLE, metric_text)
+                item.setData(_BOOK_SUMMARY_ROLE, summary_text)
                 item.setTextAlignment(
                     (Qt.AlignmentFlag.AlignLeft if reason_view else Qt.AlignmentFlag.AlignHCenter) | Qt.AlignmentFlag.AlignTop
                 )
@@ -2548,36 +2688,17 @@ class _DocumentBookshelfDialog(QDialog):
                 # QListView's icon mode can ignore gridSize() for the item's own
                 # paint rectangle, which clips the text directly beneath tall
                 # covers. An explicit size hint reserves a real caption area.
-                item.setSizeHint(QSize(0, 112) if reason_view else QSize(_TILE_WIDTH, _TILE_HEIGHT))
-                priority_text = (
-                    t("reader_bookshelf_priority_value", value=int(round(entry.priority)))
-                    if entry.priority is not None
-                    else t("reader_bookshelf_priority_unset")
-                )
-                visible_tags = entry.tags[:20]
-                tags_text = ", ".join(visible_tags) if visible_tags else t("reader_none")
-                if len(entry.tags) > len(visible_tags):
-                    tags_text += " " + t("reader_bookshelf_more_tags", count=len(entry.tags) - len(visible_tags))
+                item.setSizeHint(QSize(0, reason_height) if reason_view else QSize(_TILE_WIDTH, tile_height))
                 item_tooltip = t(
-                    "reader_bookshelf_item_tooltip",
+                    "reader_bookshelf_basic_tooltip",
                     title=entry.title,
                     kind=entry.kind,
-                    tags=tags_text,
-                    priority=priority_text,
                 )
                 if metric_text:
                     item_tooltip += "\n" + metric_text
-                if entry.saved_reason:
-                    item_tooltip += "\n" + html.escape(entry.saved_reason)
-                if entry.saved_source:
-                    item_tooltip += "\n" + html.escape(entry.saved_source)
+                item_tooltip += "\n" + summary_text
                 if entry.card_id in (self._missing_pdf_card_ids or ()):
                     item_tooltip += "\n" + t("reader_bookshelf_missing_pdf_status")
-                if entry.metadata_title:
-                    item_tooltip += "\n" + t(
-                        "reader_bookshelf_pdf_metadata_title",
-                        title=entry.metadata_title,
-                    )
                 show_attachment_badge = _bookshelf_entry_has_attachment_badge(
                     entry,
                     duplicates_only=self._duplicates_only_cb.isChecked(),
@@ -2594,7 +2715,7 @@ class _DocumentBookshelfDialog(QDialog):
                     if show_attachment_badge
                     else 0,
                 )
-                item.setToolTip(item_tooltip)
+                item.setToolTip("<qt>" + html.escape(item_tooltip).replace("\n", "<br>") + "</qt>")
                 # Restore the first screen's warm covers before the first paint.
                 source = self._thumbnail_source(entry) if offset == 0 and self._thumbnail_cache.bytes_used else None
                 cached = self._thumbnail_cache.get(source[2]) if source else None
@@ -2735,12 +2856,15 @@ class _DocumentBookshelfDialog(QDialog):
 
         if entry.kind != _KIND_PDF or entry.note_id <= 0 or not current():
             return
-        name, accepted = QInputDialog.getText(
-            self,
-            t("reader_bookshelf_edit_pdf_name"),
-            t("reader_bookshelf_pdf_name_prompt"),
-            text=entry.title,
-        )
+        prompt = QInputDialog(self)
+        prompt.setWindowTitle(t("reader_bookshelf_edit_pdf_name"))
+        prompt.setLabelText(t("reader_bookshelf_pdf_name_prompt"))
+        prompt.setTextValue(entry.title)
+        prompt.setMinimumWidth(640)
+        prompt.resize(760, prompt.sizeHint().height())
+        accepted = prompt.exec()
+        name = prompt.textValue()
+        prompt.deleteLater()
         if not accepted or not current():
             return
         name = name.strip()
@@ -2908,6 +3032,53 @@ class _DocumentBookshelfDialog(QDialog):
     def _thumbnail_source(self, entry: _BookshelfEntry) -> tuple[str, bool, tuple] | None:
         return _bookshelf_thumbnail_source(entry, media_dir=self._media_dir, profile=self._profile)
 
+    def _start_book_summary_scan(self, entries) -> None:
+        fields = set(self._caption_fields) & _SUMMARY_FIELDS
+        if self._summary_pending or not entries or not fields:
+            return
+        from aqt.operations import QueryOp
+        try:
+            from .learning_stats import _document_pdf_pages
+        except ImportError:
+            from learning_stats import _document_pdf_pages
+
+        self._summary_pending = True
+        captured_profile, captured_collection = self._profile, mw.col
+        addon_dir = self._addon_dir
+        cancelled = self._summary_cancelled
+        documents = [(entry.card_id, entry.kind) for entry in entries]
+
+        def current():
+            return (not cancelled.is_set() and not self._pdf_metadata_cancelled.is_set()
+                    and str(_active_profile() or "") == captured_profile
+                    and mw.col is captured_collection)
+
+        def inspect(col):
+            progress = document_progress_from_collection(
+                col, addon_dir, captured_profile, card_ids=[cid for cid, _kind in documents],
+                should_cancel=cancelled.is_set, pdf_page_counter=_document_pdf_pages,
+            ) if fields & {"read_progress", "page_count"} else ()
+            counts = load_document_statistics(
+                addon_dir, captured_profile, documents, col=col, metric="cards", cancelled=cancelled,
+            ) if "cards_created" in fields else {}
+            by_id = {row["card_id"]: row for row in progress or ()}
+            return {cid: {**by_id.get(cid, {}), "cards": counts.get(cid)} for cid, _kind in documents}
+
+        def checked(summaries):
+            if not current():
+                return
+            self._summary_pending = False
+            self._book_summaries.update(summaries)
+            self._prioritize_thumbnails()
+
+        def failed(_error):
+            checked({cid: {} for cid, _kind in documents})
+
+        try:
+            QueryOp(parent=self, op=inspect, success=checked).failure(failed).run_in_background()
+        except Exception as error:
+            failed(error)
+
     def _prioritize_thumbnails(self) -> None:
         if not self.isVisible() or self._pdf_metadata_cancelled.is_set() or self._profile != str(_active_profile() or ""):
             return
@@ -2915,7 +3086,8 @@ class _DocumentBookshelfDialog(QDialog):
         # QListView's grid already includes spacing; adding it again drifts
         # away from the actual visible rows in a long library.
         reason_view = hasattr(self, "_view_combo") and self._view_combo.currentData() == "reasons"
-        row_height = 112 + 2 * self._list.spacing() if reason_view else _TILE_HEIGHT
+        row_height = (self._list.item(0).sizeHint().height() + 2 * self._list.spacing() if reason_view and self._list.count()
+                      else max(_TILE_HEIGHT, self._list.gridSize().height()))
         columns = 1 if reason_view else max(1, viewport.width() // _TILE_WIDTH)
         first_row = self._list.verticalScrollBar().value() // row_height
         rows = max(1, math.ceil(viewport.height() / row_height))
@@ -2927,11 +3099,22 @@ class _DocumentBookshelfDialog(QDialog):
                 item.setIcon(placeholder)
         self._thumbnail_visible = window
         self._thumbnail_queue.clear()
+        missing_summaries = []
         for index in sorted(window):
             item = self._list.item(index)
             if item is None:
                 continue
             entry = item.data(Qt.ItemDataRole.UserRole)
+            summary = _bookshelf_summary_text(self._book_summaries.get(entry.card_id),
+                self._caption_fields, entry, reason_view=reason_view)
+            previous = item.data(_BOOK_SUMMARY_ROLE)
+            if summary != previous:
+                item.setText(item.text().removesuffix(previous) + summary)
+                item.setToolTip(item.toolTip().replace(
+                    html.escape(previous).replace("\n", "<br>"), html.escape(summary).replace("\n", "<br>")))
+                item.setData(_BOOK_SUMMARY_ROLE, summary)
+            if entry.card_id not in self._book_summaries:
+                missing_summaries.append(entry)
             key = (entry.kind, entry.card_id)
             source = self._thumbnail_source(entry)
             cached = self._thumbnail_cache.get(source[2]) if source else None
@@ -2944,6 +3127,7 @@ class _DocumentBookshelfDialog(QDialog):
                 if key not in self._thumbnail_attempted:
                     self._thumbnail_queue.append((item, entry))
         self._load_next_thumbnail(self._thumbnail_generation)
+        self._start_book_summary_scan(missing_summaries[:40])
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)

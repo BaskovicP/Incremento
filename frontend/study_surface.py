@@ -50,13 +50,15 @@ class StudySurface(QObject):
             self.active = True
             for widget, _ in self.hidden:
                 widget.installEventFilter(self)
-                widget.hide()
+                # Anki's bottomWeb.hide() collapses the bar to one pixel;
+                # hide the widget without changing its saved control height.
+                widget.setVisible(False)
         self.workspace.show()
 
     def eventFilter(self, watched, event):
         if (self.active and event.type() == QEvent.Type.Show
                 and any(watched is widget for widget, _ in self.hidden)):
-            watched.hide()
+            watched.setVisible(False)
             return True
         return super().eventFilter(watched, event)
 

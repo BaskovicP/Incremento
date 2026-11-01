@@ -6,6 +6,65 @@ import db
 from document_links import add_document_link, list_document_links, remove_document_link, replace_document_target
 
 
+def test_connection_note_is_shared_editable_and_separate_from_the_quoted_passage(tmp_path):
+    from document_links import list_pdf_page_links, set_document_link_note
+    root = str(tmp_path)
+    link = add_document_link(root, 'A', source_card_id=7, source_kind='pdf', source_page=3,
+        target_card_id=8, target_page=42, quote='Original passage',
+        connection_note='This place also talks about X.\nCompare the examples.')
+    assert list_document_links(root, 'A', 7)[0]['connection_note'] == (
+        'This place also talks about X.\nCompare the examples.')
+    assert list_pdf_page_links(root, 'A', 8, 42)[0]['connection_note'].startswith('This place')
+    assert not set_document_link_note(root, 'B', link, source_card_id=7, connection_note='Wrong profile')
+    assert not set_document_link_note(root, 'A', link, source_card_id=8, source_page=41, connection_note='Wrong page')
+    assert not set_document_link_note(root, 'A', link, source_card_id=9, connection_note='Unrelated card')
+    assert set_document_link_note(root, 'A', link, source_card_id=8, source_page=42, connection_note='  Related idea  ')
+    assert replace_document_target(root, 'A', link, source_card_id=7, target_card_id=9, target_page=5)
+    row = list_document_links(root, 'A', 7)[0]
+    assert (row['quote'], row['connection_note'], row['target_page']) == ('Original passage', 'Related idea', 5)
+    assert set_document_link_note(root, 'A', link, source_card_id=7, connection_note='')
+    assert list_document_links(root, 'A', 7)[0]['connection_note'] == ''
+
+
+@pytest.mark.parametrize('note', [None, 17, 'x' * 2001, 'bad\0note'], ids=['missing', 'number', 'too-long', 'nul'])
+def test_invalid_connection_notes_cannot_create_or_overwrite_a_link(tmp_path, note):
+    from document_links import set_document_link_note
+    root = str(tmp_path)
+    link = add_document_link(root, 'A', source_card_id=7, source_kind='card', target_card_id=8,
+                             connection_note='Keep this')
+    with pytest.raises(ValueError):
+        add_document_link(root, 'A', source_card_id=7, source_kind='card', target_card_id=9, connection_note=note)
+    with pytest.raises(ValueError):
+        set_document_link_note(root, 'A', link, source_card_id=7, connection_note=note)
+    rows = list_document_links(root, 'A', 7)
+    assert len(rows) == 1 and rows[0]['connection_note'] == 'Keep this'
+
+
+def test_connection_note_migration_preserves_legacy_links_and_rolls_back_atomically():
+    from db_schema import initialize_schema
+    conn = sqlite3.connect(':memory:')
+    base = (2, 'links', db._migration_14_document_links)
+    initialize_schema(conn, bootstrap=lambda c: None, migrations=(base,))
+    conn.execute("INSERT INTO document_links(source_card_id,source_kind,quote,target_card_id,target_page) "
+                 "VALUES (7,'card','Original passage',8,42)")
+    conn.commit()
+    def interrupted(c):
+        db._migration_24_document_link_notes(c)
+        raise RuntimeError('interrupted')
+    with pytest.raises(RuntimeError):
+        initialize_schema(conn, bootstrap=lambda c: None, migrations=(base, (3, 'notes', interrupted)))
+    assert conn.execute('PRAGMA user_version').fetchone()[0] == 2
+    assert 'connection_note' not in {r[1] for r in conn.execute('PRAGMA table_info(document_links)')}
+    for _ in range(2):
+        initialize_schema(conn, bootstrap=lambda c: None,
+            migrations=(base, (3, 'notes', db._migration_24_document_link_notes)))
+    assert conn.execute('SELECT quote,connection_note,target_page FROM document_links').fetchall() == [
+        ('Original passage', '', 42)]
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute('UPDATE document_links SET connection_note=?', ('x' * 2001,))
+    conn.close()
+
+
 def test_precise_pdf_destinations_survive_loading_and_retargeting_from_either_end(tmp_path):
     from document_links import list_pdf_page_links, replace_pdf_page_link
     root = str(tmp_path)

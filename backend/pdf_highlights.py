@@ -3,11 +3,11 @@ import json
 try:
     from .db import get_connection
     from .annotation_notes import normalize_note
-    from .highlight_colors import normalize_highlight_color
+    from .highlight_colors import highlight_appearance, normalize_highlight_color
     from .annotation_styles import pdf_style_metadata
 except ImportError:
     from annotation_notes import normalize_note
-    from highlight_colors import normalize_highlight_color
+    from highlight_colors import highlight_appearance, normalize_highlight_color
     from annotation_styles import pdf_style_metadata
     from db import get_connection  # test environment (backend/ on sys.path)
 
@@ -65,7 +65,7 @@ def update_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> bo
     color = normalize_highlight_color(hl.get("color", "yellow"), allow_snapshot=True)
     conn = get_connection(addon_dir, profile)
     existing = conn.execute(
-        "SELECT annotation_json FROM pdf_highlights WHERE id = ? AND card_id = ?",
+        "SELECT annotation_json, color FROM pdf_highlights WHERE id = ? AND card_id = ?",
         (hl["id"], card_id),
     ).fetchone()
     if existing is None:
@@ -80,6 +80,10 @@ def update_highlight(addon_dir: str, profile: str, card_id: int, hl: dict) -> bo
     if not isinstance(incoming_annotation, dict):
         incoming_annotation = {}
     annotation = {**existing_annotation, **incoming_annotation}
+    # Native RGB may have arrived after the reader's snapshot. A new color must
+    # replace it on the first edit; unchanged colors retain imported precision.
+    if 'color' in annotation and color != existing[1]:
+        annotation['color'] = highlight_appearance(color)[0]
     if 'style' in hl:
         annotation = pdf_style_metadata(annotation, hl['style'])
     else:

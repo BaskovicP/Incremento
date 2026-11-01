@@ -64,6 +64,19 @@ body[data-study-canvas] { background: var(--study-workspace-canvas) !important; 
   max-width: 100%; box-sizing: border-box; border-radius: 12px;
   border: 0; background: transparent;
 }
+#incremento-study-navigation .study-nav-tree-actions {
+  display: flex; flex-wrap: wrap; gap: 5px; margin-inline-start: auto; max-width: 100%;
+}
+#incremento-study-navigation .study-nav-hierarchy {
+  display: flex; flex-basis: 100%; align-items: center; flex-wrap: wrap; gap: 4px;
+  min-width: 0; color: var(--study-nav-foreground); text-align: start;
+}
+#incremento-study-navigation .study-nav-hierarchy button {
+  height: auto !important; min-height: 26px !important; min-width: 0 !important;
+  max-width: 100%; padding: 4px 6px !important; white-space: normal; overflow-wrap: anywhere;
+  text-align: start; font-size: 12px !important; justify-content: flex-start !important;
+}
+#incremento-study-navigation .study-nav-hierarchy button[aria-current="page"] { font-weight: 600 !important; color: var(--study-nav-ink) !important; }
 #incremento-study-navigation button {
   gap: 7px; margin: 0 !important; background: transparent !important; border-color: transparent !important;
   color: var(--study-nav-foreground) !important; cursor: pointer;
@@ -233,6 +246,39 @@ def reviewer_navigation_script(routes, label, *, workspace=None):
     action.textContent = data.workspace.link_action.label;
     action.onclick = () => pycmd(data.workspace.link_action.command);
     nav.appendChild(action);
+  }
+  const hierarchy = data.workspace?.hierarchy;
+  if (hierarchy) {
+    const actions = document.createElement('div');
+    actions.className = 'study-nav-tree-actions';
+    for (const item of hierarchy.actions) {
+      const button = document.createElement('button');
+      button.type = 'button'; button.dataset.studyAction = item.key;
+      button.textContent = item.label; button.disabled = item.disabled;
+      button.title = item.status; button.setAttribute('aria-description', item.status);
+      button.onclick = () => pycmd(item.command);
+      actions.appendChild(button);
+    }
+    nav.appendChild(actions);
+    const path = document.createElement('div');
+    path.className = 'study-nav-hierarchy';
+    path.setAttribute('role', 'navigation'); path.setAttribute('aria-label', hierarchy.label);
+    for (const item of hierarchy.path) {
+      if (path.childNodes.length) {
+        const separator = document.createElement('span');
+        separator.textContent = '›'; separator.setAttribute('aria-hidden', 'true');
+        path.appendChild(separator);
+      }
+      const button = document.createElement('button');
+      button.type = 'button'; button.textContent = item.title; button.title = item.title;
+      if (item.current) button.setAttribute('aria-current', 'page');
+      button.onclick = () => pycmd(item.command);
+      path.appendChild(button);
+    }
+    if (!hierarchy.path.length) {
+      path.textContent = hierarchy.status; path.setAttribute('role', 'status');
+    }
+    nav.appendChild(path);
   }
   // Keep Anki's live #qa node and card templates intact, including listeners.
   const card = document.getElementById('qa');

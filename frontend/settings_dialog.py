@@ -42,6 +42,7 @@ try:
         configured_search_remember_logins,
         configured_topic_done_tag, configured_day_end_time, normalize_pdf_appearance_mode,
         normalize_topic_done_tag,
+        normalize_bookshelf_caption_fields,
     )
     from ..backend.custom_schedule import (
         configured_custom_schedule_default_mode,
@@ -65,6 +66,7 @@ except ImportError:
         configured_search_remember_logins,
         configured_topic_done_tag, configured_day_end_time, normalize_pdf_appearance_mode,
         normalize_topic_done_tag,
+        normalize_bookshelf_caption_fields,
     )
     from backend.custom_schedule import (  # type: ignore
         configured_custom_schedule_default_mode,
@@ -373,6 +375,48 @@ def _name_list_text(raw: list[str] | str | tuple[str, ...] | set[str] | None) ->
     return "\n".join(_normalize_name_list(raw))
 
 
+class BookshelfDisplayOptions(QWidget):
+    """The same caption choices in Settings and the shelf's Display picker."""
+
+    def __init__(self, fields=None, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        hint = QLabel(t("reader_bookshelf_display_hint"))
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        self._checkboxes = {}
+        for field, key in (
+            ("read_progress", "reader_read_progress"),
+            ("cards_created", "reader_bookshelf_display_cards"),
+            ("page_count", "reader_bookshelf_display_pages"),
+            ("lists", "reader_library_lists"),
+            ("reason", "reader_library_reason"),
+            ("source", "reader_library_source"),
+            ("tags", "reader_tags"),
+            ("priority", "reader_bookshelf_display_priority"),
+            ("format", "reader_type"),
+        ):
+            checkbox = QCheckBox(t(key))
+            self._checkboxes[field] = checkbox
+            layout.addWidget(checkbox)
+        self._defaults_button = QPushButton(t("settings_restore_defaults"))
+        self._defaults_button.setAutoDefault(False)
+        self._defaults_button.clicked.connect(lambda *_args: self.set_fields(None))
+        layout.addWidget(self._defaults_button)
+        layout.addStretch(1)
+        self.set_fields(fields)
+
+    def set_fields(self, fields) -> None:
+        selected = normalize_bookshelf_caption_fields(fields)
+        for field, checkbox in self._checkboxes.items():
+            checkbox.setChecked(field in selected)
+
+    @property
+    def fields(self) -> list[str]:
+        return [field for field, checkbox in self._checkboxes.items() if checkbox.isChecked()]
+
+
 class IncrementoSettingsDialog(QDialog):
     def __init__(
         self,
@@ -456,6 +500,7 @@ class IncrementoSettingsDialog(QDialog):
         current_day_end_time: str = "04:00",
         current_pdf_citation_page_numbering: str = "printed",
         current_study_workspace_enabled: bool = True,
+        current_bookshelf_caption_fields=None,
     ):
         super().__init__(parent)
         self.setWindowTitle(t('settings_incremento_settings'))
@@ -1136,6 +1181,13 @@ class IncrementoSettingsDialog(QDialog):
         reviewer_controls_layout.addWidget(self._show_incremento_fields_cb)
 
         review_layout.addLayout(reviewer_controls_layout)
+
+        review_layout.addWidget(_subsection_title(t("reader_bookshelf_display_title")))
+        self._initial_bookshelf_caption_fields = normalize_bookshelf_caption_fields(current_bookshelf_caption_fields)
+        self._bookshelf_display_options = BookshelfDisplayOptions(self._initial_bookshelf_caption_fields)
+        bookshelf_layout = _section_body()
+        bookshelf_layout.addWidget(self._bookshelf_display_options)
+        review_layout.addLayout(bookshelf_layout)
 
         review_layout.addWidget(_subsection_title(t('settings_item_skip')))
         item_skip_layout = _section_body()
@@ -2207,6 +2259,14 @@ class IncrementoSettingsDialog(QDialog):
         return normalize_pdf_appearance_mode(
             self._pdf_default_appearance_combo.currentData()
         )
+
+    @property
+    def bookshelf_caption_fields(self) -> list[str]:
+        return self._bookshelf_display_options.fields
+
+    @property
+    def bookshelf_caption_fields_changed(self) -> bool:
+        return self.bookshelf_caption_fields != self._initial_bookshelf_caption_fields
 
     @property
     def pdf_force_default_appearance(self) -> bool:

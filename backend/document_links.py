@@ -9,6 +9,13 @@ except ImportError:
 
 
 _SOURCE_MATCH = '(source_content_id=? OR (source_content_id IS NULL AND source_card_id=?))'
+MAX_CONNECTION_NOTE = 2000
+
+
+def normalize_connection_note(note):
+    if not isinstance(note, str) or len(note) > MAX_CONNECTION_NOTE or '\x00' in note:
+        raise ValueError('Invalid connection note')
+    return note.strip()
 
 
 def _validate_position(scroll, point):
@@ -25,7 +32,8 @@ def _identity(conn, card_id):
 
 def add_document_link(addon_dir, profile, *, source_card_id, source_kind, target_card_id,
                       source_page=0, quote="", target_page=1, target_scroll=0, source_y=None, target_y=None,
-                      _connection=None):
+                      connection_note="", _connection=None):
+    connection_note = normalize_connection_note(connection_note)
     _validate_position(target_scroll, target_y)
     _validate_position(0, source_y)
     for number, minimum in ((source_card_id, 1), (target_card_id, 1), (source_page, 0), (target_page, 1)):
@@ -45,9 +53,10 @@ def add_document_link(addon_dir, profile, *, source_card_id, source_kind, target
             raise ValueError("Document link limit reached")
         cursor = conn.execute(
             "INSERT INTO document_links(source_card_id, source_content_id, source_kind, source_page, quote, "
-            "target_card_id, target_content_id, target_page, target_scroll, source_y, target_y) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "target_card_id, target_content_id, target_page, target_scroll, source_y, target_y, connection_note) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (source_card_id, source_identity, source_kind, source_page, quote,
-             target_card_id, _identity(conn, target_card_id), target_page, target_scroll, source_y, target_y))
+             target_card_id, _identity(conn, target_card_id), target_page, target_scroll, source_y, target_y, connection_note))
     return cursor.lastrowid
 
 
@@ -62,9 +71,9 @@ def list_document_links(addon_dir, profile, source_card_id, *, source_page=None)
     rows = conn.execute(
         "SELECT l.id, l.source_kind, l.source_page, l.quote, "
         "CASE WHEN l.target_content_id IS NULL THEN l.target_card_id ELSE coalesce(c.card_id,0) END, "
-        "l.target_page, l.target_scroll, l.target_y FROM document_links l LEFT JOIN content_items c "
+        "l.target_page, l.target_scroll, l.target_y, l.connection_note FROM document_links l LEFT JOIN content_items c "
         "ON c.content_id=l.target_content_id WHERE " + where + " ORDER BY l.id LIMIT 200", params).fetchall()
-    keys = ("id", "source_kind", "source_page", "quote", "target_card_id", "target_page", "target_scroll", "target_y")
+    keys = ("id", "source_kind", "source_page", "quote", "target_card_id", "target_page", "target_scroll", "target_y", "connection_note")
     return [dict(zip(keys, row)) for row in rows]
 
 
@@ -79,7 +88,7 @@ def list_pdf_page_links(addon_dir, profile, card_id, page):
         raise ValueError('Invalid PDF page')
     conn = get_connection(addon_dir, profile)
     identity = _identity(conn, card_id)
-    keys = ('id', 'direction', 'target_card_id', 'target_page', 'target_scroll', 'quote', 'target_y')
+    keys = ('id', 'direction', 'target_card_id', 'target_page', 'target_scroll', 'quote', 'target_y', 'connection_note')
     rows = []
     for side, opposite, direction, scroll in (
         ('source', 'target', 'outgoing', 'l.target_scroll'),
@@ -94,7 +103,7 @@ def list_pdf_page_links(addon_dir, profile, card_id, page):
             results = conn.execute(
                 f"SELECT l.id, '{direction}', CASE WHEN l.{opposite}_content_id IS NULL "
                 f"THEN l.{opposite}_card_id ELSE coalesce(c.card_id,0) END, "
-                f"l.{opposite}_page, {scroll}, l.quote, l.{opposite}_y FROM document_links l "
+                f"l.{opposite}_page, {scroll}, l.quote, l.{opposite}_y, l.connection_note FROM document_links l "
                 f"LEFT JOIN content_items c ON c.content_id=l.{opposite}_content_id "
                 f"WHERE {predicate} AND l.{side}_page=? AND l.source_kind='pdf' AND l.source_page>0 "
                 "ORDER BY l.id LIMIT 200", (value, page)).fetchall()
@@ -137,6 +146,28 @@ def remove_pdf_page_link(addon_dir, profile, card_id, page, link_id):
         cursor = conn.execute(
             "DELETE FROM document_links AS l WHERE id=? AND source_kind='pdf' AND source_page>0 "
             f"AND ({source} OR {target})", (link_id, *source_params, *target_params))
+    return cursor.rowcount > 0
+
+
+def set_document_link_note(addon_dir, profile, link_id, *, source_card_id, connection_note, source_page=None):
+    """Edit one association from its owner or either exact PDF page endpoint."""
+    note = normalize_connection_note(connection_note)
+    if type(link_id) is not int or not 1 <= link_id <= 2**63 - 1:
+        raise ValueError('Invalid connection')
+    conn = get_connection(addon_dir, profile)
+    if source_page is not None:
+        source, source_params = _pdf_endpoint(conn, source_card_id, source_page, 'source')
+        target, target_params = _pdf_endpoint(conn, source_card_id, source_page, 'target')
+        where = f"source_kind='pdf' AND source_page>0 AND ({source} OR {target})"
+        params = (*source_params, *target_params)
+    else:
+        if type(source_card_id) is not int or not 1 <= source_card_id <= 2**63 - 1:
+            raise ValueError('Invalid document source')
+        where = _SOURCE_MATCH
+        params = (_identity(conn, source_card_id), source_card_id)
+    with conn:
+        cursor = conn.execute('UPDATE document_links AS l SET connection_note=? WHERE id=? AND ' + where,
+                              (note, link_id, *params))
     return cursor.rowcount > 0
 
 
