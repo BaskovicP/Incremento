@@ -192,6 +192,7 @@ def incremento_note_type_specs() -> tuple[NoteTypeSpec, ...]:
     try:
         from . import audio_manager, epub_manager, local_file_manager, pdf_manager
         from . import supermemo_import, video_manager, web_manager, writing_manager
+        from .mcp_creation import mcp_note_type_spec
     except ImportError:
         import audio_manager  # type: ignore
         import epub_manager  # type: ignore
@@ -201,6 +202,7 @@ def incremento_note_type_specs() -> tuple[NoteTypeSpec, ...]:
         import video_manager  # type: ignore
         import web_manager  # type: ignore
         import writing_manager  # type: ignore
+        from mcp_creation import mcp_note_type_spec
 
     return (
         audio_manager.audio_note_type_spec(),
@@ -212,6 +214,7 @@ def incremento_note_type_specs() -> tuple[NoteTypeSpec, ...]:
         local_file_manager.local_file_note_type_spec(),
         supermemo_import.supermemo_note_type_spec(),
         supermemo_import.supermemo_cloze_note_type_spec(),
+        mcp_note_type_spec(),
     )
 
 

@@ -13,7 +13,7 @@ def test_bookshelf_analysis_and_math_encoding_are_deferred_and_stale_results_are
         sys.path.insert(0, os.path.abspath("frontend"))
         from concurrent.futures import Future
         from types import SimpleNamespace
-        from aqt.qt import QApplication, QPixmap
+        from aqt.qt import QApplication, QPixmap, QPushButton
         from frontend import pdf_bookshelf as shelf, snapshot_math_dialog as math
         app = QApplication([])
         jobs = []
@@ -31,6 +31,9 @@ def test_bookshelf_analysis_and_math_encoding_are_deferred_and_stale_results_are
         shelf._bookshelf_duplicate_matches = duplicates
         dialog = shelf._DocumentBookshelfDialog(addon_dir='/tmp/unused', entries=entries)
         assert dialog._list.count() < len(entries), 'grid creation must yield between batches'
+        assert not jobs, 'initial opening must not start optional duplicate analysis'
+        next(button for button in dialog.findChildren(QPushButton)
+             if button.text() == shelf.t('reader_library_more_filters')).click()
         assert jobs, 'duplicate analysis must be dispatched even without PDF filenames'
         work, done = jobs.pop(0)
         analyzing[0] = True
@@ -71,7 +74,7 @@ def test_bookshelf_analysis_and_math_encoding_are_deferred_and_stale_results_are
             thumbnail = work()
             assert not thumbnail.isNull() and thumbnail.width() <= shelf._PREVIEW_WIDTH
             future = Future(); future.set_result(thumbnail); done(future)
-            assert ('EPUB', 501) in cover_dialog._thumbnail_cache
+            assert cover_dialog._thumbnail_cache.bytes_used > 0
             cover_dialog.reject()
             done(future)
         jobs.clear()

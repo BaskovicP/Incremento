@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 import unicodedata
 from collections.abc import Mapping
+from concurrent.futures import CancelledError
 
 try:
     from .db import get_connection
@@ -121,6 +122,32 @@ def save_document_details(addon_dir: str, profile: str, kind: str, filename: str
     conn = get_connection(addon_dir, profile)
     with conn:
         write_document_details(conn, kind, filename, details)
+
+
+def add_documents_to_list(addon_dir: str, profile: str, documents, list_id: int, *, cancel_event=None) -> tuple:
+    """Atomically add unique documents without replacing notes or other memberships."""
+    list_id = normalize_document_details({"list_ids": [list_id]})["list_ids"][0]
+    keys = tuple(dict.fromkeys(document_key(kind, filename) for kind, filename in documents))
+    if not keys:
+        return keys
+    conn = get_connection(addon_dir, profile)
+    with conn:
+        if not conn.execute("SELECT 1 FROM document_library_lists WHERE id=?", (list_id,)).fetchone():
+            raise ValueError("This list no longer exists.")
+        for kind, filename in keys:
+            if cancel_event is not None and cancel_event.is_set():
+                raise CancelledError()
+            count = conn.execute("SELECT count(*) FROM document_library_memberships "
+                                 "WHERE kind=? AND filename=? AND list_id<>?", (kind, filename, list_id)).fetchone()[0]
+            if count >= MAX_BOOK_LISTS:
+                raise ValueError("Too many book lists.")
+            conn.execute("INSERT OR IGNORE INTO document_library_books(kind,filename,reason,source) VALUES (?,?,'','')",
+                         (kind, filename))
+            conn.execute("INSERT OR IGNORE INTO document_library_memberships(kind,filename,list_id) VALUES (?,?,?)",
+                         (kind, filename, list_id))
+        if cancel_event is not None and cancel_event.is_set():
+            raise CancelledError()
+    return keys
 
 
 def load_document_library(addon_dir: str, profile: str) -> dict:

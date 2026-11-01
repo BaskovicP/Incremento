@@ -7,6 +7,31 @@ import pytest
 import export_bundle
 
 
+def test_profile_backup_excludes_mcp_authorization_token(tmp_path):
+    source = tmp_path / "profile"
+    source.mkdir()
+    (source / "mcp_token").write_text("do-not-export")
+    (source / "book.txt").write_text("keep")
+    export_bundle.snapshot_tree(str(source), str(tmp_path / "backup"))
+    assert sorted(p.name for p in (tmp_path / "backup").iterdir()) == ["book.txt"]
+
+
+def test_profile_backup_retains_durable_mcp_history_and_assets_but_not_staged_writes(tmp_path):
+    source=tmp_path/'profile'
+    source.mkdir()
+    (source/'mcp_history.json').write_text('private history')
+    (source/'mcp_undo_files').mkdir()
+    (source/'mcp_undo_files'/'saved.apkg').write_bytes(b'private recovery package')
+    (source/'.mcp-history-staging').write_text('partial history')
+    (source/'.mcp-writing-staging').write_text('partial writing')
+    target=tmp_path/'backup'
+    export_bundle.snapshot_tree(str(source),str(target))
+    assert (target/'mcp_history.json').read_text()=='private history'
+    assert (target/'mcp_undo_files'/'saved.apkg').read_bytes()==b'private recovery package'
+    assert not (target/'.mcp-history-staging').exists()
+    assert not (target/'.mcp-writing-staging').exists()
+
+
 def test_profile_backup_never_copies_saved_simpletex_credentials_or_staged_writes(tmp_path):
     source, destination = tmp_path / "profile", tmp_path / "backup"
     source.mkdir()

@@ -26,7 +26,17 @@ def annotation_note_html(note: str, markup: str, highlight_text) -> str:
             self.parts = []
 
         def handle_starttag(self, tag, attrs):
-            self.parts.append('<u>' if tag == 'a' else f'<{tag}>')
+            if tag == 'img':
+                # Already sanitized by note_display_html; keep embedded pixels.
+                attributes = dict(attrs)
+                self.parts.append('<img ' + ' '.join(f'{key}="{escape(attributes[key], quote=True)}"'
+                                                   for key in ('src', 'width', 'height', 'alt', 'style') if key in attributes) + '>')
+            elif tag == 'p' and dict(attrs).get('align') in ('left', 'center', 'right'):
+                self.parts.append(f'<p align="{dict(attrs)["align"]}">')
+            elif tag == 'table':
+                self.parts.append('<table width="100%" cellspacing="0" cellpadding="0">')
+            else:
+                self.parts.append('<u>' if tag == 'a' else f'<{tag}>')
 
         def handle_endtag(self, tag):
             self.parts.append('</u>' if tag == 'a' else f'</{tag}>')

@@ -18,6 +18,7 @@ Use this file for work in `backend/`.
 - Reader-owned supplemental data: `pdf_highlights.py`, `epub_highlights.py`, `reader_bookmarks.py`, `notebook_citations.py`, and `media_review.py`.
 - Knowledge, search, and reporting: `knowledge_tree.py`, `knowledge_tree_postpone.py`, `search_indexer.py`, `search_repository.py`, `statistics.py`, and the bounded in-memory `activity_log.py`.
 - Draft recovery: `extraction_drafts.py` owns the normalized, bounded, atomic per-profile extraction draft; `paths.py` owns its location.
+- `bookshelf_cover_cache.py` owns disposable RGBA previews under the path in `paths.py`: worker-only file I/O, private atomic writes, checksum/shape validation, source/renderer identity keys from the frontend, and 64 MiB/512-entry eviction. Keep `export_bundle.py` exclusions aligned; never introduce a profile-open library scan for warming.
 
 The map is an ownership index, not permission to couple every module in a group. Keep pure normalization and path helpers importable without Anki. Some legacy backend adapters still touch `aqt.mw`; new UI work belongs in the root/frontend adapter layer, and backend modules must never import frontend dialogs.
 

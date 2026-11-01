@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1460" viewBox="0 0 2200 1460" role="img" aria-labelledby="title description">
+  <title id="title">Incremento shared folder sync C4 Level 1 system context</title>
+  <desc id="description">A learner uses Incremento Desktop Reader Sync on a desktop and laptop. Incremento exchanges snapshots, record changes and managed files through a cloud folder service and uses Anki Desktop card identities and source links. Anki Desktop synchronizes cards through AnkiWeb. Incremento uses logical state comparison internally. The scheduling reference is a separate experiment, and Android is outside the desktop plan.</desc>
+  <defs>
+    <marker id="arrowEnd" markerWidth="19" markerHeight="19" refX="11" refY="6" viewBox="0 0 12 12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M1 1 L11 6 L1 11 Z" fill="#475569" />
+    </marker>
+    <marker id="arrowStart" markerWidth="19" markerHeight="19" refX="1" refY="6" viewBox="0 0 12 12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M11 1 L1 6 L11 11 Z" fill="#475569" />
+    </marker>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; }
+      .heading { fill: #0f172a; font-size: 57px; font-weight: bold; }
+      .subheading { fill: #64748b; font-size: 27px; }
+      .name { fill: #ffffff; font-size: 35px; font-weight: bold; text-anchor: middle; }
+      .kind { fill: #edf2f7; font-size: 22px; text-anchor: middle; }
+      .body { fill: #ffffff; font-size: 26px; text-anchor: middle; }
+      .relationship { fill: #334155; font-size: 25px; text-anchor: middle; }
+      .connection { fill: none; stroke: #475569; stroke-width: 3.5; stroke-linejoin: round; }
+      .note { fill: #475569; font-size: 25px; }
+      .legend { fill: #475569; font-size: 23px; }
+    </style>
+  </defs>
+  <rect width="2200" height="1460" fill="#f8fafc" />
+  <text class="heading" x="80" y="83" fill="#0f172a" font-size="57" font-weight="bold" font-family="Arial, Helvetica, sans-serif">Incremento shared-folder sync</text>
+  <text class="subheading" x="82" y="128" fill="#64748b" font-size="27" font-family="Arial, Helvetica, sans-serif">System context for the desktop reader MVP</text>
+  <rect x="1860" y="43" width="260" height="58" rx="9" fill="#e0ecfa" />
+  <text x="1990" y="81" fill="#1168bd" font-size="26" font-weight="bold" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">C4 / LEVEL 1</text>
+  <path class="connection" d="M850 285 H320 V590" fill="none" stroke="#475569" stroke-width="3.5" stroke-linejoin="round" />
+  <text class="relationship" x="577" y="254" fill="#334155" font-size="25" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">Reviews flashcards</text>
+  <path class="connection" d="M1100 380 V590" fill="none" stroke="#475569" stroke-width="3.5" stroke-linejoin="round" />
+  <text x="1130" y="470" fill="#334155" font-size="25" font-family="Arial, Helvetica, sans-serif">
+    <tspan x="1130" dy="0">Reads, annotates and</tspan>
+    <tspan x="1130" dy="34">changes priorities</tspan>
+  </text>
+  <path class="connection" d="M850 720 H560" fill="none" stroke="#475569" stroke-width="3.5" stroke-linejoin="round" />
+  <text class="relationship" x="705" y="652" fill="#334155" font-size="25" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">
+    <tspan x="705" dy="0">Uses card identities</tspan>
+    <tspan x="705" dy="34">and source links</tspan>
+  </text>
+  <path class="connection" d="M1350 720 H1650" fill="none" stroke="#475569" stroke-width="3.5" stroke-linejoin="round" />
+  <text class="relationship" x="1500" y="652" fill="#334155" font-size="25" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">
+    <tspan x="1500" dy="0">Exchanges snapshots,</tspan>
+    <tspan x="1500" dy="34">records and files</tspan>
+  </text>
+  <path class="connection" d="M320 850 V1080" fill="none" stroke="#475569" stroke-width="3.5" stroke-linejoin="round" />
+  <text x="355" y="962" fill="#334155" font-size="25" font-family="Arial, Helvetica, sans-serif">
+    <tspan x="355" dy="0">Native card</tspan>
+    <tspan x="355" dy="34">synchronization</tspan>
+  </text>
+  <g id="relationship-arrowheads" fill="#475569">
+    <polygon points="320,590 310,568 330,568" />
+    <polygon points="1100,590 1090,568 1110,568" />
+    <polygon points="560,720 582,710 582,730" />
+    <polygon points="1350,720 1372,710 1372,730" />
+    <polygon points="1650,720 1628,710 1628,730" />
+    <polygon points="320,850 310,872 330,872" />
+    <polygon points="320,1080 310,1058 330,1058" />
+  </g>
+  <rect x="850" y="160" width="500" height="220" rx="12" fill="#08427b" />
+  <circle cx="1100" cy="205" r="18" fill="#ffffff" />
+  <path d="M1063 253 V244 C1063 226 1079 221 1100 221 C1121 221 1137 226 1137 244 V253 Z" fill="#ffffff" />
+  <text class="name" x="1100" y="295" fill="#ffffff" font-size="35" font-weight="bold" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">Learner</text>
+  <text class="kind" x="1100" y="332" fill="#edf2f7" font-size="22" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">[Person]</text>
+  <text x="1100" y="361" fill="#e1edfa" font-size="22" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">Uses a desktop and a laptop</text>
+  <rect x="850" y="590" width="500" height="260" rx="12" fill="#1168bd" />
+  <text class="name" x="1100" y="647" fill="#ffffff" font-size="35" font-weight="bold" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">
+    <tspan x="1100" dy="0">Incremento Desktop</tspan>
+    <tspan x="1100" dy="44">Reader Sync</tspan>
+  </text>
+  <text class="kind" x="1100" y="730" fill="#edf2f7" font-size="22" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">[Software system in scope]</text>
+  <text class="body" x="1100" y="779" fill="#ffffff" font-size="26" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">
+    <tspan x="1100" dy="0">Keeps reading state aligned</tspan>
+    <tspan x="1100" dy="35">across desktop and laptop.</tspan>
+  </text>
+  <rect x="80" y="590" width="480" height="260" rx="12" fill="#64748b" />
+  <text class="name" x="320" y="654" fill="#ffffff" font-size="35" font-weight="bold" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">Anki Desktop</text>
+  <text class="kind" x="320" y="695" fill="#edf2f7" font-size="22" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">[External software system]</text>
+  <text class="body" x="320" y="754" fill="#ffffff" font-size="26" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">
+    <tspan x="320" dy="0">Owns cards, notes, schedules</tspan>
+    <tspan x="320" dy="36">and review history.</tspan>
+  </text>
+  <rect x="1650" y="590" width="470" height="260" rx="12" fill="#64748b" />
+  <text class="name" x="1885" y="650" fill="#ffffff" font-size="35" font-weight="bold" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">Cloud folder service</text>
+  <text class="kind" x="1885" y="690" fill="#edf2f7" font-size="22" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">[External software system]</text>
+  <text x="1885" y="737" fill="#ffffff" font-size="21" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">Drive / Dropbox / iCloud / OneDrive</text>
+  <text x="1885" y="779" fill="#ffffff" font-size="25" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">
+    <tspan x="1885" dy="0">Transports files through</tspan>
+    <tspan x="1885" dy="34">the provider's desktop client.</tspan>
+  </text>
+  <rect x="80" y="1080" width="480" height="220" rx="12" fill="#64748b" />
+  <text class="name" x="320" y="1142" fill="#ffffff" font-size="35" font-weight="bold" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">AnkiWeb</text>
+  <text class="kind" x="320" y="1183" fill="#edf2f7" font-size="22" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">[External software system]</text>
+  <text class="body" x="320" y="1233" fill="#ffffff" font-size="26" text-anchor="middle" font-family="Arial, Helvetica, sans-serif">
+    <tspan x="320" dy="0">Synchronizes Anki collections</tspan>
+    <tspan x="320" dy="35">through Anki Desktop.</tspan>
+  </text>
+  <rect x="760" y="1040" width="1360" height="260" rx="12" fill="#eef2f7" stroke="#dbe3ed" stroke-width="2" />
+  <text x="800" y="1091" fill="#0f172a" font-size="30" font-weight="bold" font-family="Arial, Helvetica, sans-serif">Baseline contract</text>
+  <text class="note" x="800" y="1137" fill="#475569" font-size="25" font-family="Arial, Helvetica, sans-serif">Snapshots initialize and recover shared reader state.</text>
+  <text class="note" x="800" y="1180" fill="#475569" font-size="25" font-family="Arial, Helvetica, sans-serif">Logical comparison produces everyday record changes.</text>
+  <text class="note" x="800" y="1223" fill="#475569" font-size="25" font-family="Arial, Helvetica, sans-serif">Scheduling reference remains a separate experiment.</text>
+  <text class="note" x="800" y="1266" fill="#475569" font-size="25" font-family="Arial, Helvetica, sans-serif">Android is outside this desktop plan.</text>
+  <line x1="80" y1="1340" x2="2120" y2="1340" stroke="#dbe3ed" stroke-width="2" />
+  <rect x="80" y="1371" width="22" height="22" rx="3" fill="#08427b" />
+  <text class="legend" x="115" y="1390" fill="#475569" font-size="23" font-family="Arial, Helvetica, sans-serif">Person</text>
+  <rect x="285" y="1371" width="22" height="22" rx="3" fill="#1168bd" />
+  <text class="legend" x="320" y="1390" fill="#475569" font-size="23" font-family="Arial, Helvetica, sans-serif">System in scope</text>
+  <rect x="610" y="1371" width="22" height="22" rx="3" fill="#64748b" />
+  <text class="legend" x="645" y="1390" fill="#475569" font-size="23" font-family="Arial, Helvetica, sans-serif">External system</text>
+  <text x="2120" y="1390" fill="#64748b" font-size="23" text-anchor="end" font-family="Arial, Helvetica, sans-serif">Proposed architecture · Shared-folder reader sync</text>
+</svg>

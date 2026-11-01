@@ -440,3 +440,15 @@ msgstr "每个配置文件最多可包含 20 种自定义语言。请更新已�
 #. Custom language spreadsheet validation.
 msgid "backend_language_pack_storage"
 msgstr "无法安全保存语言包。已保留原有文件。"
+
+#: backend/pdf_manager.py
+msgid "backend_pdf_unreadable"
+msgstr "此文件不是可读取的 PDF。它可能已损坏、下载不完整，或是被保存为 PDF 的下载错误信息。请重新下载后重试。"
+
+#: backend/pdf_manager.py
+msgid "backend_pdf_password_required"
+msgstr "此 PDF 需要密码。请保存不需要密码的副本后重试。"
+
+#: backend/pdf_manager.py
+msgid "backend_pdf_validation_unavailable"
+msgstr "PDF 验证不可用。请安装 PyMuPDF 或通过 Anki 导入 PDF。"

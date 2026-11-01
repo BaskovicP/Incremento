@@ -450,3 +450,15 @@ msgstr "Profil može sadržavati najviše 20 vlastitih jezika. Ažurirajte posto
 #. Custom language spreadsheet validation.
 msgid "backend_language_pack_storage"
 msgstr "Jezični paket nije moguće sigurno spremiti. Prethodna datoteka je sačuvana."
+
+#: backend/pdf_manager.py
+msgid "backend_pdf_unreadable"
+msgstr "Ova datoteka nije čitljiv PDF. Možda je oštećena, nepotpuna ili sadrži pogrešku preuzimanja spremljenu kao PDF. Preuzmite novu kopiju i pokušajte ponovno."
+
+#: backend/pdf_manager.py
+msgid "backend_pdf_password_required"
+msgstr "Ovaj PDF zahtijeva lozinku. Spremite otključanu kopiju i pokušajte ponovno."
+
+#: backend/pdf_manager.py
+msgid "backend_pdf_validation_unavailable"
+msgstr "Provjera PDF-a nije dostupna. Instalirajte PyMuPDF ili uvezite PDF kroz Anki."

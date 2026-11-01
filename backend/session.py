@@ -305,6 +305,49 @@ def get_session_times() -> dict:
     return _session_times
 
 
+def snapshot_mcp_session() -> dict | None:
+    """Bounded, restart-safe descriptor of native session tracking."""
+    from dataclasses import asdict
+
+    state = _active_incremento_session_state
+    if state is None:
+        return None
+    if len(state.selected_ids) > 500:
+        raise ValueError("MCP session controls support at most 500 admitted cards.")
+    return {
+        "config": asdict(state.cfg), "picker": asdict(state.picker.snapshot()),
+        "times": copy.deepcopy(_session_times), "counts": copy.deepcopy(_session_counts),
+        "deck_name": state.session_deck_name, "reviewed_ids": sorted(state.reviewed_ids),
+        "measured": dict(state.measured_review_seconds), "last_shown": state.last_shown_cid,
+    }
+
+
+def restore_mcp_session(descriptor, *, col, addon_dir: str, profile: str, deck_id: int) -> None:
+    """Reuse native activation, answer tracking and refill after reconnecting."""
+    global _session_counts, _session_times
+    from .scheduler_config import SchedulerConfig
+
+    if len(descriptor["picker"]["selected_ids"]) > 500:
+        raise ValueError("MCP session descriptor exceeds its card budget.")
+    cfg = SchedulerConfig(**descriptor["config"])
+    cfg.show_debug = False
+    picker = SessionPicker(cfg, addon_dir, col=col, profile=profile, snapshot=descriptor["picker"],
+                           session_deck_name=descriptor["deck_name"])
+    result = _SessionBuildOperationResult(
+        _empty_op_changes(), picker, picker.stats, list(picker.selected_ids),
+        copy.deepcopy(picker.picked_meta), copy.deepcopy(descriptor["times"]), deck_id,
+    )
+    col.decks.select(deck_id)
+    _activate_incremento_session(result, cfg=cfg, branch_scope=None, session_deck_name=descriptor["deck_name"])
+    state = _active_incremento_session_state
+    if state is not None:
+        state.reviewed_ids = {int(cid) for cid in descriptor.get("reviewed_ids", [])}
+        state.measured_review_seconds = {int(cid): float(value) for cid, value in descriptor.get("measured", {}).items()}
+        state.last_shown_cid = descriptor.get("last_shown")
+        _session_counts = copy.deepcopy(descriptor.get("counts", _empty()))
+        _session_times = copy.deepcopy(descriptor["times"])
+
+
 def register_diagnostic_event_callback(callback) -> None:
     """Install a best-effort sink that receives only typed, content-free fields."""
     global _diagnostic_event_callback

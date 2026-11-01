@@ -274,5 +274,17 @@
     "sink": "setText",
     "text": "f'{timestamp(position / 1000)} / {timestamp(self.media.duration() / 1000)}'",
     "reason": "Elapsed and total time in numeric media timestamp notation; the position control has a translated accessible label."
+  },
+  {
+    "file": "frontend/mcp_connections.py",
+    "sink": "getSaveFileName",
+    "text": "incremento.mcpb",
+    "reason": "Stable portable MCP connector filename, not a translatable UI label."
+  },
+  {
+    "file": "frontend/mcp_connections.py",
+    "sink": "addTab",
+    "text": "Claude Desktop",
+    "reason": "Product brand name, identical in every UI language."
   }
 ]

@@ -7251,54 +7251,6 @@
     })));
     return display.get(highlights);
   }
-  function createPdfHighlightTooltip({
-    schedule = (run) => window.requestAnimationFrame(run),
-    cancel = (id) => window.cancelAnimationFrame(id)
-  } = {}) {
-    const listeners = /* @__PURE__ */ new Set();
-    let value = null, position = null, frame = null;
-    const publish = (next) => {
-      value = next;
-      for (const listener of listeners) listener();
-    };
-    const stop = () => {
-      if (frame !== null) cancel(frame);
-      frame = null;
-      position = null;
-    };
-    return {
-      subscribe(listener) {
-        listeners.add(listener);
-        return () => listeners.delete(listener);
-      },
-      getSnapshot: () => value,
-      show(highlight, event) {
-        const note = String((highlight == null ? void 0 : highlight.note) || "").trim();
-        if (!note) return;
-        stop();
-        publish({
-          id: String(highlight.id || ""),
-          note,
-          ...highlight.note_html ? { html: String(highlight.note_html) } : {},
-          x: Number((event == null ? void 0 : event.clientX) || 0),
-          y: Number((event == null ? void 0 : event.clientY) || 0)
-        });
-      },
-      move(event) {
-        if (!value) return;
-        position = { x: Number((event == null ? void 0 : event.clientX) ?? value.x), y: Number((event == null ? void 0 : event.clientY) ?? value.y) };
-        if (frame === null) frame = schedule(() => {
-          frame = null;
-          if (value && position) publish({ ...value, ...position });
-          position = null;
-        });
-      },
-      hide() {
-        stop();
-        if (value) publish(null);
-      }
-    };
-  }
   const MAX_EXTERNAL_URL_CHARS = 4096;
   const PDFJS_LINK_ANNOTATION_TYPE = 2;
   function normalizeExternalHttpUrl(rawUrl) {
@@ -7377,16 +7329,63 @@
   const tags = /* @__PURE__ */ new Set(["p", "br", "b", "i", "u", "s", "ul", "ol", "li", "a"]);
   const entities = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#x27;": "'" };
   const decode = (text) => text.replace(/&(?:amp|lt|gt|quot|#x27);/g, (value) => entities[value]);
+  const hasAnnotationNote = (highlight) => Boolean(String((highlight == null ? void 0 : highlight.note) || "").trim() || String((highlight == null ? void 0 : highlight.note_html) || "").includes("<img "));
+  function imageNode(token) {
+    const match = /^<img src="(data:image\/(png|jpeg);base64,([A-Za-z0-9+/]+={0,2}))" width="([1-9]\d{0,2})" height="([1-9]\d{0,2})" alt=""(?: style="float:(left|right)")?>$/.exec(token);
+    if (!match || match[3].length > 109228) return null;
+    let data;
+    try {
+      data = atob(match[3]);
+    } catch {
+      return null;
+    }
+    if (data.length > 81920) return null;
+    const byte = (index) => data.charCodeAt(index);
+    const short = (index) => byte(index) * 256 + byte(index + 1);
+    const long = (index) => short(index) * 65536 + short(index + 2);
+    let width = 0, height = 0;
+    if (match[2] === "png" && data.startsWith("PNG\r\n\n\0\0\0\rIHDR") && data.length >= 45 && data.endsWith("\0\0\0\0IEND®B`")) {
+      width = long(16);
+      height = long(20);
+    } else if (match[2] === "jpeg" && data.startsWith("ÿØ") && data.endsWith("ÿÙ")) {
+      for (let offset = 2; offset + 4 <= data.length; ) {
+        const size = short(offset + 2), marker = byte(offset + 1);
+        if (byte(offset) !== 255 || size < 2 || offset + 2 + size > data.length) break;
+        if ((marker === 192 || marker === 194) && size >= 8) {
+          height = short(offset + 5);
+          width = short(offset + 7);
+          break;
+        }
+        offset += size + 2;
+      }
+    }
+    const displayWidth = Number(match[4]), displayHeight = Number(match[5]);
+    if (Math.min(width, height) < 1 || Math.max(width, height) > 960 || displayWidth > 640 || displayHeight > 960) return null;
+    return {
+      tag: "img",
+      src: match[1],
+      width: displayWidth,
+      height: displayHeight,
+      ...match[6] ? { float: match[6] } : {},
+      children: []
+    };
+  }
   function annotationNoteTree(note, html) {
     const markup = String(html || "");
     if (!markup || markup.length > 262144) return null;
     const root = { children: [] }, stack = [root];
-    let plain = "";
+    let plain = "", images = 0;
     for (const token of markup.match(/<[^>]*>|[^<]+|</g) || []) {
       if (!token.startsWith("<")) {
         const text = decode(token);
         stack.at(-1).children.push(text);
         plain += text;
+        continue;
+      }
+      if (token.startsWith("<img ")) {
+        const node2 = imageNode(token);
+        if (!node2 || ++images > 4) return null;
+        stack.at(-1).children.push(node2);
         continue;
       }
       const closing = /^<\/(\w+)>$/.exec(token);
@@ -7396,9 +7395,13 @@
         stack.pop();
         continue;
       }
-      const opening = /^<(\w+)(?: href="([^"]*)")?>$/.exec(token);
+      const opening = /^<(\w+)(?: href="([^"]*)")?(?: align="(left|center|right)")?>$/.exec(token);
       if (!opening || !tags.has(opening[1]) || stack.length > 64) return null;
       const tag = opening[1], node = { tag, children: [] };
+      if (opening[3]) {
+        if (tag !== "p") return null;
+        node.align = opening[3];
+      }
       if (tag === "a") {
         node.href = normalizeExternalHttpUrl(decode(opening[2] || ""));
         if (!node.href) return null;
@@ -7410,15 +7413,152 @@
     if (stack.length !== 1 || plain.replace(/\u00a0/g, " ").trim() !== String(note || "").trim()) return null;
     return root.children;
   }
+  const TOOLTIP_MARGIN = 12;
+  const TOOLTIP_GAP = 16;
+  const TOOLTIP_WIDTH = 440;
+  const TOOLTIP_MAX_HEIGHT = 520;
+  const TOOLTIP_CLOSE_DELAY = 180;
+  function pdfHighlightTooltipLayout(anchor, viewportWidth, viewportHeight) {
+    const viewWidth = Math.max(1, Number(viewportWidth) || 1);
+    const viewHeight = Math.max(1, Number(viewportHeight) || 1);
+    const x = Number.isFinite(Number(anchor == null ? void 0 : anchor.x)) ? Number(anchor.x) : 0;
+    const y = Number.isFinite(Number(anchor == null ? void 0 : anchor.y)) ? Number(anchor.y) : 0;
+    const width = Math.max(1, Math.min(TOOLTIP_WIDTH, viewWidth - TOOLTIP_MARGIN * 2));
+    const left = Math.max(
+      TOOLTIP_MARGIN,
+      Math.min(x + 14, viewWidth - width - TOOLTIP_MARGIN)
+    );
+    if (y <= viewHeight / 2) {
+      const top = Math.max(TOOLTIP_MARGIN, Math.min(y + TOOLTIP_GAP, viewHeight - TOOLTIP_MARGIN));
+      return {
+        left,
+        top,
+        width,
+        maxHeight: Math.max(1, Math.min(TOOLTIP_MAX_HEIGHT, viewHeight - top - TOOLTIP_MARGIN))
+      };
+    }
+    const bottom = Math.max(
+      TOOLTIP_MARGIN,
+      Math.min(viewHeight - y + TOOLTIP_GAP, viewHeight - TOOLTIP_MARGIN)
+    );
+    return {
+      left,
+      bottom,
+      width,
+      maxHeight: Math.max(1, Math.min(TOOLTIP_MAX_HEIGHT, viewHeight - bottom - TOOLTIP_MARGIN))
+    };
+  }
+  function pdfHighlightTooltipSurfaceStyle(anchor, viewportWidth, viewportHeight) {
+    return {
+      ...pdfHighlightTooltipLayout(anchor, viewportWidth, viewportHeight),
+      overflowY: "auto",
+      overflowX: "hidden",
+      overscrollBehavior: "contain",
+      pointerEvents: "auto"
+    };
+  }
+  function createPdfHighlightTooltip({
+    schedule = (run) => window.requestAnimationFrame(run),
+    cancel = (id) => window.cancelAnimationFrame(id),
+    delay = (run, ms) => globalThis.setTimeout(run, ms),
+    cancelDelay = (id) => globalThis.clearTimeout(id)
+  } = {}) {
+    const listeners = /* @__PURE__ */ new Set();
+    let value = null, position = null, frame = null, closeTimer = null;
+    const publish = (next) => {
+      value = next;
+      for (const listener of listeners) listener();
+    };
+    const stopMove = () => {
+      if (frame !== null) cancel(frame);
+      frame = null;
+      position = null;
+    };
+    const cancelHide = () => {
+      if (closeTimer !== null) cancelDelay(closeTimer);
+      closeTimer = null;
+    };
+    const hide = () => {
+      cancelHide();
+      stopMove();
+      if (value) publish(null);
+    };
+    const scheduleHide = () => {
+      cancelHide();
+      closeTimer = delay(() => {
+        closeTimer = null;
+        hide();
+      }, TOOLTIP_CLOSE_DELAY);
+    };
+    return {
+      subscribe(listener) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      getSnapshot: () => value,
+      show(highlight, event) {
+        const note = String((highlight == null ? void 0 : highlight.note) || "").trim();
+        if (!hasAnnotationNote(highlight)) return;
+        cancelHide();
+        stopMove();
+        publish({
+          id: String(highlight.id || ""),
+          note,
+          ...highlight.note_html ? { html: String(highlight.note_html) } : {},
+          x: Number((event == null ? void 0 : event.clientX) || 0),
+          y: Number((event == null ? void 0 : event.clientY) || 0)
+        });
+      },
+      move(event) {
+        if (!value) return;
+        position = { x: Number((event == null ? void 0 : event.clientX) ?? value.x), y: Number((event == null ? void 0 : event.clientY) ?? value.y) };
+        if (frame === null) frame = schedule(() => {
+          frame = null;
+          if (value && position) publish({ ...value, ...position });
+          position = null;
+        });
+      },
+      cancelHide,
+      scheduleHide,
+      hide
+    };
+  }
   function AnnotationNote({ note, html, onOpenLink }) {
     const tree = annotationNoteTree(note, html);
+    const root = reactExports.useRef(null);
+    const [compact, setCompact] = reactExports.useState(false);
+    const hasFloat = Boolean(tree && String(html || "").includes(' style="float:'));
+    reactExports.useLayoutEffect(() => {
+      if (!hasFloat || !root.current) return;
+      const measure = () => {
+        if (root.current) setCompact(root.current.getBoundingClientRect().width < 360);
+      };
+      measure();
+      const observer = new ResizeObserver(measure);
+      observer.observe(root.current);
+      return () => observer.disconnect();
+    }, [hasFloat]);
     if (!tree) return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { whiteSpace: "pre-wrap" }, children: note });
     const render = (node, key) => {
       if (typeof node === "string") return node;
       const props = { key };
       let tag = node.tag;
-      if (tag === "p") props.style = { margin: "0 0 4px", whiteSpace: "pre-wrap" };
+      if (tag === "p") props.style = {
+        margin: "0 0 4px",
+        whiteSpace: "pre-wrap",
+        ...node.align ? { textAlign: node.align, clear: "both" } : {}
+      };
       if (tag === "ul" || tag === "ol") props.style = { margin: "4px 0", paddingLeft: 22 };
+      if (tag === "img") {
+        Object.assign(props, {
+          src: node.src,
+          width: node.width,
+          height: node.height,
+          alt: "",
+          style: { maxWidth: "100%", height: "auto", aspectRatio: `${node.width} / ${node.height}`, verticalAlign: "middle" }
+        });
+        if (node.float) Object.assign(props.style, compact ? { display: "block", float: "none", margin: "0 auto 8px" } : { float: node.float, margin: node.float === "left" ? "0 10px 6px 0" : "0 0 6px 10px" });
+      }
       if (tag === "a") {
         props.style = { color: "inherit", textDecoration: "underline" };
         props.title = node.href;
@@ -7431,29 +7571,42 @@
           };
         } else tag = "span";
       }
-      return reactExports.createElement(tag, props, tag === "br" ? void 0 : node.children.map(render));
+      return reactExports.createElement(tag, props, tag === "br" || tag === "img" ? void 0 : node.children.map(render));
     };
-    return tree.map(render);
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: root, style: { display: "flow-root", overflowWrap: "anywhere" }, children: tree.map(render) });
   }
   function PdfHighlightTooltip({ tooltip }) {
     const note = reactExports.useSyncExternalStore(tooltip.subscribe, tooltip.getSnapshot);
     if (!note) return null;
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { role: "tooltip", style: {
-      position: "fixed",
-      left: note.x + 14,
-      top: note.y + 16,
-      maxWidth: 280,
-      padding: "8px 10px",
-      background: "rgba(20,20,20,0.96)",
-      border: "1px solid rgba(147,197,253,0.45)",
-      borderRadius: 6,
-      color: "rgb(219,234,254)",
-      fontSize: 12,
-      lineHeight: 1.4,
-      boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
-      pointerEvents: "none",
-      zIndex: 120
-    }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AnnotationNote, { note: note.note, html: note.html }) });
+    const surface = pdfHighlightTooltipSurfaceStyle(note, window.innerWidth, window.innerHeight);
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        role: "tooltip",
+        onPointerEnter: tooltip.cancelHide,
+        onPointerLeave: tooltip.scheduleHide,
+        onWheel: (event) => event.stopPropagation(),
+        onPointerDown: (event) => event.stopPropagation(),
+        style: {
+          position: "fixed",
+          ...surface,
+          boxSizing: "border-box",
+          scrollbarGutter: "stable",
+          padding: "10px 12px",
+          background: "rgba(20,20,20,0.96)",
+          border: "1px solid rgba(147,197,253,0.45)",
+          borderRadius: 6,
+          color: "rgb(219,234,254)",
+          fontSize: 12,
+          lineHeight: 1.4,
+          boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
+          textAlign: "left",
+          cursor: "default",
+          zIndex: 120
+        },
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(AnnotationNote, { note: note.note, html: note.html })
+      }
+    );
   }
   function pdfCanvasPlan(viewport, pixelRatio) {
     const { width, height } = viewport;
@@ -8558,7 +8711,7 @@
   const reader_pdf_bookmarks$2 = "PDF Bookmarks";
   const reader_add_current_page$2 = "Add current page";
   const reader_no_bookmarks$2 = "No bookmarks yet.";
-  const reader_load_error$2 = "Could not load this PDF.";
+  const reader_load_error$2 = "Could not open this PDF. The file may be damaged, incomplete, password-protected, or unavailable. Check the file or download a fresh copy, then choose a replacement PDF.";
   const reader_page_error$2 = "Could not open this PDF page.";
   const reader_render_error$2 = "Could not render this PDF page.";
   const reader_add_highlight_note$2 = "Add highlight note";
@@ -8707,6 +8860,7 @@
   const reader_style_dashed$2 = "Dashed";
   const reader_style_dotted$2 = "Dotted";
   const reader_style_strikeout$2 = "Strikethrough";
+  const reader_choose_replacement_pdf$2 = "Choose Replacement PDF";
   const en = {
     reader_pdf_focus_mode_hint: reader_pdf_focus_mode_hint$2,
     reader_pdf_focus_mode: reader_pdf_focus_mode$2,
@@ -8936,7 +9090,8 @@
     reader_style_squiggly: reader_style_squiggly$2,
     reader_style_dashed: reader_style_dashed$2,
     reader_style_dotted: reader_style_dotted$2,
-    reader_style_strikeout: reader_style_strikeout$2
+    reader_style_strikeout: reader_style_strikeout$2,
+    reader_choose_replacement_pdf: reader_choose_replacement_pdf$2
   };
   const reader_pdf_focus_mode_hint$1 = "Sakrijte lijevi Anki prikaz i proširite PDF preko pune raspoložive širine. Radi na zaslonima Špilovi i Pregled te tijekom ponavljanja. Gumbi za odgovore ostaju vidljivi, a odabir se sprema.";
   const reader_pdf_focus_mode$1 = "Fokus na PDF";
@@ -9019,7 +9174,7 @@
   const reader_pdf_bookmarks$1 = "Oznake mjesta u PDF-u";
   const reader_add_current_page$1 = "Dodaj trenutačnu stranicu";
   const reader_no_bookmarks$1 = "Još nema oznaka mjesta.";
-  const reader_load_error$1 = "Nije moguće učitati ovaj PDF.";
+  const reader_load_error$1 = "Nije moguće otvoriti ovaj PDF. Datoteka je možda oštećena, nepotpuna, zaštićena lozinkom ili nedostupna. Provjerite datoteku ili preuzmite novu kopiju, a zatim odaberite zamjenski PDF.";
   const reader_page_error$1 = "Nije moguće otvoriti ovu stranicu PDF-a.";
   const reader_render_error$1 = "Nije moguće prikazati ovu stranicu PDF-a.";
   const reader_add_highlight_note$1 = "Dodaj bilješku oznaci";
@@ -9169,6 +9324,7 @@
   const reader_style_dashed$1 = "Isprekidano";
   const reader_style_dotted$1 = "Točkasto";
   const reader_style_strikeout$1 = "Precrtano";
+  const reader_choose_replacement_pdf$1 = "Odaberi zamjenski PDF";
   const hr = {
     reader_pdf_focus_mode_hint: reader_pdf_focus_mode_hint$1,
     reader_pdf_focus_mode: reader_pdf_focus_mode$1,
@@ -9400,7 +9556,8 @@
     reader_style_squiggly: reader_style_squiggly$1,
     reader_style_dashed: reader_style_dashed$1,
     reader_style_dotted: reader_style_dotted$1,
-    reader_style_strikeout: reader_style_strikeout$1
+    reader_style_strikeout: reader_style_strikeout$1,
+    reader_choose_replacement_pdf: reader_choose_replacement_pdf$1
   };
   const reader_pdf_focus_mode_hint = "隐藏左侧 Anki 区域，让 PDF 占满可用宽度。可在牌组列表、概览和复习时使用。回答按钮仍保持可见，您的选择会自动保存。";
   const reader_pdf_focus_mode = "PDF 专注模式";
@@ -9481,7 +9638,7 @@
   const reader_pdf_bookmarks = "PDF 书签";
   const reader_add_current_page = "添加当前页";
   const reader_no_bookmarks = "暂无书签。";
-  const reader_load_error = "无法加载此 PDF。";
+  const reader_load_error = "无法打开此 PDF。文件可能已损坏、下载不完整、受密码保护或无法访问。请检查文件或重新下载，然后选择替换 PDF。";
   const reader_page_error = "无法打开此 PDF 页面。";
   const reader_render_error = "无法呈现此 PDF 页面。";
   const reader_add_highlight_note = "添加高亮笔记";
@@ -9629,6 +9786,7 @@
   const reader_style_dashed = "虚线";
   const reader_style_dotted = "点线";
   const reader_style_strikeout = "删除线";
+  const reader_choose_replacement_pdf = "选择替换 PDF";
   const zhHans = {
     reader_pdf_focus_mode_hint,
     reader_pdf_focus_mode,
@@ -9856,7 +10014,8 @@
     reader_style_squiggly,
     reader_style_dashed,
     reader_style_dotted,
-    reader_style_strikeout
+    reader_style_strikeout,
+    reader_choose_replacement_pdf
   };
   const CATALOGS = { en, hr, "zh-Hans": zhHans };
   function normalizeReaderLocale(value) {
@@ -10197,7 +10356,7 @@
         })
       ),
       showHighlightControls && displayHighlights.map(
-        (h) => !String(h.note || "").trim() ? null : h.rects.map((r, ri) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+        (h) => !hasAnnotationNote(h) ? null : h.rects.map((r, ri) => /* @__PURE__ */ jsxRuntimeExports.jsx(
           "div",
           {
             onMouseEnter: (event) => showHighlightNote(h, event),
@@ -10220,7 +10379,7 @@
       showHighlightControls && displayHighlights.map((h) => {
         if (!h.rects.length) return null;
         const r = h.rects[0];
-        const hasNote = !!String(h.note || "").trim();
+        const hasNote = hasAnnotationNote(h);
         return /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "div",
           {
@@ -12637,7 +12796,7 @@
     const filledSegments = Math.round(progressPct / 100 * progressSegments);
     const sortedHighlights = highlightIndex.sorted;
     const scopedHighlightsForPanel = highlightsScope === "page" ? highlightIndex.sortedByPage.get(page) || NO_HIGHLIGHTS : sortedHighlights;
-    const highlightsForPanel = reactExports.useMemo(() => highlightsNotesOnly ? scopedHighlightsForPanel.filter((h) => String(h.note || "").trim()) : scopedHighlightsForPanel, [scopedHighlightsForPanel, highlightsNotesOnly]);
+    const highlightsForPanel = reactExports.useMemo(() => highlightsNotesOnly ? scopedHighlightsForPanel.filter(hasAnnotationNote) : scopedHighlightsForPanel, [scopedHighlightsForPanel, highlightsNotesOnly]);
     const missingCardHighlightCount = highlightIndex.missingCards;
     const highlightPanelPage = pageWindow(highlightsForPanel.length, highlightPanelOffset);
     reactExports.useEffect(() => {
@@ -12680,6 +12839,7 @@
     const showHighlightNote = highlightTooltip.show;
     const moveHighlightNote = highlightTooltip.move;
     const hideHighlightNote = highlightTooltip.hide;
+    const scheduleHighlightNoteHide = highlightTooltip.scheduleHide;
     const describeLimitReached = reactExports.useCallback(() => {
       const prefix = limitTotal > 0 ? tr("reader_limit_reached_pages", { used: Math.max(limitUsed, limitTotal), total: limitTotal }) : tr("reader_limit_reached_pdf");
       if (limitMode === "hard_stop") {
@@ -15401,6 +15561,7 @@
                 ] }),
                 highlightsForPanel.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, opacity: 0.75 }, children: highlightsNotesOnly ? highlightsScope === "page" ? tr("reader_no_highlight_notes_page") : tr("reader_no_highlight_notes") : tr("reader_no_highlights") }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { display: "flex", flexDirection: "column", gap: 6 }, children: highlightsForPanel.slice(highlightPanelPage.start, highlightPanelPage.end).map((hl) => {
                   const note = String(hl.note || "").trim();
+                  const hasNote = hasAnnotationNote(hl);
                   const excerpt = String(hl.text || tr("reader_no_text")).trim();
                   const linkedNoteId = Number(hl.linked_note_id || 0);
                   const hasLinkedCard = Number.isInteger(linkedNoteId) && linkedNoteId > 0;
@@ -15492,7 +15653,7 @@
                           /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "button",
                             {
-                              title: note ? tr("reader_edit_note_tooltip") : tr("reader_add_note_tooltip"),
+                              title: hasNote ? tr("reader_edit_note_tooltip") : tr("reader_add_note_tooltip"),
                               onClick: (e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -15508,7 +15669,7 @@
                                 padding: "1px 7px",
                                 flexShrink: 0
                               },
-                              children: note ? tr("reader_edit_note") : tr("reader_add_note")
+                              children: hasNote ? tr("reader_edit_note") : tr("reader_add_note")
                             }
                           ),
                           /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -15534,14 +15695,14 @@
                             }
                           )
                         ] }),
-                        note && highlightsNotesOnly ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                        hasNote && highlightsNotesOnly ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(191,219,254)" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AnnotationNote, { note, html: hl.note_html, onOpenLink: (url) => window.pycmd(
                             "incremento_pdf_open_link:" + JSON.stringify({ cardId: cardIdRef.current, url })
                           ) }) }),
                           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 11, lineHeight: 1.35, color: "rgba(229,231,235,0.72)", marginTop: 6 }, children: tr("reader_highlight_excerpt", { excerpt }) })
                         ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35 }, children: excerpt }),
-                          note && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(147,197,253)", marginTop: 6 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AnnotationNote, { note, html: hl.note_html, onOpenLink: (url) => window.pycmd(
+                          hasNote && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: 12, lineHeight: 1.35, color: "rgb(147,197,253)", marginTop: 6 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AnnotationNote, { note, html: hl.note_html, onOpenLink: (url) => window.pycmd(
                             "incremento_pdf_open_link:" + JSON.stringify({ cardId: cardIdRef.current, url })
                           ) }) })
                         ] })
@@ -15553,13 +15714,26 @@
               ]
             }
           ),
-          error && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          error && /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "div",
             {
               role: "alert",
               "aria-live": "assertive",
-              style: { color: "red", padding: "4px 8px", textAlign: "center" },
-              children: tr(error)
+              style: { color: "#fca5a5", padding: "12px 16px", textAlign: "center" },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: tr(error) }),
+                error === "reader_load_error" && !readingOnly && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: () => {
+                      var _a;
+                      return (_a = window.pycmd) == null ? void 0 : _a.call(window, `incremento_pdf_repair_missing:${cardIdRef.current}`);
+                    },
+                    children: tr("reader_choose_replacement_pdf")
+                  }
+                )
+              ]
             }
           ),
           colorPopoverHighlight && /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -15881,7 +16055,7 @@
                     focusedHighlightId,
                     showHighlightNote,
                     moveHighlightNote,
-                    hideHighlightNote
+                    hideHighlightNote: scheduleHighlightNoteHide
                   }
                 ),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(

@@ -445,3 +445,15 @@ msgstr "A profile can contain at most 20 custom languages. Update an existing la
 #. Custom language spreadsheet validation.
 msgid "backend_language_pack_storage"
 msgstr "The language pack could not be saved safely. The previous file has been preserved."
+
+#: backend/pdf_manager.py
+msgid "backend_pdf_unreadable"
+msgstr "This file is not a readable PDF. It may be damaged, incomplete, or a download error saved as a PDF. Download a fresh copy and try again."
+
+#: backend/pdf_manager.py
+msgid "backend_pdf_password_required"
+msgstr "This PDF requires a password. Save an unlocked copy and try again."
+
+#: backend/pdf_manager.py
+msgid "backend_pdf_validation_unavailable"
+msgstr "PDF validation is unavailable. Install PyMuPDF or import the PDF through Anki."

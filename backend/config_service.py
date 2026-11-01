@@ -38,6 +38,8 @@ MAX_PDF_SNAPSHOT_FIELD_NAME_LENGTH = 255
 _DAY_END_RE = re.compile(r"^(?:[01]\d|2[0-3]):[0-5]\d$")
 
 _BOOLEAN_DEFAULTS = {
+    "mcp_enabled": False,
+    "mcp_allow_writes": False,
     "study_workspace_enabled": True,
     "priority_lower_is_more_important": True,
     "reviewer_button_group_visible": True,
@@ -529,6 +531,11 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
     config["scheduler_presets"] = normalized_presets
     config["profiles"] = copy.deepcopy(normalized_presets)
     return config
+
+
+def known_config_keys(config: Mapping[str, Any] | None = None) -> set[str]:
+    """Keys the canonical normalizer understands, including absent defaults."""
+    return set(normalize_config(config)) | set(_NUMBER_LIMITS) | set(_BOOLEAN_DEFAULTS)
 
 
 @dataclass(frozen=True)

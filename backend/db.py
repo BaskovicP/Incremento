@@ -5023,6 +5023,7 @@ def set_custom_schedule_rule(
     interval_value: int = 2,
     interval_unit: str = "days",
     preset_label: str = "",
+    created_at: int | None = None,
 ) -> dict:
     card_id = int(card_id)
     existing = get_custom_schedule_rule(addon_dir, profile, card_id) or {}
@@ -5039,7 +5040,7 @@ def set_custom_schedule_rule(
         int(time.time()),
         int(existing.get("updated_at") or 0) + (1 if existing else 0),
     )
-    created_at = int(existing.get("created_at") or now)
+    created_at = int(existing.get("created_at") or now) if created_at is None else max(0, int(created_at))
     normalized = {
         "card_id": card_id,
         "enabled": bool(enabled),

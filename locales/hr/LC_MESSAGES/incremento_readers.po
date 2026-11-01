@@ -2116,7 +2116,7 @@ msgid "reader_selected_text_label"
 msgstr "Odabrani tekst:"
 
 msgid "reader_text_note_label"
-msgstr "Tekstna bilješka:"
+msgstr "Bilješka:"
 
 msgid "reader_click_result_hint"
 msgstr "Kliknite rezultat da biste prešli na taj dio dokumenta {document}."
@@ -4722,3 +4722,158 @@ msgstr "Dodatni filtri"
 
 msgid "reader_library_add_reason"
 msgstr "+ Dodaj razlog spremanja"
+
+
+msgid "reader_library_add_selected_to_list"
+msgstr "Dodaj odabrano na popis…"
+
+msgid "reader_library_multi_select_hint"
+msgstr "Ctrl/Cmd-klik za odabir dokumenata; Shift-klik za raspon. Ctrl/Cmd+A odabire sve."
+
+msgid "reader_library_selected_books"
+msgid_plural "reader_library_selected_books_plural"
+msgstr[0] "{count} odabrani dokument"
+msgstr[1] "{count} odabrana dokumenta"
+msgstr[2] "{count} odabranih dokumenata"
+
+msgid "reader_library_grouping"
+msgstr "Ažuriranje popisa…"
+
+msgid "reader_library_group_error"
+msgstr "Odabrane dokumente nije moguće dodati na popis. Provjerite postoji li popis i prelazi li neki dokument ograničenje od 64 popisa. Postojeći popisi i nespremljene bilješke su sačuvani."
+
+msgid "reader_library_list_picker_help"
+msgstr "Označite sve popise za ovu knjigu. Odabrani popisi ostaju vidljivi desno dok pretražujete."
+
+msgid "reader_library_find_lists"
+msgstr "Pretraži popise…"
+
+msgid "reader_library_all_lists"
+msgstr "Svi popisi"
+
+msgid "reader_library_selected_lists"
+msgstr "Odabrani popisi"
+
+msgid "reader_library_selected_lists_count"
+msgstr "Odabrani popisi ({count}/{maximum})"
+
+msgid "reader_library_list_matches"
+msgstr "Prikazano popisa: {count} od {total}"
+
+msgid "reader_library_remove_selected_lists"
+msgstr "Ukloni odabrano"
+
+msgid "reader_library_list_summary_more"
+msgstr "{names} · još {count}"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_width"
+msgstr "Širina slike"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_remove"
+msgstr "Ukloni sliku"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_size"
+msgstr "Spremljeno {size} KiB"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_hint"
+msgstr "Zalijepite sliku (Cmd/Ctrl+V). Povucite kut za očuvanje proporcija, a rub za rastezanje. Tipka Shift mijenja način. Slike se automatski komprimiraju (do 80 KiB)."
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_failed"
+msgstr "Ovu sliku nije moguće zalijepiti. Kopirajte manju rastersku sliku ili uklonite drugu sliku iz ove bilješke pa pokušajte ponovno."
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_pixels"
+msgstr " px"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_resize_right"
+msgstr "Rastegni širinu slike"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_resize_bottom"
+msgstr "Rastegni visinu slike"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_resize_corner"
+msgstr "Promijeni veličinu slike proporcionalno"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_resize_help"
+msgstr "Povucite kut za očuvanje proporcija ili rub za rastezanje. Tipka Shift mijenja način. Fokusiranu ručicu pomičite strelicama; Escape odustaje od povlačenja."
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement"
+msgstr "Položaj slike"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_block"
+msgstr "Zaseban redak (preporučeno)"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_inline"
+msgstr "U retku s tekstom"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_left"
+msgstr "Slika lijevo, tekst oko nje"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_right"
+msgstr "Slika desno, tekst oko nje"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_help"
+msgstr "Zaseban redak odvaja sliku od opisa. U retku smješta je unutar rečenice. Omotaj lijevo/desno omogućuje tekst uz sliku. Za opise koristite Piši iznad/ispod."
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_write_above"
+msgstr "Piši iznad"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_write_below"
+msgstr "Piši ispod"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_wrap_narrow"
+msgstr "Tekstu ostaje malo prostora. Odaberite Zaseban redak ili smanjite širinu slike."
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_alignment"
+msgstr "Poravnanje slike"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_align_left"
+msgstr "Lijevo"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_align_center"
+msgstr "Sredina"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_align_right"
+msgstr "Desno"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_alignment_choice"
+msgstr "Poravnanje slike: {alignment}"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_editor_save"
+msgstr "Spremi"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_editor_stale"
+msgstr "Izvorni dokument ili profil je promijenjen. Nacrt je i dalje ovdje. Vratite se izvornom dokumentu ili kopirajte nacrt i ponovno otvorite bilješku prije spremanja."
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_editor_changed"
+msgstr "Ova je bilješka izmijenjena drugdje ili izbrisana. Nacrt je i dalje ovdje. Kopirajte ga prije zatvaranja; ako bilješka još postoji, ponovno je otvorite i provjerite najnoviju verziju."
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_editor_save_failed"
+msgstr "Bilješku nije moguće spremiti: {error}\nNacrt je i dalje otvoren."

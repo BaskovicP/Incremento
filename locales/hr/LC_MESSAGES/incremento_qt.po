@@ -2256,3 +2256,102 @@ msgstr "Pretraživanje je otkazano."
 
 msgid "search_all_failed"
 msgstr "Pretraživanje nije uspjelo: {error}"
+
+msgid "mcp_connections_title"
+msgstr "AI veze…"
+
+msgid "mcp_connections_hint"
+msgstr "Povežite lokalni Codex ili Claude s otvorenim Anki profilom. Zatraženi tekst šalje se tom klijentu i njegovu pružatelju AI usluge. Anki mora ostati otvoren. Privatna MCP povijest poništavanja ostaje sačuvana nakon ponovnog pokretanja Ankija."
+
+msgid "mcp_connections_enable"
+msgstr "Omogući lokalne MCP veze"
+
+msgid "mcp_connections_writes"
+msgstr "Dopusti poništive MCP promjene"
+
+msgid "mcp_connections_apply"
+msgstr "Primijeni postavke veze"
+
+msgid "mcp_connections_token"
+msgstr "Privatni token veze"
+
+msgid "mcp_connections_copy_token"
+msgstr "Kopiraj token"
+
+msgid "mcp_connections_client_setup"
+msgstr "Postavljanje Codexa i Claudea"
+
+msgid "mcp_connections_export"
+msgstr "Spremi konektor za Claude Desktop…"
+
+msgid "mcp_connections_failed"
+msgstr "Nije moguće postaviti vezu. Provjerite je li port 8767 slobodan i je li dopušteno pisanje u profil. Pri izvozu konektora odaberite novi naziv datoteke."
+
+msgid "mcp_connections_ready"
+msgstr "Adresa veze: http://127.0.0.1:8767/mcp. Pristup je ograničen na ovaj profil. Nakon promjene dopuštenja ponovno povežite klijent."
+
+msgid "mcp_connections_disabled"
+msgstr "MCP veze su onemogućene."
+
+msgid "mcp_connections_steps"
+msgstr "Codex: dodajte sljedeći unos u korisničku MCP konfiguraciju. Claude Code: jednom pokrenite naredbu ispod. Claude Desktop: spremite konektor, instalirajte .mcpb datoteku u Settings → Extensions i na upit zalijepite kopirani token. Vjerodajnice ne stavljajte u dijeljene datoteke."
+
+msgid "mcp_connections_exported"
+msgstr "Konektor je spremljen. Instalirajte ga u Claude Desktop i zalijepite kopirani token."
+
+msgid "mcp_connections_settings_hint"
+msgstr "Nakon spremanja otvorite Incremento → AI veze… za konfiguraciju Codexa i konektor za Claude Desktop. Veze zahtijevaju trenutačni profil i lokalne su na ovom računalu."
+
+msgid "mcp_connections_bundle_filter"
+msgstr "MCP paket (*.mcpb)"
+
+msgid "mcp_connections_copy_config"
+msgstr "Kopiraj konfiguraciju"
+
+msgid "mcp_connections_copy_command"
+msgstr "Kopiraj naredbu"
+
+msgid "mcp_connections_codex_config"
+msgstr "Codex MCP konfiguracija"
+
+msgid "mcp_connections_claude_command"
+msgstr "Naredba za povezivanje Claude Codea"
+
+msgid "mcp_connections_codex_steps"
+msgstr "Kopirajte ovu potpunu uputu za postavljanje u Codex ili asistenta s lokalnim pristupom računalu. Uključuje konfiguraciju i traži da je asistent primijeni i provjeri umjesto vas."
+
+msgid "mcp_connections_claude_code_steps"
+msgstr "Kopirajte ovu potpunu uputu za postavljanje u Claude Code ili asistenta s lokalnim pristupom računalu. Uključuje naredbu za registraciju i traži da je asistent pokrene i provjeri umjesto vas."
+
+msgid "mcp_connections_claude_desktop_steps"
+msgstr "1. Spremite konektor i instalirajte njegovu .mcpb datoteku u Claude Desktop: Settings → Extensions → Advanced settings → Install Extension.\n2. Kopirajte donji token i zalijepite ga na upit.\n3. Ponovno povežite Claude Desktop."
+
+msgid "mcp_connections_copy_setup_prompt"
+msgstr "Kopiraj uputu za postavljanje"
+
+msgid "mcp_connections_codex_prompt"
+msgstr "Uputa za postavljanje Codexa"
+
+msgid "mcp_connections_claude_code_prompt"
+msgstr "Uputa za postavljanje Claude Codea"
+
+msgid "mcp_connections_codex_setup_prompt"
+msgstr "Poveži lokalni Incremento MCP poslužitelj s Codexom na ovom računalu. Upotrijebi lokalne alate za datoteke ili terminal i odmah obavi postavljanje, umjesto da samo opišeš korake.\n\n1. Ako je postavljen CODEX_HOME, upotrijebi $CODEX_HOME/config.toml; inače ~/.codex/config.toml. Prvo pročitaj postojeću datoteku. Napravi privatnu sigurnosnu kopiju, sačuvaj sve nepovezane postavke i MCP poslužitelje te dodaj ili zamijeni samo unos mcp_servers.incremento konfiguracijom ispod. Sačuvaj valjan TOML i izbjegni dvostruke tablice.\n2. Zadrži lokalnu vezu. Token zadrži privatnim i ne ponavljaj ga u odgovoru. Sačuvaj postojeće postavke sandboxa i odobravanja.\n3. Provjeri spremljenu konfiguraciju. Ako lokalni alati to omogućuju, provjeri autentificiranu MCP vezu i pozovi get_context samo za čitanje. Tijekom postavljanja ne mijenjaj Anki bilješke, oznake, popise ni rasporede.\n4. Osvježi MCP vezu ako je podržano. Ako je potrebno ponovno povezivanje klijenta ili radnja u Ankiju, navedi točan preostali korak. Izvijesti što je stvarno postavljeno i provjereno.\n\nAko nemaš lokalni pristup računalu, reci da iz ovog razgovora ne možeš uređivati njegovu konfiguraciju i zatraži da ovu istu uputu zalijepim u lokalnog asistenta. Ne tvrdi da je postavljanje dovršeno.\n\nKonfiguracija:\n```toml\n{configuration}```"
+
+msgid "mcp_connections_claude_code_setup_prompt"
+msgstr "Poveži lokalni Incremento MCP poslužitelj s Claude Codeom na ovom računalu. Upotrijebi lokalni terminal i odmah pokreni registraciju ispod, umjesto da samo opišeš korake.\n\n1. Registriraj Incremento u privatnom korisničkom opsegu Claude Codea naredbom ispod. Ako registracija incremento u tom opsegu već postoji, ažuriraj samo nju i sačuvaj sve ostale poslužitelje i postavke. Ako Claude Code CLI nije dostupan, prijavi što nedostaje.\n2. Zadrži lokalnu vezu. Token zadrži privatnim i ne ponavljaj ga u odgovoru. Sačuvaj postojeće postavke sandboxa i odobravanja.\n3. Provjeri registraciju. Ako lokalni alati to omogućuju, provjeri autentificiranu MCP vezu i pozovi get_context samo za čitanje. Tijekom postavljanja ne mijenjaj Anki bilješke, oznake, popise ni rasporede.\n4. Osvježi MCP vezu ako je podržano. Ako je potrebno ponovno povezivanje klijenta ili radnja u Ankiju, navedi točan preostali korak. Izvijesti što je stvarno postavljeno i provjereno.\n\nAko nemaš lokalni pristup računalu, reci da iz ovog razgovora ne možeš pokrenuti postavljanje na njemu i zatraži da ovu istu uputu zalijepim u lokalnog asistenta. Ne tvrdi da je postavljanje dovršeno.\n\nNaredba za registraciju:\n```sh\n{command}\n```"
+
+msgid "mcp_undo_tags"
+msgstr "Promijeni oznake putem MCP-a"
+
+msgid "mcp_undo_batch"
+msgstr "Skupna MCP promjena u Incrementu"
+
+msgid "mcp_undo_source_cards"
+msgstr "MCP kartice iz izvora u Incrementu"
+
+msgid "mcp_undo_imports"
+msgstr "MCP uvoz dokumenata u Incremento"
+
+msgid "mcp_undo_creation_reverse"
+msgstr "MCP poništavanje stvaranja u Incrementu"

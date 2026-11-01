@@ -80,7 +80,7 @@
   "reader_pdf_bookmarks": "Oznake mjesta u PDF-u",
   "reader_add_current_page": "Dodaj trenutačnu stranicu",
   "reader_no_bookmarks": "Još nema oznaka mjesta.",
-  "reader_load_error": "Nije moguće učitati ovaj PDF.",
+  "reader_load_error": "Nije moguće otvoriti ovaj PDF. Datoteka je možda oštećena, nepotpuna, zaštićena lozinkom ili nedostupna. Provjerite datoteku ili preuzmite novu kopiju, a zatim odaberite zamjenski PDF.",
   "reader_page_error": "Nije moguće otvoriti ovu stranicu PDF-a.",
   "reader_render_error": "Nije moguće prikazati ovu stranicu PDF-a.",
   "reader_add_highlight_note": "Dodaj bilješku oznaci",
@@ -229,5 +229,6 @@
   "reader_style_squiggly": "Valovito",
   "reader_style_dashed": "Isprekidano",
   "reader_style_dotted": "Točkasto",
-  "reader_style_strikeout": "Precrtano"
+  "reader_style_strikeout": "Precrtano",
+  "reader_choose_replacement_pdf": "Odaberi zamjenski PDF"
 }

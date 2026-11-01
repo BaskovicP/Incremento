@@ -69,9 +69,9 @@ msgstr "Očisti nepovezane PDF datoteke…"
 msgid "root_menu_cleanup_orphan_videos"
 msgstr "Očisti nepovezane video datoteke…"
 
-#. Menu or action: Clean Up Unused Incremento Data…
+#. Menu or action: Clean Up Unused Data & Images…
 msgid "root_menu_cleanup_profile_data"
-msgstr "Očisti neiskorištene podatke Incrementa…"
+msgstr "Očisti neiskorištene podatke i slike…"
 
 #. Menu or action: Clean Up Stale Progress / Search Index / OCR Rows…
 msgid "root_menu_cleanup_stale_rows"
@@ -1366,7 +1366,22 @@ msgid "root_menu_cleanup_pdf_snapshots"
 msgstr "Očisti neiskorištene PDF snimke…"
 
 msgid "root_pdf_snapshot_cleanup_close_add"
-msgstr "Prije čišćenja PDF snimki zatvorite prozor za dodavanje kartica kako se nespremljena slika ne bi uklonila."
+msgstr "Prije čišćenja neiskorištenih slika zatvorite prozor za dodavanje kartica kako se nespremljena slika ne bi uklonila."
+
+msgid "root_cleanup_unused_images"
+msgstr "• Neiskorišteni privici slika u Anki medijima: {count} ({size})"
+
+msgid "root_cleanup_unused_images_trash_note"
+msgstr "Neiskorištene slike premještaju se u Ankijev koš za medije. Možete ih vratiti dok ne ispraznite koš."
+
+msgid "root_unused_images_cleanup_stale"
+msgstr "Aktivni Anki profil se promijenio. Nijedna neiskorištena slika nije uklonjena."
+
+msgid "root_unused_images_cleanup_complete"
+msgstr "Premješteno je {count} neiskorištenih slika ({size}) u Ankijev koš za medije."
+
+msgid "root_unused_images_cleanup_failed"
+msgstr "Neuspjelo čišćenje neiskorištenih slika:\n{error}"
 
 msgid "root_pdf_snapshot_cleanup_invalid_draft"
 msgstr "Spremljeni nacrt izdvajanja nije moguće sigurno pročitati. Čišćenje je otkazano."

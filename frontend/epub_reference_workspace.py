@@ -473,10 +473,27 @@ class EpubReferenceWindow(QDockWidget):
             if value and self.current():
                 update_highlight_color(_ADDON_DIR, self.profile, self.location['card_id'], hl_id, value)
         else:
-            dialog = HighlightNoteDialog(self, title=t('reader_epub_highlight_note_title'),
-                                         excerpt=target['text'], current_note=target['note'])
-            if dialog.exec() and self.current():
-                update_highlight_note(_ADDON_DIR, self.profile, self.location['card_id'], hl_id, dialog.note_text())
+            profile, card_id, filename = self.profile, self.location['card_id'], self.snapshot['filename']
+            collection = getattr(mw, 'col', None)
+            expected = (str(target.get('note') or ''), str(target.get('note_html') or ''))
+
+            def is_current():
+                return (self.current() and self.profile == profile and self.location['card_id'] == card_id
+                        and self.snapshot['filename'] == filename and getattr(mw, 'col', None) is collection)
+
+            def save(dialog):
+                updated = update_highlight_note(_ADDON_DIR, profile, card_id, hl_id,
+                    dialog.note_text(), note_html=dialog.note_html(), expected_note=expected)
+                if updated is None:
+                    return t('reader_note_editor_changed')
+                refresh_readers(profile, card_id)
+                return None
+
+            HighlightNoteDialog.show_for_annotation(mw,
+                key=(_ADDON_DIR, profile, id(collection), 'epub', card_id, hl_id),
+                title=t('reader_epub_highlight_note_title'), excerpt=target['text'],
+                current_note=expected[0], current_note_html=expected[1], is_current=is_current, save=save)
+            return
         refresh_readers(self.profile, self.location['card_id'])
 
     def closeEvent(self, event):

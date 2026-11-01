@@ -8,6 +8,7 @@ import { createReaderLanguage } from './i18n.mjs';
 import {pdfDisplayHighlights} from './pdfHighlightIndex.mjs';
 import { highlightBackgroundColor, highlightSolidColor } from './highlightColors.mjs';
 import {annotationStyle, annotationLine} from './annotationStyles.mjs';
+import {hasAnnotationNote} from './annotationNote.mjs';
 
 const DEFAULT_LANGUAGE = createReaderLanguage('en');
 
@@ -139,7 +140,7 @@ export default function HighlightLayer({
 
       {/* ── Hover targets for note-bearing highlights — above text layer ── */}
       {showHighlightControls && displayHighlights.map(h =>
-        !String(h.note || '').trim()
+        !hasAnnotationNote(h)
           ? null
           : h.rects.map((r, ri) => (
               <div
@@ -165,7 +166,7 @@ export default function HighlightLayer({
       {showHighlightControls && displayHighlights.map(h => {
         if (!h.rects.length) return null;
         const r = h.rects[0];
-        const hasNote = !!String(h.note || '').trim();
+        const hasNote = hasAnnotationNote(h);
         return (
           <div
             key={`actions-${h.id}`}

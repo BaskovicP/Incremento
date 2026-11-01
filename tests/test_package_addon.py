@@ -66,6 +66,22 @@ def make_fake_repo(tmp_path: Path) -> Path:
         "backend/search_repository.py",
         "backend/browser_bridge.py",
         "backend/companion_install.py",
+        "backend/mcp_server.py",
+        "backend/mcp_service.py",
+        "backend/mcp_install.py",
+        "backend/mcp_undo.py",
+        "backend/mcp_workflows.py",
+        "backend/mcp_creation.py",
+        "backend/mcp_anki.py",
+        "backend/mcp_collection.py",
+        "backend/mcp_library.py",
+        "backend/mcp_snapshots.py",
+        "backend/mcp_semantic.py",
+        "backend/mcp_ocr.py",
+        "backend/mcp_checkpoint.py",
+        "backend/mcp_operations.py",
+        "backend/mcp_content_operations.py",
+        "backend/mcp_backup_operations.py",
         "backend/diagnostics.py",
         "backend/scheduler.py",
         "backend/__pycache__/db.cpython-312.pyc",
@@ -81,6 +97,9 @@ def make_fake_repo(tmp_path: Path) -> Path:
         "frontend/web_dock.py",
         "frontend/webpage_dialog.py",
         "frontend/companion_setup.py",
+        "frontend/mcp_connections.py",
+        "frontend/mcp_runtime.py",
+        "frontend/mcp_actions.py",
         "frontend/stats_dialog.py",
         "frontend/video_watch_meter.py",
         "frontend/src/App.jsx",
@@ -96,6 +115,8 @@ def make_fake_repo(tmp_path: Path) -> Path:
         "web/pdf_dock.html",
         "web/video_player.html",
         "web/web_dock_bridge.js",
+        "web/mcp/manifest.json",
+        "web/mcp/incremento.mjs",
         "web/dist/pdf_viewer.js",
         "web/dist/pdf_viewer.js.map",
         "web/pdfjs/pdf.min.js",
@@ -203,6 +224,7 @@ def test_package_addon_writes_root_ankiaddon_manifest_and_runtime_files(tmp_path
     assert "SECURITY.md" in names
     assert "incremento/__init__.py" not in names
     assert "build_manifest.json" not in names
+    assert {"web/mcp/manifest.json", "web/mcp/incremento.mjs", "backend/mcp_server.py", "frontend/mcp_connections.py"} <= names
 
     required = {
         "backend/webpage_resources.py",

@@ -14,10 +14,10 @@ from PyQt6.QtPdf import QPdfDocument
 
 try:
     from .i18n import t
-    from .pdf_extraction import ExtractionBudget, ExtractionLimit, bounded_text_process
+    from .pdf_extraction import ExtractionBudget, ExtractionLimit, PdfValidationError, bounded_text_process
 except ImportError:
     from i18n import t
-    from pdf_extraction import ExtractionBudget, ExtractionLimit, bounded_text_process
+    from pdf_extraction import ExtractionBudget, ExtractionLimit, PdfValidationError, bounded_text_process
 
 
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -226,18 +226,61 @@ def pdf_storage_abspath(
     return str(candidate)
 
 
+def validate_pdf_file(pdf_path: str, *, allow_qt: bool = True) -> int:
+    """Check the header, page tree and first page before any import side effects.
+
+    Text extraction is deliberately unnecessary: scanned and blank PDFs are valid.
+    This is an opening check, not an exhaustive check of every page's resources.
+    """
+    with open(pdf_path, "rb") as source:
+        if b"%PDF-" not in source.read(1024):
+            raise PdfValidationError(t("backend_pdf_unreadable"))
+    try:
+        import fitz
+    except ImportError:
+        fitz = None
+    if fitz is not None:
+        try:
+            with fitz.open(pdf_path) as document:
+                if document.needs_pass:
+                    raise PdfValidationError(t("backend_pdf_password_required"))
+                if not document.is_pdf or document.page_count <= 0:
+                    raise PdfValidationError(t("backend_pdf_unreadable"))
+                document.load_page(0)
+                return document.page_count
+        except PdfValidationError:
+            raise
+        except Exception:
+            raise PdfValidationError(t("backend_pdf_unreadable")) from None
+
+    if not allow_qt:
+        raise PdfValidationError(t("backend_pdf_validation_unavailable"))
+    document = QPdfDocument(None)
+    try:
+        document.load(pdf_path)
+        if document.error() == QPdfDocument.Error.IncorrectPassword:
+            raise PdfValidationError(t("backend_pdf_password_required"))
+        if document.pageCount() <= 0:
+            raise PdfValidationError(t("backend_pdf_unreadable"))
+        return document.pageCount()
+    finally:
+        document.close()
+
+
 def _copy_to_pdf_dir(
     pdf_path: str,
     *,
     profile: str | None = None,
     created_relpath_cb: Callable[[str], None] | None = None,
+    addon_dir: str | None = None,
 ) -> str:
     """Copy *pdf_path* into the profile PDF dir; return the stored filename.
 
     Stored filenames always get a UUID suffix so repeated imports never reuse
     an older file just because the basename matches.
     """
-    pdf_dir = get_pdf_dir(profile)
+    pdf_dir = get_pdf_dir(profile) if addon_dir is None else str(_paths.get_pdf_dir(addon_dir,profile or _paths.get_active_profile()))
+    os.makedirs(pdf_dir,exist_ok=True)
     raw_name = os.path.basename(pdf_path)
     stem, ext = os.path.splitext(raw_name)
     stem = _safe_pdf_stem(stem, fallback="document")
@@ -1259,6 +1302,7 @@ def add_pdf_card(
         except ImportError:
             from document_lists import normalize_document_details
         document_details = normalize_document_details(document_details)
+    validate_pdf_file(pdf_path)
     ensure_pdf_note_type(col)
     profile = profile or _paths.get_active_profile()
 
@@ -1491,13 +1535,16 @@ def replace_pdf_card_file(
     pdf_path: str,
     *,
     profile: str | None = None,
+    created_relpath_cb: Callable[[str],None] | None = None,
+    allow_qt: bool = True,
 ) -> str:
     """Copy a replacement PDF into storage and relink an existing PDF card."""
-    ensure_pdf_note_type(col)
     cid = int(card_id)
     profile_name = str(profile or _paths.get_active_profile())
     if not pdf_path or not os.path.exists(pdf_path):
         raise FileNotFoundError(t("backend_pdf_replacement_missing"))
+    validate_pdf_file(pdf_path, allow_qt=allow_qt)
+    ensure_pdf_note_type(col)
 
     card = col.get_card(cid)
     if card is None:
@@ -1507,10 +1554,14 @@ def replace_pdf_card_file(
         raise RuntimeError(t("backend_document_note_missing", kind="PDF"))
 
     original_filename = str(note["PDF_Filename"] or "").strip()
-    media_filename = _copy_to_pdf_dir(pdf_path, profile=profile_name)
-    dest_path = os.path.join(get_pdf_dir(profile_name), media_filename)
+    if created_relpath_cb is None:
+        media_filename = _copy_to_pdf_dir(pdf_path, profile=profile_name)
+        dest_path = os.path.join(get_pdf_dir(profile_name), media_filename)
+    else:
+        media_filename=_copy_to_pdf_dir(pdf_path,profile=profile_name,addon_dir=addon_dir,created_relpath_cb=created_relpath_cb)
+        dest_path=str(_paths.get_pdf_dir(addon_dir,profile_name)/media_filename)
     try:
-        page_texts = extract_pdf_pages_text(dest_path)
+        page_texts = extract_pdf_pages_text(dest_path) if allow_qt else extract_pdf_pages_text(dest_path,allow_qt=False)
         cover_media = render_pdf_cover_media(
             col,
             dest_path,

@@ -119,6 +119,13 @@ def test_cross_paragraph_highlight_paints_without_reflow_in_qt_application_world
                         && getComputedStyle(node).backgroundColor === 'rgba(18, 171, 52, 0.42)');
                 })()"""), 'Recoloring must retain every run, identity and note'
                 assert evaluate(rectangles) == before
+                assert evaluate("""(() => {
+                    const first = document.querySelector('.incremento-epub-highlight');
+                    window.incrementoUpdateEpubHighlightNote(first.dataset.id, '',
+                      '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAD0lEQVR4nGP4z8DA8J8BAAf/Af8Bf4mnAAAAAElFTkSuQmCC" width="2" height="1" alt="">');
+                    return Array.from(document.querySelectorAll('.incremento-epub-highlight')).every(node =>
+                        node.dataset.note === '' && node.dataset.notePresent === '1');
+                })()"""), 'Image-only notes must remain editable in every wrapped highlight run'
                 assert evaluate('typeof window.incrementoAddEpubHighlight',
                                 QWebEngineScript.ScriptWorldId.MainWorld.value) == 'undefined'
                 # Exercise pointer coordinates with Qt's real DOM/caret geometry.
@@ -128,6 +135,8 @@ def test_cross_paragraph_highlight_paints_without_reflow_in_qt_application_world
                     window._incrementoEpubClickListener({
                         isTrusted: true, target, preventDefault(){}, stopPropagation(){}
                     });
+                    if (document.getElementById('incremento-epub-highlight-note-btn').dataset.hasNote !== '1')
+                        throw new Error('Image-only note must offer Edit note');
                     document.getElementById('incremento-epub-highlight-resize-btn').click();
                     const handle = document.querySelector(
                         '.incremento-epub-resize-handle[data-endpoint="end"]');

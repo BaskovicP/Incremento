@@ -20,16 +20,21 @@ def test_bookshelf_decodes_only_near_viewport_and_covers_visible_rows_after_scro
         with tempfile.TemporaryDirectory() as temporary:
             image = QPixmap(120, 180); image.fill()
             image.save(str(Path(temporary) / 'cover.png'))
+            # Distinct sources keep this a viewport decoding test even when
+            # multiple cards can reuse one cached physical cover.
+            cover_bytes = (Path(temporary) / 'cover.png').read_bytes()
+            for i in range(1, 2001):
+                (Path(temporary) / f'cover-{i}.png').write_bytes(cover_bytes)
             shelf.mw = SimpleNamespace(col=SimpleNamespace(media=SimpleNamespace(dir=lambda: temporary)),
                 taskman=SimpleNamespace(run_in_background=lambda work, done, **kwargs: jobs.append((work, done, kwargs))))
             shelf._active_profile = lambda: 'A'
             shelf._DocumentBookshelfDialog._start_pdf_metadata_scan = lambda self: None
-            original = shelf._DocumentBookshelfDialog._set_thumbnail
-            def record(self, item, entry, icon, generation):
-                decoded.append(entry.card_id)
-                original(self, item, entry, icon, generation)
-            shelf._DocumentBookshelfDialog._set_thumbnail = record
-            entries = [shelf._BookshelfEntry('Book ' + str(i), i, 'EPUB', cover_filename='cover.png') for i in range(1, 2001)]
+            original = shelf.QImageReader
+            def record(path):
+                decoded.append(int(Path(path).stem.split('-')[-1]))
+                return original(path)
+            shelf.QImageReader = record
+            entries = [shelf._BookshelfEntry('Book ' + str(i), i, 'EPUB', cover_filename=f'cover-{i}.png') for i in range(1, 2001)]
             dialog = shelf._DocumentBookshelfDialog(addon_dir=temporary, entries=entries)
             dialog.resize(800, 700)
             dialog.show()

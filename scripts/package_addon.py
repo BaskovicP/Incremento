@@ -36,6 +36,8 @@ ROOT_FILES = (
     "LICENSE",
 )
 WEB_RUNTIME_FILES = (
+    "web/mcp/manifest.json",
+    "web/mcp/incremento.mjs",
     "web/pdf_dock.html",
     "web/video_player.html",
     "web/web_dock_bridge.js",
@@ -91,6 +93,27 @@ REQUIRED_RUNTIME_PATHS = (
     "backend/search_repository.py",
     "backend/browser_bridge.py",
     "backend/companion_install.py",
+    "backend/mcp_server.py",
+    "backend/mcp_service.py",
+    "backend/mcp_install.py",
+    "backend/mcp_undo.py",
+    "backend/mcp_workflows.py",
+    "backend/mcp_creation.py",
+    "backend/mcp_anki.py",
+    "backend/mcp_collection.py",
+    "backend/mcp_library.py",
+    "backend/mcp_snapshots.py",
+    "backend/mcp_semantic.py",
+    "backend/mcp_ocr.py",
+    "backend/mcp_checkpoint.py",
+    "backend/mcp_operations.py",
+    "backend/mcp_content_operations.py",
+    "backend/mcp_backup_operations.py",
+    "frontend/mcp_connections.py",
+    "frontend/mcp_runtime.py",
+    "frontend/mcp_actions.py",
+    "web/mcp/manifest.json",
+    "web/mcp/incremento.mjs",
     "frontend/pdf_dock.py",
     "frontend/note_type_update_dialog.py",
     "frontend/session_launcher.py",
@@ -351,6 +374,7 @@ def run_extension_build(repo_root: Path) -> None:
 
 
 def run_extension_tests(repo_root: Path) -> None:
+    run_command(["node", "--test", "tests/mcp_connector.test.mjs"], cwd=repo_root, label="MCP connector tests")
     run_command(["npm", "test"], cwd=repo_root / "frontend", label="PDF viewer tests")
     run_command(
         ["npm", "test"],

@@ -67,6 +67,24 @@ def _load_repo_module(fullname: str, relpath: str):
 _SESSION_MOD = _load_repo_module("incremento.backend.session", "backend/session.py")
 
 
+def test_mcp_session_snapshot_keeps_native_picker_and_reviewed_counts_without_clock_values(monkeypatch):
+    from dataclasses import asdict
+    from incremento.backend.scheduler_config import SchedulerConfig
+    from incremento.backend.session_selection import SessionPickerSnapshot
+
+    cfg = SchedulerConfig(session_card_count=2, auto_refill_session=True)
+    picker = SessionPickerSnapshot(selected_ids=[11, 22], picked_meta={11: {"type": "item"}})
+    state = types.SimpleNamespace(cfg=cfg, selected_ids=[11, 22], picker=types.SimpleNamespace(snapshot=lambda: picker),
+                                  session_deck_name="Incremento Session", reviewed_ids={11},
+                                  measured_review_seconds={11: 4.5}, last_shown_cid=22)
+    monkeypatch.setattr(_SESSION_MOD, "_active_incremento_session_state", state)
+    descriptor = _SESSION_MOD.snapshot_mcp_session()
+    assert descriptor["picker"] == asdict(picker)
+    assert descriptor["config"]["auto_refill_session"] is True
+    assert descriptor["reviewed_ids"] == [11] and descriptor["measured"] == {11: 4.5}
+    assert "question_started_at" not in descriptor
+
+
 def _load_review_time_tracker_module():
     sys.modules.pop("incremento.backend.review_time_tracker", None)
 

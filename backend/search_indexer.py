@@ -13,10 +13,12 @@ try:
     from .db import get_connection
     from .pdf_manager import extract_pdf_pages_text
     from .pdf_search import PdfIndexDocument, publishing_pdf_index
+    from .mcp_ocr import load_pdf_ocr_overrides
 except ImportError:
     from db import get_connection  # type: ignore
     from pdf_manager import extract_pdf_pages_text  # type: ignore
     from pdf_search import PdfIndexDocument, publishing_pdf_index
+    from mcp_ocr import load_pdf_ocr_overrides
 
 
 _ERROR_RETRY_SECONDS = 24 * 60 * 60
@@ -106,6 +108,11 @@ def index_pdf_documents(
                     pages = extract(path, allow_qt=False, cancelled=is_cancelled)
                 except TypeError:
                     pages = extract(path)
+                overrides=load_pdf_ocr_overrides(addon_dir,profile,card_id,path)
+                pages=list(pages)
+                for page,text in overrides.items():
+                    if page<=len(pages):
+                        pages[page-1]=text
                 status = (
                     "ready"
                     if any(str(page or "").strip() for page in pages)

@@ -322,9 +322,11 @@ def add_writing_card(
     initial_markdown: str = "",
     preferred_filename: str = "",
     metadata: dict[str, str] | None = None,
+    *,
+    profile: str | None = None,
 ) -> int:
     ensure_writing_note_type(col)
-    profile = _paths.get_active_profile()
+    profile = profile or _paths.get_active_profile()
     with ImportOperation(addon_dir, profile, "writing") as operation:
         return _create_new_writing_card(
             addon_dir,

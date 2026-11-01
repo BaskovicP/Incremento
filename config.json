@@ -5,6 +5,8 @@
     "ui_language": "auto",
     "shortcuts": {"document_contents": "Ctrl+Alt+T"},
     "onboarding_completed_version": 0,
+    "mcp_enabled": false,
+    "mcp_allow_writes": false,
     "scheduler_presets": {},
     "automatic_backups": {},
     "extract_source_links": {

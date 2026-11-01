@@ -2554,3 +2554,102 @@ msgstr "Search cancelled."
 
 msgid "search_all_failed"
 msgstr "Search failed: {error}"
+
+msgid "mcp_connections_title"
+msgstr "AI connections…"
+
+msgid "mcp_connections_hint"
+msgstr "Connect a local Codex or Claude client to the open Anki profile. Requested text is sent to that client and its AI provider. Anki must remain open. Private MCP undo history survives restarting Anki."
+
+msgid "mcp_connections_enable"
+msgstr "Enable local MCP connections"
+
+msgid "mcp_connections_writes"
+msgstr "Allow reversible MCP changes"
+
+msgid "mcp_connections_apply"
+msgstr "Apply connection settings"
+
+msgid "mcp_connections_token"
+msgstr "Private connection token"
+
+msgid "mcp_connections_copy_token"
+msgstr "Copy token"
+
+msgid "mcp_connections_client_setup"
+msgstr "Codex and Claude setup"
+
+msgid "mcp_connections_export"
+msgstr "Save Claude Desktop connector…"
+
+msgid "mcp_connections_failed"
+msgstr "Could not configure the connection. Check that port 8767 is free and the profile is writable. Choose a new filename when exporting a connector."
+
+msgid "mcp_connections_ready"
+msgstr "Connected endpoint: http://127.0.0.1:8767/mcp. Access is limited to this profile. Reopen the client connection after changing permissions."
+
+msgid "mcp_connections_disabled"
+msgstr "MCP connections are disabled."
+
+msgid "mcp_connections_steps"
+msgstr "Codex: merge the following entry into your user MCP configuration. Claude Code: run the registration command below once. Claude Desktop: save the connector, install its .mcpb file in Settings → Extensions, and paste the copied token when prompted. Keep credentials out of shared files."
+
+msgid "mcp_connections_exported"
+msgstr "Connector saved. Install it in Claude Desktop and paste the copied token."
+
+msgid "mcp_connections_settings_hint"
+msgstr "After saving, open Incremento → AI connections… for Codex configuration and the Claude Desktop connector. Connections require the current profile and are local to this computer."
+
+msgid "mcp_connections_bundle_filter"
+msgstr "MCP Bundle (*.mcpb)"
+
+msgid "mcp_connections_copy_config"
+msgstr "Copy configuration"
+
+msgid "mcp_connections_copy_command"
+msgstr "Copy command"
+
+msgid "mcp_connections_codex_config"
+msgstr "Codex MCP configuration"
+
+msgid "mcp_connections_claude_command"
+msgstr "Claude Code registration command"
+
+msgid "mcp_connections_codex_steps"
+msgstr "Copy this complete setup prompt into Codex or an assistant with local computer access. It includes the configuration and asks the assistant to apply and verify it for you."
+
+msgid "mcp_connections_claude_code_steps"
+msgstr "Copy this complete setup prompt into Claude Code or an assistant with local computer access. It includes the registration command and asks the assistant to run and verify it for you."
+
+msgid "mcp_connections_claude_desktop_steps"
+msgstr "1. Save the connector and install its .mcpb file in Claude Desktop: Settings → Extensions → Advanced settings → Install Extension.\n2. Copy the token below and paste it when prompted.\n3. Reconnect Claude Desktop."
+
+msgid "mcp_connections_copy_setup_prompt"
+msgstr "Copy setup prompt"
+
+msgid "mcp_connections_codex_prompt"
+msgstr "Codex setup prompt"
+
+msgid "mcp_connections_claude_code_prompt"
+msgstr "Claude Code setup prompt"
+
+msgid "mcp_connections_codex_setup_prompt"
+msgstr "Set up the local Incremento MCP server for Codex on this computer. Use your local file or terminal tools to perform the setup now, rather than only describing the steps.\n\n1. Use $CODEX_HOME/config.toml if CODEX_HOME is set; otherwise use ~/.codex/config.toml. Read the existing file first. Back it up privately, preserve all unrelated settings and MCP servers, and add or replace only the mcp_servers.incremento entry with the configuration below. Keep the TOML valid and avoid duplicate tables.\n2. Keep the connection local. Keep the token private and do not repeat it in your reply. Preserve the existing sandbox and approval settings.\n3. Validate the saved configuration. If local tools allow it, check the authenticated MCP connection and call get_context using only read operations. Do not change Anki notes, tags, lists, or schedules during setup.\n4. Refresh the MCP connection if supported. If a client reconnect or Anki action is still necessary, tell me the exact remaining step. Report what you actually configured and verified.\n\nIf you do not have local computer access, say that you cannot edit this computer's configuration from this chat and ask me to paste this same prompt into a local assistant. Do not claim that setup has been completed.\n\nConfiguration:\n```toml\n{configuration}```"
+
+msgid "mcp_connections_claude_code_setup_prompt"
+msgstr "Set up the local Incremento MCP server for Claude Code on this computer. Use your local terminal tools to run the registration below now, rather than only describing the steps.\n\n1. Register Incremento in Claude Code's private user scope using the command below. If a user-scoped incremento registration already exists, update only that registration and preserve all other servers and settings. If the Claude Code CLI is unavailable, report the missing prerequisite.\n2. Keep the connection local. Keep the token private and do not repeat it in your reply. Preserve the existing sandbox and approval settings.\n3. Verify the registration. If local tools allow it, check the authenticated MCP connection and call get_context using only read operations. Do not change Anki notes, tags, lists, or schedules during setup.\n4. Refresh the MCP connection if supported. If a client reconnect or Anki action is still necessary, tell me the exact remaining step. Report what you actually configured and verified.\n\nIf you do not have local computer access, say that you cannot run setup on this computer from this chat and ask me to paste this same prompt into a local assistant. Do not claim that setup has been completed.\n\nRegistration command:\n```sh\n{command}\n```"
+
+msgid "mcp_undo_tags"
+msgstr "Change tags via MCP"
+
+msgid "mcp_undo_batch"
+msgstr "Incremento MCP batch"
+
+msgid "mcp_undo_source_cards"
+msgstr "Incremento MCP source cards"
+
+msgid "mcp_undo_imports"
+msgstr "Incremento MCP document imports"
+
+msgid "mcp_undo_creation_reverse"
+msgstr "Incremento MCP creation reversal"

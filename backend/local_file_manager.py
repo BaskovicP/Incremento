@@ -172,13 +172,14 @@ def relink_local_file(
     note,
     *,
     new_source_path: str,
+    created_relpath_cb: Callable[[str], None] | None = None,
 ) -> tuple[str, str]:
     try:
         raw_mode = note[LOCAL_FILE_MODE_FIELD]
     except Exception:
         raw_mode = ""
     mode = normalize_local_file_mode(raw_mode)
-    stored_path, filename = prepare_local_file_storage(addon_dir, profile, new_source_path, mode)
+    stored_path, filename = prepare_local_file_storage(addon_dir, profile, new_source_path, mode,created_relpath_cb=created_relpath_cb)
     note[LOCAL_FILE_PATH_FIELD] = stored_path
     note[LOCAL_FILE_NAME_FIELD] = external_plain_text_to_anki_html(filename, max_chars=255)
     return stored_path, filename

@@ -1,0 +1,28 @@
+{
+  "manifest_version": "0.3",
+  "name": "incremento",
+  "display_name": "Incremento for Anki",
+  "version": "1.5.0",
+  "description": "Manage Anki and Incremento with local OCR, rich editing, reviewed schema/deck changes, semantic search, smart lists, and restart-safe undo.",
+  "author": { "name": "Incremento" },
+  "server": {
+    "type": "node",
+    "entry_point": "incremento.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/incremento.mjs"],
+      "env": { "INCREMENTO_MCP_TOKEN": "${user_config.token}" }
+    }
+  },
+  "user_config": {
+    "token": {
+      "type": "string",
+      "title": "Incremento connection token",
+      "description": "Copy from Anki → Incremento → AI connections. Keep Anki open on that profile.",
+      "sensitive": true,
+      "required": true
+    }
+  },
+  "compatibility": { "runtimes": { "node": ">=18.0.0" } },
+  "tools_generated": true
+}

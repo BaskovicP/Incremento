@@ -79,7 +79,7 @@
   "reader_pdf_bookmarks": "PDF Bookmarks",
   "reader_add_current_page": "Add current page",
   "reader_no_bookmarks": "No bookmarks yet.",
-  "reader_load_error": "Could not load this PDF.",
+  "reader_load_error": "Could not open this PDF. The file may be damaged, incomplete, password-protected, or unavailable. Check the file or download a fresh copy, then choose a replacement PDF.",
   "reader_page_error": "Could not open this PDF page.",
   "reader_render_error": "Could not render this PDF page.",
   "reader_add_highlight_note": "Add highlight note",
@@ -227,5 +227,6 @@
   "reader_style_squiggly": "Squiggly",
   "reader_style_dashed": "Dashed",
   "reader_style_dotted": "Dotted",
-  "reader_style_strikeout": "Strikethrough"
+  "reader_style_strikeout": "Strikethrough",
+  "reader_choose_replacement_pdf": "Choose Replacement PDF"
 }

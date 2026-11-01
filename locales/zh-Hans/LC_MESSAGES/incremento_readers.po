@@ -2094,7 +2094,7 @@ msgid "reader_selected_text_label"
 msgstr "所选文本："
 
 msgid "reader_text_note_label"
-msgstr "文字备注："
+msgstr "笔记："
 
 msgid "reader_click_result_hint"
 msgstr "点击结果以跳转到{document}中的对应位置。"
@@ -4644,3 +4644,156 @@ msgstr "更多筛选"
 
 msgid "reader_library_add_reason"
 msgstr "+ 添加保存原因"
+
+
+msgid "reader_library_add_selected_to_list"
+msgstr "将所选文档添加到列表…"
+
+msgid "reader_library_multi_select_hint"
+msgstr "按住 Ctrl/Cmd 单击可选择多个文档；按住 Shift 单击可选择连续文档。使用 Ctrl/Cmd+A 全选。"
+
+msgid "reader_library_selected_books"
+msgid_plural "reader_library_selected_books_plural"
+msgstr[0] "已选择 {count} 个文档"
+
+msgid "reader_library_grouping"
+msgstr "正在更新列表…"
+
+msgid "reader_library_group_error"
+msgstr "无法将所选文档添加到列表。请确认列表仍然存在，并且每个文档所属列表的数量不超过 64 个。现有列表和未保存的笔记均已保留。"
+
+msgid "reader_library_list_picker_help"
+msgstr "勾选这本书所属的所有列表。搜索时，已选列表始终显示在右侧。"
+
+msgid "reader_library_find_lists"
+msgstr "搜索列表…"
+
+msgid "reader_library_all_lists"
+msgstr "所有列表"
+
+msgid "reader_library_selected_lists"
+msgstr "已选列表"
+
+msgid "reader_library_selected_lists_count"
+msgstr "已选列表（{count}/{maximum}）"
+
+msgid "reader_library_list_matches"
+msgstr "显示 {count} 个列表，共 {total} 个"
+
+msgid "reader_library_remove_selected_lists"
+msgstr "移除所选列表"
+
+msgid "reader_library_list_summary_more"
+msgstr "{names} · 另有 {count} 项"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_width"
+msgstr "图片宽度"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_remove"
+msgstr "移除图片"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_size"
+msgstr "已存储 {size} KiB"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_hint"
+msgstr "粘贴图片（Cmd/Ctrl+V）。拖动角点可保持比例，拖动边缘可拉伸。按住 Shift 可切换模式。图片会自动压缩（最多 80 KiB）。"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_failed"
+msgstr "无法粘贴此图片。请复制较小的位图图片，或移除此笔记中的另一张图片，然后重试。"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_pixels"
+msgstr " 像素"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_resize_right"
+msgstr "拉伸图片宽度"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_resize_bottom"
+msgstr "拉伸图片高度"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_resize_corner"
+msgstr "按比例调整图片大小"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_resize_help"
+msgstr "拖动角点可保持比例，拖动边缘可拉伸。按住 Shift 可切换模式。手柄获得焦点后可用方向键调整；Escape 可取消拖动。"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement"
+msgstr "图片位置"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_block"
+msgstr "独占一行（推荐）"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_inline"
+msgstr "嵌入文字"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_left"
+msgstr "文字环绕（图片靠左）"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_right"
+msgstr "文字环绕（图片靠右）"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_placement_help"
+msgstr "独占一行可将图片与说明分开。嵌入文字可将图片放在句子中。左侧或右侧环绕可让文字排列在图片旁。使用在上方或下方书写来添加说明。"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_write_above"
+msgstr "在上方书写"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_write_below"
+msgstr "在下方书写"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_wrap_narrow"
+msgstr "文字栏空间过窄。请选择独占一行，或缩小图片宽度。"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_alignment"
+msgstr "图片对齐"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_align_left"
+msgstr "左对齐"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_align_center"
+msgstr "居中"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_align_right"
+msgstr "右对齐"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_image_alignment_choice"
+msgstr "图片对齐：{alignment}"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_editor_save"
+msgstr "保存"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_editor_stale"
+msgstr "原文档或配置文件已更改。草稿仍保留在此处。请返回原文档，或复制草稿并重新打开批注后再保存。"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_editor_changed"
+msgstr "此批注已在别处更改或删除。草稿仍保留在此处。关闭前请先复制草稿；若批注仍存在，请重新打开以查看最新版本。"
+
+#: frontend/highlight_note_dialog.py
+msgid "reader_note_editor_save_failed"
+msgstr "无法保存此批注：{error}\n草稿仍保持打开状态。"

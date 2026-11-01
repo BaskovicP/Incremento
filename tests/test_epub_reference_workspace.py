@@ -182,3 +182,25 @@ def test_replacing_a_pinned_reference_splits_against_the_main_dock(monkeypatch, 
     pending[0]['success'](None)
     assert created[0]['owner'] is main_dock
     old.close.assert_called_once()
+
+
+def test_reference_annotation_editor_is_deferred_and_preserves_rich_notes_after_section_navigation(monkeypatch, workspace):
+    pending, writes, refreshed = [], [], []
+    monkeypatch.setitem(sys.modules, 'highlight_note_dialog', SimpleNamespace(HighlightNoteDialog=SimpleNamespace(
+        show_for_annotation=lambda *args, **kwargs: pending.append(kwargs))))
+    monkeypatch.setattr(workspace, 'load_highlights', lambda *args: [
+        dict(id='h', sectionIndex=0, text='source', note='Original', note_html='<b>Original</b>')])
+    monkeypatch.setattr(workspace, 'update_highlight_note', lambda *args, **kwargs:
+        writes.append((args, kwargs)) or dict(id='h', note='Edited', note_html='<i>Edited</i>'))
+    monkeypatch.setattr(workspace, 'refresh_readers', lambda *args: refreshed.append(args))
+    window = SimpleNamespace(current=lambda: True, profile='One', location=dict(card_id=7, section=0),
+                             snapshot=dict(filename='book.epub'))
+    workspace.EpubReferenceWindow.edit_highlight(window, 'h')
+    assert writes == []
+    assert pending[0]['current_note_html'] == '<b>Original</b>'
+    window.location['section'] = 1
+    assert pending[0]['is_current']()
+    pending[0]['save'](SimpleNamespace(note_text=lambda: 'Edited', note_html=lambda: '<i>Edited</i>'))
+    assert writes[0][0][1:4] == ('One', 7, 'h')
+    assert writes[0][1] == dict(note_html='<i>Edited</i>', expected_note=('Original', '<b>Original</b>'))
+    assert refreshed == [('One', 7)]
