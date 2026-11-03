@@ -140,7 +140,9 @@ class McpBackupOperations(McpContentOperations):
             selected.append((source, relative))
             if total > checkpoint.MAX_TOTAL or len(selected) > checkpoint.MAX_FILES:
                 raise AnkiToolError("Full backup exceeds the bounded export budget.")
-        with tempfile.TemporaryDirectory(prefix="incremento-mcp-backup-") as temporary:
+        with tempfile.TemporaryDirectory(
+            prefix="incremento-mcp-backup-", dir=checkpoint.checked_path(path).parent,
+        ) as temporary:
             temporary = Path(temporary)
             package = temporary / "all_decks.apkg"
             count = col.export_anki_package(

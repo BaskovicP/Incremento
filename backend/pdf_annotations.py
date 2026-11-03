@@ -302,22 +302,27 @@ def _semantic(hl, *, note=True):
     if hl is None:
         return None
     metadata = hl['pdf_annotation']
-    def rounded(value):
-        if isinstance(value, (int, float)):
-            return round(value, 3)
-        if isinstance(value, dict):
-            return {k: rounded(v) for k, v in value.items()}
-        if isinstance(value, (list, tuple)):
-            return [rounded(v) for v in value]
-        return value
-    return rounded({'page': hl['page'], 'rects': hl['rects'], 'kind': metadata['kind'],
+    return {'page': hl['page'], 'rects': hl['rects'], 'kind': metadata['kind'],
                     'line_style': metadata.get('incremento_style') if metadata.get('incremento_style') in {'dashed', 'dotted'} else None,
                     'quads': metadata.get('quads', []), 'color': metadata['color'],
                     'fill': metadata.get('fill', []), 'border_width': metadata.get('border_width', 0),
                     **({key: metadata.get(key, default) for key, default in (
                         ('font_size', 11), ('text_color', [0, 0, 0]), ('font_family', 'sans-serif'))}
                        if metadata['kind'] == 'FreeText' else {}),
-                    'opacity': metadata['opacity'], **({'note': hl.get('note', '')} if note else {})})
+                    'opacity': metadata['opacity'], **({'note': hl.get('note', '')} if note else {})}
+
+
+def _same_annotation(first, second, *, note=True):
+    def same(left, right):
+        if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+            # PDF float conversion can cross a decimal rounding boundary.
+            return math.isclose(left, right, rel_tol=0, abs_tol=.001)
+        if isinstance(left, dict) and isinstance(right, dict):
+            return left.keys() == right.keys() and all(same(value, right[key]) for key, value in left.items())
+        if isinstance(left, (list, tuple)) and isinstance(right, (list, tuple)):
+            return len(left) == len(right) and all(same(a, b) for a, b in zip(left, right))
+        return left == right
+    return same(_semantic(first, note=note), _semantic(second, note=note))
 
 
 def _resize_revision(row):
@@ -333,7 +338,15 @@ def _resize_revision(row):
 
 
 def _conflict_id(original_id, row):
-    digest = sha256(json.dumps(_semantic(row), sort_keys=True).encode()).hexdigest()[:24]
+    def rounded(value):
+        if isinstance(value, (int, float)):
+            return round(value, 3)
+        if isinstance(value, dict):
+            return {k: rounded(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [rounded(v) for v in value]
+        return value
+    digest = sha256(json.dumps(rounded(_semantic(row)), sort_keys=True).encode()).hexdigest()[:24]
     identity = sha256(f'{original_id}:{digest}'.encode()).hexdigest()[:32]
     return 'conflict-' + identity
 
@@ -405,7 +418,7 @@ def _read_native(doc, known, content_digest, cancel, deadline):
                                 'serif' if 'times' in font or 'serif' in font and 'sans' not in font else 'sans-serif')
                 if not row['note']:
                     row['note'] = annot.get_text().strip()
-            if old and _semantic(old, note=False) == _semantic(row, note=False):
+            if old and _same_annotation(old, row, note=False):
                 row['text'] = old.get('text', text)
             result[hl_id] = row
     return result
@@ -428,10 +441,10 @@ def _merge(baseline, local, *pdfs):
     for hl_id in sorted(all_ids - retired_conflicts):
         old = baseline.get(hl_id)
         candidates = [local.get(hl_id), *(pdf.get(hl_id) for pdf in pdfs)]
-        changed = [row for row in candidates if _semantic(row) != _semantic(old)]
+        changed = [row for row in candidates if not _same_annotation(row, old)]
         distinct = []
         for row in changed:
-            if not any(_semantic(row) == _semantic(other) for other in distinct):
+            if not any(_same_annotation(row, other) for other in distinct):
                 distinct.append(row)
         if not distinct:
             selected = local.get(hl_id) or old
@@ -446,7 +459,7 @@ def _merge(baseline, local, *pdfs):
             conflicts += 1
             surviving = [deepcopy(row) for row in distinct if row is not None]
             selected = surviving[0] if surviving else None
-            if selected and all(_semantic(row, note=False) == _semantic(selected, note=False) for row in surviving):
+            if selected and all(_same_annotation(row, selected, note=False) for row in surviving):
                 # Concurrent comments on the same passage remain one highlight.
                 selected['note'] = '\n\n'.join(dict.fromkeys(row.get('note', '') for row in surviving if row.get('note')))
             elif selected:
@@ -539,8 +552,8 @@ def _rewrite(doc, target, current):
                 page.delete_annot(annot)
                 continue
             handled.add(key)
-            if _semantic(native) != _semantic(desired):
-                if _semantic(native, note=False) == _semantic(desired, note=False) and annot.type[1] != 'FreeText':
+            if not _same_annotation(native, desired):
+                if _same_annotation(native, desired, note=False) and annot.type[1] != 'FreeText':
                     annot.set_info(content=desired.get('note', ''))
                     annot.update()
                     _apply_native_line_style(annot, desired['pdf_annotation'])
@@ -734,12 +747,13 @@ def _sync_locked(addon_dir, profile, card_id, filename, source_path, cancel, dea
     appearance_changed = False
     for doc, target, current, signature in zip(documents, targets, native, signatures):
         _checkpoint(cancel, deadline)
-        before_appearance = {key: _semantic(row) for key, row in current.items()
+        before_appearance = {key: row for key, row in current.items()
                              if row['pdf_annotation']['kind'] != 'Highlight' and row.get('color') != 'snapshot'}
-        after_appearance = {key: _semantic(row) for key, row in merged.items()
+        after_appearance = {key: row for key, row in merged.items()
                             if row['pdf_annotation']['kind'] != 'Highlight' and row.get('color') != 'snapshot'}
         if target == managed:
-            appearance_changed = before_appearance != after_appearance
+            appearance_changed = (before_appearance.keys() != after_appearance.keys() or any(
+                not _same_annotation(row, after_appearance[key]) for key, row in before_appearance.items()))
         _rewrite(doc, merged, current)
         if (merged or baseline or doc.is_dirty) and doc.xref_get_key(doc.pdf_catalog(), stamp_key)[1] != new_stamp:
             if doc.xref_get_key(doc.pdf_catalog(), 'IncrementoAnnotationSync')[0] != 'dict':
@@ -759,18 +773,26 @@ def _sync_locked(addon_dir, profile, card_id, filename, source_path, cancel, dea
             writes.append((temporary, target, signature))
     reader = paths.get_pdf_annotation_reader_path(addon_dir, profile, card_id)
     _check_profile_path(addon_dir, profile, reader)
-    # Retain native appearances for other annotation kinds. Highlights and
-    # Incremento snapshot frames are rendered by the reader's interactive layer.
+    # Text marks and Incremento snapshot frames have one painter: the reader's
+    # interactive layer. Other annotation kinds retain their native appearances.
     reader_temp = None
     reuse_reader = (not writes and baseline_json == state['baseline_json']
                     and reader.is_file() and not reader.is_symlink())
+    if reuse_reader:
+        try:
+            with fitz.open(reader) as cached_reader:
+                reuse_reader = cached_reader.xref_get_key(
+                    cached_reader.pdf_catalog(), 'IncrementoReaderAppearanceVersion') == ('int', '1')
+        except (RuntimeError, OSError, ValueError):
+            reuse_reader = False
     if not reuse_reader:
         managed_doc = documents[0]
         snapshot_names = {row['pdf_annotation']['name'] for row in merged.values() if row.get('color') == 'snapshot'}
         for page in managed_doc:
-            xrefs = [a.xref for a in (page.annots() or []) if a.type[1] == 'Highlight' or a.info.get('id') in snapshot_names]
+            xrefs = [a.xref for a in (page.annots() or []) if a.type[1] in MARKUP_KINDS or a.info.get('id') in snapshot_names]
             for xref in xrefs:
                 page.delete_annot(page.load_annot(xref))
+        managed_doc.xref_set_key(managed_doc.pdf_catalog(), 'IncrementoReaderAppearanceVersion', '1')
         reader_temp = _stage_pdf(managed_doc, reader)
         staged.append(reader_temp)
     _checkpoint(cancel, deadline)

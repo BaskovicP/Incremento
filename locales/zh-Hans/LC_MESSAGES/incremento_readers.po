@@ -4225,6 +4225,9 @@ msgstr "排序方式："
 msgid "reader_bookshelf_sort_title"
 msgstr "标题（A–Z）"
 
+msgid "reader_bookshelf_sort_last_added"
+msgstr "最新添加（从新到旧）"
+
 msgid "reader_bookshelf_sort_priority"
 msgstr "优先级（最重要的优先）"
 

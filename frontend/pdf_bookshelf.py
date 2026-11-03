@@ -226,6 +226,9 @@ def _sort_bookshelf_entries(
     if mode == "random":
         ranks = random_order or {}
         return sorted(alphabetical, key=lambda entry: ranks.get(entry.card_id, len(ranks)))
+    if mode == "last_added":
+        # Anki note IDs encode creation time, even if cards are regenerated later.
+        return sorted(alphabetical, key=lambda entry: entry.note_id, reverse=not reverse)
     if mode == "priority":
         def priority(entry):
             value = float(entry.priority) if entry.priority is not None else 50.0
@@ -1710,6 +1713,7 @@ class _DocumentBookshelfDialog(QDialog):
         self._sort_combo = QComboBox()
         for mode, key in (
             ("title", "reader_bookshelf_sort_title"),
+            ("last_added", "reader_bookshelf_sort_last_added"),
             ("priority", "reader_bookshelf_sort_priority"),
             ("due", "reader_bookshelf_sort_due"),
             ("reviews", "reader_bookshelf_sort_reviews"),

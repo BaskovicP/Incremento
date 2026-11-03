@@ -376,61 +376,6 @@ def test_pdf_hover_preview_uses_card_text_for_legacy_link_without_excerpt():
     assert "Which book would people treasure?" not in blue
 
 
-def test_rebuild_pdf_reference_card_contexts_adds_mobile_context():
-    extracted = "The exact extracted sentence."
-    link = _anchor_html(
-        'incremento_open_pdf_ref:{"card_id":7,"filename":"document.pdf",'
-        '"page":3,"excerpt":"The exact extracted sentence."}'
-    )
-    page_text = "Before one.\nThe exact extracted sentence.\nAfter one."
-
-    rebuilt, updated, skipped = reader_links.rebuild_pdf_reference_card_contexts(
-        extracted + "<br>" + link,
-        lambda card_id, page: page_text if (card_id, page) == (7, 3) else "",
-        context_rows=1,
-    )
-
-    assert updated == 1
-    assert skipped == 0
-    assert rebuilt.count('data-incremento-pdf-context="1"') == 1
-    assert "Before one." in rebuilt and "After one." in rebuilt
-    assert ">The exact extracted sentence.</span>" in rebuilt
-
-
-def test_rebuild_pdf_reference_card_contexts_replaces_existing_context_once():
-    link = _anchor_html(
-        'incremento_open_pdf_ref:{"card_id":7,"filename":"document.pdf",'
-        '"page":3,"excerpt":"Correct excerpt"}'
-    )
-    old_context = (
-        '<div data-incremento-pdf-context="1" role="note">'
-        '<span class="incremento-pdf-context-excerpt">Wrong text</span></div>'
-    )
-
-    rebuilt, updated, skipped = reader_links.rebuild_pdf_reference_card_contexts(
-        "Correct excerpt<br>" + link + "<br>" + old_context,
-        lambda _card_id, _page: "Before\nCorrect excerpt\nAfter",
-        context_rows=1,
-    )
-
-    assert updated == 1
-    assert skipped == 0
-    assert rebuilt.count('data-incremento-pdf-context="1"') == 1
-    assert "Wrong text" not in rebuilt
-    assert ">Correct excerpt</span>" in rebuilt
-
-    repeated, repeated_updates, repeated_skips = (
-        reader_links.rebuild_pdf_reference_card_contexts(
-            rebuilt,
-            lambda _card_id, _page: "Before\nCorrect excerpt\nAfter",
-            context_rows=1,
-        )
-    )
-    assert repeated == rebuilt
-    assert repeated_updates == 0
-    assert repeated_skips == 0
-
-
 def test_pdf_snapshot_reference_html_shows_button_and_hides_image_until_opened():
     link = _anchor_html(
         'incremento_open_pdf_ref:{"card_id":7,"filename":"document.pdf",'

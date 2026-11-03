@@ -49,3 +49,25 @@ def test_workspace_menu_and_profile_teardown_are_registered():
              if isinstance(node, ast.FunctionDef)}
     assert '_writing_dock_mod.reset_for_profile_switch()' in nodes['_reset_writing_workspace']
     assert nodes['_on_profile_did_open'].index('_reset_writing_workspace()') < nodes['_on_profile_did_open'].index('_paths.set_active_profile(profile)')
+
+
+def test_mcp_editor_guard_includes_inactive_writing_tabs():
+    tree = ast.parse((ROOT / '__init__.py').read_text())
+    controller = next(node.value for node in tree.body if isinstance(node, ast.Assign)
+                      and any(isinstance(target, ast.Name) and target.id == '_mcp_controller' for target in node.targets))
+    callback = next(keyword.value for keyword in controller.keywords if keyword.arg == 'open_writing_cards')
+    namespace = {'_writing_dock_mod': SimpleNamespace(open_writing_card_ids=lambda: [11, 22],
+                                                    current_writing_card_id=lambda: 22)}
+    value = eval(compile(ast.Expression(callback), '<MCP writing guard>', 'eval'), namespace)
+    assert value() == [11, 22]
+
+
+def test_new_writing_tab_opens_the_new_card_in_the_existing_workspace():
+    tree = ast.parse((ROOT / '__init__.py').read_text())
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == '_new_writing_tab')
+    opened = []
+    namespace = {'addWritingFunction': lambda: 73,
+                 '_open_writing_card': lambda *args, **kwargs: opened.append((args, kwargs))}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), '<new writing tab>', 'exec'), namespace)
+    namespace['_new_writing_tab']()
+    assert opened == [((73,), {'keep_open': True})]

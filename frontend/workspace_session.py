@@ -68,6 +68,7 @@ class WorkspaceSession:
                                        'appearance': dock._appearance_combo.currentData(),
                                        'links': dock._links_btn.isChecked()})
             elif kind == 'writing':
+                entry['writing_tabs'] = module.open_writing_card_ids()
                 entry['controls'] = {'preview': dock._preview_visible, 'wrap': dock._wrap_enabled,
                                      'focus': dock._focus_mode, 'scale': dock._font_scale,
                                      'keep_open': module._writing_keep_open, 'split': dock._split.sizes()}
@@ -165,7 +166,19 @@ class WorkspaceSession:
             path = Path(writing_file_abspath(_ADDON_DIR, relpath, profile=profile))
             if not relpath or not path.is_relative_to(root / 'writing') or not path.is_file():
                 raise ValueError('Saved writing unavailable')
-            return {'title': str(note['Title']), 'relpath': relpath}
+            result = {'title': str(note['Title']), 'relpath': relpath}
+            if 'writing_tabs' in entry:
+                tabs = []
+                for tab_id in entry['writing_tabs']:
+                    try:
+                        tab = dict(result) if tab_id == cid else self._resolve(
+                            col, profile, {'kind': 'writing', 'card_id': tab_id})
+                        tabs.append((tab_id, tab))
+                    except Exception:
+                        continue
+                result['writing_tabs'] = tabs
+                result['missing_writing_tabs'] = len(entry['writing_tabs']) - len(tabs)
+            return result
         if kind == 'video':
             return {'url': str(note['YouTube_URL'] or ''), 'media': get_video_note_media(note)}
         return {'card_id': cid, 'note_id': card.nid}
@@ -201,6 +214,7 @@ class WorkspaceSession:
                 if result is None:
                     missing += 1
                     continue
+                missing += result.get('missing_writing_tabs', 0)
                 try:
                     dock = self._open(entry, result)
                     if dock is None:
@@ -322,7 +336,13 @@ class WorkspaceSession:
             if previous is not None and previous != cid and not module._flush_editor_state():
                 return None
             keep_open = controls.get('keep_open', True)
-            module.show_writing_in_dock(cid, result['title'], result['relpath'], keep_open=keep_open)
+            for tab_id, tab in result.get('writing_tabs', []):
+                if module.show_writing_in_dock(tab_id, tab['title'], tab['relpath'], keep_open=keep_open) is False:
+                    return None
+            if 'writing_tabs' in result:
+                module.reorder_writing_tabs([tab_id for tab_id, _ in result['writing_tabs']])
+            if module.show_writing_in_dock(cid, result['title'], result['relpath'], keep_open=keep_open) is False:
+                return None
             module.set_keep_open(keep_open)
             dock = module._writing_dock
             for key, function in (('wrap', '_apply_wrap_mode'), ('focus', '_apply_focus_mode'),

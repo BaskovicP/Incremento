@@ -62,6 +62,27 @@ def test_duplicate_pane_names_and_excessive_reference_windows_are_rejected():
     raw = snapshot()
     raw['panes'].append(deepcopy(raw['panes'][0]))
     assert normalize_workspace(raw) is None
+
+
+def test_saved_writing_tabs_keep_order_and_active_card_without_persisting_content():
+    from workspace_layouts import normalize_workspace
+    raw = snapshot()
+    raw['panes'][1]['writing_tabs'] = [80, 71, 99]
+    raw['panes'][1]['draft_text'] = 'Must never enter workspace config'
+    clean = normalize_workspace(raw)
+    assert clean['panes'][1]['writing_tabs'] == [80, 71, 99]
+    assert clean['panes'][1]['card_id'] == 71
+    assert 'draft_text' not in clean['panes'][1]
+
+
+@pytest.mark.parametrize('tabs', [[True], [0], [71, -1], [71] * 33, [71, 71], [99], '71'])
+def test_invalid_or_unbounded_writing_tab_lists_fall_back_to_the_active_card(tabs):
+    from workspace_layouts import normalize_workspace
+    raw = snapshot()
+    raw['panes'][1]['writing_tabs'] = tabs
+    clean = normalize_workspace(raw)
+    assert 'writing_tabs' not in clean['panes'][1]
+    assert clean['panes'][1]['card_id'] == 71
     raw['panes'] = [{'name': 'incremento_pdf_reference_' + str(i), 'kind': 'pdf_reference',
                      'card_id': i + 1} for i in range(9)]
     assert normalize_workspace(raw) is None

@@ -2,6 +2,23 @@
 
 Changes after **16 September 2026, 09:44 (Europe/Zagreb)**.
 
+## 3 November 2026 — 2026.11.03
+
+Changes since tag **v2026.11.01.1**.
+
+- Keep up to 32 writing drafts in one tabbed pane beside PDF/EPUB readers. Reorder and close tabs, create or open drafts from the tab menu, and restore their order and selected draft with saved workspaces. Each tab retains its text, Undo/Redo history, reading position, appearance, bookmarks, and word-progress state; failed saves keep the draft open.
+- Use a compact, theme-aware writing toolbar with paragraph and heading styles, formatting, links, images, tables, and keyboard shortcuts. Preview adapts to narrow panes, and Markdown or standalone HTML export includes the current draft even before autosave completes. An explicit translation action opens a reviewed passage in Google Translate through the selected Companion browser.
+- Open the current review card's original parent in a read-only sidebar using the compact Parent icon. Parent context follows the saved extraction origin or Knowledge Tree parent while preserving the current card and question/answer side; stale commands and profile changes clear the preview.
+- Limit automatic study navigation and the floating priority badge to cards using Incremento, preserving ordinary Anki card layouts. Explicit resource linking remains available from the card menu.
+- Add **Last added** sorting to the Document Bookshelf, with newest or oldest documents first.
+- Prevent duplicate PDF text-mark rendering after annotation synchronization and note edits. Saved highlights, underlines, squiggles, dashed/dotted underlines, and strikeouts remain editable, and small PDF coordinate differences no longer create spurious annotation conflicts.
+- Stage full-backup profile copies, Anki packages, database snapshots, and ZIPs on the selected destination's filesystem, including external drives and MCP exports. Keep previous backups intact on failure and document temporary-space requirements and interrupted-export cleanup.
+- Share PDF/EPUB import controls, remove obsolete helper paths, refresh English, Croatian, and Simplified Chinese UI catalogs, and rebuild shipped browser assets. Correct the parent-context test import for the full-suite import mode.
+
+Restart Anki after updating. Writing tabs are cleared on profile changes; save a workspace to reopen them later. Translation sends only the passage explicitly opened in Google Translate and requires an internet connection.
+
+[Full comparison](https://github.com/BaskovicP/Incremento/compare/v2026.11.01.1...v2026.11.03)
+
 ## 23 October 2026 — PDF references and side-by-side reading
 
 Changes since the 23 October overnight rebuild requested as **00:05 (Europe/Zagreb)**. The retained package is stamped **00:02:37** (`2026.10.23.000237`); all 239 packaged source files match commit `c81c996`.

@@ -124,10 +124,6 @@ def get_mcp_library_path(addon_dir: str, profile: str, kind: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / names[kind]
 
 
-def get_simpletex_credentials_path(addon_dir: str, profile: str) -> Path:
-    return get_user_files_dir(addon_dir, profile) / "simpletex_credentials.json"
-
-
 def get_diagnostics_dir(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "diagnostics"
 

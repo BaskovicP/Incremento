@@ -31,6 +31,56 @@ class Collection:
         return self.notes[nid // 10]
 
 
+@pytest.mark.parametrize(('kind', 'tags', 'fields', 'config', 'expected'), [
+    ('Basic', [], {}, {}, False),
+    ('Cloze', ['biology'], {}, {}, False),
+    ('Basic', [], {'Incremento_Source_Type': '', 'Incremento_Parent_Card_ID': ''}, {}, False),
+    ('Incremento PDF', [], {}, {'topic_card_types': {'pdf_epub': False}}, True),
+    ('Incremento Web', [], {}, {}, True),
+    ('Incremento Audio', [], {}, {}, True),
+    ('Basic', ['ToPiC'], {}, {}, True),
+    ('Basic', ['ItEm'], {}, {}, True),
+    ('Cloze', ['study'], {}, {'add_card_item_tags': ['study']}, True),
+    ('Basic', ['reading'], {}, {'topic_card_tags': ['reading']}, True),
+    ('Basic', [], {'Incremento_Source_Type': 'PDF'}, {}, True),
+    ('Basic', [], {'Incremento_Parent_Card_ID': '7'}, {}, True),
+])
+def test_reviewer_context_distinguishes_incremento_cards_from_normal_notes(
+    tmp_path, kind, tags, fields, config, expected,
+):
+    import study_resources
+    note = Note(kind, Front='Synthetic question', **fields)
+    note.tags = tags
+    col = Collection({1: note})
+    assert study_resources.is_incremento_card(
+        str(tmp_path), 'A', col, col.get_card(1), config=config,
+    ) is expected
+
+
+@pytest.mark.parametrize('association', ['tree', 'document', 'recording', 'legacy_source', 'video_citation'])
+def test_reviewer_context_keeps_linked_standard_cards_and_isolates_profiles(tmp_path, association):
+    import study_resources
+    from document_links import add_document_link
+    root = str(tmp_path)
+    col = Collection({1: Note('Basic', Front='Synthetic question')})
+    if association == 'tree':
+        db.set_knowledge_tree_structure(root, 'A', [
+            dict(card_id=1, parent_card_id=None, node_kind='item', sort_order=0),
+        ])
+    elif association == 'document':
+        add_document_link(root, 'A', source_card_id=1, source_kind='card', target_card_id=7)
+    elif association == 'recording':
+        add_recording_link(root, 'A', dict(kind='card', card_id=1), 8, start=12, label='Passage')
+    elif association == 'legacy_source':
+        db.add_pdf_card_source(root, 'A', 7, 3, 10, excerpt='Passage')
+    else:
+        col.notes[1] = Note('Basic', Front='Synthetic question',
+                            Back='<a onclick="pycmd(\'incremento_open_video:8:12\')">Source</a>')
+    card = col.get_card(1)
+    assert study_resources.is_incremento_card(root, 'A', col, card, config={})
+    assert study_resources.is_incremento_card(root, 'B', col, card, config={}) is (association == 'video_citation')
+
+
 def test_card_resource_context_uses_the_note_title_without_rendered_reader_instructions(tmp_path):
     note = Note('Incremento PDF', Title='Statistics textbook', Front='PDF open in sidebar · select text to fill fields')
     result = load_card_resources(str(tmp_path), 'A', Collection({1: note}), 1)

@@ -2653,3 +2653,143 @@ msgstr "Incremento MCP document imports"
 
 msgid "mcp_undo_creation_reverse"
 msgstr "Incremento MCP creation reversal"
+
+#. Writing publishing workspace
+msgid "writing_draft_label"
+msgstr "Draft · Markdown"
+
+#. Writing publishing workspace
+msgid "writing_style"
+msgstr "Style"
+
+#. Writing publishing workspace
+msgid "writing_paragraph"
+msgstr "Paragraph"
+
+#. Writing publishing workspace
+msgid "writing_heading_one"
+msgstr "Heading 1"
+
+#. Writing publishing workspace
+msgid "writing_heading_two"
+msgstr "Heading 2"
+
+#. Writing publishing workspace
+msgid "writing_heading_three"
+msgstr "Heading 3"
+
+#. Writing publishing workspace
+msgid "writing_undo"
+msgstr "Undo"
+
+#. Writing publishing workspace
+msgid "writing_redo"
+msgstr "Redo"
+
+#. Writing publishing workspace
+msgid "writing_strike"
+msgstr "Strikethrough"
+
+#. Writing publishing workspace
+msgid "writing_inline_code"
+msgstr "Inline code"
+
+#. Writing publishing workspace
+msgid "writing_table"
+msgstr "Table"
+
+#. Writing publishing workspace
+msgid "writing_insert"
+msgstr "Insert"
+
+#. Writing publishing workspace
+msgid "writing_more"
+msgstr "More"
+
+#. Writing publishing workspace
+msgid "writing_placeholder_text"
+msgstr "Text"
+
+#. Writing publishing workspace
+msgid "writing_insert_link"
+msgstr "Link"
+
+#. Writing publishing workspace
+msgid "writing_insert_image"
+msgstr "Image from URL…"
+
+#. Writing publishing workspace
+msgid "writing_url_prompt"
+msgstr "HTTP(S) URL:"
+
+#. Writing publishing workspace
+msgid "writing_reference_label"
+msgstr "Link text / image description:"
+
+#. Writing publishing workspace
+msgid "writing_invalid_url"
+msgstr "Enter a valid HTTP(S) URL without credentials, whitespace, or angle brackets."
+
+#. Writing publishing workspace
+msgid "writing_export"
+msgstr "Export"
+
+#. Writing publishing workspace
+msgid "writing_export_markdown"
+msgstr "Markdown (.md)…"
+
+#. Writing publishing workspace
+msgid "writing_export_html"
+msgstr "Web page (.html)…"
+
+#. Writing publishing workspace
+msgid "writing_markdown_filter"
+msgstr "Markdown (*.md)"
+
+#. Writing publishing workspace
+msgid "writing_html_filter"
+msgstr "Web page (*.html)"
+
+#. Writing publishing workspace
+msgid "writing_export_failed"
+msgstr "Could not export this draft. The draft is still open."
+
+#. Writing publishing workspace
+msgid "writing_exported"
+msgstr "Draft exported"
+
+#. Writing publishing workspace
+msgid "writing_translate"
+msgstr "Translate…"
+
+#. Writing publishing workspace
+msgid "writing_translate_passage"
+msgstr "Text to translate"
+
+#. Writing publishing workspace
+msgid "writing_translate_open"
+msgstr "Open Google Translate"
+
+#. Writing publishing workspace
+msgid "writing_translate_hint"
+msgstr "Review or edit the text below (1–1,000 characters). Open Google Translate sends this text to Google in your Companion browser and requires internet. Choose the target language there. Your draft stays unchanged."
+
+#. Writing publishing workspace
+msgid "writing_translate_failed"
+msgstr "Could not open Google Translate in the selected Companion browser."
+
+#. Writing tabs
+msgid "writing_tabs"
+msgstr "Writing drafts"
+
+#. Writing tabs
+msgid "writing_add_tab"
+msgstr "New or open writing tab"
+
+#. Writing tabs
+msgid "writing_open_tab"
+msgstr "Open writing…"
+
+#. Writing tabs
+msgid "writing_tab_limit"
+msgstr "Up to {count} writing tabs can stay open. Close a tab before opening another draft."

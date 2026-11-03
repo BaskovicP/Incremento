@@ -2,6 +2,38 @@
 from tests.test_study_navigation_qt import run_scene
 
 
+def test_switching_to_a_normal_card_clears_workspace_and_rejects_late_results():
+    run_scene('''
+        old=pending.pop(0); token=ui._review_token
+        class PlainNote(dict):
+            tags=[]
+            def note_type(self): return dict(name='Basic')
+        note=PlainNote(Front='Normal question', Incremento_Source_Type='')
+        note.fields=list(note.values())
+        card=types.SimpleNamespace(id=42, nid=420, note=lambda: note)
+        mw.col=types.SimpleNamespace(get_card=lambda cid: card, get_note=lambda nid: note)
+        import tempfile
+        storage=tempfile.TemporaryDirectory()
+        ui._ADDON_DIR=storage.name
+        mw.reviewer.card=card; web.setPlainText('Normal question')
+        scripts.clear(); ui.reviewer_shown()
+        assert not pending and not ui._review_token and ui._window is None
+        assert scripts==[ui.reviewer_navigation_clear_script()]
+        count=len(scripts)
+        old.success(dict(documents=[document], recordings=[recording]))
+        bridge('book', token=token)
+        assert len(scripts)==count and ui._window is None
+        assert web.toPlainText()=='Normal question' and web.isEnabled() and bottom.isEnabled()
+        scripts.clear(); mw.reviewer.state='answer'; ui.reviewer_shown()
+        assert scripts==[ui.reviewer_navigation_clear_script()] and not pending
+        mw.reviewer.card=types.SimpleNamespace(id=43, note=lambda: types.SimpleNamespace(
+            tags=['item'], note_type=lambda: dict(name='Basic')))
+        ui.reviewer_shown(); drain()
+        assert ui._review_token and 'incremento-study-navigation' in scripts[-1]
+        storage.cleanup()
+    ''', resolve_availability=False)
+
+
 def test_disabled_workspace_does_not_add_review_ui_or_start_resource_queries():
     run_scene('''
         ui.reset(); pending.clear(); scripts.clear()

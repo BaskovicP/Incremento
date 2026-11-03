@@ -26,7 +26,8 @@ bottom = QtWidgets.QTextEdit('Answer controls')
 mw.setCentralWidget(QtWidgets.QWidget())
 layout = QtWidgets.QVBoxLayout(mw.centralWidget())
 layout.addWidget(web); layout.addWidget(bottom)
-mw.reviewer = types.SimpleNamespace(card=types.SimpleNamespace(id=41), state='question',
+note = types.SimpleNamespace(tags=['item'], note_type=lambda: dict(name='Basic'))
+mw.reviewer = types.SimpleNamespace(card=types.SimpleNamespace(id=41, note=lambda: note), state='question',
     web=web, bottom=types.SimpleNamespace(web=bottom), auto_advance_enabled=True)
 advances = []
 mw.reviewer.auto_advance_if_enabled = lambda: advances.append(mw.reviewer.auto_advance_enabled)

@@ -156,6 +156,9 @@ def reviewer_navigation_clear_script():
     """Remove our presentation without re-rendering Anki's live card document."""
     return """
 (() => {
+  const parentContext = document.getElementById('incremento-parent-context');
+  const nav = document.getElementById('incremento-study-navigation');
+  if (parentContext && nav?.contains(parentContext)) nav.before(parentContext);
   for (const id of ['incremento-study-resources', 'incremento-study-navigation',
                     'incremento-study-card-resources', 'incremento-study-navigation-style']) {
     document.getElementById(id)?.remove();
@@ -178,6 +181,7 @@ def reviewer_navigation_script(routes, label, *, workspace=None):
                               workspace=workspace, colors=NAVIGATION_COLORS))
     return build_reviewer_button_style_js() + """
 (() => {
+  const parentContext = document.getElementById('incremento-parent-context');
   document.getElementById('incremento-study-resources')?.remove();
   document.getElementById('incremento-study-navigation')?.remove();
   const data = %s;
@@ -239,6 +243,7 @@ def reviewer_navigation_script(routes, label, *, workspace=None):
     button.onclick = () => pycmd(route.command);
     steps.appendChild(button);
   }
+  if (parentContext) steps.appendChild(parentContext);
   if (data.workspace?.link_action) {
     const action = document.createElement('button');
     action.id = 'incremento-study-link-resources';

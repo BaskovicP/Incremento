@@ -825,3 +825,22 @@ def test_companion_browser_diagnostics_allow_only_the_two_browser_names() -> Non
         snapshot = diagnostics.sanitize_config({"companion_browser": private})
         assert snapshot["settings"]["companion_browser"]["redacted"] is True
         assert private not in json.dumps(snapshot)
+
+
+def test_support_bundle_does_not_contain_saved_credentials(tmp_path):
+    profile = tmp_path / 'user_files' / 'A'
+    profile.mkdir(parents=True)
+    (profile / 'simpletex_credentials.json').write_text(
+        json.dumps({'version': 1, 'app_id': 'personal-app', 'app_secret': 'private-secret'}))
+    recorder = diagnostics.DiagnosticRecorder(str(tmp_path), 'A')
+    destination = tmp_path / 'support.zip'
+    try:
+        diagnostics.build_support_bundle(destination, addon_dir=str(tmp_path), profile='A', recorder=recorder,
+            config={}, default_config={}, environment={}, runtime_state={})
+        with zipfile.ZipFile(destination) as archive:
+            assert not any('simpletex_credentials' in name for name in archive.namelist())
+            contents = b'\n'.join(archive.read(name) for name in archive.namelist())
+            assert b'private-secret' not in contents
+            assert b'personal-app' not in contents
+    finally:
+        recorder.close()

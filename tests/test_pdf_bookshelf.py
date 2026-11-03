@@ -251,6 +251,18 @@ def test_bookshelf_priority_order_uses_configured_direction_and_neutral_default(
     assert [e.card_id for e in entries] == [1, 2, 3]
 
 
+@pytest.mark.parametrize("reverse, expected", [(False, [1, 3, 2]), (True, [2, 3, 1])])
+def test_bookshelf_last_added_uses_note_creation_order_for_pdf_and_epub(reverse, expected):
+    entries = [
+        pdf_bookshelf._BookshelfEntry("Zulu", 1, "PDF", note_id=300),
+        pdf_bookshelf._BookshelfEntry("Alpha", 2, "EPUB", note_id=100),
+        pdf_bookshelf._BookshelfEntry("Beta", 3, "PDF", note_id=200),
+    ]
+    result = pdf_bookshelf._sort_bookshelf_entries(entries, "last_added", reverse=reverse)
+    assert [e.card_id for e in result] == expected
+    assert [e.card_id for e in entries] == [1, 2, 3]
+
+
 @pytest.mark.parametrize("mode", ["due", "reviews", "annotations"])
 def test_bookshelf_metric_order_is_numeric_with_stable_title_ties(mode):
     entries = [pdf_bookshelf._BookshelfEntry(title, cid, kind) for title, cid, kind in [
@@ -308,8 +320,9 @@ def test_bookshelf_sort_controls_apply_background_results_and_ignore_stale_callb
             return {1: 0, 2: 10, 3: 2}
         shelf.load_document_statistics = load
         shelf.configured_priority_lower_is_more_important = lambda: True
-        entries = [shelf._BookshelfEntry(title, cid, kind, priority=priority) for title, cid, kind, priority in [
-            ('Alpha', 1, 'PDF', 90), ('Beta', 2, 'EPUB', 10), ('Gamma', 3, 'PDF', None),
+        entries = [shelf._BookshelfEntry(title, cid, kind, priority=priority, note_id=nid)
+                   for title, cid, kind, priority, nid in [
+            ('Alpha', 1, 'PDF', 90, 300), ('Beta', 2, 'EPUB', 10, 100), ('Gamma', 3, 'PDF', None, 200),
         ]]
         dialog = shelf._DocumentBookshelfDialog(addon_dir='/synthetic', entries=entries)
         assert dialog._sort_combo.isVisibleTo(dialog), 'Sort by must be visible without opening More filters'
@@ -321,6 +334,17 @@ def test_bookshelf_sort_controls_apply_background_results_and_ignore_stale_callb
             return [dialog._list.item(i).data(shelf.Qt.ItemDataRole.UserRole).card_id
                     for i in range(dialog._list.count())]
         assert pending == []
+        index = dialog._sort_combo.findData('last_added')
+        assert index >= 0 and dialog._sort_combo.itemText(index) == 'Last added (newest first)'
+        choose('last_added')
+        assert ids() == [1, 3, 2] and pending == []
+        assert dialog._reverse_sort_cb.isEnabled() and not dialog._shuffle_button.isEnabled()
+        dialog._reverse_sort_cb.setChecked(True)
+        assert ids() == [2, 3, 1]
+        dialog._reverse_sort_cb.setChecked(False)
+        dialog._kind_combo.setCurrentIndex(dialog._kind_combo.findData('PDF'))
+        assert ids() == [1, 3]
+        dialog._kind_combo.setCurrentIndex(dialog._kind_combo.findData('ALL'))
         choose('priority')
         assert ids() == [2, 3, 1]
         dialog._reverse_sort_cb.setChecked(True)

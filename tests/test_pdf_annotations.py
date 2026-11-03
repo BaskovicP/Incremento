@@ -109,6 +109,54 @@ def test_text_mark_style_round_trips_native_pdf_and_note_edits(tmp_path, style, 
     assert len(native_rows(filename)) == 1
 
 
+@pytest.mark.parametrize('style', ['highlight', 'underline', 'squiggly', 'dashed', 'dotted', 'strikeout'])
+def test_reader_copy_excludes_text_marks_painted_by_the_interactive_layer(tmp_path, style):
+    filename = pdf_file(tmp_path)
+    add_highlight(str(tmp_path), PROFILE, CARD, {**local_highlight(), 'style': style})
+
+    result = sync(tmp_path)
+
+    assert len(load_highlights(str(tmp_path), PROFILE, CARD)) == 1
+    assert len(native_rows(filename)) == 1, 'the saved PDF must retain its editable annotation'
+    assert native_rows(result['reader_path']) == [], 'the viewer must paint each mark only once'
+
+
+def test_sync_rebuilds_legacy_reader_copy_without_rewriting_saved_annotations(tmp_path):
+    filename = pdf_file(tmp_path)
+    add_highlight(str(tmp_path), PROFILE, CARD, {**local_highlight(), 'style': 'underline'})
+    first = sync(tmp_path)
+    # Older display copies retained native underlines beneath the SVG overlay.
+    shutil.copy2(filename, first['reader_path'])
+    before = filename.read_bytes()
+
+    result = sync(tmp_path)
+
+    assert result['reader_changed'] is True
+    assert result['changed'] is False
+    assert filename.read_bytes() == before
+    assert len(load_highlights(str(tmp_path), PROFILE, CARD)) == 1
+    assert native_rows(result['reader_path']) == []
+
+
+def test_adding_a_note_after_pdf_coordinate_rounding_keeps_one_highlight(tmp_path):
+    filename = pdf_file(tmp_path)
+    offset = 5 / 137
+    highlight = {**local_highlight(''), 'rects': [
+        {'x': 40 + offset, 'y': 65 + offset, 'w': 150 + offset, 'h': 18 + offset}]}
+    add_highlight(str(tmp_path), PROFILE, CARD, highlight)
+    sync(tmp_path)
+    update_highlight_note(str(tmp_path), PROFILE, CARD, highlight['id'], 'My annotation')
+
+    for _ in range(3):
+        result = sync(tmp_path)
+        rows = load_highlights(str(tmp_path), PROFILE, CARD)
+        assert result['conflicts'] == 0
+        assert [row['id'] for row in rows] == [highlight['id']]
+        assert rows[0]['note'] == 'My annotation'
+        assert len(native_rows(filename)) == 1
+        assert native_rows(filename)[0]['note'] == 'My annotation'
+
+
 @pytest.mark.parametrize('note,markup', [
     ('Bold note', '<p><b>Bold</b> note</p>'),
     ('', '<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAD0lEQVR4nGP4z8DA8J8BAAf/Af8Bf4mnAAAAAElFTkSuQmCC" width="2" height="1" alt=""></p>'),

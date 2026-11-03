@@ -61,7 +61,6 @@ try:
     from .reader_links import (
         normalize_reader_anchor_scroll_ratio,
         open_external_reader_link,
-        pdf_context_card_html,
         pdf_snapshot_reference_html,
         pdf_text_context_reference_html,
         reader_anchor_command_from_html,
@@ -73,7 +72,6 @@ except ImportError:
     from reader_links import (  # type: ignore
         normalize_reader_anchor_scroll_ratio,
         open_external_reader_link,
-        pdf_context_card_html,
         pdf_snapshot_reference_html,
         pdf_text_context_reference_html,
         reader_anchor_command_from_html,
@@ -1605,43 +1603,6 @@ def pdf_citation(
         f"<a onclick=\"{onclick}\" "
         f'style="cursor:pointer; color:#4a90d9; text-decoration:none;">'
         f'{escape(t("reader_pdf_citation_label", page=display_page, title=name))}</a>'
-    )
-
-
-def pdf_context_html_for_citation(
-    citation_html: object,
-    *,
-    excerpt_text: object = "",
-) -> str:
-    """Build syncable card context from one validated local PDF citation."""
-    command = reader_anchor_command_from_html(citation_html)
-    prefix = "incremento_open_pdf_ref:"
-    if command is None or not command.startswith(prefix):
-        return ""
-    try:
-        payload = json.loads(command[len(prefix) :])
-        card_id = int(payload["card_id"])
-        page = int(payload["page"])
-    except (KeyError, TypeError, ValueError, OverflowError, json.JSONDecodeError):
-        return ""
-    try:
-        page_text = _pdf_page_text(
-            _ADDON_DIR,
-            _active_profile(),
-            card_id,
-            page,
-            max_chars=250_000,
-        )
-    except Exception:
-        return ""
-    excerpt = str(payload.get("excerpt") or "").strip()
-    if not excerpt:
-        excerpt = _normalize_pdf_reference_excerpt(str(excerpt_text or ""))
-    return pdf_context_card_html(
-        page_text,
-        excerpt=excerpt,
-        scroll_ratio=payload.get("scroll_ratio"),
-        context_rows=configured_pdf_context_rows(),
     )
 
 

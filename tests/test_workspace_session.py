@@ -113,6 +113,43 @@ def test_workspace_writing_resolution_rejects_missing_files_without_creating_the
     assert not list(tmp_path.rglob('*.md'))
 
 
+def test_workspace_restores_writing_tabs_in_order_and_returns_to_the_saved_active_draft(tmp_path, monkeypatch, module):
+    monkeypatch.setattr(module, '_ADDON_DIR', str(tmp_path))
+    class Note(dict):
+        def note_type(self): return {'name': 'Incremento Writing'}
+    notes = {cid: Note(Title=str(cid), Markdown_File=f'writing/{cid}.md') for cid in (11, 22, 33)}
+    root = tmp_path / 'user_files' / 'A' / 'writing'
+    root.mkdir(parents=True)
+    for cid in notes:
+        (root / f'{cid}.md').write_text('Existing writing')
+    col = SimpleNamespace(get_card=lambda cid: SimpleNamespace(nid=cid), get_note=lambda nid: notes[nid])
+    session = module.WorkspaceSession(SimpleNamespace(), lambda: 'A')
+    entry = {'kind': 'writing', 'card_id': 22, 'name': 'incremento_writing_dock', 'writing_tabs': [11, 22, 33]}
+    result = session._resolve(col, 'A', entry)
+    opened = []
+    reader = SimpleNamespace(show_writing_in_dock=lambda cid, *a, **kw: opened.append(cid),
+        _writing_dock=SimpleNamespace(setObjectName=Mock()), set_keep_open=Mock(), reorder_writing_tabs=Mock())
+    monkeypatch.setattr(session, '_module', lambda kind: reader)
+    session._open(entry, result)
+    assert opened == [11, 22, 33, 22]
+    reader.reorder_writing_tabs.assert_called_once_with([11, 22, 33])
+
+
+def test_workspace_skips_missing_inactive_writing_tabs_but_keeps_the_saved_active_draft(tmp_path, monkeypatch, module):
+    monkeypatch.setattr(module, '_ADDON_DIR', str(tmp_path))
+    class Note(dict):
+        def note_type(self): return {'name': 'Incremento Writing'}
+    root = tmp_path / 'user_files' / 'A' / 'writing'
+    root.mkdir(parents=True)
+    (root / '22.md').write_text('Existing writing')
+    notes = {22: Note(Title='22', Markdown_File='writing/22.md')}
+    col = SimpleNamespace(get_card=lambda cid: SimpleNamespace(nid=cid), get_note=lambda nid: notes[nid])
+    session = module.WorkspaceSession(SimpleNamespace(), lambda: 'A')
+    entry = {'kind': 'writing', 'card_id': 22, 'name': 'incremento_writing_dock', 'writing_tabs': [11, 22]}
+    result = session._resolve(col, 'A', entry)
+    assert result['writing_tabs'] == [(22, {'title': '22', 'relpath': 'writing/22.md'})]
+
+
 def test_workspace_pdf_capture_fails_if_its_document_changes_before_the_reply(monkeypatch, module):
     timer = Mock()
     monkeypatch.setattr(module, 'QTimer', lambda parent: timer)

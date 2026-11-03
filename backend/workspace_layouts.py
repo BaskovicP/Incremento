@@ -4,6 +4,7 @@ import binascii
 import math
 
 MAX_WORKSPACES = 20
+MAX_WRITING_TABS = 32
 MAX_NAME = 80
 _MAX_STATE = 262_144
 _KINDS = ('pdf', 'epub', 'writing', 'video', 'web', 'local_file', 'add_card')
@@ -80,6 +81,11 @@ def normalize_workspace(value):
         item = {'name': name, 'kind': kind}
         if kind != 'add_card':
             item['card_id'] = cid
+        tabs = pane.get('writing_tabs')
+        if (kind == 'writing' and isinstance(tabs, list) and 1 <= len(tabs) <= MAX_WRITING_TABS
+                and all(type(tab) is int and 1 <= tab <= 2**53 - 1 for tab in tabs)
+                and len(set(tabs)) == len(tabs) and cid in tabs):
+            item['writing_tabs'] = list(tabs)
         if type(pane.get('focused')) is bool:
             item['focused'] = pane['focused']
         for key, minimum, maximum in (('page', 1, 1_000_000), ('section', 0, 100_000), ('offset', -1, 10_000_000)):

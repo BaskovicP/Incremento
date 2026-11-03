@@ -7,6 +7,8 @@ def test_native_compatible_backup_restore_can_itself_be_undone_after_restart(tmp
     native(
         tmp_path,
         """
+        import tempfile
+        from unittest.mock import patch
         from backend.restore_bundle import precheck_backup
         settings_store={'mcp_enabled':True,'mcp_allow_writes':True}
         def save_settings(value):settings_store.clear();settings_store.update(value)
@@ -17,7 +19,18 @@ def test_native_compatible_backup_restore_can_itself_be_undone_after_restart(tmp
         def apply(action,**parameters):
             p=call('preview_operation',action=action,parameters=parameters)
             return call('apply_advanced_plan',plan_id=p['plan_id'])
-        exported=apply('backup_export',path=str(path))
+        workspaces=[]
+        temporary_directory=tempfile.TemporaryDirectory
+        def track_workspace(*args,**kwargs):
+            workspace=temporary_directory(*args,**kwargs)
+            if kwargs.get('prefix')=='incremento-mcp-backup-':
+                workspaces.append(Path(workspace.name))
+            return workspace
+        with patch.object(tempfile,'TemporaryDirectory',track_workspace):
+            exported=apply('backup_export',path=str(path))
+        assert len(workspaces)==1
+        assert workspaces[0].parent==path.parent
+        assert not workspaces[0].exists()
         assert precheck_backup(path,target_profile='A').card_count==1
         note['Front']='After backup';col.update_note(note)
         restored=apply('backup_restore',path=str(path))

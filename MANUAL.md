@@ -615,7 +615,7 @@ To correct an imported PDF title, right-click its tile and choose **Edit PDF nam
 
 The separate tag field accepts exact Anki tag names separated by spaces, commas, or semicolons. Start typing any part of a tag to see case-insensitive suggestions, or select **Browse tags** to discover tags already used by bookshelf documents; frequently used tags appear first, and choosing one completes only the tag currently being typed. Choose **Any tag (OR)** to include documents carrying at least one requested tag, or **All tags (AND)** to require every requested tag; tag matching ignores uppercase/lowercase and combines with the title and document-type filters. PDF tiles use their stored first-page cover; EPUB tiles use their stored book cover. Every tile has a bold, theme-aware title underneath and opens the appropriate reader with one left-click. Suspended document cards remain visible because the shelf is a document opener rather than a study queue. For older PDFs without a stored cover, Incremento renders a temporary first-page preview in the background. A document whose cover or source is unavailable keeps a placeholder instead of blocking the dialog.
 
-Use **Sort by** to order the shelf by **Title**, **Priority**, **Due cards**, **Reviews done**, **Annotations**, or **Random**. **Reverse order** flips the selected order; **Shuffle again** generates a fresh random order. Random order stays stable while you change title, format, tag, or duplicate filters. Priority follows your configured lower/higher-is-more-important setting, with unset priorities treated as 50. Due cards counts distinct live linked cards currently due in Anki, excluding new, suspended, and buried cards. Reviews done adds Anki's review counters for the document card and its distinct linked cards. Both include nested knowledge-tree attachments. Annotations counts saved highlight/annotation records, including snapshots; a note on a highlight does not count separately. The selected metric appears beneath each title and in its tooltip. Statistics load in the background when first requested and are cached until the shelf closes; reopen it after reviewing or annotating to refresh the counts.
+Use **Sort by** to order the shelf by **Title**, **Last added**, **Priority**, **Due cards**, **Reviews done**, **Annotations**, or **Random**. Last added shows the newest Anki document notes first; reverse it for oldest first. **Reverse order** flips the selected order; **Shuffle again** generates a fresh random order. Random order stays stable while you change title, format, tag, or duplicate filters. Priority follows your configured lower/higher-is-more-important setting, with unset priorities treated as 50. Due cards counts distinct live linked cards currently due in Anki, excluding new, suspended, and buried cards. Reviews done adds Anki's review counters for the document card and its distinct linked cards. Both include nested knowledge-tree attachments. Annotations counts saved highlight/annotation records, including snapshots; a note on a highlight does not count separately. The selected metric appears beneath each title and in its tooltip. Statistics load in the background when first requested and are cached until the shelf closes; reopen it after reviewing or annotating to refresh the counts.
 
 Main controls include:
 
@@ -808,7 +808,10 @@ To keep highlights visible without their on-page delete X, uncheck **Settings �
 
 With PyMuPDF 1.26 or newer installed, opening a PDF or editing its annotations
 syncs highlights and notes into the managed PDF as standard, editable PDF
-annotations. The reader opens immediately from its latest display copy while
+annotations. Each text mark appears once in the reader, including after adding
+or editing its note; highlights, underlines, squiggles, dashed/dotted underlines,
+and strikeouts remain editable in the saved PDF.
+The reader opens immediately from its latest display copy while
 this interchange continues in the background; switching to another PDF cancels
 obsolete work for the previous document. Existing PDF highlights, underlines,
 squiggles, strikeouts, sticky notes, free-text boxes, rectangles, and circles
@@ -852,6 +855,10 @@ Legacy citation highlights without page rectangles stay in Incremento only.
 ### Card → documents → recordings
 
 **Settings → Review → Use study workspace during review** controls this presentation and defaults to on. Turn it off for Anki’s normal card layout, without the resource tabs or linked-resource summary. Saving Settings applies the choice immediately and returns an open study visit to the same card and question/answer side. Saved links are retained; **Study resources** in the card’s right-click menu still opens them explicitly. Turning the workspace back on restores its review navigation without answering or re-rendering the card. Normal-card mode also skips automatic resource availability queries.
+
+The review tabs, tree controls, and floating priority badge appear only on cards using Incremento: its note types, configured topics/items, or cards with saved Incremento provenance, tree membership, or resource links. Ordinary Anki cards keep their normal layout on both sides. **Study resources** remains available from the right-click menu to link resources explicitly.
+
+The compact **Parent** icon beside the study tabs turns green when the card has an available parent and stays gray and disabled otherwise. Hover over it to see the parent's title; click it to read the original topic or card's visible fields in a read-only sidebar while keeping the current review card and answer side in place. With the study workspace turned off, the same small icon appears above the card. The saved extraction parent takes precedence; older cards can use their current Knowledge Tree parent. Deleted parents show their saved title in the unavailable tooltip. The sidebar closes and clears when you advance to another card, leave review, or switch profiles. Parent previews preserve basic text formatting; scripts, embedded players, and external resources are not loaded.
 
 The study view keeps the current review card and its question/answer state in place. **Card**, **PDFs**, and **Videos** provide one view per media type, with inline file counts. **Documents** replaces PDFs when EPUBs are linked; **Audio** replaces Videos when all linked recordings are audio. Counts describe distinct available files, so several passages from one PDF still count as one document. Empty or unavailable views remain reachable for linking and repair. Availability is checked in the background; **Checking…**, **Could not check**, and **Retry** distinguish a pending or failed check from an empty list.
 
@@ -1025,15 +1032,25 @@ In **Incremento → Settings → Review**, you can choose a default PDF appearan
 
 ### Writing cards
 
-Writing cards open a markdown editor and live preview side by side.
+Writing cards open a compact Markdown workspace. Draft titles appear in tabs above a single formatting row, leaving most of the pane for your writing. **Preview** toggles the rendered view; it stays beside the draft at normal pane widths and moves below it only when the pane is narrow. Controls keep the same compact appearance with either Anki's custom or native widget style. Markdown remains the saved format; opening a draft preserves its original source.
 
 Features:
 
 - autosave while typing
 - markdown file stored in `user_files/<ProfileName>/writing/`
 - live rendered preview
-- **Open Folder** button
+- **Style**: paragraph and three heading levels; styles apply to the complete current or selected paragraphs
+- bold, italic, strikethrough, lists, quotes, inline code, code blocks, dividers, and tables
+- **Link** and **Insert → Image from URL…** for HTTP(S) links and image references; remote images remain URLs in Markdown and can load when the exported HTML is opened in a browser
+- **Export**: save the live draft as Markdown or a standalone HTML page, including changes still waiting for autosave
+- **More**: translation, appearance, markers, bookmarks, backups, and **Open Folder**
 - text selection transfer into the Add Card dock
+
+Use **More → Translate…** to review or edit the selected text (or the whole draft if nothing is selected), then choose **Open Google Translate**. This explicitly sends the displayed passage to Google in the selected Companion browser and requires an internet connection. Passages are limited to 1,000 characters and the browser URL size; shorten the passage if the button is disabled. Choose the target language in Google Translate. Translation does not replace the draft automatically.
+
+Undo/Redo buttons follow the editor's undo history. **Cmd/Ctrl+B**, **Cmd/Ctrl+I**, and **Cmd/Ctrl+K** format bold, italic, and links while focus is in the writing pane. Existing Alt-based writing shortcuts still work. Toolbar menus keep less frequent tools reachable in narrow panes; scroll the formatting row horizontally when necessary. **Preview** stays outside that scrolling row, and **More → Export** keeps export available when the separate Export button no longer fits. Resizing keeps your saved Preview choice.
+
+The compact footer shows saving status, the selected word-count scope, and **Keep open while studying**. A failed autosave replaces the saved indicator so an earlier successful save cannot hide a later failure. In narrow panes, hover the save status for cursor, zoom, marker, and wrap details. The workspace follows Anki's light or dark theme.
 
 Writing settings let you define default wrap mode, focus mode, preview visibility, current-line highlighting, bookmark restore, automatic backups, the default progress scope, and the word-count mode.
 
@@ -1057,7 +1074,13 @@ Drag an Incremento pane by its **title bar**. A blue placement outline appears w
 
 While a PDF or EPUB is open, choose **Incremento → Workspace → Write beside document…**. Search for a writing card and choose **Open beside**. **New writing…** opens the existing writing-card creation dialog; after creating the card, select it in the list. Loading the list happens in the background. The picker shows up to 2,000 writing cards, including suspended cards; Quick Open Content remains available for larger libraries.
 
-The writing pane opens beside the reader with **Keep open while studying** enabled. If the PDF or EPUB is in focus mode, it stays in Anki’s central reading area while writing takes the right side. It keeps the chosen writing card visible when you review other cards or leave review. Uncheck this option to resume following writing cards in the reviewer; closing the writing pane also turns it off. Only one writing card is open at a time. Opening another writing card explicitly switches the editor. Autosave, backups, per-card cursor position, and word progress continue to work. Reopening an already open writing card, including a hidden pane, preserves its live text and session word baseline.
+The writing pane opens beside the reader with **Keep open while studying** enabled. If the PDF or EPUB is in focus mode, it stays in Anki’s central reading area while writing takes the right side. It keeps the chosen writing card visible when you review other cards or leave review. Uncheck this option to resume following writing cards in the reviewer; closing the writing pane also turns it off.
+
+Writing drafts share **one tabbed pane** beside the existing PDF/EPUB readers. Open another writing card to add a tab, or use **+ → New writing… / Open writing…**. These tab-menu actions keep the current reader layout. Click tabs to switch drafts, drag tabs to reorder them, and use a tab’s close button to close that draft. Opening an already open card selects its existing tab. Up to 32 drafts can remain open. Closing the last tab hides the writing pane; closing a tab never deletes its card or Markdown file.
+
+Each tab preserves its live text, Undo/Redo history, cursor and scroll position, appearance, bookmarks, progress scope, and session word baseline. Switching or closing the active tab saves it first; a failed save keeps that draft active. Closing an inactive tab leaves the current draft alone. Reopening a closed tab starts a new per-card writing session from its saved text. Closing and reopening the pane keeps its tabs while Anki is running; changing profiles clears all tabs. Autosave and backups remain per profile and per card. External MCP edits require closing the corresponding writing tab, including inactive tabs.
+
+**Save workspace…** includes the open writing tabs, their order, and the selected draft. Loading that workspace reopens the saved drafts alongside any existing open tabs and selects the saved active draft. Missing inactive drafts are skipped with the workspace’s missing-content notice. Legacy saved workspaces still open their single saved writing card.
 
 Use **Incremento → Workspace** to organize the open Incremento panes:
 
@@ -1490,8 +1513,9 @@ In the same Review tab, **Show reviewer priority badge on** has separate **Topic
 and **Item and other cards** checkboxes. Both are on by default. These control
 the whole floating reviewer badge (priority and any available A-factor, saved
 browser time, or custom schedule), not the priority value or scheduling itself.
-Topic classification follows your Topics settings; every non-topic card uses
-the Item and other option. Turning a type off also hides the badge immediately
+Topic classification follows your Topics settings; other Incremento cards use
+the Item and other option. Ordinary Anki cards always hide the badge and its
+extra spacing. Turning a type off also hides the badge immediately
 when that type is currently on screen.
 
 ### Priority while creating a card from scratch
@@ -1609,7 +1633,7 @@ The full backup is private and intentionally contains your cards, media, databas
 
 The APKG and `user_files/<ProfileName>/` snapshot always refer to the same active profile. Restoring this archive does not require deleting other existing Incremento profile folders.
 
-Incremento copies the database through a dedicated read-only connection using SQLite's backup API and checks both the source and the completed copy. This avoids false search-index errors from a reused background connection; a failed integrity check still stops the export and preserves the previous backup. It writes and validates a temporary ZIP before atomically replacing the selected destination. Automatic exports keep that work file outside the selected folder when the filesystem permits, so cloud-sync software sees only the completed slot. If the active profile changes during export, the operation stops rather than mixing data from two profiles.
+Incremento copies the database through a dedicated read-only connection using SQLite's backup API and checks both the source and the completed copy. This avoids false search-index errors from a reused background connection; a failed integrity check still stops the export and preserves the previous backup. It writes and validates a temporary ZIP before atomically replacing the selected destination. The temporary Anki package, database snapshot, and full profile copy use the same staging folder as that ZIP, so exporting to an external drive keeps this large staging work on the external drive. Automatic exports keep the work files outside the selected folder only when the system temporary folder is on the same filesystem, so cloud-sync software sees only the completed slot. Allow space for the profile copy, package and database snapshot plus the new ZIP, alongside any existing backup. Normal completion and handled errors remove staging files; after a crash or forced quit, close Anki before inspecting and removing abandoned `incremento_export_*` folders or `.incremento-backup-*.zip` files. Older versions left the profile copy in the system temporary folder (usually `/tmp` on Linux), even for external-drive exports; see `EXPORTING.md` for cleanup guidance. If the active profile changes during export, the operation stops rather than mixing data from two profiles.
 
 Choose **Incremento → Export Full Backup → Automatic Backups…** (or the separate **Configure Automatic Full Backups…** menu item) to select a folder, enable backups for the current Anki profile, and choose **when the profile opens**, **when it closes**, and/or an interval in hours while Anki stays open (0 turns the interval off). **Export Now…** keeps the one-time save flow. Choose how many automatic versions to keep, from 1 to 20 (5 by default). Incremento creates slot files until that count is reached; after that, each successful, validated backup atomically replaces the oldest automatic ZIP at the same path. For example, with five selected, the sixth backup replaces the first. Older timestamp-named automatic ZIPs count toward the limit and are reused instead of creating a second set of slot files. The first timed backup runs when due; reopening with the on-open option selected creates a new backup. Automatic backups run in the background with a progress window that explains why Anki is temporarily unavailable and shows the current stage. Progress and failures also appear in Activity Center. Collection operations may briefly queue behind the export. If close backup is selected, Anki waits for the backup attempt to finish before unloading the profile, so shutdown or profile switching may take longer. An existing backup also finishes before the profile unloads. A failed close backup is flagged when that profile next opens. Each new ZIP is verified before an existing automatic ZIP is replaced or excess automatic ZIPs for that profile are rotated; manual exports and other profiles' backups are untouched. A missing or inaccessible destination produces a notification rather than switching to another folder.
 
@@ -1816,7 +1840,7 @@ During webpage conversion, **Stop import** cancels the attempt and keeps the URL
 
 When you load PDFs into the import window, a background name check flags **Possible duplicate** rows and initially unchecks them. It compares existing PDF titles and managed filenames case-insensitively, and warns about matching names among queued files. Inspect the existing document before ticking **Add** to import a flagged file anyway. This is a name warning, not a comparison of file contents.
 
-The **Sort by**, **Reverse order**, and **Shuffle again** controls are always visible above the books, without opening **More filters**. Sorting offers title, priority, due linked-card count, completed-review count, annotation count, and random order. Use **Reverse order** for the opposite direction or **Shuffle again** to browse a fresh random arrangement. Filtering preserves the current random arrangement. Counts load on demand in the background; the selected count appears on each tile. Reopening the shelf refreshes these counts.
+The **Sort by**, **Reverse order**, and **Shuffle again** controls are always visible above the books, without opening **More filters**. Sorting offers title, last added (newest document notes first), priority, due linked-card count, completed-review count, annotation count, and random order. Use **Reverse order** for the opposite direction or **Shuffle again** to browse a fresh random arrangement. Filtering preserves the current random arrangement. Counts load on demand in the background; the selected count appears on each tile. Reopening the shelf refreshes these counts.
 
 In **Covers**, each cover keeps its full aspect ratio. Titles, list labels, saved reasons, and sort counts appear in a separate caption area beneath the image, with a clear gap.
 

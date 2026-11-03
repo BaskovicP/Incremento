@@ -224,3 +224,27 @@ def test_manual_backup_stages_in_selected_destination(tmp_path):
     )
 
     assert selected == destination
+
+
+def test_automatic_backup_keeps_staging_on_external_destination_filesystem(
+    tmp_path, monkeypatch,
+):
+    destination = tmp_path / "external-drive"
+    system_temp = tmp_path / "internal-temp"
+    destination.mkdir()
+    system_temp.mkdir()
+    real_stat = type(system_temp).stat
+
+    def different_filesystem(path, *args, **kwargs):
+        result = real_stat(path, *args, **kwargs)
+        if path == system_temp:
+            fields = list(result)
+            fields[2] += 1  # st_dev: simulate temp storage on the internal drive.
+            return os.stat_result(fields)
+        return result
+
+    monkeypatch.setattr(type(system_temp), "stat", different_filesystem)
+
+    assert backup_schedule.backup_staging_directory(
+        destination, automatic=True, system_temp=system_temp,
+    ) == destination

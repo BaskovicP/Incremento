@@ -2355,3 +2355,143 @@ msgstr "MCP uvoz dokumenata u Incremento"
 
 msgid "mcp_undo_creation_reverse"
 msgstr "MCP poništavanje stvaranja u Incrementu"
+
+#. Writing publishing workspace
+msgid "writing_draft_label"
+msgstr "Nacrt · Markdown"
+
+#. Writing publishing workspace
+msgid "writing_style"
+msgstr "Stil"
+
+#. Writing publishing workspace
+msgid "writing_paragraph"
+msgstr "Odlomak"
+
+#. Writing publishing workspace
+msgid "writing_heading_one"
+msgstr "Naslov 1"
+
+#. Writing publishing workspace
+msgid "writing_heading_two"
+msgstr "Naslov 2"
+
+#. Writing publishing workspace
+msgid "writing_heading_three"
+msgstr "Naslov 3"
+
+#. Writing publishing workspace
+msgid "writing_undo"
+msgstr "Poništi"
+
+#. Writing publishing workspace
+msgid "writing_redo"
+msgstr "Ponovi"
+
+#. Writing publishing workspace
+msgid "writing_strike"
+msgstr "Precrtano"
+
+#. Writing publishing workspace
+msgid "writing_inline_code"
+msgstr "Kod u retku"
+
+#. Writing publishing workspace
+msgid "writing_table"
+msgstr "Tablica"
+
+#. Writing publishing workspace
+msgid "writing_insert"
+msgstr "Umetni"
+
+#. Writing publishing workspace
+msgid "writing_more"
+msgstr "Više"
+
+#. Writing publishing workspace
+msgid "writing_placeholder_text"
+msgstr "Tekst"
+
+#. Writing publishing workspace
+msgid "writing_insert_link"
+msgstr "Poveznica"
+
+#. Writing publishing workspace
+msgid "writing_insert_image"
+msgstr "Slika s URL-a…"
+
+#. Writing publishing workspace
+msgid "writing_url_prompt"
+msgstr "HTTP(S) URL:"
+
+#. Writing publishing workspace
+msgid "writing_reference_label"
+msgstr "Tekst poveznice / opis slike:"
+
+#. Writing publishing workspace
+msgid "writing_invalid_url"
+msgstr "Unesite valjani HTTP(S) URL bez vjerodajnica, razmaka ili kutnih zagrada."
+
+#. Writing publishing workspace
+msgid "writing_export"
+msgstr "Izvezi"
+
+#. Writing publishing workspace
+msgid "writing_export_markdown"
+msgstr "Markdown (.md)…"
+
+#. Writing publishing workspace
+msgid "writing_export_html"
+msgstr "Web-stranica (.html)…"
+
+#. Writing publishing workspace
+msgid "writing_markdown_filter"
+msgstr "Markdown (*.md)"
+
+#. Writing publishing workspace
+msgid "writing_html_filter"
+msgstr "Web-stranica (*.html)"
+
+#. Writing publishing workspace
+msgid "writing_export_failed"
+msgstr "Izvoz nacrta nije uspio. Nacrt je i dalje otvoren."
+
+#. Writing publishing workspace
+msgid "writing_exported"
+msgstr "Nacrt je izvezen"
+
+#. Writing publishing workspace
+msgid "writing_translate"
+msgstr "Prevedi…"
+
+#. Writing publishing workspace
+msgid "writing_translate_passage"
+msgstr "Tekst za prijevod"
+
+#. Writing publishing workspace
+msgid "writing_translate_open"
+msgstr "Otvori Google prevoditelj"
+
+#. Writing publishing workspace
+msgid "writing_translate_hint"
+msgstr "Pregledajte ili uredite tekst ispod (1–1.000 znakova). Otvori Google prevoditelj šalje ovaj tekst Googleu u pregledniku za Companion i zahtijeva internet. Ondje odaberite ciljni jezik. Vaš nacrt ostaje nepromijenjen."
+
+#. Writing publishing workspace
+msgid "writing_translate_failed"
+msgstr "Nije moguće otvoriti Google prevoditelj u odabranom pregledniku za Companion."
+
+#. Writing tabs
+msgid "writing_tabs"
+msgstr "Nacrti tekstova"
+
+#. Writing tabs
+msgid "writing_add_tab"
+msgstr "Nova ili postojeća kartica teksta"
+
+#. Writing tabs
+msgid "writing_open_tab"
+msgstr "Otvori tekst…"
+
+#. Writing tabs
+msgid "writing_tab_limit"
+msgstr "Može biti otvoreno najviše {count} kartica teksta. Zatvorite karticu prije otvaranja drugog nacrta."

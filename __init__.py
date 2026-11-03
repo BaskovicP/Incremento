@@ -74,7 +74,10 @@ from .backend.video_manager import (
     import_local_video_file,
 )
 from .backend.audio_manager import add_audio_card
-from .backend.study_resources import load_card_hierarchy as _load_card_hierarchy
+from .backend.study_resources import (
+    is_incremento_card as _is_incremento_card,
+    load_card_hierarchy as _load_card_hierarchy,
+)
 from .backend.writing_manager import (
     WRITING_FILE_FIELD,
     WRITING_NOTE_TYPE,
@@ -190,6 +193,7 @@ from .frontend import reader_links as _reader_links_mod
 from .frontend import selection_search as _selection_search_mod
 from .frontend import document_link_ui as _document_link_ui_mod
 from .frontend import study_workspace as _study_workspace_mod
+from .frontend import reviewer_parent_context as _reviewer_parent_context_mod
 from .frontend import recording_link_dialog as _recording_link_dialog_mod
 from .frontend import card_resource_dialog as _card_resource_dialog_mod
 from .frontend import pdf_reference_workspace as _pdf_reference_workspace_mod
@@ -2719,6 +2723,16 @@ gui_hooks.profile_will_close.append(_recording_link_dialog_mod.reset)
 gui_hooks.profile_will_close.append(_card_resource_dialog_mod.reset)
 gui_hooks.webview_did_receive_js_message.append(_study_workspace_mod.on_js_message)
 
+for _hook, _callback in (
+    (gui_hooks.reviewer_did_show_question, _reviewer_parent_context_mod.reviewer_shown),
+    (gui_hooks.reviewer_did_show_answer, _reviewer_parent_context_mod.reviewer_shown),
+    (gui_hooks.reviewer_will_end, _reviewer_parent_context_mod.reset),
+    (gui_hooks.profile_will_close, _reviewer_parent_context_mod.reset),
+    (gui_hooks.webview_did_receive_js_message, _reviewer_parent_context_mod.on_js_message),
+):
+    _hook.remove(_callback)
+    _hook.append(_callback)
+
 
 def _close_website_browsers() -> None:
     _selection_search_mod.reset_for_profile_switch()
@@ -3380,7 +3394,7 @@ _mcp_controller = McpController(
     lambda: _load_addon_config(mw.addonManager, __name__),
     lambda config: _save_mcp_settings(config),
     actions=lambda: _describe_mcp_native_actions(),
-    open_writing_cards=lambda: [_writing_dock_mod.current_writing_card_id()] if _writing_dock_mod.current_writing_card_id() is not None else [],
+    open_writing_cards=lambda: _writing_dock_mod.open_writing_card_ids(),
 )
 gui_hooks.profile_did_open.append(_mcp_controller.configure)
 gui_hooks.profile_will_close.append(_mcp_controller.close_profile)
@@ -3467,7 +3481,9 @@ def _sync_reviewer_priority_badge(_card=None) -> None:
     except Exception:
         badge_config = {}
     is_topic = _is_topic_card(card, classifier=_resolve_topic_card_classifier(badge_config)) if card is not None else False
-    if card is not None and should_show_reviewer_priority_badge(
+    if _is_incremento_card(
+        _ADDON_DIR, _active_profile(), getattr(mw, 'col', None), card, config=badge_config,
+    ) and should_show_reviewer_priority_badge(
         is_topic=is_topic,
         config=badge_config,
     ):
@@ -3874,7 +3890,7 @@ def _open_document_bookshelf(*, new_window: bool = False) -> None:
         failed(exc)
 
 
-def _open_writing_beside() -> None:
+def _open_writing_beside(*, arrange: bool = True) -> None:
     global _writing_workspace_picker
     from .frontend.writing_workspace import WritingPicker
 
@@ -3884,7 +3900,7 @@ def _open_writing_beside() -> None:
 
     def open_card(card_id):
         try:
-            if _open_writing_card(card_id, keep_open=True):
+            if _open_writing_card(card_id, keep_open=True) and arrange:
                 _workspace_layouts.beside(_writing_dock_mod._writing_dock)
         except Exception as exc:
             showInfo(_t("root_document_open_failed", error=exc))
@@ -3908,7 +3924,8 @@ def _open_writing_card(card_id: int, *, relpath: str = "", keep_open: bool = Fal
             mw.col.update_note(note)
         except Exception:
             pass
-    _writing_dock_mod.show_writing_in_dock(card.id, title, stored_relpath, keep_open=keep_open)
+    if _writing_dock_mod.show_writing_in_dock(card.id, title, stored_relpath, keep_open=keep_open) is False:
+        return False
     _last_opened_writing_cid = int(card.id)
     return True
 
@@ -4956,7 +4973,11 @@ def _start_full_backup(
         pdf_progress_count = conn.execute("SELECT COUNT(*) FROM pdf_progress").fetchone()[0]
         stats_count = conn.execute("SELECT COUNT(*) FROM stats").fetchone()[0]
 
-        with tempfile.TemporaryDirectory(prefix="incremento_export_") as tmp_dir:
+        # Keep the package and full profile copy on the ZIP's filesystem too;
+        # the system temp folder may be on a nearly full internal drive.
+        with tempfile.TemporaryDirectory(
+            prefix="incremento_export_", dir=staging_directory,
+        ) as tmp_dir:
             tmp_root = Path(tmp_dir)
             apkg_path = tmp_root / "all_decks.apkg"
             db_snapshot_path = tmp_root / DB_NAME
@@ -5713,7 +5734,7 @@ def addVideoFunction() -> None:
     mw.taskman.run_in_background(_task, _on_done, uses_collection=False)
 
 
-def addWritingFunction() -> None:
+def addWritingFunction() -> int | None:
     """Incremento -> Add Content -> Add Markdown Writing"""
     from .frontend.add_writing_dialog import AddWritingDialog
 
@@ -5735,7 +5756,7 @@ def addWritingFunction() -> None:
                 source_title=title,
                 source_link=dlg.source_url,
             )
-        add_writing_card(
+        card_id = add_writing_card(
             _ADDON_DIR,
             mw.col,
             title=title,
@@ -5747,8 +5768,20 @@ def addWritingFunction() -> None:
         )
         mw.col.reset()
         tooltip(_t("root_writing_card_added", title=title, deck=dlg.deck_name))
+        return card_id
     except Exception as e:
         showInfo(_t("root_writing_add_failed", error=e))
+
+
+def _new_writing_tab() -> None:
+    card_id = addWritingFunction()
+    if card_id is not None:
+        _open_writing_card(card_id, keep_open=True)
+
+
+_writing_dock_mod.configure_writing_tab_actions(
+    open_existing=lambda: _open_writing_beside(arrange=False), new_writing=_new_writing_tab,
+)
 
 
 def addLocalFileFunction() -> None:
@@ -7006,267 +7039,6 @@ def cleanupNonActiveProfileDataFunction() -> None:
         .failure(unused_images_failed)
         .run_in_background()
     )
-
-
-def cleanupStaleProgressFunction() -> None:
-    """Delete stale progress, search-index, and OCR rows for removed cards/notes."""
-    try:
-        counts = _prune_stale_progress_rows()
-        text_index_counts = _prune_stale_document_text_index_rows()
-        ocr_counts = _prune_stale_ocr_rows()
-    except Exception as e:
-        showInfo(_t("root_cleanup_stale_failed", error=e))
-        return
-
-    summary = _format_pruned_progress_summary(counts)
-    text_index_summary = _format_pruned_document_text_index_summary(text_index_counts)
-    ocr_summary = _format_pruned_ocr_summary(ocr_counts)
-    chunks = [chunk for chunk in (summary, text_index_summary, ocr_summary) if chunk]
-    if chunks:
-        showInfo("\n\n".join(chunks))
-        return
-    showInfo(_t("root_cleanup_stale_none"))
-
-
-def cleanupOrphanPdfsFunction() -> None:
-    """Delete PDF files in user_files/<profile>/pdfs/ that no card references."""
-    from .backend.pdf_manager import get_pdf_dir
-
-    _backfill_pdf_source_filenames()
-    pdf_dir = get_pdf_dir()
-
-    # All files currently on disk
-    try:
-        disk_files = {
-            f for f in os.listdir(pdf_dir)
-            if f.lower().endswith(".pdf")
-        }
-    except OSError as e:
-        showInfo(_t("root_cleanup_pdf_read_failed", error=e))
-        return
-
-    if not disk_files:
-        showInfo(_t("root_cleanup_pdf_none", path=pdf_dir))
-        return
-
-    # All filenames referenced by an Incremento PDF note
-    try:
-        note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
-        referenced = set()
-        for nid in note_ids:
-            note = mw.col.get_note(nid)
-            fname = note["PDF_Filename"].strip()
-            if fname:
-                referenced.add(fname)
-        referenced.update(get_pdf_referenced_filenames(_ADDON_DIR, _active_profile()))
-    except Exception as e:
-        showInfo(_t("root_cleanup_pdf_query_failed", error=e))
-        return
-
-    orphans = sorted(disk_files - referenced)
-    deletable, protected, refs_map = _partition_any_profile_ties(orphans, "pdf")
-
-    try:
-        pruned_counts = _prune_stale_progress_rows()
-    except Exception:
-        pruned_counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
-    pruned_summary = _format_pruned_progress_summary(pruned_counts)
-    try:
-        pruned_text_index_counts = _prune_stale_document_text_index_rows()
-    except Exception:
-        pruned_text_index_counts = {
-            "pdf_text_index": 0,
-            "epub_text_index": 0,
-            "document_text_index_total": 0,
-        }
-    pruned_text_index_summary = _format_pruned_document_text_index_summary(pruned_text_index_counts)
-    cleanup_summaries = [chunk for chunk in (pruned_summary, pruned_text_index_summary) if chunk]
-
-    if not deletable:
-        msg = _t("root_cleanup_pdf_no_deletable", count=len(disk_files))
-        if protected:
-            msg += "\n\n" + _t("root_cleanup_other_profile_skip", count=len(protected))
-        if cleanup_summaries:
-            msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
-        showInfo(msg)
-        return
-
-    def _fmt_size(path: str) -> str:
-        try:
-            b = os.path.getsize(path)
-            return f"{b / 1_048_576:.1f} MB" if b >= 1_048_576 else f"{b // 1024} KB"
-        except OSError:
-            return "?"
-
-    lines = [_t("root_cleanup_pdf_found", count=len(deletable)) + "\n"]
-    total_bytes = 0
-    for fname in deletable:
-        fpath = os.path.join(pdf_dir, fname)
-        try:
-            total_bytes += os.path.getsize(fpath)
-        except OSError:
-            pass
-        lines.append(f"• {fname}  ({_fmt_size(fpath)})")
-    if protected:
-        lines.append("\n" + _t("root_cleanup_other_profile_tied", count=len(protected)))
-        preview = protected[:8]
-        for fname in preview:
-            profs = ", ".join(refs_map.get(fname, []))
-            lines.append(_t("root_cleanup_file_profiles", filename=fname, profiles=profs))
-        if len(protected) > len(preview):
-            lines.append("  " + _t("root_more_failures", count=len(protected) - len(preview)))
-    total_str = f"{total_bytes / 1_048_576:.1f} MB" if total_bytes >= 1_048_576 else f"{total_bytes // 1024} KB"
-    lines.append("\n" + _t("root_cleanup_total", size=total_str))
-    lines.append("\n" + _t("root_cleanup_delete_files"))
-
-    from aqt.utils import askUser
-    if not askUser("\n".join(lines), title=_t("root_menu_cleanup_orphan_pdfs")):
-        return
-
-    deleted = 0
-    errors: list[str] = []
-    for fname in deletable:
-        fpath = os.path.join(pdf_dir, fname)
-        try:
-            os.remove(fpath)
-            deleted += 1
-        except OSError as e:
-            errors.append(f"• {fname}: {e}")
-
-    if not errors:
-        msg = _t("root_cleanup_pdf_deleted", count=deleted, size=total_str)
-        if protected:
-            msg += "\n" + _t("root_cleanup_other_profile_tied", count=len(protected))
-        if cleanup_summaries:
-            msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
-        showInfo(msg)
-    else:
-        showInfo(_t("root_cleanup_partial_deleted", deleted=deleted, total=len(deletable), errors="\n".join(errors)))
-
-
-def cleanupOrphanVideosFunction() -> None:
-    """Delete local videos in user_files/<profile>/videos/ that no video card references."""
-    videos_dir = str(_paths.get_videos_dir(_ADDON_DIR, _active_profile()))
-    if not os.path.isdir(videos_dir):
-        showInfo(_t("root_cleanup_videos_none", path=videos_dir))
-        return
-
-    try:
-        disk_files = [
-            f
-            for f in os.listdir(videos_dir)
-            if f.lower().endswith((".mp4", ".mkv", ".webm", ".mov", ".m4v"))
-            and os.path.isfile(os.path.join(videos_dir, f))
-        ]
-    except OSError as e:
-        showInfo(_t("root_cleanup_videos_read_failed", error=e))
-        return
-
-    if not disk_files:
-        showInfo(_t("root_cleanup_videos_none", path=videos_dir))
-        return
-    disk_map = {f.lower(): f for f in disk_files}
-
-    try:
-        card_ids = mw.col.find_cards(f'note:"{VIDEO_NOTE_TYPE}"')
-        referenced: set[str] = set()
-        for cid in card_ids:
-            note = mw.col.get_card(cid).note()
-            try:
-                rel = (note[LOCAL_VIDEO_FIELD] or "").strip()
-            except Exception:
-                rel = ""
-            if not rel:
-                continue
-            basename = os.path.basename(rel.replace("\\", "/")).strip()
-            if basename:
-                referenced.add(basename.lower())
-    except Exception as e:
-        showInfo(_t("root_cleanup_videos_query_failed", error=e))
-        return
-
-    try:
-        pruned_counts = _prune_stale_progress_rows()
-    except Exception:
-        pruned_counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
-    pruned_summary = _format_pruned_progress_summary(pruned_counts)
-    try:
-        pruned_text_index_counts = _prune_stale_document_text_index_rows()
-    except Exception:
-        pruned_text_index_counts = {
-            "pdf_text_index": 0,
-            "epub_text_index": 0,
-            "document_text_index_total": 0,
-        }
-    pruned_text_index_summary = _format_pruned_document_text_index_summary(pruned_text_index_counts)
-    cleanup_summaries = [chunk for chunk in (pruned_summary, pruned_text_index_summary) if chunk]
-
-    orphans = [disk_map[k] for k in sorted(set(disk_map.keys()) - referenced)]
-    deletable, protected, refs_map = _partition_any_profile_ties(orphans, "video")
-    if not deletable:
-        msg = _t("root_cleanup_videos_no_deletable", count=len(disk_files))
-        if protected:
-            msg += "\n\n" + _t("root_cleanup_other_profile_skip", count=len(protected))
-        if cleanup_summaries:
-            msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
-        showInfo(msg)
-        return
-
-    def _fmt_size(path: str) -> str:
-        try:
-            b = os.path.getsize(path)
-            return f"{b / 1_048_576:.1f} MB" if b >= 1_048_576 else f"{b // 1024} KB"
-        except OSError:
-            return "?"
-
-    total_bytes = 0
-    lines = [_t("root_cleanup_videos_found", count=len(deletable)) + "\n"]
-    for fname in deletable:
-        fpath = os.path.join(videos_dir, fname)
-        try:
-            total_bytes += os.path.getsize(fpath)
-        except OSError:
-            pass
-        lines.append(f"• {fname}  ({_fmt_size(fpath)})")
-    if protected:
-        lines.append("\n" + _t("root_cleanup_other_profile_tied", count=len(protected)))
-        preview = protected[:8]
-        for fname in preview:
-            profs = ", ".join(refs_map.get(fname, []))
-            lines.append(_t("root_cleanup_file_profiles", filename=fname, profiles=profs))
-        if len(protected) > len(preview):
-            lines.append("  " + _t("root_more_failures", count=len(protected) - len(preview)))
-    total_str = (
-        f"{total_bytes / 1_048_576:.1f} MB"
-        if total_bytes >= 1_048_576
-        else f"{total_bytes // 1024} KB"
-    )
-    lines.append("\n" + _t("root_cleanup_total", size=total_str))
-    lines.append("\n" + _t("root_cleanup_delete_files"))
-
-    from aqt.utils import askUser
-    if not askUser("\n".join(lines), title=_t("root_menu_cleanup_orphan_videos")):
-        return
-
-    deleted = 0
-    errors: list[str] = []
-    for fname in deletable:
-        fpath = os.path.join(videos_dir, fname)
-        try:
-            os.remove(fpath)
-            deleted += 1
-        except OSError as e:
-            errors.append(f"• {fname}: {e}")
-
-    if not errors:
-        msg = _t("root_cleanup_videos_deleted", count=deleted, size=total_str)
-        if protected:
-            msg += "\n" + _t("root_cleanup_other_profile_tied", count=len(protected))
-        if cleanup_summaries:
-            msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
-        showInfo(msg)
-    else:
-        showInfo(_t("root_cleanup_partial_deleted", deleted=deleted, total=len(deletable), errors="\n".join(errors)))
 
 
 def _save_settings_with_language_pack(cfg: dict, pending_pack: dict | None, profile: str) -> None:

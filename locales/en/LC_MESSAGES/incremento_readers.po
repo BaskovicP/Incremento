@@ -4263,6 +4263,9 @@ msgstr "Sort by:"
 msgid "reader_bookshelf_sort_title"
 msgstr "Title (A–Z)"
 
+msgid "reader_bookshelf_sort_last_added"
+msgstr "Last added (newest first)"
+
 msgid "reader_bookshelf_sort_priority"
 msgstr "Priority (most important first)"
 

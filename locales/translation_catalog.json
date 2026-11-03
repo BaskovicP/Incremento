@@ -12134,6 +12134,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_bookshelf_sort_last_added",
+      "form": "",
+      "source": "Last added (newest first)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_bookshelf_sort_priority",
       "form": "",
       "source": "Priority (most important first)",
@@ -36374,6 +36382,14 @@
     },
     {
       "component": "addon",
+      "key": "writing_add_tab",
+      "form": "",
+      "source": "New or open writing tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_all_time",
       "form": "",
       "source": "All-time",
@@ -36558,6 +36574,54 @@
     },
     {
       "component": "addon",
+      "key": "writing_draft_label",
+      "form": "",
+      "source": "Draft · Markdown",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_export",
+      "form": "",
+      "source": "Export",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_export_failed",
+      "form": "",
+      "source": "Could not export this draft. The draft is still open.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_export_html",
+      "form": "",
+      "source": "Web page (.html)…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_export_markdown",
+      "form": "",
+      "source": "Markdown (.md)…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_exported",
+      "form": "",
+      "source": "Draft exported",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_focus",
       "form": "",
       "source": "Focus",
@@ -36574,9 +36638,41 @@
     },
     {
       "component": "addon",
+      "key": "writing_heading_one",
+      "form": "",
+      "source": "Heading 1",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_heading_three",
+      "form": "",
+      "source": "Heading 3",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_heading_two",
+      "form": "",
+      "source": "Heading 2",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_horizontal_rule",
       "form": "",
       "source": "Horizontal rule",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_html_filter",
+      "form": "",
+      "source": "Web page (*.html)",
       "tokens": [],
       "markup": []
     },
@@ -36590,9 +36686,49 @@
     },
     {
       "component": "addon",
+      "key": "writing_inline_code",
+      "form": "",
+      "source": "Inline code",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_insert",
+      "form": "",
+      "source": "Insert",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_insert_heading",
       "form": "",
       "source": "Insert heading",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_insert_image",
+      "form": "",
+      "source": "Image from URL…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_insert_link",
+      "form": "",
+      "source": "Link",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_invalid_url",
+      "form": "",
+      "source": "Enter a valid HTTP(S) URL without credentials, whitespace, or angle brackets.",
       "tokens": [],
       "markup": []
     },
@@ -36673,6 +36809,14 @@
     },
     {
       "component": "addon",
+      "key": "writing_markdown_filter",
+      "form": "",
+      "source": "Markdown (*.md)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_marker_line",
       "form": "",
       "source": "Marker {line}",
@@ -36694,6 +36838,14 @@
       "key": "writing_marker_unavailable",
       "form": "",
       "source": "Saved marker line is no longer available.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_more",
+      "form": "",
+      "source": "More",
       "tokens": [],
       "markup": []
     },
@@ -36726,6 +36878,22 @@
       "key": "writing_numbered_list",
       "form": "",
       "source": "Numbered list",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_open_tab",
+      "form": "",
+      "source": "Open writing…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_paragraph",
+      "form": "",
+      "source": "Paragraph",
       "tokens": [],
       "markup": []
     },
@@ -36787,6 +36955,14 @@
     },
     {
       "component": "addon",
+      "key": "writing_placeholder_text",
+      "form": "",
+      "source": "Text",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_preview_tooltip",
       "form": "",
       "source": "Show or hide the markdown preview",
@@ -36806,6 +36982,22 @@
       "key": "writing_quote",
       "form": "",
       "source": "Quote",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_redo",
+      "form": "",
+      "source": "Redo",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_reference_label",
+      "form": "",
+      "source": "Link text / image description:",
       "tokens": [],
       "markup": []
     },
@@ -36938,6 +37130,48 @@
     },
     {
       "component": "addon",
+      "key": "writing_strike",
+      "form": "",
+      "source": "Strikethrough",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_style",
+      "form": "",
+      "source": "Style",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_tab_limit",
+      "form": "",
+      "source": "Up to {count} writing tabs can stay open. Close a tab before opening another draft.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_table",
+      "form": "",
+      "source": "Table",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_tabs",
+      "form": "",
+      "source": "Writing drafts",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_title",
       "form": "",
       "source": "Writing",
@@ -36954,9 +37188,65 @@
     },
     {
       "component": "addon",
+      "key": "writing_translate",
+      "form": "",
+      "source": "Translate…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_translate_failed",
+      "form": "",
+      "source": "Could not open Google Translate in the selected Companion browser.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_translate_hint",
+      "form": "",
+      "source": "Review or edit the text below (1–1,000 characters). Open Google Translate sends this text to Google in your Companion browser and requires internet. Choose the target language there. Your draft stays unchanged.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_translate_open",
+      "form": "",
+      "source": "Open Google Translate",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_translate_passage",
+      "form": "",
+      "source": "Text to translate",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_undo",
+      "form": "",
+      "source": "Undo",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_unknown_time",
       "form": "",
       "source": "Unknown time",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_url_prompt",
+      "form": "",
+      "source": "HTTP(S) URL:",
       "tokens": [],
       "markup": []
     },

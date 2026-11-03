@@ -1201,32 +1201,6 @@ def test_clearing_pdf_context_discards_printed_labels(monkeypatch):
     assert pdf_dock._current_pdf_page_labels == ()
 
 
-def test_pdf_context_html_for_citation_reads_bounded_page_and_configured_rows(monkeypatch):
-    calls = []
-    monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
-    monkeypatch.setattr(pdf_dock, "_current_pdf_filename", "writer-guide.pdf")
-    monkeypatch.setattr(pdf_dock, "pdf_display_label_from_filename", lambda filename: "Writer Guide")
-    monkeypatch.setattr(pdf_dock, "_ADDON_DIR", "/tmp/addon")
-    monkeypatch.setattr(pdf_dock, "_active_profile", lambda: "TestProfile")
-    monkeypatch.setattr(pdf_dock, "configured_pdf_context_rows", lambda config=None: 2)
-    monkeypatch.setattr(
-        pdf_dock,
-        "_pdf_page_text",
-        lambda addon_dir, profile, card_id, page, max_chars=None: (
-            calls.append((addon_dir, profile, card_id, page, max_chars))
-            or "\n".join(f"row {number}" for number in range(1, 13))
-        ),
-    )
-    citation = pdf_dock.pdf_citation("row 6", page=3)
-
-    context = pdf_dock.pdf_context_html_for_citation(citation, excerpt_text="row 6")
-
-    assert calls == [("/tmp/addon", "TestProfile", 55, 3, 250_000)]
-    assert 'data-incremento-pdf-context="1"' in context
-    assert "row 4" in context and "row 8" in context
-    assert "row 3" not in context and "row 9" not in context
-
-
 def test_pdf_reference_html_for_citation_renders_real_page_snapshot_and_uses_highlight_rects(monkeypatch):
     calls = []
     monkeypatch.setattr(pdf_dock, "_current_pdf_card_id", 55)
