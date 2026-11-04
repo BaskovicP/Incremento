@@ -280,3 +280,9 @@ def test_pinned_writing_is_not_replaced_by_another_writing_review(monkeypatch):
     monkeypatch.setattr(writing_dock, 'show_writing_in_dock', lambda *args: opened.append(args))
     writing_dock.on_writing_question_shown(SimpleNamespace(id=22, nid=22))
     assert opened == []
+
+
+def test_source_anchors_are_not_counted_as_written_words():
+    text = 'Two words\n<!-- incremento-excerpt:' + 'a' * 32 + ' -->'
+    assert writing_dock._count_words(text, 'simple') == 2
+    assert writing_dock._count_words(text, 'word_like') == 2

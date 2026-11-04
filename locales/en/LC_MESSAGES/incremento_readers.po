@@ -3907,6 +3907,42 @@ msgstr "Stack vertically"
 msgid "workspace_grid"
 msgstr "Grid"
 
+msgid "workspace_tabs"
+msgstr "Group as tabs"
+
+msgid "workspace_close_tab"
+msgstr "Close tab"
+
+msgid "workspace_rename_tab"
+msgstr "Rename tab…"
+
+msgid "workspace_reset_tab_name"
+msgstr "Reset tab name"
+
+msgid "workspace_resize_tabs"
+msgstr "Resize tabs…"
+
+msgid "workspace_reset_tab_size"
+msgstr "Reset tab size"
+
+msgid "workspace_tab_color"
+msgstr "Tab color…"
+
+msgid "workspace_reset_tab_color"
+msgstr "Reset tab color"
+
+msgid "workspace_tab_width"
+msgstr "Width (px):"
+
+msgid "workspace_tab_height"
+msgstr "Height (px):"
+
+msgid "workspace_tab_size_help"
+msgstr "Applies to all tabs in this group, including newly opened tabs."
+
+msgid "workspace_tab_name"
+msgstr "Tab name (up to 80 characters):"
+
 msgid "workspace_restore"
 msgstr "Restore previous layout"
 
@@ -3974,7 +4010,7 @@ msgid "workspace_choose_writing"
 msgstr "Choose a writing card. It stays open beside your document while you study."
 
 msgid "workspace_no_writing"
-msgstr "No writing cards yet. Create one with New writing…, then select it here."
+msgstr "No writing cards yet. Create a writing card first, then return here."
 
 msgid "workspace_writing_limit"
 msgstr "Showing the first {count} writing cards. Use Quick Open Content to find others."
@@ -4006,7 +4042,7 @@ msgid "workspace_drag_title"
 msgstr "Move pane"
 
 msgid "workspace_drag_hint"
-msgstr "Drag this title bar to a screen edge for a half, a corner for a quarter, or another pane’s edge to dock beside it. Escape cancels."
+msgstr "Drag this title bar to another pane’s centre to group as tabs, or its edge to split. Screen edges snap to halves and corners to quarters. Escape cancels."
 
 msgid "workspace_float"
 msgstr "Float / dock window"
@@ -4921,3 +4957,111 @@ msgstr "Page count"
 
 msgid "reader_bookshelf_display_priority"
 msgstr "Priority"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_send_excerpt"
+msgstr "Send to Writing"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_send_excerpt_hint"
+msgstr "Select a passage to choose its writing destination."
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_backlinks"
+msgstr "Writing excerpts"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_sources"
+msgstr "Sources"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_preview"
+msgstr "Show source"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_jump"
+msgstr "Go to excerpt"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_unlink"
+msgstr "Unlink"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_missing"
+msgstr "This excerpt anchor was removed from the writing text."
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_failed"
+msgstr "The excerpt link could not be loaded or saved. Your writing text is preserved."
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_none"
+msgstr "No writing excerpts are linked to this place."
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_send_excerpt_limit"
+msgstr "Select at most 2,000 characters to send to Writing."
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_choose_destination"
+msgstr "Send to another writing card…"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_coverage_summary"
+msgstr "Viewed {viewed}% · Marked read {marked}%"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_coverage_unavailable"
+msgstr "Reading coverage unavailable"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_coverage_accessible"
+msgstr "Document coverage"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_page_read"
+msgstr "Mark this page read"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_page_unread"
+msgstr "Unmark this page"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_range_read"
+msgstr "Mark pages read…"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_page_range_prompt"
+msgstr "Page or range (for example, 5–12):"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_passage_read"
+msgstr "Mark this passage read"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_passage_unread"
+msgstr "Unmark this passage"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_section_read"
+msgstr "Mark this section read"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_passage_unavailable"
+msgstr "Opened the saved location; the exact passage could not be matched."
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_return_document"
+msgstr "Return to the previous document and position"
+
+#. Document coverage and the separate linear marker.
+msgid "reader_coverage_viewed"
+msgstr "Viewed {percent}%"
+
+#. Document coverage and the separate linear marker.
+msgid "reader_coverage_marked"
+msgstr "Marked read {percent}%"
+
+#. Document coverage and the separate linear marker.
+msgid "reader_linear_progress"
+msgstr "Read to here {percent}%"

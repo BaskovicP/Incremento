@@ -983,7 +983,7 @@ class StudyWorkspace(QDialog):
                 from . import pdf_reference_workspace as pdf
                 self.reader = pdf.ReferenceWindow(result, profile=profile, page=source['page'],
                     scroll_ratio=source['scroll'], max_page=result['max_page'], beside=True, owner=self,
-                    excerpt=source['quote'], page_y=source.get('page_y'), embedded=True,
+                    excerpt=source['quote'], page_y=source.get('page_y'), passage=source.get('passage'), embedded=True,
                     zoom=self._document_zooms.get(anchor, 1))
                 pdf._windows.append(self.reader)
             else:

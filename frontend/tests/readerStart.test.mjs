@@ -34,6 +34,8 @@ function registerBridge(pending = null, focus = null) {
     setShowHighlightDeleteButtons: (value) => { state.showDeleteX = value; },
     setLinkPreviewZoom: (value) => {state.previewZoom = value;},
     setPageLinksDocument: update => {state.pageLinksDocument = update(state.pageLinksDocument);},
+    setCoverage: value => {state.coverage = value;},
+    setPassageUnavailable: value => {state.passageUnavailable = value;},
     setHighlightColorPopover: value => {state.colorPopover = value;},
     applyDefaultHighlightColor: value => {state.defaultHighlightColor = value;},
     startViewer: (...args) => state.starts.push(args),
@@ -50,14 +52,14 @@ function registerBridge(pending = null, focus = null) {
     'setLimitNotice', 'applyAutoHighlightSetting', 'applyScrollToTopOnPageChangeSetting',
     'limitAwareNav', 'adjustZoom', 'limitAwareMarkRead', 'openFind', 'setPageCards',
     'updateHighlightNote', 'setSearchJumpNonce', 'finishHighlightColorPicker',
-    'setResizingHighlightId',
+    'setResizingHighlightId', 'setHighlightJumpNonce', 'setExcerptCue',
   ]) scope[name] = () => {};
   for (const name of [
     'pendingExcerptJumpRef', 'pendingHighlightScrollRef', 'pendingReadAnchorScrollRef',
     'pendingPageTopScrollRef', 'pendingResumeScrollRef', 'pendingResumePageRef',
     'pageRef', 'cardIdRef', 'suppressSearchSyncRef', 'pendingHighlightSelectionRef',
     'resizeHighlightRef', 'contentsGenerationRef', 'pendingContentsFractionRef',
-    'pendingDestinationPointRef', 'snapStartRef',
+    'pendingDestinationPointRef', 'snapStartRef', 'pdfDocRef',
   ]) scope[name] = { current: null };
   scope.highlightRangeCacheRef = { current: new Map() };
   vm.runInNewContext(source.slice(start, finish), scope);
@@ -70,6 +72,18 @@ test('PDF startup restores the profile default and older startup calls reset it 
   assert.equal(state.defaultHighlightColor, '#123abc');
   scope.window.incrementoPdfStart(99, 'other.pdf', 1, 1);
   assert.equal(state.defaultHighlightColor, 'yellow');
+});
+
+test('a new document clears old coverage and preserves a precise pending passage', () => {
+  const passage = {quote: 'The linked passage', prefix: 'Relevant context'};
+  const {scope, state} = registerBridge({cardId: 42, filename: 'book.pdf', page: 1, jumpPassage: passage});
+  assert.equal(scope.pendingExcerptJumpRef.current, passage);
+  state.coverage = {viewed_percent: 70};
+  state.passageUnavailable = true;
+  scope.window.incrementoPdfStart(99, 'other.pdf', 1, 1);
+  assert.equal(state.coverage, null);
+  assert.equal(state.passageUnavailable, false);
+  assert.equal(scope.pendingExcerptJumpRef.current, '');
 });
 
 test('an empty search reply does not swallow the next query or close an open Find field', () => {

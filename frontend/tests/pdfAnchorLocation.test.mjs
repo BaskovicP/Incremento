@@ -17,6 +17,7 @@ function contextAnchor(pageLabels, page = 7) {
     cardIdRef: { current: 55 }, pageRef: { current: page }, pageLabels,
     getPdfViewportMetrics: () => ({ pageHeight: 2000, visibleHeight: 800 }),
     pdfAnchorScrollRatio,
+    capturePdfPassage: () => ({}), textLayerRef: {current: null},
   };
   vm.runInNewContext(source.slice(start, end), scope);
   return JSON.parse(JSON.stringify(scope.window.incrementoPdfAnchorAtPoint(100, 500)));

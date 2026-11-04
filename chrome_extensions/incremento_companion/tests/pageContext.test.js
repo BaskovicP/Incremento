@@ -7,6 +7,21 @@ import {
   readPageContextFromTab,
 } from "../src/shared/pageContext.js";
 
+test("offline documents capture the selected scope without page styles", () => {
+  assert.deepEqual(pageContextOptionsForImport("document", {pageContentScope: "main"}), {
+    includeHtml: true, htmlScope: "main",
+  });
+  assert.deepEqual(pageContextOptionsForImport("document", {pageContentScope: "full"}), {
+    includeHtml: true, htmlScope: "full",
+  });
+});
+
+test("HTML snapshots capture the complete styled page regardless of article scope", () => {
+  assert.deepEqual(pageContextOptionsForImport("document", {documentFormat: "html", pageContentScope: "main"}), {
+    includeHtml: true, htmlScope: "full", preserveStyles: true,
+  });
+});
+
 test("import context options request HTML only for actions that consume it", () => {
   assert.deepEqual(pageContextOptionsForImport("video"), { includeHtml: false, htmlScope: "full" });
   assert.deepEqual(pageContextOptionsForImport("webpage"), { includeHtml: false, htmlScope: "full" });

@@ -2,6 +2,7 @@
 import base64
 import binascii
 import math
+import re
 
 MAX_WORKSPACES = 20
 MAX_WRITING_TABS = 32
@@ -62,7 +63,7 @@ def normalize_workspace(value):
         return None
     state, geometry = _encoded(value.get('state')), _encoded(value.get('geometry'))
     panes = value.get('panes')
-    if state is None or geometry is None or not isinstance(panes, list) or not 1 <= len(panes) <= 18:
+    if state is None or geometry is None or not isinstance(panes, list) or not 1 <= len(panes) <= 24:
         return None
     clean, names, counts = [], set(), {}
     for pane in panes:
@@ -73,12 +74,23 @@ def normalize_workspace(value):
             return None
         names.add(name)
         counts[kind] = counts.get(kind, 0) + 1
-        if counts[kind] > (8 if kind == 'pdf_reference' else 2 if kind == 'epub_reference' else 1):
+        if counts[kind] > (8 if kind in ('pdf_reference', 'epub_reference') else 1):
             return None
         cid = pane.get('card_id')
         if kind != 'add_card' and (type(cid) is not int or not 1 <= cid <= 2**53 - 1):
             return None
         item = {'name': name, 'kind': kind}
+        tab_name = workspace_name(pane.get('tab_name'))
+        if tab_name is not None:
+            item['tab_name'] = tab_name
+        tab_size = pane.get('tab_size')
+        if (isinstance(tab_size, list) and len(tab_size) == 2
+                and all(type(n) is int for n in tab_size)
+                and 80 <= tab_size[0] <= 480 and 24 <= tab_size[1] <= 80):
+            item['tab_size'] = list(tab_size)
+        tab_color = pane.get('tab_color')
+        if isinstance(tab_color, str) and re.fullmatch(r'#[0-9a-fA-F]{6}', tab_color):
+            item['tab_color'] = tab_color.lower()
         if kind != 'add_card':
             item['card_id'] = cid
         tabs = pane.get('writing_tabs')
@@ -98,7 +110,10 @@ def normalize_workspace(value):
         if isinstance(pane.get('controls'), dict):
             item['controls'] = normalize_controls(pane['controls'])
         clean.append(item)
-    return {'version': 1, 'state': state, 'geometry': geometry, 'panes': clean}
+    result = {'version': 1, 'state': state, 'geometry': geometry, 'panes': clean}
+    if type(value.get('open_as_tabs')) is bool:
+        result['open_as_tabs'] = value['open_as_tabs']
+    return result
 
 
 def normalize_workspaces(value):

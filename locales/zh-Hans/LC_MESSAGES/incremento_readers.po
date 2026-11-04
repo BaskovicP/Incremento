@@ -3869,6 +3869,42 @@ msgstr "垂直排列"
 msgid "workspace_grid"
 msgstr "网格排列"
 
+msgid "workspace_tabs"
+msgstr "组合为标签页"
+
+msgid "workspace_close_tab"
+msgstr "关闭标签页"
+
+msgid "workspace_rename_tab"
+msgstr "重命名标签页…"
+
+msgid "workspace_reset_tab_name"
+msgstr "恢复标签页名称"
+
+msgid "workspace_resize_tabs"
+msgstr "调整标签页大小…"
+
+msgid "workspace_reset_tab_size"
+msgstr "重置标签页大小"
+
+msgid "workspace_tab_color"
+msgstr "标签页颜色…"
+
+msgid "workspace_reset_tab_color"
+msgstr "重置标签页颜色"
+
+msgid "workspace_tab_width"
+msgstr "宽度（像素）："
+
+msgid "workspace_tab_height"
+msgstr "高度（像素）："
+
+msgid "workspace_tab_size_help"
+msgstr "应用于此组中的所有标签页，包括新打开的标签页。"
+
+msgid "workspace_tab_name"
+msgstr "标签页名称（最多 80 个字符）："
+
 msgid "workspace_restore"
 msgstr "恢复上一个布局"
 
@@ -3936,7 +3972,7 @@ msgid "workspace_choose_writing"
 msgstr "选择一张写作卡片。学习时它会在文档旁保持打开。"
 
 msgid "workspace_no_writing"
-msgstr "还没有写作卡片。请点击“新建写作…”，然后在此处选择。"
+msgstr "还没有写作卡片。请先创建写作卡片，然后返回此处。"
 
 msgid "workspace_writing_limit"
 msgstr "显示前 {count} 张写作卡片。请使用“快速打开内容”查找其他卡片。"
@@ -3968,7 +4004,7 @@ msgid "workspace_drag_title"
 msgstr "移动窗格"
 
 msgid "workspace_drag_hint"
-msgstr "将标题栏拖到屏幕边缘以占据半屏，拖到角落以占据四分之一屏，或拖到另一窗格的边缘以停靠。按 Escape 取消。"
+msgstr "将标题栏拖到另一窗格的中央以组合为标签页，或拖到其边缘以拆分。屏幕边缘吸附为半屏，角落吸附为四分之一屏。按 Escape 取消。"
 
 msgid "workspace_float"
 msgstr "浮动／停靠窗口"
@@ -4878,3 +4914,111 @@ msgstr "页数"
 
 msgid "reader_bookshelf_display_priority"
 msgstr "优先级"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_send_excerpt"
+msgstr "发送到写作"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_send_excerpt_hint"
+msgstr "请选择段落，然后选择目标写作卡片。"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_backlinks"
+msgstr "写作摘录"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_sources"
+msgstr "来源"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_preview"
+msgstr "显示来源"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_jump"
+msgstr "转到摘录"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_unlink"
+msgstr "取消链接"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_missing"
+msgstr "此摘录的锚点已从写作文本中删除。"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_failed"
+msgstr "无法加载或保存摘录链接。您的写作文本已保留。"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_none"
+msgstr "此位置尚未链接任何写作摘录。"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_send_excerpt_limit"
+msgstr "发送到写作的选区不能超过 2,000 个字符。"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_choose_destination"
+msgstr "发送到另一张写作卡片…"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_coverage_summary"
+msgstr "已浏览 {viewed}% · 已标记读完 {marked}%"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_coverage_unavailable"
+msgstr "阅读覆盖数据不可用"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_coverage_accessible"
+msgstr "文档覆盖情况"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_page_read"
+msgstr "将此页标记为已读"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_page_unread"
+msgstr "取消此页的已读标记"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_range_read"
+msgstr "将页面范围标记为已读…"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_page_range_prompt"
+msgstr "页码或范围（例如 5–12）："
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_passage_read"
+msgstr "将此段落标记为已读"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_passage_unread"
+msgstr "取消此段落的已读标记"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_section_read"
+msgstr "将此节标记为已读"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_passage_unavailable"
+msgstr "已打开保存的位置，但未能匹配到确切段落。"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_return_document"
+msgstr "返回上一个文档及位置"
+
+#. Document coverage and the separate linear marker.
+msgid "reader_coverage_viewed"
+msgstr "已浏览 {percent}%"
+
+#. Document coverage and the separate linear marker.
+msgid "reader_coverage_marked"
+msgstr "已标记读完 {percent}%"
+
+#. Document coverage and the separate linear marker.
+msgid "reader_linear_progress"
+msgstr "已读至此 {percent}%"

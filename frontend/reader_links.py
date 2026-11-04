@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+try:
+    from ..backend.document_passages import normalize_passage, parse_epub_reference
+except ImportError:
+    from backend.document_passages import normalize_passage, parse_epub_reference
 import math
 import re
 import textwrap
@@ -250,7 +254,7 @@ def _valid_reader_anchor_command(command: object) -> bool:
             "page",
             "excerpt",
             "highlight_id",
-            "scroll_ratio",
+            "scroll_ratio", "passage",
         }
         if not {"card_id", "filename", "page"}.issubset(payload) or not set(payload).issubset(
             allowed_keys
@@ -289,35 +293,16 @@ def _valid_reader_anchor_command(command: object) -> bool:
                 return False
             if not math.isfinite(ratio) or not 0.0 <= ratio <= 1.0:
                 return False
+        if 'passage' in payload:
+            try:
+                normalize_passage(payload['passage'])
+            except ValueError:
+                return False
         return True
 
     epub_prefix = "incremento_open_epub:"
     if command.startswith(epub_prefix):
-        parts = command.split(":")
-        if len(parts) not in {4, 5}:
-            return False
-        try:
-            card_id = int(parts[1])
-            section_index = int(parts[2])
-            focus_offset = int(parts[3])
-        except (TypeError, ValueError, OverflowError):
-            return False
-        if (
-            card_id <= 0
-            or section_index < 0
-            or section_index > 1_000_000
-            or focus_offset < -1
-            or focus_offset > 50_000_000
-        ):
-            return False
-        if len(parts) == 5:
-            try:
-                ratio = float(parts[4])
-            except (TypeError, ValueError, OverflowError):
-                return False
-            if not math.isfinite(ratio) or not 0.0 <= ratio <= 1.0:
-                return False
-        return True
+        return parse_epub_reference(command) is not None
 
     return False
 

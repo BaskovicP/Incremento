@@ -107,6 +107,38 @@ def test_footnote_preview_resizes_without_navigation_or_zoom_changes(tmp_path, s
             smaller = resize(-100, -60)
             assert abs(smaller['width'] - max(280, larger['width'] - 100)) <= 1, (larger, smaller)
             assert smaller['height'] <= larger['height'] - 40, (larger, smaller)
+
+            # The left edge grows toward the left while the right edge stays
+            # still; the lower-left corner also changes height.
+            def resize_left(dx, dy=0, corner=False):
+                box = popup.bounding_box()
+                x = box['x'] + 3
+                y = box['y'] + (box['height'] - 3 if corner else box['height'] / 2)
+                page.mouse.move(x, y)
+                page.mouse.down()
+                page.mouse.move(x + dx, y + dy, steps=8)
+                page.clock.fast_forward(250)
+                expect(popup).to_be_visible()
+                page.mouse.up()
+                return popup.bounding_box()
+
+            left_larger = resize_left(-70)
+            assert abs(left_larger['x'] + left_larger['width'] - smaller['x'] - smaller['width']) <= 1
+            assert left_larger['width'] == smaller['width'] + min(70, smaller['x'] - 12)
+            assert left_larger['height'] == smaller['height']
+            left_smaller = resize_left(60, -30, corner=True)
+            assert left_smaller['width'] == max(280, left_larger['width'] - 60)
+            assert left_smaller['height'] == left_larger['height'] - 30
+            assert abs(left_smaller['x'] + left_smaller['width'] - smaller['x'] - smaller['width']) <= 1
+            smaller = left_smaller
+            popup.get_by_role('separator', name='Resize preview (arrow keys)', exact=True).focus()
+            page.keyboard.press('ArrowLeft')
+            keyboard_larger = popup.bounding_box()
+            assert keyboard_larger['width'] == smaller['width'] + min(20, smaller['x'] - 12)
+            assert abs(keyboard_larger['x'] + keyboard_larger['width'] - smaller['x'] - smaller['width']) <= 1
+            page.keyboard.press('ArrowRight')
+            smaller = popup.bounding_box()
+            assert smaller['width'] == max(280, keyboard_larger['width'] - 20)
             expect(popup.get_by_role('button', name='Zoom in', exact=True)).to_be_visible()
             expect(popup.locator('output')).to_have_text('150%')
             expect(reference).to_be_visible()

@@ -71,3 +71,24 @@ def test_new_writing_tab_opens_the_new_card_in_the_existing_workspace():
     exec(compile(ast.Module(body=[function], type_ignores=[]), '<new writing tab>', 'exec'), namespace)
     namespace['_new_writing_tab']()
     assert opened == [((73,), {'keep_open': True})]
+
+
+def test_excerpt_destination_callback_opens_the_selected_writing_card_beside_the_reader():
+    tree = ast.parse((ROOT / '__init__.py').read_text())
+    function = next(node for node in tree.body
+                    if isinstance(node, ast.FunctionDef) and node.name == '_open_writing_beside_card')
+    registration = next(node for node in tree.body if isinstance(node, ast.Expr)
+                        and isinstance(node.value, ast.Call)
+                        and isinstance(node.value.func, ast.Attribute)
+                        and node.value.func.attr == 'configure_writing_tab_actions')
+    namespace, opened = _opening_adapter('Incremento Writing')
+    dock, arranged, callbacks = object(), [], {}
+    namespace['_writing_dock_mod']._writing_dock = dock
+    namespace['_writing_dock_mod'].configure_writing_tab_actions = lambda **kw: callbacks.update(kw)
+    namespace['_workspace_layouts'] = SimpleNamespace(beside=arranged.append)
+    namespace['_new_writing_tab'] = lambda: None
+    exec(compile(ast.Module(body=[function, registration], type_ignores=[]), '<excerpt destination>', 'exec'), namespace)
+
+    assert callbacks['open_card'](77)
+    assert opened == [((77, 'Synthetic writing', 'writing/synthetic.md'), {'keep_open': True})]
+    assert arranged == [dock]

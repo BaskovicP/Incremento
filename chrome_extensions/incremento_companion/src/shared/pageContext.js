@@ -1,12 +1,13 @@
 export function pageContextOptionsForImport(kind, options = {}) {
   const writingMode = String(options?.writingMode || "selection").toLowerCase();
-  const needsPageMarkdown = kind === "writing" && writingMode === "webpage_markdown";
+  const needsPageMarkdown = kind === "document" || (kind === "writing" && writingMode === "webpage_markdown");
+  const snapshot = kind === "document" && options?.documentFormat === "html";
   return {
     includeHtml: (kind === "pdf" && options?.pdfOptions?.dynamic !== true) || needsPageMarkdown,
-    htmlScope: needsPageMarkdown && String(options?.pageContentScope || "main").toLowerCase() === "main"
+    htmlScope: !snapshot && needsPageMarkdown && String(options?.pageContentScope || "main").toLowerCase() === "main"
       ? "main"
       : "full",
-    ...(kind === "pdf" ? {preserveStyles: true} : {}),
+    ...(kind === "pdf" || snapshot ? {preserveStyles: true} : {}),
   };
 }
 
@@ -38,6 +39,15 @@ export function readPageContextFromTab(maxHtmlChars, maxSelectedTextChars, optio
 
     const clonedRoot = sourceRoot?.cloneNode?.(true) || null;
     if (clonedRoot) {
+      // Preserve the image the browser actually loaded (responsive/lazy pages).
+      const originals = Array.from(sourceRoot.querySelectorAll?.("img") || []);
+      if (originals.length) {
+        const copies = Array.from(clonedRoot.querySelectorAll?.("img") || []);
+        copies.forEach((copy, index) => {
+          const source = originals[index]?.currentSrc;
+          if (source) copy.setAttribute?.("src", source);
+        });
+      }
       const ignoredSelectors = [
         "script",
         "noscript",

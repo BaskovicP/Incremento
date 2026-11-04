@@ -114,7 +114,7 @@
     "message": "Priority"
   },
   "markdown_scope": {
-    "message": "Webpage markdown scope"
+    "message": "Webpage content scope"
   },
   "main_content": {
     "message": "Main content"
@@ -1537,5 +1537,31 @@
   },
   "bridge_error_webpage_verification_required": {
     "message": "This site requires a security check or sign-in. Complete it in the original tab, then choose Capture opened page as PDF."
+  },
+  "save_offline_document": {
+    "message": "Save for offline reading"
+  },
+  "document_kind": {
+    "message": "document"
+  },
+  "offline_images_omitted": {
+    "message": "Saved offline. Unavailable or unsupported images: $COUNT$.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "offline_save_as": {
+    "message": "Save offline as"
+  },
+  "offline_html_snapshot": {
+    "message": "HTML snapshot — website appearance"
+  },
+  "offline_reading_copy": {
+    "message": "Reading copy — reflowable Markdown"
+  },
+  "offline_snapshot_help": {
+    "message": "HTML snapshots save the entire page with its captured appearance. Content scope applies to reading copies and Markdown."
   }
 }

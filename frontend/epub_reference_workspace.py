@@ -40,11 +40,14 @@ _windows = []
 _dialogs = []
 _generation = 0
 _requests = {False: 0, True: 0}
+_pending_windows = set()
+_MAX_WINDOWS = 8
 
 
 def reset_for_profile_switch():
     global _generation
     _generation += 1
+    _pending_windows.clear()
     for window in list(_windows):
         window.close()
     for dialog in list(_dialogs):
@@ -89,6 +92,7 @@ class EpubReferenceWindow(QDockWidget):
         snapshot, self.limit, self.highlights, self.scale, self.anchor = result
         super().__init__(snapshot['title'], owner if embedded else mw)
         self.embedded = embedded
+        self.independent = embedded
         self.snapshot, self.location, self.profile = snapshot, dict(location), profile
         self.owner, self.on_choose = owner, on_choose
         self.generation, self.closed, self.loaded = _generation, False, False
@@ -180,6 +184,18 @@ class EpubReferenceWindow(QDockWidget):
         if on_choose:
             self.choose_button = button(t('reader_epub_use_passage'), lambda: self.capture(self.choose))
             self.choose_button.setEnabled(False)
+        self._coverage_label = QLabel('', self)
+        self._coverage_label.setWordWrap(True)
+        self._coverage_label.hide()
+        layout.addWidget(self._coverage_label)
+        if on_choose is None:
+            try:
+                from .reader_coverage import install_epub_tracker
+            except ImportError:
+                from frontend.reader_coverage import install_epub_tracker
+            install_epub_tracker(self, _ADDON_DIR, profile, self.location['card_id'], snapshot['filename'],
+                mw=mw, view=self.view, current=self.current,
+                lengths=[max(1, len(str(section.get('text') or ''))) for section in snapshot['sections']])
         layout.addWidget(toolbar)
         self.setWidget(host)
         if embedded:
@@ -225,7 +241,9 @@ class EpubReferenceWindow(QDockWidget):
             link_fragment=self.fragment,
             annotation_style=self.annotation_style,
             default_highlight_color=reader.configured_reader_default_highlight_color(reader._config(), self.profile),
-            sections=self.snapshot['sections'], appearance=self.snapshot.get('appearance', 'original'))
+            sections=self.snapshot['sections'], appearance=self.snapshot.get('appearance', 'original'),
+            preserve_layout=self.snapshot.get('preserve_layout', False),
+            passage=self.location.get('passage'), track_coverage=self.on_choose is None)
         self.js(script)
         if self.on_choose:
             self.choose_button.setEnabled(True)
@@ -243,7 +261,7 @@ class EpubReferenceWindow(QDockWidget):
                 return
             try:
                 loc = normalize_location(dict(card_id=value['cardId'], section=value['sectionIndex'],
-                    offset=value['focusOffset'], scroll=value['scrollRatio']))
+                    offset=value['focusOffset'], scroll=value['scrollRatio'], passage=value.get('passage')))
             except (ValueError, KeyError):
                 return
             callback(loc)
@@ -302,8 +320,14 @@ class EpubReferenceWindow(QDockWidget):
     def pin(self):
         if getattr(self, 'embedded', False):
             return
+        workspace = getattr(mw, '_incremento_workspace_layouts', None)
+        if workspace is not None and workspace.tabbed is True:
+            self.show()
+            workspace.add_as_tab(self)
+            return
         for window in list(_windows):
-            if window is not self and not getattr(window, 'embedded', False) and not window.isFloating():
+            if (window is not self and not getattr(window, 'independent', False)
+                    and not getattr(window, 'embedded', False) and not window.isFloating()):
                 window.close()
         self.setFloating(False)
         if self.owner is not None and self.owner is not self:
@@ -315,6 +339,9 @@ class EpubReferenceWindow(QDockWidget):
             self.owner.show()
             mw.splitDockWidget(self.owner, self, Qt.Orientation.Horizontal)
         self.show()
+
+    def keep_window(self):
+        self.independent = True
 
     def choose_default_highlight_color(self):
         try:
@@ -345,28 +372,43 @@ class EpubReferenceWindow(QDockWidget):
         if self.current():
             set_read_section_index(_ADDON_DIR, self.profile, self.location['card_id'], self.location['section'], None)
             refresh_read_progress(self.profile, self.location['card_id'])
+            tracker = getattr(self, '_coverage_tracker', None)
+            if tracker is not None:
+                tracker.refresh()
 
     def context_menu(self, position):
         def copy(value):
             if not self.current() or not isinstance(value, dict) or value.get('cardId') != self.location['card_id']:
                 return False
             html = reader.epub_anchor_link_html(card_id=value['cardId'], section_index=value['sectionIndex'],
-                focus_offset=value['focusOffset'], scroll_ratio=value['scrollRatio'], label=self.snapshot['title'])
+                focus_offset=value['focusOffset'], scroll_ratio=value['scrollRatio'], label=self.snapshot['title'],
+                passage=value.get('passage'))
             return reader.set_reader_anchor_clipboard(html, self.snapshot['title'])
         def populate(menu, value):
             if not self.current() or not isinstance(value, dict) or value.get('cardId') != self.location['card_id']:
                 return
             try:
                 from .recording_link_dialog import add_context_actions
+                from .writing_excerpt_ui import add_context_actions as writing_actions
             except ImportError:
                 from recording_link_dialog import add_context_actions
+                from frontend.writing_excerpt_ui import add_context_actions as writing_actions
             try:
                 source = normalize_location(dict(card_id=value['cardId'], section=value['sectionIndex'],
-                    offset=value['focusOffset'], scroll=value['scrollRatio']))
+                    offset=value['focusOffset'], scroll=value['scrollRatio'], passage=value.get('passage')))
             except (KeyError, ValueError):
                 return
             add_context_actions(menu, dict(source, kind='epub', quote=str(self.view.selectedText() or '')[:2000]),
                                 owner=self, is_current=self.current)
+            try:
+                from .reader_coverage import add_coverage_actions
+            except ImportError:
+                from frontend.reader_coverage import add_coverage_actions
+            add_coverage_actions(menu, getattr(self, '_coverage_tracker', None),
+                dict(section=source['section'], passage=value.get('passage'), readRange=value.get('readRange'),
+                     coverage=value.get('coverage')), owner=self, current=self.current)
+            writing_actions(menu, dict(source, kind='epub', quote=str(self.view.selectedText() or '')[:2001]),
+                            owner=self, is_current=self.current)
         reader.show_reader_anchor_context_menu(self.view, position,
             resolver_script=f'window.incrementoEpubAnchorAtPoint({position.x()}, {position.y()});',
             on_copy=copy, run_javascript=lambda script, callback: self.js(script, callback),
@@ -382,6 +424,14 @@ class EpubReferenceWindow(QDockWidget):
                     or data['cardId'] != self.location['card_id']):
                 return
             cid, section = self.location['card_id'], self.location['section']
+            if name == 'incremento_reader_coverage':
+                tracker = getattr(self, '_coverage_tracker', None)
+                if tracker is not None and data.get('position') == section:
+                    tracker.receive(data)
+                return
+            if name == 'incremento_epub_passage_status':
+                tooltip(t('reader_passage_unavailable'))
+                return
             if name == 'incremento_epub_progress':
                 next_location = normalize_location(dict(card_id=cid, section=data['sectionIndex'], offset=-1,
                                                          scroll=data['scrollRatio']))
@@ -398,6 +448,7 @@ class EpubReferenceWindow(QDockWidget):
                             '(document.documentElement.scrollHeight-window.innerHeight));')
                     return
                 self.location.update(scroll=next_location['scroll'], offset=-1)
+                self.location.pop('passage', None)
                 self._last_allowed_scroll = next_location['scroll']
                 return  # Reference navigation never writes the main reader's progress.
             if name == 'incremento_epub_section_nav':
@@ -571,27 +622,59 @@ def refresh_appearance(profile, card_id, *, include_main=True):
         reader._apply_epub_appearance(mode)
 
 
-def open_reference(location, *, owner=None, beside=False, is_current=lambda: True, on_choose=None):
+def open_reference(location, *, owner=None, beside=False, is_current=lambda: True, on_choose=None, search_query=''):
     location = normalize_location(location)
+    workspace = getattr(mw, '_incremento_workspace_layouts', None)
+    tabbed = workspace is not None and workspace.tabbed is True
+    token = object()
+    if tabbed:
+        if len(_windows) + len(_pending_windows) >= _MAX_WINDOWS:
+            tooltip(t('reader_epub_reference_unavailable'))
+            return
+        _pending_windows.add(token)
     profile, generation = get_active_profile(), _generation
+    collection = getattr(mw, 'col', None)
     _requests[beside] += 1
     request = _requests[beside]
-    def current():
+    def request_current():
         return (profile == get_active_profile() and generation == _generation
-                and request == _requests[beside] and is_current())
+                and collection is getattr(mw, 'col', None) and (tabbed or request == _requests[beside]))
+    def current():
+        return request_current() and is_current()
+    def load(col):
+        return _load(col, profile, location) if request_current() else None
     def ready(result):
+        if tabbed and token not in _pending_windows:
+            return
+        _pending_windows.discard(token)
         if not current():
             return
         host = owner.owner if owner in _windows else owner
         for window in list(_windows):
-            if not getattr(window, 'embedded', False) and window.isFloating() != beside:
+            if (not tabbed and not getattr(window, 'independent', False)
+                    and not getattr(window, 'embedded', False) and window.isFloating() != beside):
                 window.close()
+        if len(_windows) + len(_pending_windows) >= _MAX_WINDOWS:
+            tooltip(t('reader_epub_reference_unavailable'))
+            return
         window = EpubReferenceWindow(result, location, profile=profile, owner=host,
                                      beside=beside, on_choose=on_choose)
+        if tabbed:
+            window.keep_window()
+        if search_query:
+            window.search.setText(str(search_query)[:1000])
+            window.view.loadFinished.connect(lambda ok:
+                window.view.findText(window.search.text()) if ok and window.current() else None)
         _windows.append(window)
         window.show()
-    QueryOp(parent=mw, op=lambda col: _load(col, profile, location), success=ready).failure(
-        lambda error: tooltip(t('reader_epub_reference_unavailable')) if current() else None).run_in_background()
+    def failed(error):
+        _pending_windows.discard(token)
+        if current():
+            tooltip(t('reader_epub_reference_unavailable'))
+    try:
+        QueryOp(parent=mw, op=load, success=ready).failure(failed).run_in_background()
+    except Exception as error:
+        failed(error)
 
 
 def choose_reference(*, owner=None, callback=None, is_current=lambda: True):
@@ -675,8 +758,7 @@ def show_connections(location, *, owner=None, is_current=lambda: True):
                     return
                 snapshot = result[0]
                 point = row['target']
-                reader.show_epub_in_dock(point['card_id'], snapshot['filename'], section_index=point['section'],
-                    focus_offset=point['offset'], scroll_ratio=point['scroll'], offer_due_review_prompt=False)
+                reader._follow_epub_passage(snapshot, point)
                 dialog.accept()
             QueryOp(parent=mw, op=lambda col: _load(col, profile, row['target']), success=opened).failure(
                 lambda error: tooltip(t('reader_epub_reference_unavailable')) if valid() else None).run_in_background()

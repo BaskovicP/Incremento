@@ -317,6 +317,8 @@ class WorkspaceSession:
                          and window.location['card_id'] == cid and not window.closed), None)
             location = self._epub_position(cid, result, dock)
             if dock is None:
+                if len(module._windows) + len(module._pending_windows) >= module._MAX_WINDOWS:
+                    return None
                 dock = module.EpubReferenceWindow(result['reference'], location,
                     profile=self.profile(), beside=False)
                 module._windows.append(dock)

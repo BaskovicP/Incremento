@@ -65,6 +65,22 @@ def test_edit_keeps_embedded_images_after_original_assets_are_removed(editable_d
     )
 
 
+def test_edit_preserves_original_webpage_capture_and_export_metadata(editable_document):
+    import json
+    addon, profile, source, target, conn = editable_document
+    capture = {"version": 1, "url": "https://example.com/article", "captured_at": "2026-11-04T12:00:00+00:00"}
+    with zipfile.ZipFile(target, "a") as archive:
+        archive.writestr("original_source.md", b"# Frozen original")
+        archive.writestr("capture.json", json.dumps(capture))
+    snapshot = markdown_manager.load_markdown_document(addon, profile, target.name)
+    markdown_manager.save_markdown_document(addon, profile, 41, target.name, "# Edited", title="Article",
+                                             expected_revision=snapshot.revision)
+    with zipfile.ZipFile(target) as archive:
+        assert archive.read("original_source.md") == b"# Frozen original"
+        assert json.loads(archive.read("capture.json")) == capture
+        assert archive.read("source.md") == b"# Edited"
+
+
 def test_failed_edit_restores_archive_cache_index_and_does_not_replace_backup(editable_document, monkeypatch):
     import db
     import paths

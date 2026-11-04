@@ -86,6 +86,7 @@ _MAX_MEDIA_FILENAME_STEM = 80
 _PREPARED_PDF_PATH_KEY = "_prepared_pdf_path"
 _PREPARED_PDF_PAGE_TEXTS_KEY = "_prepared_pdf_page_texts"
 _PREPARED_WRITING_MARKDOWN_KEY = "_prepared_writing_markdown"
+_PREPARED_DOCUMENT_KEY = "_prepared_document"
 
 _browser_capture_open_note = None
 _browser_capture_dispatch = None
@@ -452,10 +453,11 @@ def normalize_add_content_payload(payload) -> dict:
         "web": "webpage",
         "webpage": "webpage",
         "writing": "writing",
+        "document": "document",
     }
     kind = kind_aliases.get(raw_kind)
     if not kind:
-        raise ValueError("Kind must be one of: pdf, video, webpage, writing.")
+        raise ValueError("Kind must be one of: pdf, video, webpage, writing, document.")
 
     url = normalize_http_url(payload.get("url", ""))
     title = _bounded_collapsed(
@@ -470,6 +472,8 @@ def normalize_add_content_payload(payload) -> dict:
     html = str(payload.get("html", "") or "")
     if len(html) > _MAX_HTML_CHARS:
         raise ValueError("HTML payload is too large.")
+    if kind == "document" and (not isinstance(payload.get("html"), str) or not html.strip()):
+        raise ValueError("Offline document capture requires the opened page HTML.")
     capture_opened_page = payload.get("captureOpenedPage", False)
     if type(capture_opened_page) is not bool:
         raise ValueError("captureOpenedPage must be a boolean.")
@@ -487,6 +491,9 @@ def normalize_add_content_payload(payload) -> dict:
     raw_page_content_scope = _collapse_ws(payload.get("pageContentScope", "")).lower()
     if raw_page_content_scope not in {"", "main", "full"}:
         raise ValueError("pageContentScope must be 'main' or 'full'.")
+    document_format = payload.get("documentFormat", "markdown")
+    if not isinstance(document_format, str) or document_format not in {"html", "markdown"}:
+        raise ValueError("documentFormat must be html or markdown.")
     pdf_base64 = str(payload.get("pdfBase64", "") or "").strip()
     if len(pdf_base64) > ((_MAX_PDF_UPLOAD_BYTES * 4) // 3) + 8:
         raise ValueError("PDF payload is too large.")
@@ -527,6 +534,7 @@ def normalize_add_content_payload(payload) -> dict:
         "preferred_filename": preferred_filename,
         "writing_mode": raw_writing_mode or "selection",
         "page_content_scope": raw_page_content_scope or "main",
+        "document_format": document_format,
         "pdf_base64": pdf_base64,
         "pdf_filename": pdf_filename,
         "pdf_options": _normalize_pdf_options(payload.get("pdfOptions", {})),
@@ -901,6 +909,16 @@ def prepare_add_content_request_off_main(payload_or_request, *, render_webpage=N
 
     try:
         for normalized in prepared["items"]:
+            if normalized["kind"] == "document":
+                try:
+                    from .webpage_document import prepare_webpage_document
+                except ImportError:
+                    from webpage_document import prepare_webpage_document
+                document = prepare_webpage_document(normalized["url"], html=normalized["html"],
+                    title=normalized["title"], content_scope=normalized["page_content_scope"],
+                    capture_format=normalized["document_format"])
+                normalized[_PREPARED_DOCUMENT_KEY] = document
+                normalized["title"] = document.title
             _prepare_writing_item_off_main(normalized)
             _prepare_pdf_item_off_main(normalized)
             if (render_webpage is not None and normalized.get("kind") == "pdf"
@@ -923,6 +941,9 @@ def cleanup_prepared_add_content_request(request: dict | None) -> None:
     for item in request.get("items") or []:
         if not isinstance(item, dict):
             continue
+        document = item.pop(_PREPARED_DOCUMENT_KEY, None)
+        if document is not None:
+            document.close()
         temp_pdf_path = str(item.pop(_PREPARED_PDF_PATH_KEY, "") or "")
         if not temp_pdf_path:
             continue
@@ -1317,6 +1338,26 @@ def import_prepared_pdf_item(normalized: dict, *, col, profile: str) -> dict:
     except ImportError:
         from pdf_manager import add_pdf_card
         from priority_manager import set_priority
+    if normalized["kind"] == "document":
+        try:
+            from .epub_manager import add_epub_card
+        except ImportError:
+            from epub_manager import add_epub_card
+        document = normalized.get(_PREPARED_DOCUMENT_KEY)
+        if document is None:
+            raise RuntimeError("Prepared webpage document was not found.")
+        parent = normalized.get("parent_card_id")
+        source_type = "HTML" if document.capture.get("format") == "html" else "Markdown"
+        cid = add_epub_card(_addon_dir, col, document.path, normalized["title"],
+            deck_name=normalized["deck_name"], tags=normalized["tags"], profile=profile, source_type=source_type,
+            source_metadata=_source_metadata_for_extension_card(source_type=source_type, source_title=normalized["title"],
+                source_link=normalized["url"], parent_card_id=parent, col=col))
+        set_priority(_addon_dir, profile, int(cid), normalized["priority"])
+        tree = _sync_parent_child_knowledge_tree_on_main(parent_card_id=parent, child_card_id=int(cid),
+                                                       node_kind="item", col=col, profile=profile)
+        return {"ok": True, "kind": "document", "cardId": int(cid), "title": normalized["title"],
+                "deckName": normalized["deck_name"], "knowledgeTree": tree,
+                "omittedImages": document.capture["omitted_images"]}
     path = str(normalized.get(_PREPARED_PDF_PATH_KEY) or "")
     if not path or not os.path.isfile(path):
         raise RuntimeError("Prepared PDF file was not found.")
@@ -1358,12 +1399,8 @@ def _run_pdf_import_and_wait(normalized, *, require_authorized):
     cleanup_lock = threading.Lock()
     def late_cleanup():
         with cleanup_lock:
-            path = box.pop("late_cleanup", "")
-        if path:
-            try:
-                os.remove(path)
-            except OSError:
-                pass
+            resources = box.pop("late_cleanup", {})
+        cleanup_prepared_add_content_request({"items": [resources]})
     def success(result):
         box["result"] = result
         done.set()
@@ -1390,7 +1427,8 @@ def _run_pdf_import_and_wait(normalized, *, require_authorized):
         # A running import owns the prepared path until its callback. The
         # request cleanup must not delete an in-use file after a timeout.
         with cleanup_lock:
-            box["late_cleanup"] = normalized.pop(_PREPARED_PDF_PATH_KEY, "")
+            box["late_cleanup"] = {key: normalized.pop(key) for key in
+                (_PREPARED_PDF_PATH_KEY, _PREPARED_DOCUMENT_KEY) if key in normalized}
         if done.is_set():
             late_cleanup()
         raise TimeoutError("Incremento PDF import timed out.")
@@ -1404,7 +1442,7 @@ def _run_content_request_and_wait(request, *, require_authorized):
     for item in request["items"]:
         try:
             require_authorized()
-            if item["kind"] == "pdf":
+            if item["kind"] in {"pdf", "document"}:
                 result = _run_pdf_import_and_wait(item, require_authorized=require_authorized)
             else:
                 def add():
@@ -1429,6 +1467,8 @@ def _run_content_request_and_wait(request, *, require_authorized):
 
 
 def _add_content_item_on_main(normalized: dict) -> dict:
+    if normalized.get("kind") == "document":
+        raise RuntimeError("Offline documents require the background document import path.")
     from aqt import mw
 
     from .pdf_manager import add_pdf_card

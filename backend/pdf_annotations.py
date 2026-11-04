@@ -748,9 +748,9 @@ def _sync_locked(addon_dir, profile, card_id, filename, source_path, cancel, dea
     for doc, target, current, signature in zip(documents, targets, native, signatures):
         _checkpoint(cancel, deadline)
         before_appearance = {key: row for key, row in current.items()
-                             if row['pdf_annotation']['kind'] != 'Highlight' and row.get('color') != 'snapshot'}
+                             if row['pdf_annotation']['kind'] not in MARKUP_KINDS and row.get('color') != 'snapshot'}
         after_appearance = {key: row for key, row in merged.items()
-                            if row['pdf_annotation']['kind'] != 'Highlight' and row.get('color') != 'snapshot'}
+                            if row['pdf_annotation']['kind'] not in MARKUP_KINDS and row.get('color') != 'snapshot'}
         if target == managed:
             appearance_changed = (before_appearance.keys() != after_appearance.keys() or any(
                 not _same_annotation(row, after_appearance[key]) for key, row in before_appearance.items()))
@@ -776,13 +776,22 @@ def _sync_locked(addon_dir, profile, card_id, filename, source_path, cancel, dea
     # Text marks and Incremento snapshot frames have one painter: the reader's
     # interactive layer. Other annotation kinds retain their native appearances.
     reader_temp = None
-    reuse_reader = (not writes and baseline_json == state['baseline_json']
-                    and reader.is_file() and not reader.is_symlink())
+    reuse_reader = reader.is_file() and not reader.is_symlink()
     if reuse_reader:
         try:
             with fitz.open(reader) as cached_reader:
                 reuse_reader = cached_reader.xref_get_key(
                     cached_reader.pdf_catalog(), 'IncrementoReaderAppearanceVersion') == ('int', '1')
+                if reuse_reader and (writes or baseline_json != state['baseline_json']):
+                    # Overlay-only edits leave the display PDF unchanged. Keep
+                    # its bytes stable so open panes retain valid lazy ranges
+                    # and do not remount the reader after every annotation.
+                    visible = {key: row for key, row in merged.items() if row['rects']
+                               and row['pdf_annotation']['kind'] not in MARKUP_KINDS
+                               and row.get('color') != 'snapshot'}
+                    cached = _read_native(cached_reader, known, digest, cancel, deadline)
+                    reuse_reader = cached.keys() == visible.keys() and all(
+                        _same_annotation(row, visible[key]) for key, row in cached.items())
         except (RuntimeError, OSError, ValueError):
             reuse_reader = False
     if not reuse_reader:

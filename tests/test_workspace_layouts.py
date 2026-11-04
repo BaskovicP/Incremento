@@ -75,6 +75,63 @@ def test_saved_writing_tabs_keep_order_and_active_card_without_persisting_conten
     assert 'draft_text' not in clean['panes'][1]
 
 
+@pytest.mark.parametrize('label,expected', [
+    ('My reading tab', 'My reading tab'), ('  Notes & passages  ', 'Notes & passages'),
+    ('x'*80, 'x'*80), ('x'*81, None), ('', None), ('bad\nlabel', None), (42, None),
+])
+def test_saved_workspace_tab_names_are_bounded_display_labels(label, expected):
+    from workspace_layouts import normalize_workspace
+    raw = snapshot()
+    raw['panes'][0]['tab_name'] = label
+    clean = normalize_workspace(raw)
+    assert clean['panes'][0].get('tab_name') == expected
+    assert clean['panes'][0]['card_id'] == 42
+    assert clean['panes'][0]['name'] == 'incremento_pdf_dock'
+
+
+@pytest.mark.parametrize('size,color,expected_size,expected_color', [
+    ([180, 36], '#A1b2C3', [180, 36], '#a1b2c3'),
+    ([80, 24], '#000000', [80, 24], '#000000'),
+    ([480, 80], '#ffffff', [480, 80], '#ffffff'),
+    ([79, 36], 'red', None, None),
+    ([180, 81], '#12345678', None, None),
+    ([True, 36], 'url(secret)', None, None),
+    ([180, 36, 50], '#12345g', None, None),
+    ('180x36', None, None, None),
+])
+def test_saved_tab_appearance_keeps_only_bounded_dimensions_and_opaque_hex_colors(
+        size, color, expected_size, expected_color):
+    from workspace_layouts import normalize_workspace
+    raw = snapshot()
+    raw['panes'][0].update(tab_size=size, tab_color=color)
+    before = deepcopy(raw)
+    clean = normalize_workspace(raw)
+    assert clean['panes'][0].get('tab_size') == expected_size
+    assert clean['panes'][0].get('tab_color') == expected_color
+    assert normalize_workspace(clean) == clean
+    assert raw == before
+
+
+@pytest.mark.parametrize('mode', [True, False, None, 'true'])
+def test_saved_workspace_keeps_only_boolean_open_as_tabs_policy(mode):
+    from workspace_layouts import normalize_workspace
+    raw = snapshot() | {'open_as_tabs': mode}
+    clean = normalize_workspace(raw)
+    if type(mode) is bool:
+        assert clean['open_as_tabs'] is mode
+    else:
+        assert 'open_as_tabs' not in clean
+
+
+@pytest.mark.parametrize('count,valid', [(8, True), (9, False)])
+def test_saved_workspace_bounds_both_pdf_and_epub_reader_tabs(count, valid):
+    from workspace_layouts import normalize_workspace
+    raw = snapshot()
+    raw['panes'] = [dict(name='incremento_'+kind+'_'+str(i), kind=kind, card_id=i+1)
+                    for kind in ('pdf_reference', 'epub_reference') for i in range(count)]
+    assert (normalize_workspace(raw) is not None) is valid
+
+
 @pytest.mark.parametrize('tabs', [[True], [0], [71, -1], [71] * 33, [71, 71], [99], '71'])
 def test_invalid_or_unbounded_writing_tab_lists_fall_back_to_the_active_card(tabs):
     from workspace_layouts import normalize_workspace

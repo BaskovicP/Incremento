@@ -151,15 +151,16 @@ def link_pdf(source, *, owner=None, is_current=lambda: True, replace_link_id=Non
                 if source['kind'] == 'pdf' and source.get('page', 0) > 0:
                     return replace_pdf_page_link(_ADDON_DIR, profile, source['card_id'], source['page'],
                         replace_link_id, direction=replace_direction, target_card_id=target, target_page=page,
-                        target_scroll=location['scroll_ratio'], target_y=location['page_y'])
+                        target_scroll=location['scroll_ratio'], target_y=location['page_y'], target_passage=location.get('passage'))
                 return replace_document_target(_ADDON_DIR, profile, replace_link_id,
                     source_card_id=source["card_id"], target_card_id=target, target_page=page,
-                    target_scroll=location['scroll_ratio'], target_y=location['page_y'])
+                    target_scroll=location['scroll_ratio'], target_y=location['page_y'], target_passage=location.get('passage'))
             return add_document_link(_ADDON_DIR, profile, source_card_id=source["card_id"],
                 source_kind=source["kind"], source_page=source.get("page", 0), quote=source.get("quote", "")[:2000],
                 target_card_id=target, target_page=page, target_scroll=location['scroll_ratio'],
                 target_y=location['page_y'], source_y=source.get('page_y'),
-                connection_note=location.get('connection_note', ''))
+                connection_note=location.get('connection_note', ''), source_passage=source.get('passage'),
+                target_passage=location.get('passage'))
         def saved(result):
             if result:
                 _refresh_page_links()
@@ -292,7 +293,7 @@ def show_links(source, *, owner=None, is_current=lambda: True):
             row = selected()
             if dialog_current() and row:
                 open_reference(row["target_card_id"], row["target_page"], scroll_ratio=row["target_scroll"],
-                               page_y=row.get('target_y'), beside=beside, owner=owner, is_current=dialog_current)
+                               page_y=row.get('target_y'), passage=row.get('target_passage'), beside=beside, owner=owner, is_current=dialog_current)
         def remove():
             row = selected()
             if not dialog_current() or not row:

@@ -225,42 +225,21 @@ test('click activation reuses the exact saved PDF text range when it is still li
   assert.deepEqual(activated, ['saved']);
 });
 
-test('hovering a saved note invokes the custom popup without a second native tooltip', () => {
-  const highlight = { id: 'noted', color: 'yellow', note: 'Arabic العربية\n\nA saved note', rects: [
-    { x: 10, y: 20, w: 100, h: 20 },
-    { x: 10, y: 22, w: 100, h: 16 },
-  ] };
-  const calls = [];
-  const nodes = render([highlight], {
-    showHighlightNote: (value, event) => calls.push(['show', value.note, event.clientX]),
-    moveHighlightNote: () => calls.push(['move']),
-    hideHighlightNote: () => calls.push(['hide']),
+// Note previews now use wrapper hit-testing, so no note may cover PDF text
+// with a hover target. Preview contents are exercised in the viewer interaction suite.
+for (const note of ['', 'Arabic العربية\n\nA saved note']) {
+  test(`saved highlights leave their text selectable with ${note ? 'a note' : 'no note'}`, () => {
+    const nodes = render([{id: 'noted', color: 'yellow', note,
+      rects: [{x: 10, y: 20, w: 100, h: 20}]}]);
+    const surfaces = nodes.filter(node => node.type === 'div'
+      && node.props.style?.width === 100 && node.props.style?.height === 20);
+    assert.ok(surfaces.length);
+    for (const surface of surfaces) {
+      assert.equal(surface.props.style.pointerEvents, 'none', 'annotation surfaces must not intercept selection');
+      assert.equal(surface.props.title, undefined, 'only the custom note preview may show a tooltip');
+    }
   });
-  const targets = nodes.filter(node => node.props?.onMouseEnter);
-
-  assert.ok(targets.length > 0);
-  for (const target of targets) {
-    assert.equal(target.props.title, undefined, 'a title would trigger the duplicate native tooltip');
-  }
-  assert.equal(targets.length, 1);
-  const target = targets[0];
-  target.props.onMouseEnter({ clientX: 60 });
-  target.props.onMouseMove({ clientX: 70 });
-  target.props.onMouseLeave();
-  assert.deepEqual(calls, [['show', highlight.note, 60], ['move'], ['hide']]);
-});
-
-test('blank highlight notes do not create hover targets', () => {
-  const nodes = render([{ id: 'blank', note: ' \n ', rects: [{ x: 10, y: 20, w: 100, h: 20 }] }]);
-  assert.equal(nodes.filter(node => node.props?.onMouseEnter).length, 0);
-});
-
-test('an image-only annotation still creates a hover preview target', () => {
-  const nodes = render([{id: 'image-note', note: '',
-    note_html: '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAD0lEQVR4nGP4z8DA8J8BAAf/Af8Bf4mnAAAAAElFTkSuQmCC" width="2" height="1" alt="">',
-    rects: [{x: 10, y: 20, w: 100, h: 20}]}]);
-  assert.equal(nodes.filter(node => node.props?.onMouseEnter).length, 1);
-});
+}
 
 test('native underline and text comments keep their PDF appearance and offer editable notes', () => {
   for (const kind of ['Underline', 'Text', 'FreeText', 'Square']) {

@@ -4,7 +4,7 @@ import importlib.util
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 import pytest
 
 
@@ -182,6 +182,88 @@ def test_replacing_a_pinned_reference_splits_against_the_main_dock(monkeypatch, 
     pending[0]['success'](None)
     assert created[0]['owner'] is main_dock
     old.close.assert_called_once()
+
+
+def test_grouped_epub_opens_all_complete_and_survive_later_preview_requests(monkeypatch, workspace):
+    mode, pending = SimpleNamespace(tabbed=True), []
+    monkeypatch.setattr(workspace, 'mw', SimpleNamespace(_incremento_workspace_layouts=mode))
+    monkeypatch.setattr(workspace, 'get_active_profile', lambda: 'Synthetic')
+    class Query:
+        def __init__(self, **kwargs): self.kwargs = kwargs
+        def failure(self, callback): return self
+        def run_in_background(self): pending.append(self.kwargs)
+    class Window:
+        def __init__(self, result, location, **kwargs):
+            self.card_id = location['card_id']
+            self.independent = False
+        def keep_window(self): self.independent = True
+        def show(self): pass
+        def isFloating(self): return False
+        def close(self): workspace._windows.remove(self)
+    monkeypatch.setattr(workspace, 'QueryOp', Query)
+    monkeypatch.setattr(workspace, 'EpubReferenceWindow', Window)
+    for cid in (7, 8, 9):
+        workspace.open_reference(dict(card_id=cid, section=0, offset=-1, scroll=0), beside=True)
+    for query in reversed(pending):
+        query['success'](None)
+    assert {window.card_id for window in workspace._windows} == {7, 8, 9}
+    mode.tabbed = False
+    workspace.open_reference(dict(card_id=10, section=0, offset=-1, scroll=0), beside=True)
+    pending[-1]['success'](None)
+    assert {window.card_id for window in workspace._windows} == {7, 8, 9, 10}
+
+
+def test_grouped_epub_pending_opens_are_bounded_and_cancelled_on_profile_close(monkeypatch, workspace):
+    pending = []
+    monkeypatch.setattr(workspace, 'mw', SimpleNamespace(_incremento_workspace_layouts=SimpleNamespace(tabbed=True)))
+    monkeypatch.setattr(workspace, 'get_active_profile', lambda: 'Synthetic')
+    class Query:
+        def __init__(self, **kwargs): self.kwargs = kwargs
+        def failure(self, callback): return self
+        def run_in_background(self): pending.append(self.kwargs)
+    opened = MagicMock()
+    monkeypatch.setattr(workspace, 'QueryOp', Query)
+    monkeypatch.setattr(workspace, 'EpubReferenceWindow', opened)
+    for cid in range(20):
+        workspace.open_reference(dict(card_id=cid+1, section=0, offset=-1, scroll=0))
+    assert len(pending) == 8
+    workspace.reset_for_profile_switch()
+    for query in pending:
+        query['success'](None)
+    opened.assert_not_called()
+    assert not workspace._pending_windows
+
+
+def test_failed_grouped_epub_dispatch_releases_its_pending_slot(monkeypatch, workspace):
+    monkeypatch.setattr(workspace, 'mw', SimpleNamespace(_incremento_workspace_layouts=SimpleNamespace(tabbed=True)))
+    monkeypatch.setattr(workspace, 'get_active_profile', lambda: 'Synthetic')
+    class Query:
+        def __init__(self, **kwargs): pass
+        def failure(self, callback): return self
+        def run_in_background(self): raise RuntimeError('Synthetic dispatch failure')
+    monkeypatch.setattr(workspace, 'QueryOp', Query)
+    workspace.open_reference(dict(card_id=7, section=0, offset=-1, scroll=0))
+    assert not workspace._pending_windows
+
+
+def test_grouped_epub_request_drops_changed_collections_before_resolving(monkeypatch, workspace):
+    main = SimpleNamespace(_incremento_workspace_layouts=SimpleNamespace(tabbed=True), col=object())
+    pending = []
+    monkeypatch.setattr(workspace, 'mw', main)
+    monkeypatch.setattr(workspace, 'get_active_profile', lambda: 'Synthetic')
+    class Query:
+        def __init__(self, **kwargs): self.kwargs = kwargs
+        def failure(self, callback): return self
+        def run_in_background(self): pending.append(self.kwargs)
+    resolve = MagicMock()
+    monkeypatch.setattr(workspace, 'QueryOp', Query)
+    monkeypatch.setattr(workspace, '_load', resolve)
+    workspace.open_reference(dict(card_id=7, section=0, offset=-1, scroll=0))
+    main.col = object()
+    assert pending[0]['op'](main.col) is None
+    resolve.assert_not_called()
+    pending[0]['success'](None)
+    assert not workspace._pending_windows and not workspace._windows
 
 
 def test_reference_annotation_editor_is_deferred_and_preserves_rich_notes_after_section_navigation(monkeypatch, workspace):

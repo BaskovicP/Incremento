@@ -38,6 +38,20 @@ def test_mixed_batch_attaches_to_card_and_retry_does_not_duplicate_links(tmp_pat
     assert col.notes[1]['Front'] == 'A question'
 
 
+def test_resource_retarget_replaces_the_passage_and_unlink_undo_retains_it(tmp_path, monkeypatch):
+    links, col = setup_resources(tmp_path, monkeypatch)
+    passage = dict(quote='A precise explanation', rects=[[.1,.6,.2,.04]])
+    link = links.save_card_resource_links(str(tmp_path), 'A', col, 1,
+        [dict(kind='pdf',card_id=7,page=3,passage=passage)])[0]
+    assert list_document_links(str(tmp_path),'A',1)[0]['target_passage'] == passage
+    token = links.unlink_card_resource(str(tmp_path), 'A', 1,
+        dict(location=dict(kind='pdf',card_id=7,page=3),owner_card_id=1,link_id=link))
+    link = links.restore_card_resource_link(str(tmp_path), 'A', col, 1, token)
+    assert list_document_links(str(tmp_path),'A',1)[0]['target_passage'] == passage
+    links.save_card_resource_links(str(tmp_path),'A',col,1,[dict(kind='pdf',card_id=7,page=4,link_id=link)])
+    assert list_document_links(str(tmp_path),'A',1)[0]['target_passage'] == {}
+
+
 def test_second_write_failure_rolls_back_the_entire_mixed_batch(tmp_path, monkeypatch):
     links, col = setup_resources(tmp_path, monkeypatch)
     conn = db.get_connection(str(tmp_path), 'A')

@@ -2,7 +2,7 @@
 from aqt.qt import (
     QApplication, QDockWidget, QEvent, QFrame, QHBoxLayout, QLabel, QObject,
     QPainter, QPoint, QRect, QRegion, QSignalBlocker, QSizePolicy, QStyle, QStyleOptionSizeGrip,
-    QTimer, QToolButton, Qt, QWidget,
+    QTabBar, QTimer, QToolButton, Qt, QWidget,
 )
 
 try:
@@ -163,6 +163,7 @@ class WorkspaceDrag(QObject):
 
     def refresh(self):
         self._refresh_pending = False
+        self.manager.adopt_new_panes()
         for dock in self.manager.main.findChildren(QDockWidget):
             if self.manager.is_workspace_pane(dock) and dock.titleBarWidget() is None:
                 dock.setTitleBarWidget(PaneTitleBar(dock, self))
@@ -177,6 +178,7 @@ class WorkspaceDrag(QObject):
                             (left | bottom, Qt.CursorShape.SizeBDiagCursor), (right | bottom, Qt.CursorShape.SizeFDiagCursor),
                         )]
                 self._update_resize_handles(dock)
+        self.manager._tabs.refresh()
 
     def _update_resize_handles(self, dock):
         # Custom title bars remove native floating-window decorations. Provide
@@ -209,7 +211,13 @@ class WorkspaceDrag(QObject):
                 QEvent.Type.Show, QEvent.Type.Hide, QEvent.Type.Resize,
                 QEvent.Type.WindowStateChange, QEvent.Type.ParentChange):
             self._update_resize_handles(watched)
-        if kind == QEvent.Type.Show and isinstance(watched, QDockWidget) and self.manager.is_workspace_pane(watched):
+        pane_changed = (isinstance(watched, QDockWidget) and self.manager.is_workspace_pane(watched)
+                        and kind in (QEvent.Type.Show, QEvent.Type.Hide, QEvent.Type.WindowTitleChange))
+        if pane_changed and kind == QEvent.Type.Show and watched not in self.manager._tab_members:
+            watched._workspace_open_profile = self.manager._profile()
+        tabs_changed = (isinstance(watched, QTabBar) and watched.parentWidget() is self.manager.main
+                        and kind in (QEvent.Type.Show, QEvent.Type.LayoutRequest))
+        if pane_changed or tabs_changed:
             if not self._refresh_pending:
                 self._refresh_pending = True
                 QTimer.singleShot(0, self.refresh)
@@ -295,12 +303,16 @@ class WorkspaceDrag(QObject):
             if dock.isFloating() and not (mode is not None and mode.active):
                 continue
             host = mode.host if mode is not None and mode.active else dock
+            if host.visibleRegion().isEmpty():
+                continue  # Inactive tabs keep their widgets open but are not drop targets.
             area = QRect(host.mapToGlobal(QPoint(0, 0)), host.size())
             placement = edge_placement(point, area, margin=48)
             if placement:
                 # Dock splits use halves; screen corners are the quarter targets.
                 side = 'left' if 'left' in placement else 'right' if 'right' in placement else placement
                 return ('pane', dock, side, snap_rectangle(area, side))
+            if area.contains(point):
+                return ('pane', dock, 'tab', area)
         main = self.manager.main
         if main.isVisible() and not main.isMinimized():
             area = QRect(main.mapToGlobal(QPoint(0, 0)), main.size())

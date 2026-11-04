@@ -278,7 +278,7 @@ def test_workspace_epub_resumes_latest_section_instead_of_the_old_workspace_loca
     main_reader = SimpleNamespace(show_epub_in_dock=Mock(), _epub_dock=SimpleNamespace(setObjectName=Mock()),
                                    current_epub_card_id=lambda: None)
     locations = []
-    reference_reader = SimpleNamespace(_windows=[], _load=lambda *args: (),
+    reference_reader = SimpleNamespace(_windows=[], _pending_windows=set(), _MAX_WINDOWS=8, _load=lambda *args: (),
         EpubReferenceWindow=lambda result, location, **kw:
             locations.append(location) or SimpleNamespace(setObjectName=Mock()))
     session = module.WorkspaceSession(SimpleNamespace(), lambda: 'A')
@@ -293,6 +293,19 @@ def test_workspace_epub_resumes_latest_section_instead_of_the_old_workspace_loca
         assert main_reader.show_epub_in_dock.call_args.kwargs['focus_offset'] == -1
     else:
         assert locations == [{'card_id': 42, 'section': 8, 'offset': -1, 'scroll': .7}]
+
+
+def test_workspace_does_not_open_a_ninth_epub_tab(monkeypatch, module):
+    windows = [SimpleNamespace(objectName=lambda i=i: 'incremento_epub_reference_open_'+str(i),
+        location={'card_id': i+1}, closed=False) for i in range(8)]
+    reader = SimpleNamespace(_windows=windows, _pending_windows=set(), _MAX_WINDOWS=8, EpubReferenceWindow=Mock())
+    session = module.WorkspaceSession(SimpleNamespace(), lambda: 'Synthetic')
+    monkeypatch.setattr(session, '_module', lambda kind: reader)
+    monkeypatch.setattr(session, '_epub_position', lambda *a: dict(card_id=42, section=0, offset=-1, scroll=0))
+    result = session._open(dict(kind='epub_reference', card_id=42, name='incremento_epub_reference_saved_0'),
+                           {'reference': ()})
+    assert result is None
+    reader.EpubReferenceWindow.assert_not_called()
 
 
 def test_new_workspace_captures_reader_layout_without_freezing_the_page(monkeypatch, module):

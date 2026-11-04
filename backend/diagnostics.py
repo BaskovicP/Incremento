@@ -637,6 +637,7 @@ _SAFE_DATABASE_TABLES = (
     "custom_schedule_rules",
     "content_items",
     "document_index_state",
+    "document_coverage",
     "document_library_books",
     "document_library_lists",
     "document_library_memberships",

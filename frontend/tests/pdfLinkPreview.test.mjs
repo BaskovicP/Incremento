@@ -197,6 +197,62 @@ test('only a completed pointer resize saves the new dimensions', () => {
   cleanup();
 });
 
+test('left-edge and corner resizing keep the right edge fixed, fit the viewport and save only on completion', () => {
+  const container = surface(), popup = surface(), host = surface();
+  const grip = {dataset: {pdfPreviewResize: 'left'}};
+  grip.closest = () => grip;
+  popup.contains = target => target === grip;
+  let rect = {left: 400, top: 100, right: 960, width: 560, height: 360};
+  popup.style = {};
+  popup.getBoundingClientRect = () => ({...rect,
+    ...Object.fromEntries(Object.entries(popup.style).map(([key, value]) => [key, parseFloat(value)]))});
+  host.innerWidth = 1280; host.innerHeight = 900;
+  host.setTimeout = () => 1; host.clearTimeout = () => {};
+  const saved = [];
+  const cleanup = attachPdfLinkPreview({container, popup, host, links: [footnote], tlLeft: 0,
+    doc: {}, preview: {show() {}, clear() {}}, onResize: (...args) => saved.push(args)});
+  const down = () => host.emit('pointerdown', {target: grip, button: 0, clientX: 400, clientY: 460,
+    preventDefault() {}});
+  down();
+  host.emit('pointermove', {clientX: 260, clientY: 560});
+  assert.deepEqual([popup.style.left, popup.style.width, popup.style.height], ['260px', '700px', '360px']);
+  assert.deepEqual(saved, [], 'a drag must not write preferences until release');
+  host.emit('pointerup', {target: grip});
+  assert.deepEqual(saved, [[{width: 700, height: 360}, {left: 260, top: 100}]]);
+
+  rect = {left: 400, top: 100, right: 960, width: 560, height: 360}; popup.style = {};
+  grip.dataset.pdfPreviewResize = 'corner';
+  down();
+  host.emit('pointermove', {clientX: -2000, clientY: 2000});
+  assert.deepEqual([popup.style.left, popup.style.width, popup.style.height], ['12px', '948px', '788px']);
+  host.emit('pointermove', {clientX: 2000, clientY: -2000});
+  assert.deepEqual([popup.style.left, popup.style.width, popup.style.height], ['680px', '280px', '160px']);
+  host.emit('pointercancel', {target: grip});
+  assert.deepEqual([popup.style.left, popup.style.width, popup.style.height], ['400px', '560px', '360px']);
+  assert.equal(saved.length, 1, 'a cancelled drag restores the original size without saving');
+  cleanup();
+  assert.equal(container.handlers.size + popup.handlers.size + host.handlers.size, 0);
+});
+
+test('left resize handle supports keyboard resizing without handling arrows in preview content', () => {
+  const container = surface(), popup = surface(), host = surface();
+  const grip = {dataset: {pdfPreviewResize: 'left'}};
+  grip.closest = () => grip;
+  popup.contains = target => target === grip;
+  popup.style = {};
+  popup.getBoundingClientRect = () => ({left: 400, top: 100, right: 960, width: 560, height: 360});
+  host.innerWidth = 1280; host.innerHeight = 900;
+  host.setTimeout = () => 1; host.clearTimeout = () => {};
+  const saved = [];
+  const cleanup = attachPdfLinkPreview({container, popup, host, links: [footnote], tlLeft: 0,
+    doc: {}, preview: {show() {}, clear() {}}, onResize: (...args) => saved.push(args)});
+  host.emit('keydown', {target: {}, key: 'ArrowLeft'});
+  assert.deepEqual(saved, []);
+  host.emit('keydown', {target: grip, key: 'ArrowLeft', preventDefault() {}});
+  assert.deepEqual(saved, [[{width: 580, height: 360}, {left: 380, top: 100}]]);
+  cleanup();
+});
+
 test('hover works with Links Off, preserves selection, stays open over the popup and dismisses on Escape', () => {
   const container = surface(), popup = surface(), host = surface();
   let timer;

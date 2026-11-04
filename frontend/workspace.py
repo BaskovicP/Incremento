@@ -1,8 +1,12 @@
 """Explicit, reversible layouts for Incremento panes; no operating-system automation."""
 from contextlib import ExitStack
 import base64
+from weakref import WeakSet
 
-from aqt.qt import QApplication, QByteArray, QDockWidget, QInputDialog, QMenu, QRect, QSignalBlocker, Qt
+from aqt.qt import (
+    QApplication, QByteArray, QDockWidget, QInputDialog, QMainWindow, QMenu,
+    QRect, QSignalBlocker, QTabWidget, Qt,
+)
 
 try:
     from ..backend.i18n import t
@@ -21,7 +25,7 @@ _ADDON_PKG = __name__.split('.')[0] if '.' in __name__ else 'incremento'
 _PANE_NAMES = {
     'incremento_pdf_dock', 'incremento_epub_dock', 'incremento_writing_dock',
     'incremento_video_dock', 'incremento_web_dock', 'incremento_local_file_dock',
-    'incremento_add_card_dock',
+    'incremento_add_card_dock', 'incremento_search_dock',
 }
 
 
@@ -51,9 +55,57 @@ class WorkspaceLayouts:
         self.main = main
         self._previous = None
         self._drag = None
+        self._tabs = None
         self._session = session
         self._profile = profile
         self._generation = 0
+        self.tabbed = False
+        self._tab_members = WeakSet()
+        self._tab_anchor = None
+        main._incremento_workspace_layouts = self
+        main.tabifiedDockWidgetActivated.connect(self._tab_activated)
+
+    def _tab_activated(self, dock):
+        if self.tabbed and dock in self._tab_members:
+            self._tab_anchor = dock
+
+    def add_as_tab(self, dock):
+        """Join a newly opened pane without replacing the last explicit layout undo."""
+        if (not self.tabbed or not self.is_workspace_pane(dock) or dock.parentWidget() is not self.main
+                or not dock.features() & QDockWidget.DockWidgetFeature.DockWidgetMovable):
+            return False
+        panes = self.visible_panes()
+        anchor = self._tab_anchor
+        if anchor not in panes or anchor.isFloating():
+            anchor = next((pane for pane in panes if pane in self._tab_members
+                           and pane is not dock and not pane.isFloating()), None)
+        keep = getattr(dock, 'keep_window', None)
+        if callable(keep):
+            keep()
+        with ExitStack() as stack:
+            for pane in set(panes + [dock]):
+                stack.enter_context(QSignalBlocker(pane))
+            self._leave_focus([dock])
+            if anchor is not dock and (anchor is None or dock not in self.main.tabifiedDockWidgets(anchor)):
+                self.main.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+                dock.setFloating(False)
+                if anchor is not None:
+                    self._tabify(anchor, dock)
+            dock.show()
+            dock.raise_()
+        self._tab_members.add(dock)
+        self._tab_anchor = dock
+        return True
+
+    def adopt_new_panes(self):
+        if not self.tabbed or getattr(self.main, '_incremento_workspace_layouts', None) is not self:
+            return
+        panes = self.visible_panes()
+        self._tab_members.intersection_update(panes)
+        for dock in panes:
+            if (dock not in self._tab_members
+                    and getattr(dock, '_workspace_open_profile', self._profile()) == self._profile()):
+                self.add_as_tab(dock)
 
     def _content(self):
         if self._session is None:
@@ -67,7 +119,8 @@ class WorkspaceLayouts:
 
     def save_named(self, name, done=lambda ok: None):
         name = workspace_name(name)
-        panes = self.visible_panes()
+        # Search is a transient browser, not card-backed workspace content.
+        panes = [dock for dock in self.visible_panes() if not dock.objectName().startswith('incremento_search_dock')]
         if name is None or not panes:
             done(False)
             return
@@ -75,6 +128,8 @@ class WorkspaceLayouts:
         generation, profile = self._generation, self._profile()
         # Use stable layout slots instead of persisting reference bridge nonces.
         names = {dock: dock.objectName() for dock in panes}
+        tab_options = {dock: {key: getattr(dock, '_workspace_' + key, '')
+                             for key in ('tab_name', 'tab_size', 'tab_color')} for dock in panes}
         aliases = {pane_name: 'incremento_' + ('pdf_reference' if pane_name.startswith('incremento_pdf_reference_')
                     else 'epub_reference') + '_saved_' + str(index)
                    for index, pane_name in enumerate(names.values()) if '_reference_' in pane_name}
@@ -84,7 +139,8 @@ class WorkspaceLayouts:
                     with QSignalBlocker(dock):
                         dock.setObjectName(aliases[pane_name])
             snapshot = {'version': 1, 'state': base64.b64encode(bytes(self.main.saveState())).decode('ascii'),
-                        'geometry': base64.b64encode(bytes(self.main.saveGeometry())).decode('ascii')}
+                        'geometry': base64.b64encode(bytes(self.main.saveGeometry())).decode('ascii'),
+                        'open_as_tabs': self.tabbed}
         finally:
             for dock, pane_name in names.items():
                 with QSignalBlocker(dock):
@@ -92,7 +148,8 @@ class WorkspaceLayouts:
         def captured(entries):
             if generation != self._generation or profile != self._profile():
                 return
-            snapshot['panes'] = [entry | {'name': aliases.get(entry['name'], entry['name'])} for entry in entries]
+            snapshot['panes'] = [entry | tab_options[dock] | {'name': aliases.get(entry['name'], entry['name'])}
+                                 for dock, entry in zip(panes, entries)]
             clean = normalize_workspace(snapshot)
             if clean is None or len(entries) != len(panes):
                 done(False)
@@ -154,12 +211,23 @@ class WorkspaceLayouts:
                 for dock in panes + extra:
                     dock.show()
                     self._keep_on_screen(dock)
+                options = {entry['name']: entry for entry in snapshot['panes']}
+                for dock in panes:
+                    for key in ('tab_name', 'tab_size', 'tab_color'):
+                        setattr(dock, '_workspace_' + key, options.get(dock.objectName(), {}).get(key, ''))
                 focused = {entry['name'] for entry in snapshot['panes'] if entry.get('focused')}
                 for dock in panes:
                     mode = _focus(dock)
                     if mode is not None:
                         mode.set_enabled(dock.objectName() in focused)
                         mode.present(eligible=True, title=dock.windowTitle())
+            groups = [dock for dock in panes if self.main.tabifiedDockWidgets(dock)]
+            self.tabbed = snapshot.get('open_as_tabs', bool(groups))
+            self._tab_members = WeakSet(self.visible_panes())
+            self._tab_anchor = next((dock for dock in groups if not dock.visibleRegion().isEmpty()),
+                                    groups[0] if groups else panes[0])
+            if self._tabs is not None:
+                self._tabs.refresh()
             done(ok, missing)
         self._content().restore(snapshot['panes'], current, opened)
 
@@ -180,12 +248,15 @@ class WorkspaceLayouts:
     def enable_dragging(self):
         if self._drag is None:
             from .workspace_drag import WorkspaceDrag
+            from .workspace_tabs import WorkspaceTabs
+            self._tabs = WorkspaceTabs(self)
             self._drag = WorkspaceDrag(self)
 
     @staticmethod
     def is_workspace_pane(dock):
         name = dock.objectName()
-        return name in _PANE_NAMES or name.startswith(('incremento_pdf_reference_', 'incremento_epub_reference_'))
+        return name in _PANE_NAMES or name.startswith(('incremento_pdf_reference_', 'incremento_epub_reference_',
+                                                      'incremento_search_dock_'))
 
     def visible_panes(self):
         panes = []
@@ -199,7 +270,13 @@ class WorkspaceLayouts:
 
     def _remember(self, panes):
         self._previous = (self.main.saveState(), tuple(panes),
-                          tuple(_focus(d) for d in panes if _focus(d) is not None and _focus(d).active))
+                          tuple(_focus(d) for d in panes if _focus(d) is not None and _focus(d).active), self.tabbed)
+        # An explicitly arranged reference is part of the user's workspace,
+        # rather than the disposable preview slot for the next PDF link.
+        for dock in panes:
+            keep = getattr(dock, 'keep_window', None)
+            if callable(keep):
+                keep()
 
     @staticmethod
     def _leave_focus(panes):
@@ -212,6 +289,8 @@ class WorkspaceLayouts:
         panes = self.visible_panes()
         if writing not in panes:
             return False
+        if self.tabbed:
+            return self.add_as_tab(writing)
         focused = next((d for d in panes if _focus(d) is not None and _focus(d).active), None)
         if focused is not None:
             # The PDF/EPUB already occupies Anki's central area. Keep it there
@@ -229,11 +308,13 @@ class WorkspaceLayouts:
         return self.arrange('columns', [reader, writing]) if reader is not None else False
 
     def arrange(self, layout, panes=None):
-        if layout not in ('columns', 'rows', 'grid'):
+        if layout not in ('columns', 'rows', 'grid', 'tabs'):
             raise ValueError('Unknown workspace layout')
         panes = self.visible_panes() if panes is None else list(panes)
-        if len(panes) < 2:
+        if not panes or (len(panes) < 2 and layout != 'tabs' and not self.tabbed):
             return False
+        if layout == 'tabs':
+            self.enable_dragging()
         self._remember(panes)
         with ExitStack() as stack:
             for dock in panes:
@@ -245,7 +326,11 @@ class WorkspaceLayouts:
                 dock.setFloating(False)
                 dock.show()
             horizontal, vertical = Qt.Orientation.Horizontal, Qt.Orientation.Vertical
-            if layout == 'grid':
+            if layout == 'tabs':
+                for dock in panes[1:]:
+                    self._tabify(panes[0], dock)
+                panes[0].raise_()
+            elif layout == 'grid':
                 # Two columns, as many rows as needed; every pane stays reachable.
                 for index, dock in enumerate(panes[1:], 1):
                     previous = panes[index - 1] if index % 2 else panes[index - 2]
@@ -258,10 +343,28 @@ class WorkspaceLayouts:
                     self.main.splitDockWidget(previous, dock, orientation)
                 size = self.main.width() if layout == 'columns' else self.main.height()
                 self.main.resizeDocks(panes, [max(1, size // len(panes))] * len(panes), orientation)
+        self.tabbed = layout == 'tabs'
+        self._tab_members = WeakSet(self.visible_panes())
+        self._tab_anchor = panes[0] if self.tabbed else None
         return True
 
+    def _tabify(self, target, dock):
+        dock._workspace_tab_size = getattr(target, '_workspace_tab_size', '')
+        self.main.setDockOptions(self.main.dockOptions() | QMainWindow.DockOption.AllowTabbedDocks)
+        self.main.setTabPosition(self.main.dockWidgetArea(target), QTabWidget.TabPosition.North)
+        self.main.tabifyDockWidget(target, dock)
+        dock.show()
+        dock.raise_()
+        # Qt can leave a newly allocated dock tab bar hidden until the layout
+        # is reapplied. Replay it here while the caller blocks pane signals.
+        self.main.restoreState(self.main.saveState())
+        if self._tabs is not None:
+            self._tabs.refresh()
+
     def dock_at(self, dock, placement, *, target=None):
-        if placement not in ('left', 'right', 'top', 'bottom') or dock not in self.visible_panes():
+        if placement not in ('left', 'right', 'top', 'bottom', 'tab') or dock not in self.visible_panes():
+            return False
+        if placement == 'tab' and target is None:
             return False
         panes = self.visible_panes()
         if target is not None and (target not in panes or target is dock):
@@ -271,9 +374,9 @@ class WorkspaceLayouts:
             for pane in panes:
                 stack.enter_context(QSignalBlocker(pane))
             self._leave_focus([dock] + ([target] if target is not None else []))
-            area = {'left': Qt.DockWidgetArea.LeftDockWidgetArea, 'right': Qt.DockWidgetArea.RightDockWidgetArea,
-                    'top': Qt.DockWidgetArea.TopDockWidgetArea, 'bottom': Qt.DockWidgetArea.BottomDockWidgetArea}[placement]
             if target is None:
+                area = {'left': Qt.DockWidgetArea.LeftDockWidgetArea, 'right': Qt.DockWidgetArea.RightDockWidgetArea,
+                        'top': Qt.DockWidgetArea.TopDockWidgetArea, 'bottom': Qt.DockWidgetArea.BottomDockWidgetArea}[placement]
                 self.main.removeDockWidget(dock)
                 self.main.addDockWidget(area, dock)
                 dock.setFloating(False)
@@ -282,7 +385,9 @@ class WorkspaceLayouts:
                 target.setFloating(False)
                 target.show()
                 orientation = Qt.Orientation.Horizontal if placement in ('left', 'right') else Qt.Orientation.Vertical
-                if placement in ('right', 'bottom'):
+                if placement == 'tab':
+                    self._tabify(target, dock)
+                elif placement in ('right', 'bottom'):
                     self.main.splitDockWidget(target, dock, orientation)
                 else:
                     # Qt inserts after the first dock. Insert the dropped pane
@@ -292,8 +397,12 @@ class WorkspaceLayouts:
                     self.main.addDockWidget(target_area, dock)
                     self.main.splitDockWidget(target, dock, orientation)
                     self.main.splitDockWidget(dock, target, orientation)
-                self.main.resizeDocks([dock, target], [1, 1], orientation)
+                if placement != 'tab':
+                    self.main.resizeDocks([dock, target], [1, 1], orientation)
             dock.show()
+        self.tabbed = placement == 'tab'
+        self._tab_members = WeakSet(self.visible_panes())
+        self._tab_anchor = dock if self.tabbed else None
         return True
 
     def snap(self, dock, placement, *, screen=None):
@@ -324,7 +433,7 @@ class WorkspaceLayouts:
     def restore(self):
         if self._previous is None:
             return False
-        state, original, focused = self._previous
+        state, original, focused, tabbed = self._previous
         self._previous = None
         current = self.visible_panes()
         live = self.main.findChildren(QDockWidget)
@@ -340,6 +449,10 @@ class WorkspaceLayouts:
             for mode in focused:
                 if mode.dock in current:
                     mode.present(eligible=True, title=mode.dock.windowTitle())
+        self.tabbed = tabbed
+        self._tab_members = WeakSet(self.visible_panes())
+        self._tab_anchor = next((dock for dock in self.visible_panes()
+                                 if not dock.isFloating() and self.main.tabifiedDockWidgets(dock)), None)
         return True
 
     def reset(self):
@@ -347,6 +460,16 @@ class WorkspaceLayouts:
         if self._drag is not None:
             self._drag.cancel(restore=False)
         self._previous = None
+        self.tabbed = False
+        self._tab_members.clear()
+        self._tab_anchor = None
+        for dock in self.main.findChildren(QDockWidget):
+            if self.is_workspace_pane(dock):
+                dock._workspace_tab_name = ''
+                dock._workspace_tab_size = ''
+                dock._workspace_tab_color = ''
+        if self._tabs is not None:
+            self._tabs.refresh()
 
 
 def add_workspace_menu(parent, manager, open_writing, open_pdf=None):
@@ -408,7 +531,8 @@ def add_workspace_menu(parent, manager, open_writing, open_pdf=None):
         action(menu, 'workspace_write_beside', open_writing)
         menu.addSeparator()
         panes = manager.visible_panes()
-        action(menu, 'workspace_save', save, bool(panes))
+        action(menu, 'workspace_save', save,
+               any(not d.objectName().startswith('incremento_search_dock') for d in panes))
         names = manager.saved_names()
         saved_menu = menu.addMenu(t('workspace_load'))
         delete_menu = menu.addMenu(t('workspace_delete'))
@@ -419,8 +543,9 @@ def add_workspace_menu(parent, manager, open_writing, open_pdf=None):
                 item = owner.addAction(name.replace('&', '&&'))
                 item.triggered.connect(lambda checked=False, value=name, cb=callback: cb(value))
         menu.addSeparator()
-        for layout in ('columns', 'rows', 'grid'):
-            action(menu, 'workspace_' + layout, lambda value=layout: arrange(value), len(panes) >= 2)
+        for layout in ('tabs', 'columns', 'rows', 'grid'):
+            action(menu, 'workspace_' + layout, lambda value=layout: arrange(value),
+                   bool(panes) if layout == 'tabs' or manager.tabbed else len(panes) >= 2)
         action(menu, 'workspace_restore', manager.restore, manager._previous is not None)
         menu.addSeparator()
         windows = menu.addMenu(t('workspace_position'))

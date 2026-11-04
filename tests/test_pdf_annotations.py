@@ -246,6 +246,93 @@ def test_sync_reports_replaced_reader_bytes_even_when_no_native_annotations_chan
     assert sync(tmp_path)['reader_changed'] is False
 
 
+@pytest.mark.parametrize(('style', 'edit'), [
+    (style, edit)
+    for style in ('highlight', 'underline', 'squiggly', 'dashed', 'dotted', 'strikeout', 'snapshot')
+    for edit in ('add', 'note', 'color', 'resize', 'delete')
+    if (style, edit) != ('snapshot', 'color')
+])
+def test_overlay_annotation_edits_sync_without_replacing_the_open_readers_bytes(tmp_path, style, edit):
+    filename = pdf_file(tmp_path)
+    highlight = local_highlight()
+    if style == 'snapshot':
+        highlight['color'] = 'snapshot'
+    else:
+        highlight['style'] = style
+    if edit != 'add':
+        add_highlight(str(tmp_path), PROFILE, CARD, highlight)
+    initial = sync(tmp_path)
+    reader = Path(initial['reader_path'])
+    before = reader.read_bytes(), reader.stat().st_ino, reader.stat().st_mtime_ns
+
+    if edit == 'add':
+        add_highlight(str(tmp_path), PROFILE, CARD, highlight)
+    elif edit == 'note':
+        update_highlight_note(str(tmp_path), PROFILE, CARD, 'local', 'Edited while reading')
+    elif edit == 'delete':
+        remove_highlight(str(tmp_path), PROFILE, CARD, 'local')
+    else:
+        row = load_highlights(str(tmp_path), PROFILE, CARD)[0]
+        if edit == 'color':
+            row['color'] = 'green'
+        else:
+            row['rects'] = [{'x': 60, 'y': 65, 'w': 170, 'h': 18}]
+            row['pdf_annotation'].pop('quads', None)
+            row['pdf_annotation'].pop('xref', None)
+        update_highlight(str(tmp_path), PROFILE, CARD, row)
+
+    result = sync(tmp_path)
+
+    assert result['changed'] is True, 'the editable PDF must still be saved'
+    assert result['reader_changed'] is False, 'overlay edits must not reload open PDF panes'
+    assert result['appearance_changed'] is False
+    assert (reader.read_bytes(), reader.stat().st_ino, reader.stat().st_mtime_ns) == before, 'lazy PDF byte ranges must remain valid'
+    assert len(native_rows(filename)) == (0 if edit == 'delete' else 1)
+    assert native_rows(reader) == []
+    if edit == 'note':
+        assert native_rows(filename)[0]['note'] == 'Edited while reading'
+
+
+def test_external_text_mark_import_updates_highlights_without_replacing_the_reader(tmp_path):
+    filename = pdf_file(tmp_path)
+    reader = Path(sync(tmp_path)['reader_path'])
+    before = reader.read_bytes(), reader.stat().st_ino, reader.stat().st_mtime_ns
+
+    change_pdf(filename, add_native)
+    result = sync(tmp_path)
+
+    assert result['imported'] == 1
+    assert load_highlights(str(tmp_path), PROFILE, CARD)[0]['note'] == 'Outside reader note'
+    assert result['reader_changed'] is False
+    assert (reader.read_bytes(), reader.stat().st_ino, reader.stat().st_mtime_ns) == before
+
+
+@pytest.mark.parametrize('kind', ['FreeText', 'Circle'])
+def test_native_appearance_edits_still_replace_the_reader_copy(tmp_path, kind):
+    filename = pdf_file(tmp_path)
+    reader = Path(sync(tmp_path)['reader_path'])
+    def populate(doc):
+        page = doc[0]
+        rect = fitz.Rect(60, 160, 320, 240)
+        if kind == 'FreeText':
+            page.add_freetext_annot(rect, 'Visible annotation')
+        else:
+            page.add_circle_annot(rect).set_info(content='Visible annotation')
+    change_pdf(filename, populate)
+    assert sync(tmp_path)['reader_changed'] is True
+    highlight_id = load_highlights(str(tmp_path), PROFILE, CARD)[0]['id']
+
+    update_highlight_note(str(tmp_path), PROFILE, CARD, highlight_id, 'Changed native annotation')
+    result = sync(tmp_path)
+    assert result['reader_changed'] is True
+    assert native_rows(reader)[0]['note'] == 'Changed native annotation'
+
+    remove_highlight(str(tmp_path), PROFILE, CARD, highlight_id)
+    result = sync(tmp_path)
+    assert result['reader_changed'] is True
+    assert native_rows(reader) == []
+
+
 def test_annotation_sync_accepts_a_15000_page_pdf_but_keeps_a_page_ceiling():
     class Page:
         cropbox = (0, 0, 400, 500)

@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 from textwrap import dedent, indent
+import pytest
 
 
 def _run_popup_test(script):
@@ -15,9 +16,16 @@ def _run_popup_test(script):
         faulthandler.enable()
         from PyQt6.QtQuick import QQuickWindow, QSGRendererInterface
         QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.Software)
-        from aqt.qt import QApplication, QTimer
+        from aqt.qt import QApplication, QObject, QTimer
+        from PyQt6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+        from frontend.browser_profiles import destroy_browser
         app = QApplication(['selection-search-test'])
         app.setQuitOnLastWindowClosed(False)
+        # Anki initializes WebEngine before entering its event loop. Lazy first
+        # initialization in a nested callback crashes offscreen macOS teardown.
+        bootstrap_profile = QWebEngineProfile()
+        bootstrap_owner = QObject()
+        bootstrap_page = QWebEnginePage(bootstrap_profile, bootstrap_owner)
     ''')
     teardown = dedent('''
         errors = []
@@ -27,6 +35,7 @@ def _run_popup_test(script):
             except BaseException as error:
                 errors.append(error)
             finally:
+                destroy_browser(bootstrap_owner, bootstrap_profile)
                 app.quit()
         QTimer.singleShot(0, run)
         app.exec()
@@ -41,6 +50,7 @@ def _run_popup_test(script):
         capture_output=True, text=True, timeout=30,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+    assert 'Release of profile requested but WebEnginePage still not deleted' not in result.stderr
 
 
 def test_real_popup_is_nonmodal_isolated_and_disposed_on_profile_close():
@@ -189,3 +199,134 @@ def test_encoded_search_requests_and_result_links_remain_usable():
             popup.dispose()
     ''')
     _run_popup_test(script)
+
+
+def test_search_can_share_workspace_tabs_without_reloading_or_sharing_reader_storage():
+    _run_popup_test('''
+        from unittest.mock import patch
+        from aqt.qt import QDockWidget, QMainWindow, QTextEdit, Qt
+        from PyQt6 import sip
+        from PyQt6.QtWebEngineWidgets import QWebEngineView
+        from frontend import selection_search as search
+        from frontend.workspace import WorkspaceLayouts
+        main = QMainWindow()
+        main.setCentralWidget(QTextEdit('Reviewer'))
+        reader = QDockWidget('Reader', main)
+        reader.setObjectName('incremento_pdf_dock')
+        reader.setWidget(QTextEdit('Live reader'))
+        main.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, reader)
+        main.show()
+        search._active_profile = lambda: 'Synthetic'
+        loaded = []
+        with patch.object(QWebEngineView, 'load', lambda self, url: loaded.append(url.toString())):
+            search.show_google_search('first', parent=reader)
+            popup = search._popup
+            assert isinstance(popup, QDockWidget), 'Search must participate in the pane workspace'
+            assert popup.parentWidget() is main and popup.isFloating()
+            manager = WorkspaceLayouts(main)
+            assert popup in manager.visible_panes()
+            view, page, profile = popup._view, popup._page, popup._profile
+            assert manager.arrange('tabs')
+            app.processEvents()
+            assert main.tabifiedDockWidgets(reader) == [popup]
+            assert popup._view is view and popup._page is page
+            reader.raise_(); app.processEvents()
+            search.show_google_search('next', parent=reader)
+            app.processEvents()
+            next_popup = search._popup
+            assert next_popup is not popup and not next_popup.isFloating()
+            assert not next_popup.visibleRegion().isEmpty()
+            assert popup._view is view and popup._page is page
+            assert loaded == ['https://www.google.com/search?q=first', 'https://www.google.com/search?q=next']
+            assert popup._profile is profile and profile.isOffTheRecord()
+            assert popup._page.webChannel() is None
+            captured = []
+            class Session:
+                def capture(self, panes, done):
+                    captured.extend(panes)
+                    done([])
+            manager._session = Session()
+            manager.save_named('Desk')
+            assert captured == [reader], 'Saved workspaces must not persist transient browsing state'
+            search.reset_for_profile_switch()
+            assert search._popup is None and sip.isdeleted(popup) and sip.isdeleted(profile)
+            assert reader.isVisible() and reader.widget().toPlainText() == 'Live reader'
+        main.close()
+    ''')
+
+
+@pytest.mark.parametrize('remember', [False, True], ids=['temporary', 'remembered'])
+def test_grouped_searches_open_separate_tabs_and_share_one_profile_until_the_last_close(tmp_path, remember):
+    _run_popup_test('''
+        from unittest.mock import patch
+        from aqt.qt import QCoreApplication, QDockWidget, QEvent, QMainWindow, QTextEdit, Qt
+        from PyQt6 import sip
+        from PyQt6.QtWebEngineWidgets import QWebEngineView
+        from frontend import selection_search as search
+        from frontend.workspace import WorkspaceLayouts
+        main = QMainWindow()
+        main.setCentralWidget(QTextEdit('Reviewer'))
+        panes = []
+        for kind in ('pdf', 'writing'):
+            dock = QDockWidget(kind, main)
+            dock.setObjectName('incremento_' + kind + '_dock')
+            dock.setWidget(QTextEdit('Unsaved ' + kind))
+            main.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+            panes.append(dock)
+        main.show(); app.processEvents()
+        manager = WorkspaceLayouts(main)
+        assert manager.arrange('tabs')
+        person = ['Synthetic']
+        search._active_profile = lambda: person[0]
+        search._ADDON_DIR = SEARCH_TEST_DIRECTORY
+        search.configure_search({'search_remember_logins': SEARCH_REMEMBER})
+        loaded = []
+        with patch.object(QWebEngineView, 'load', lambda self, url: loaded.append(url.toString())):
+            if SEARCH_REMEMBER:
+                assert manager.arrange('columns')
+                search.show_google_search('cached before grouping', parent=panes[0])
+                legacy, cached_profile = search._popup, search._popup._profile
+                legacy.close()
+                assert not sip.isdeleted(legacy)
+                assert manager.arrange('tabs')
+                loaded.clear()
+            search.show_google_search('first', parent=panes[0])
+            first = search._popup
+            app.processEvents()
+            profile, page = first._profile, first._page
+            if SEARCH_REMEMBER:
+                assert sip.isdeleted(legacy), 'A hidden cached popup must not keep the shared session alive'
+                assert profile is cached_profile
+            assert profile.isOffTheRecord() is not SEARCH_REMEMBER
+            search.show_google_search('second', parent=panes[0])
+            second = search._popup
+            app.processEvents()
+            assert second is not first, 'Grouped searches must preserve the previous result in its own tab'
+            assert second._profile is profile and first._page is page
+            assert second._page is not page and second._page.webChannel() is None
+            assert loaded == ['https://www.google.com/search?q=first', 'https://www.google.com/search?q=second']
+            assert set(main.tabifiedDockWidgets(first)) == {*panes, second}
+            assert first.objectName() != second.objectName()
+            first.close()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            app.processEvents()
+            assert sip.isdeleted(first) and not sip.isdeleted(profile)
+            assert not second.isHidden()
+            second.close()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            app.processEvents()
+            assert sip.isdeleted(second) and sip.isdeleted(profile), 'The last tab must flush and release its profile'
+            # Even if the latest tab has closed, older tabs must never lend
+            # their shared profile to a search from the next Anki profile.
+            search.show_google_search('old one', parent=panes[0])
+            old, old_profile = search._popup, search._popup._profile
+            search.show_google_search('old two', parent=panes[0])
+            search._popup.close()
+            assert search._popup is None
+            person[0] = 'Other'
+            search.show_google_search('other profile', parent=panes[0])
+            assert sip.isdeleted(old) and sip.isdeleted(old_profile)
+            assert search._popup.anki_profile == 'Other' and search._popup._profile is not old_profile
+            search.reset_for_profile_switch()
+        main.close()
+    '''.replace('SEARCH_TEST_DIRECTORY', repr(str(tmp_path))).replace('SEARCH_REMEMBER', repr(remember)))

@@ -8,6 +8,57 @@ from unittest.mock import MagicMock
 import pytest
 
 
+def test_malformed_passage_cannot_create_a_citation_or_write_the_clipboard(monkeypatch):
+    copied = []
+    monkeypatch.setattr(pdf_dock,'current_pdf_card_id',lambda:55)
+    monkeypatch.setattr(pdf_dock,'_current_pdf_card_id',55)
+    monkeypatch.setattr(pdf_dock,'_current_pdf_filename','book.pdf')
+    monkeypatch.setattr(pdf_dock,'_current_pdf_display_label',lambda:'Book')
+    monkeypatch.setattr(pdf_dock,'set_reader_anchor_clipboard',lambda *args:copied.append(args))
+    passage = {'quote':'x'*2001}
+    assert pdf_dock.pdf_citation(page=1,passage=passage) == ''
+    assert not pdf_dock._copy_pdf_context_anchor(dict(cardId=55,page=1,scrollRatio=0,passage=passage))
+    assert copied == []
+
+
+@pytest.mark.parametrize('stale', [False, True], ids=['return', 'newer-document'])
+def test_passage_visit_returns_to_exact_origin_without_replacing_saved_resume(monkeypatch, stale):
+    from backend import pdf_reference
+    source = dict(profile='A', card_id=7, filename='source.pdf', page=3, zoom=1.4, scroll_ratio=.37)
+    dock = types.SimpleNamespace(_reader_location=source)
+    calls, queries = [], []
+    monkeypatch.setattr(pdf_dock, '_pdf_dock', dock)
+    monkeypatch.setattr(pdf_dock, '_active_profile', lambda: 'A')
+    monkeypatch.setattr(pdf_dock, '_current_pdf_card_id', 7)
+    monkeypatch.setattr(pdf_dock, '_current_pdf_filename', 'source.pdf')
+    monkeypatch.setattr(pdf_dock, 'show_pdf_in_dock', lambda *args, **kw: calls.append((args, kw)))
+    target = dict(card_id=8, filename='target.pdf')
+    passage = dict(quote='Exact explanation', rects=[[.1,.6,.2,.04]])
+    pdf_dock._follow_pdf_passage(target, dict(target_page=9,target_scroll=.6,target_passage=passage))
+    assert calls[-1][1]['jump_passage'] == passage
+    assert calls[-1][1]['via_link'] and calls[-1][1]['preserve_history']
+    assert dock._passage_history.entries[-1] == source
+    class Query:
+        def __init__(self, **options):
+            self.options = options
+            queries.append(self)
+        def failure(self, callback): return self
+        def run_in_background(self): pass
+    monkeypatch.setitem(sys.modules, 'aqt.operations', types.SimpleNamespace(QueryOp=Query))
+    monkeypatch.setattr(pdf_reference, 'resolve_pdf_reference', lambda *args: dict(card_id=7,filename='source.pdf'))
+    pdf_dock._return_pdf_passage()
+    result = queries[-1].options['op'](object())
+    if stale:
+        monkeypatch.setattr(pdf_dock, '_pdf_annotation_generation', pdf_dock._pdf_annotation_generation+1)
+    queries[-1].options['success'](result)
+    if stale:
+        assert len(calls) == 1
+    else:
+        assert calls[-1][0] == (7,'source.pdf',3,1.4)
+        assert calls[-1][1]['scroll_ratio_override'] == .37
+        assert calls[-1][1]['preserve_history']
+
+
 def test_visible_page_link_bridge_jumps_in_main_reader_and_retires_on_document_change(monkeypatch):
     controllers, opened = [], []
     class Bridge:
@@ -1467,8 +1518,10 @@ def test_pdf_context_anchor_rejects_stale_cards_and_clamps_scroll_ratio(monkeypa
 @pytest.mark.parametrize("changed", ["profile", "card", "filename", "load", "closed", "menu"])
 def test_embedded_image_menu_uses_captured_profile_path_and_retires_stale_callbacks(monkeypatch, changed):
     requests, paths = [], []
-    # The recording dialog is a separate UI boundary; this test owns image capture.
+    # Linking dialogs are separate UI boundaries; this test owns image capture.
     monkeypatch.setitem(sys.modules, 'recording_link_dialog', types.SimpleNamespace(
+        add_context_actions=lambda *args, **kwargs: None))
+    monkeypatch.setitem(sys.modules, 'frontend.writing_excerpt_ui', types.SimpleNamespace(
         add_context_actions=lambda *args, **kwargs: None))
     profile = ["A"]
     page = types.SimpleNamespace(_bridge_nonce="load-one")
@@ -2226,7 +2279,7 @@ def test_show_pdf_in_dock_reloads_viewer_after_missing_screen(monkeypatch, reade
     assert f'locale: {json.dumps(reader_locale)}' in js_calls[0]
     assert f'customLanguage: {json.dumps(custom_language)}' in js_calls[0]
     assert (
-        f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}, "night", false, 2.5, {json.dumps(page_y_override)}, false, "yellow", {{"width": 760, "height": 500}}));'
+        f', {json.dumps(reader_locale)}, {json.dumps(custom_language)}, "night", false, 2.5, {json.dumps(page_y_override)}, false, "yellow", {{"width": 760, "height": 500}}, {{}}));'
         in js_calls[0]
     )
     assert 'appearanceMode: "night"' in js_calls[0]

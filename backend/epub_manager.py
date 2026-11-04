@@ -43,6 +43,7 @@ try:
         apply_incremento_metadata,
         build_incremento_metadata,
         INCREMENTO_METADATA_FIELDS,
+        INCREMENTO_CONTENT_ID_FIELD,
     )
     from .note_type_updates import NoteTypeSpec, ensure_note_type
     from .scheduler_config import build_ready_filter, load_scheduler_config
@@ -69,6 +70,7 @@ except ImportError:
         apply_incremento_metadata,
         build_incremento_metadata,
         INCREMENTO_METADATA_FIELDS,
+        INCREMENTO_CONTENT_ID_FIELD,
     )
     from note_type_updates import NoteTypeSpec, ensure_note_type  # type: ignore
     from scheduler_config import build_ready_filter, load_scheduler_config  # type: ignore
@@ -98,7 +100,7 @@ _MAX_EPUB_COMPRESSION_RATIO = 500.0
 _MAX_EPUB_MEMBER_NAME_CHARS = 512
 _MAX_EPUB_EXTRACTION_SECONDS = 30.0
 _EPUB_COPY_CHUNK_BYTES = 1024 * 1024
-_EPUB_SANITIZER_VERSION = 4
+_EPUB_SANITIZER_VERSION = 5
 _EPUB_HTML_SUFFIXES = {".htm", ".html", ".xht", ".xhtml"}
 _EPUB_ALLOWED_COMPRESSION = {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED}
 _WINDOWS_RESERVED_NAMES = {
@@ -185,7 +187,8 @@ _EPUB_CSP = (
     "form-action 'none'"
 )
 _CSS_IMPORT_RE = re.compile(r"@import\b[^;]*(?:;|$)", re.IGNORECASE)
-_CSS_URL_RE = re.compile(r"url\(\s*([^)]+?)\s*\)", re.IGNORECASE)
+_CSS_STRING = r'''(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')'''
+_CSS_URL_RE = re.compile(rf'''url\(\s*({_CSS_STRING}|[^)"']*)\s*\)''', re.IGNORECASE)
 _CSS_ACTIVE_RE = re.compile(
     r"(?:expression\s*\(|behavior\s*:|-moz-binding\s*:)",
     re.IGNORECASE,
@@ -1632,6 +1635,7 @@ def add_epub_card(
     profile: str | None = None,
     source_type: str = "EPUB",
     document_details: dict | None = None,
+    source_metadata: dict | None = None,
 ) -> int:
     if document_details is not None:
         try:
@@ -1652,6 +1656,7 @@ def add_epub_card(
             tags=tags,
             operation=operation,
             source_type=source_type,
+            source_metadata=source_metadata,
         )
 
 
@@ -1666,6 +1671,7 @@ def _create_new_epub_card(
     tags: list[str] | None,
     operation: ImportOperation,
     source_type: str = "EPUB",
+    source_metadata: dict | None = None,
 ) -> int:
     """Create one EPUB card and compensate extracted files on failure."""
 
@@ -1716,6 +1722,9 @@ def _create_new_epub_card(
                 content_id=operation.content_id,
             ),
         )
+        if source_metadata:
+            # Source provenance may vary; the journal always owns identity.
+            apply_incremento_metadata(note, {**source_metadata, INCREMENTO_CONTENT_ID_FIELD: operation.content_id})
         for tag in ["Incremento"] + [t for t in (tags or []) if t != "Incremento"]:
             if not tag:
                 continue

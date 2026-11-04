@@ -16,9 +16,11 @@ from bs4 import BeautifulSoup
 try:
     from .db import get_connection
     from . import paths
+    from .reader_coverage import coverage_summary
 except ImportError:
     from db import get_connection
     import paths
+    from reader_coverage import coverage_summary
 
 
 MAX_METADATA_BYTES = 32 * 1024 * 1024
@@ -200,6 +202,14 @@ def document_progress_from_collection(collection, addon_dir, profile, *, should_
                         # library's extracted text in memory at once.
                         totals[key] = _epub_lengths(_epub_metadata(addon_dir, profile, filename))
                 completion = pdf_completion(totals[key], saved) if kind == "pdf" else epub_completion(totals[key], saved)
+                if filename and completion['total'] is not None:
+                    coverage = coverage_summary(addon_dir, profile, kind, int(cid), filename,
+                        total=completion['total'], lengths=totals[key] if kind == 'epub' else (),
+                        legacy_read=completion['read'], _connection=connection)
+                    completion.update(coverage)
+                    if coverage['nonlinear_read']:
+                        completion.update(read=coverage['marked'], left=coverage['total'] - coverage['marked'],
+                                          percent=coverage['marked_percent'])
                 result.append({"card_id": int(cid), "title": title, "kind": kind, **completion})
             last_id = ids[-1]
         return None

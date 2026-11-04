@@ -14,6 +14,7 @@ Incremento supports Anki 24.11 and newer. Optional features that depend on Anki'
 - Creates cards from selections and highlights while preserving source metadata and links
 - Imports DjVu documents as compact layered PDFs while preserving their existing selectable text
 - Batch-imports `.md` / `.markdown` learning documents with a rendered preview and per-file options; edits the current managed study copy with source/preview and a previous-version backup (separate from Markdown Writing cards)
+- Saves webpages from Anki or Companion as HTML snapshots preserving captured website appearance, or editable Markdown reading copies; both use the EPUB reader and HTML/Markdown/TXT export, with PDF capture also available
 - Provides topic A-factor scheduling, per-card custom schedules, postpone tools, and Anki-compatible Undo/Redo behavior
 - Includes document search, colored Browser quick tags, a card-backed knowledge tree, 7/30-day reading and study graphs, and a focus timer
 - Exports a privacy-safe support bundle with redacted settings, recent typed events, version data, and code fingerprints for easier bug reports

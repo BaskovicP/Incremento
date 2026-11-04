@@ -1,4 +1,4 @@
-"""Serialized companion PDF imports; all PDF/file/index work runs on the worker."""
+"""Serialized companion document imports; file/index work runs on the worker."""
 from aqt import mw
 
 try:

@@ -10,6 +10,12 @@ from types import SimpleNamespace
 import pytest
 
 
+def test_non_linear_progress_uses_two_short_caption_lines_so_neither_metric_is_elided():
+    import pdf_bookshelf as shelf
+    text = shelf._bookshelf_summary_text(dict(viewed_percent=66.7,marked_percent=33.3), ['read_progress'])
+    assert text.splitlines() == ['Viewed 66.7%', 'Marked read 33.3%']
+
+
 def test_tall_pdf_preview_keeps_page_aspect_ratio_within_raster_budget(tmp_path, monkeypatch):
     import pdf_bookshelf as shelf
     dimensions = []

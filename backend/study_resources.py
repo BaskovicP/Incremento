@@ -155,7 +155,16 @@ def inline_locations(text):
             data, _ = json.JSONDecoder().raw_decode(part)
             result.append(normalize_source(dict(kind="pdf", card_id=data["card_id"], page=data["page"],
                 scroll=data.get("scroll_ratio") or 0, page_y=data.get('page_y'),
-                quote=str(data.get("excerpt") or "")[:2000])))
+                quote=str(data.get("excerpt") or "")[:2000], passage=data.get("passage"))))
+        except (ValueError, TypeError, KeyError):
+            continue
+    for part in text.split('incremento_open_epub:')[1:MAX_RESOURCES + 1]:
+        if not part.startswith('{'):
+            continue
+        try:
+            data, _ = json.JSONDecoder().raw_decode(part)
+            result.append(normalize_source(dict(kind='epub', card_id=data['card_id'], section=data['section_index'],
+                offset=data['focus_offset'], scroll=data.get('scroll_ratio', 0), passage=data.get('passage'))))
         except (ValueError, TypeError, KeyError):
             continue
     for match in list(_OLD_PDF.finditer(text))[:MAX_RESOURCES]:
@@ -180,7 +189,7 @@ def source_locations(addon_dir, profile, collection, card_id):
     for row in list_document_links(addon_dir, profile, card_id):
         if row["target_card_id"] > 0:
             sources.append(dict(kind="pdf", card_id=row["target_card_id"], page=row["target_page"],
-                                scroll=row["target_scroll"], page_y=row.get("target_y"), quote=row["quote"]))
+                                scroll=row["target_scroll"], page_y=row.get("target_y"), quote=row["quote"], passage=row.get("target_passage")))
     sources.extend(inline_locations(_note_text(note)))
     for cid, page, quote in conn.execute(
         "SELECT pdf_card_id,page,excerpt FROM pdf_card_sources WHERE note_id=? ORDER BY id LIMIT ?",

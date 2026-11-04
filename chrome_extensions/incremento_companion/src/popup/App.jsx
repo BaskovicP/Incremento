@@ -103,6 +103,7 @@ function importValidationError(statusText) {
 function importActionMessage(kind, options = {}) {
   if (kind === "pdf") return message(options.openedPage === true ? "capture_opened_page_pdf" : "add_as_pdf");
   if (kind === "video") return message("add_as_video");
+  if (kind === "document") return message("save_offline_document");
   if (kind === "webpage") return message("add_as_webpage");
   if (kind === "writing" && options.writingMode === "webpage_markdown") {
     return message("add_page_markdown");
@@ -183,6 +184,7 @@ export function PopupApp() {
   const [title, setTitle] = useState("");
   const [commandShortcuts, setCommandShortcuts] = useState([]);
   const [pageContentScope, setPageContentScope] = useState("main");
+  const [documentFormat, setDocumentFormat] = useState("html");
   const [linkedCard, setLinkedCard] = useState({ linked: false, cardId: 0 });
   const [mediaContext, setMediaContext] = useState(null);
   const [manualTime, setManualTime] = useState("");
@@ -600,6 +602,7 @@ export function PopupApp() {
           const context = await readCurrentPageContext(pageContextOptionsForImport(kind, {
             writingMode: requestedWritingMode,
             pageContentScope,
+            documentFormat,
             pdfOptions: pdfSettings,
           }));
           const currentTab = context.tab;
@@ -688,6 +691,12 @@ export function PopupApp() {
               payload.html = String(currentSnapshot.html);
             }
           }
+          if (kind === "document") {
+            if (!currentSnapshot?.html) throw importValidationError(message("web_content_failed"));
+            payload.html = String(currentSnapshot.html);
+            payload.pageContentScope = documentFormat === "html" ? "full" : String(pageContentScope || "main");
+            payload.documentFormat = documentFormat;
+          }
           if (kind === "pdf" && options.openedPage !== true) {
             const pdfPayload = await getPdfPayloadForUrl(currentPageUrl);
             if (pdfPayload) {
@@ -739,7 +748,9 @@ export function PopupApp() {
           }
           report({
             text: message("added_card", { kind: cardKindMessage(result.kind), title: result.title }),
-            detail: message("add_success_detail", {
+            detail: kind === "document" && Number(result.omittedImages) > 0
+              ? message("offline_images_omitted", {count: Number(result.omittedImages)})
+              : message("add_success_detail", {
               deck: deckName,
               count: payload.tags.length,
               priority: formatPriority(priority),
@@ -1112,6 +1123,15 @@ export function PopupApp() {
         </label>
         <p className="note" id="selection-note">{writingNote}</p>
         <label className="field">
+          <span>{t("offline_save_as")}</span>
+          <select id="document-format" value={documentFormat} disabled={busy}
+            onChange={event => setDocumentFormat(event.target.value)}>
+            <option value="html">{t("offline_html_snapshot")}</option>
+            <option value="markdown">{t("offline_reading_copy")}</option>
+          </select>
+        </label>
+        <p className="note">{t("offline_snapshot_help")}</p>
+        <label className="field">
           <span>{t("markdown_scope")}</span>
           <select
             id="writing-scope"
@@ -1123,6 +1143,14 @@ export function PopupApp() {
           </select>
         </label>
         <div className="actions">
+          <button
+            className="kind-btn"
+            data-kind="document"
+            disabled={busy || !hasSupportedPage}
+            onClick={() => void handleAdd("document")}
+          >
+            {t("save_offline_document")}
+          </button>
           <button
             className="kind-btn"
             data-kind="pdf"

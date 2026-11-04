@@ -65,6 +65,9 @@
     "add-page-to-markdown": {
       "description": "__MSG_command_add_page_markdown__"
     },
+    "save-offline-document": {
+      "description": "__MSG_save_offline_document__"
+    },
     "browser-capture-selection": {
       "global": false,
       "suggested_key": {

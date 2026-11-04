@@ -201,3 +201,17 @@ def test_remove_rejects_a_connection_that_does_not_belong_to_the_current_page(br
     with pytest.raises(ValueError, match='unavailable'):
         bridge.finish()
     assert len(list_pdf_page_links(bridge.root, 'A', 7, 4)) == 1
+
+
+def test_writing_backlinks_are_bound_to_the_exact_saved_pdf_page(bridge):
+    from writing_links import create_link, sync_links, marker
+    bridge.documents[11] = {'Title': 'Draft'}
+    anchor = create_link(bridge.root, 'A', dict(kind='pdf', card_id=7, page=3, quote='Passage'),
+                         11, source_title='Book')
+    sync_links(bridge.root, 'A', 11, 'Passage\n' + marker(anchor))
+    bridge.controller.handle(bridge.request)
+    bridge.finish()
+    assert bridge.replies[-1]['writing'] == [dict(anchor=anchor, title='Draft', quote='Passage')]
+    bridge.controller.handle({**bridge.request, 'page': 4, 'request': 2})
+    bridge.finish()
+    assert bridge.replies[-1]['writing'] == []

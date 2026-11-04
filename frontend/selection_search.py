@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from urllib.parse import urlencode
+from uuid import uuid4
 
 try:
     from ..backend.i18n import t
@@ -18,6 +19,9 @@ except ImportError:
 
 _ACTION_NAME = "incremento_search_google"
 _popup = None
+_popups = []
+_shared_profile = None
+_shared_anki_profile = None
 _search_engine = "google"
 _remember_logins = False
 _ADDON_DIR = str(Path(__file__).resolve().parents[1])
@@ -112,30 +116,91 @@ def install_selection_search_menu(view) -> None:
     view._incremento_selection_search_installed = True
 
 
+def _tabbed_owner(parent):
+    if parent is None:
+        from aqt import mw
+        parent = mw
+    for _ in range(32):
+        if parent is None:
+            return None
+        manager = getattr(parent, '_incremento_workspace_layouts', None)
+        if manager is not None and getattr(manager, 'tabbed', False) is True:
+            return parent
+        ancestor = getattr(parent, 'parentWidget', None)
+        parent = ancestor() if callable(ancestor) else None
+    return None
+
+
+def _release_unused_shared_profile():
+    global _shared_profile, _shared_anki_profile
+    if not _popups and _shared_profile is not None:
+        from .browser_profiles import destroy_browser
+        profile, _shared_profile = _shared_profile, None
+        _shared_anki_profile = None
+        destroy_browser(None, profile)
+
+
 def show_google_search(text: str, parent=None) -> None:
     """Open the selected provider (legacy entry-point name)."""
-    global _popup
+    global _popup, _shared_profile, _shared_anki_profile
     url = search_url(text, _search_engine)
     if url is None:
         return
     from .google_search_dialog import GoogleSearchDialog
 
     profile = _active_profile()
-    if _popup is not None and _popup.anki_profile != profile:
+    existing = _popup or (_popups[0] if _popups else None)
+    if ((existing is not None and existing.anki_profile != profile)
+            or (_shared_profile is not None and _shared_anki_profile != profile)):
         reset_for_profile_switch()
-    if _popup is None:
-        popup = GoogleSearchDialog(parent, anki_profile=profile, addon_dir=_ADDON_DIR,
-                                   remember_logins=_remember_logins)
+    owner = _tabbed_owner(parent)
+    if owner is not None and len(_popups) >= 32:
+        from aqt.utils import tooltip
+        tooltip(t('reader_reference_unavailable'))
+        return
+    if owner is not None or _popup is None:
+        if owner is not None and _shared_profile is None and _popup is not None:
+            _shared_profile = _popup._profile
+            _shared_anki_profile = profile
+            _shared_profile.setParent(None)
+            _popup._owns_profile = False
+            if _popup.isHidden():
+                _popup.dispose()
+        popup = GoogleSearchDialog(owner or parent, anki_profile=profile, addon_dir=_ADDON_DIR,
+                                   remember_logins=_remember_logins, browser_profile=_shared_profile)
+        if owner is not None:
+            if _shared_profile is None:
+                _shared_profile = popup._profile
+                _shared_anki_profile = profile
+                _shared_profile.setParent(None)
+                popup._owns_profile = False
+            popup.setObjectName('incremento_search_dock_' + uuid4().hex)
+            from aqt.qt import Qt
+            popup.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+            if not getattr(owner, '_incremento_search_shutdown', False):
+                owner._incremento_search_shutdown = True
+                owner.destroyed.connect(lambda *_: reset_for_profile_switch())
         _popup = popup
+        _popups.append(popup)
 
         def clear_reference(*_args):
             global _popup
             if _popup is popup:
                 _popup = None
 
-        if not _remember_logins:
+        def retired(*_args):
+            clear_reference()
+            if popup in _popups:
+                _popups.remove(popup)
+            if _shared_profile is not None:
+                from aqt.qt import QTimer
+                # QObject emits destroyed before deleting its child WebEngine
+                # pages. Release their shared profile on the following turn.
+                QTimer.singleShot(0, _release_unused_shared_profile)
+
+        if not _remember_logins or owner is not None:
             popup.finished.connect(clear_reference)
-        popup.destroyed.connect(clear_reference)
+        popup.destroyed.connect(retired)
     _popup.search(url)
     _popup.show()
     _popup.raise_()
@@ -143,8 +208,17 @@ def show_google_search(text: str, parent=None) -> None:
 
 
 def reset_for_profile_switch() -> None:
-    global _popup
-    popup, _popup = _popup, None
-    if popup is not None:
+    global _popup, _shared_profile, _shared_anki_profile
+    popups = list(_popups)
+    if _popup is not None and _popup not in popups:
+        popups.append(_popup)
+    profile, _shared_profile = _shared_profile, None
+    _shared_anki_profile = None
+    _popup = None
+    _popups.clear()
+    for popup in popups:
         popup.close()
         popup.dispose()
+    if profile is not None:
+        from .browser_profiles import destroy_browser
+        destroy_browser(None, profile)

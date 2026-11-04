@@ -8,6 +8,7 @@ export default function PdfLinkPreview({containerRef, pdfDocRef, links, tlLeft, 
   const capturing = useSyncExternalStore(snapshotMode.subscribe, snapshotMode.getSnapshot);
   const unavailable = disabled || capturing;
   const [preview, setPreview] = useState(null);
+  const [position, setPosition] = useState(null);
   const popupRef = useRef(null);
   const contentRef = useRef(null);
   const rendererRef = useRef(null);
@@ -20,10 +21,13 @@ export default function PdfLinkPreview({containerRef, pdfDocRef, links, tlLeft, 
     const doc = pdfDocRef.current;
     if (!container || !popup || !doc || unavailable || !links.length) return;
     const renderer = createPdfPreviewRenderer({createCanvas: () => document.createElement('canvas'),
-      onChange: setPreview, pixelRatio: window.devicePixelRatio, zoom: zoomRef.current});
+      onChange: value => {if (!value) setPosition(null); setPreview(value);},
+      pixelRatio: window.devicePixelRatio, zoom: zoomRef.current});
     rendererRef.current = renderer;
     const detach = attachPdfLinkPreview({container, popup, host: window, links, tlLeft, doc,
-      preview: renderer, maxPage, onResize: value => onResizeRef.current?.(value)});
+      preview: renderer, maxPage, onResize: (value, nextPosition) => {
+        setPosition(nextPosition); onResizeRef.current?.(value);
+      }});
     return () => {detach(); renderer.dispose(); rendererRef.current = null;};
   }, [containerRef, pdfDocRef, links, tlLeft, sourcePage, documentToken, unavailable, maxPage]);
 
@@ -47,7 +51,7 @@ export default function PdfLinkPreview({containerRef, pdfDocRef, links, tlLeft, 
   }, [canvas, preview?.text, appearance.filter, tr]);
 
   const {width, height, left, top, maxWidth, maxHeight} = pdfLinkPreviewLayout(
-    size, preview?.anchor || {x: 0, y: 0}, window.innerWidth, window.innerHeight);
+    size, preview?.anchor || {x: 0, y: 0}, window.innerWidth, window.innerHeight, position);
   const targetPage = preview?.link?.targetPage;
   const pageLabel = pageLabels?.[targetPage - 1] || targetPage;
   return (
@@ -58,6 +62,22 @@ export default function PdfLinkPreview({containerRef, pdfDocRef, links, tlLeft, 
         maxWidth, maxHeight, resize: 'both', boxSizing: 'border-box', zIndex: 180,
         textAlign: 'left', background: '#252525', color: '#f4f4f5', border: '1px solid #777',
         borderRadius: 8, boxShadow: '0 8px 28px rgba(0,0,0,0.45)', overflow: 'hidden'}}>
+      <style>{`#pdf-link-preview [data-pdf-preview-resize]:focus-visible {
+        outline: 2px solid #93c5fd; outline-offset: -2px;
+      }`}</style>
+      <div role="separator" tabIndex={0} aria-orientation="vertical"
+        aria-label={tr('reader_link_preview_resize')} title={tr('reader_link_preview_resize')}
+        aria-valuemin={Math.min(280, width + left - 12)} aria-valuemax={width + left - 12}
+        aria-valuenow={width} data-pdf-preview-resize="left"
+        style={{position: 'absolute', left: 0, top: 0, bottom: 0, width: 8, zIndex: 2,
+          cursor: 'ew-resize', touchAction: 'none', userSelect: 'none'}}>
+        <span aria-hidden="true" style={{position: 'absolute', left: 2, top: '50%', width: 2,
+          height: 24, marginTop: -12, borderRadius: 2, background: '#999', pointerEvents: 'none'}} />
+        <span aria-hidden="true" data-pdf-preview-resize="corner"
+          style={{position: 'absolute', left: 0, bottom: 0, width: 16, height: 16,
+            cursor: 'nesw-resize', background: 'repeating-linear-gradient(45deg, transparent 0 3px, #aaa 3px 4px, transparent 4px 6px)',
+            clipPath: 'polygon(0 0, 0 100%, 100% 100%)'}} />
+      </div>
       <div style={{display: 'flex', flexShrink: 0, alignItems: 'center', gap: 12, padding: '8px 12px', fontSize: 13}}>
         <strong style={{flex: 1}}>{tr('reader_link_preview')}</strong>
         <span>{targetPage ? tr('reader_page_number', {page: pageLabel}) : ''}</span>
@@ -77,7 +97,7 @@ export default function PdfLinkPreview({containerRef, pdfDocRef, links, tlLeft, 
         </div>}
       </div>
       <div style={{display: 'flex', flexShrink: 0, flexWrap: 'wrap', alignItems: 'center', gap: 10,
-        padding: '7px 20px 12px 12px', fontSize: 11, color: '#d4d4d8'}}>
+        padding: '7px 20px 12px 20px', fontSize: 11, color: '#d4d4d8'}}>
         <div role="group" aria-label={tr('reader_link_preview_zoom')}
           style={{display: 'flex', alignItems: 'center', gap: 7}}>
           <button type="button" aria-label={tr('reader_zoom_out')} disabled={zoom <= 1}

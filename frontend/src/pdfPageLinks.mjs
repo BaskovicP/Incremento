@@ -22,12 +22,13 @@ export function pdfPageLinksViewport({scrollY, wrapperTop, pageHeight, windowHei
 
 /** Page-local connection state. Replies and actions cannot outlive their page. */
 export function createPdfPageLinks(send, changed) {
-  let current = null, serial = 0, links = [];
+  let current = null, serial = 0, links = [], writing = [];
   function refresh() {
     links = [];
-    if (!current) {changed({links, loading: false, error: false}); return;}
+    writing = [];
+    if (!current) {changed({links, writing, loading: false, error: false}); return;}
     current = {...current, request: ++serial};
-    changed({...current, links, loading: true, error: false});
+    changed({...current, links, writing, loading: true, error: false});
     send({...current, operation: 'list'});
   }
   function command(operation, extra = {}) {
@@ -45,7 +46,13 @@ export function createPdfPageLinks(send, changed) {
       links = Array.isArray(data.links) ? data.links.slice(0, 200).filter(row => row && Number.isSafeInteger(row.id)
         && row.id > 0 && ['outgoing', 'incoming'].includes(row.direction) && Number.isInteger(row.target_page)
         && row.target_page > 0 && typeof row.title === 'string' && typeof row.available === 'boolean') : [];
-      changed({...current, links, loading: false, error: !!data.error});
+      writing = Array.isArray(data.writing) ? data.writing.slice(0, 200).filter(row => row
+        && typeof row.anchor === 'string' && /^[a-f0-9]{32}$/.test(row.anchor)
+        && typeof row.title === 'string' && typeof row.quote === 'string') : [];
+      changed({...current, links, writing, loading: false, error: !!data.error});
+    },
+    openWriting(row) {
+      if (writing.includes(row)) command('writing', {anchor: row.anchor});
     },
     jump(row, mode = 'jump') {
       if (links.includes(row) && row.available && ['jump', 'beside'].includes(mode)) {
@@ -59,6 +66,6 @@ export function createPdfPageLinks(send, changed) {
     manage() {command('manage');},
     recordings() {command('recordings');},
     linkRecording() {command('link_recording');},
-    close() {current = null; links = [];},
+    close() {current = null; links = []; writing = [];},
   };
 }

@@ -60,6 +60,7 @@ const COMMAND_ADD_CURRENT_PAGE_AS_VIDEO = "add-current-page-as-video";
 const COMMAND_ADD_CURRENT_PAGE_AS_WEBPAGE = "add-current-page-as-webpage";
 const COMMAND_ADD_SELECTION_TO_MARKDOWN = "add-selection-to-markdown";
 const COMMAND_ADD_PAGE_TO_MARKDOWN = "add-page-to-markdown";
+const COMMAND_SAVE_OFFLINE_DOCUMENT = "save-offline-document";
 const BRIDGE_URL = "http://127.0.0.1:8766/incremento/add-content";
 const BROWSER_CAPTURE_META_URL = "http://127.0.0.1:8766/incremento/browser-capture-meta";
 // Preserve the installed menu id while broadening the action from webpage-only
@@ -979,6 +980,11 @@ function buildImportPayload(kind, context, options = {}) {
     payload.html = String(context.html);
   }
   if (kind === "pdf") Object.assign(payload, pdfExportPayload(options.pdfOptions, {openedPage: options.openedPage === true}));
+  if (kind === "document") {
+    payload.html = String(context?.html || "");
+    payload.pageContentScope = "full";
+    payload.documentFormat = "html";
+  }
 
   if (kind === "webpage") {
     const mediaSeconds = Math.max(0, Math.floor(Number(options.mediaSeconds) || 0));
@@ -1184,6 +1190,8 @@ async function addCurrentPageToIncremento(command) {
       return {ok: false, error};
     }
     contextOptions = pageContextOptionsForImport("pdf", {pdfOptions: pdfSettings});
+  } else if (command === COMMAND_SAVE_OFFLINE_DOCUMENT) {
+    contextOptions = pageContextOptionsForImport("document", {documentFormat: "html"});
   } else if (command === COMMAND_ADD_PAGE_TO_MARKDOWN) {
     contextOptions = pageContextOptionsForImport("writing", {
       writingMode: "webpage_markdown",
@@ -1248,6 +1256,14 @@ async function addCurrentPageToIncremento(command) {
       },
     );
     progressMessage = t("adding_webpage");
+  } else if (command === COMMAND_SAVE_OFFLINE_DOCUMENT) {
+    if (!html.trim()) {
+      const error = t("web_content_failed");
+      await showToastInTab(tab.id, error);
+      return {ok: false, error};
+    }
+    payload = buildImportPayload("document", {url: pageUrl, title: pageTitle, html});
+    progressMessage = t("save_offline_document");
   } else if (command === COMMAND_ADD_SELECTION_TO_MARKDOWN) {
     if (!selectionText) {
       return {ok: false, error: t("select_page_text")};
@@ -1919,6 +1935,7 @@ chrome.commands.onCommand.addListener((command, tab) => {
         || command === COMMAND_ADD_CURRENT_PAGE_AS_WEBPAGE
         || command === COMMAND_ADD_SELECTION_TO_MARKDOWN
         || command === COMMAND_ADD_PAGE_TO_MARKDOWN
+        || command === COMMAND_SAVE_OFFLINE_DOCUMENT
       ) {
         void addCurrentPageToIncremento(command);
       }

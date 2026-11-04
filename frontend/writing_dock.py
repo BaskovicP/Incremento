@@ -60,10 +60,16 @@ try:
     from ..backend.snapshot_writer import OrderedWriter
     from ..backend.i18n import format_date, t
     from .selection_search import install_selection_search_menu
+    from ..backend.writing_links import marker as _excerpt_marker, sync_links as _sync_excerpt_links
+    from ..backend.writing_links import strip_markers as _strip_excerpt_markers
+    from ..backend.content_safety import external_plain_text_to_markdown
 except ImportError:
     from snapshot_writer import OrderedWriter
     from backend.i18n import format_date, t  # type: ignore
     from frontend.selection_search import install_selection_search_menu
+    from backend.writing_links import marker as _excerpt_marker, sync_links as _sync_excerpt_links
+    from backend.writing_links import strip_markers as _strip_excerpt_markers
+    from backend.content_safety import external_plain_text_to_markdown
 
 try:
     from ..backend import paths as _paths
@@ -240,6 +246,7 @@ def _count_words_word_like(text: str | None) -> int:
 
 
 def _count_words(text: str | None, mode: str | None = None) -> int:
+    text = _strip_excerpt_markers(str(text or ''))
     resolved_mode = str(mode or configured_writing_word_count_mode()).strip().lower()
     if resolved_mode == "word_like":
         return _count_words_word_like(text)
@@ -322,6 +329,51 @@ def current_writing_card_id() -> int | None:
         return None
 
 
+def insert_linked_excerpt(source, anchor, *, cursor=None) -> bool:
+    if _writing_dock is None or _writing_profile != _active_profile():
+        return False
+    cursor = QTextCursor(cursor or _writing_dock._editor.textCursor())
+    if cursor.document() is not _writing_dock._editor.document():
+        return False
+    cursor.clearSelection()
+    cursor.movePosition(QTextCursor.MoveOperation.End)
+    cursor.beginEditBlock()
+    cursor.insertText('\n\n' + _excerpt_marker(anchor, start=True) + '\n'
+                      + external_plain_text_to_markdown(source['quote'], max_chars=2000)
+                      + '\n' + _excerpt_marker(anchor) + '\n\n')
+    cursor.endEditBlock()
+    _writing_dock._editor.setTextCursor(cursor)
+    _writing_dock._editor.ensureCursorVisible()
+    jump_to_excerpt(anchor, focus=False)
+    return True
+
+
+def jump_to_excerpt(anchor, *, focus=True) -> bool:
+    if _writing_dock is None or _writing_profile != _active_profile():
+        return False
+    cursor = _writing_dock._editor.document().find(_excerpt_marker(anchor))
+    if cursor.isNull():
+        tooltip(t('writing_excerpt_missing'), parent=_writing_dock)
+        return False
+    end = max(0, cursor.selectionStart() - 1)
+    start = cursor.document().find(_excerpt_marker(anchor, start=True))
+    if start.isNull():
+        # End-only anchors from earlier versions still navigate to their paragraph.
+        cursor.setPosition(max(0, end))
+        cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
+        beginning = cursor.position()
+    else:
+        beginning = min(start.selectionEnd() + 1, end)
+    cursor.setPosition(min(beginning, end))
+    _writing_dock._editor.setTextCursor(cursor)
+    _writing_dock._editor.ensureCursorVisible()
+    if focus:
+        _writing_dock._editor.setFocus()
+    cursor.setPosition(max(beginning, end), QTextCursor.MoveMode.KeepAnchor)
+    _writing_dock._editor.reveal_excerpt(cursor)
+    return True
+
+
 def open_writing_card_ids() -> list[int]:
     """Include inactive tabs: their live editors must also block external edits."""
     if _writing_profile is not None and _writing_profile != _active_profile():
@@ -333,8 +385,8 @@ def open_writing_card_ids() -> list[int]:
     return [current] if current is not None else []
 
 
-def configure_writing_tab_actions(*, open_existing, new_writing) -> None:
-    _writing_tab_actions.update(open_existing=open_existing, new_writing=new_writing)
+def configure_writing_tab_actions(*, open_existing, new_writing, open_card=None) -> None:
+    _writing_tab_actions.update(open_existing=open_existing, new_writing=new_writing, open_card=open_card)
 
 
 def reorder_writing_tabs(card_ids: list[int]) -> None:
@@ -412,6 +464,7 @@ def _activate_writing_tab(state: dict) -> None:
                 break
     _update_editor_highlights()
     _refresh_writing_bookmarks_panel()
+    dock._source_margin.reload()
     _set_status(t("writing_autosave_on_typing"))
     if state['saved']:
         dock._saved_lbl.show()
@@ -473,8 +526,10 @@ def _refresh_markdown_preview(text: str | None = None) -> None:
     if preview is None or editor is None:
         return
     md = editor.toPlainText() if text is None else str(text)
+    md = _writing_dock._source_margin.preview_markdown(md)
     try:
         preview.setMarkdown(md)
+        _writing_dock._source_margin.style_preview()
     except Exception:
         preview.setPlainText(md)
 
@@ -680,6 +735,9 @@ def _update_editor_highlights() -> None:
             )
             if bookmark_selection is not None:
                 selections.append(bookmark_selection)
+        excerpt = getattr(_writing_dock._editor, '_excerpt_selection', None)
+        if excerpt is not None and excerpt.cursor.document() is _writing_dock._editor.document():
+            selections.append(excerpt)
         _writing_dock._editor.setExtraSelections(selections)
     except Exception:
         pass
@@ -752,6 +810,8 @@ def _write_writing_snapshot(snapshot):
         write_writing_text(_ADDON_DIR, relpath, text, profile=profile,
                            backups_enabled=configured_writing_backups_enabled(cfg),
                            backup_tiers=configured_writing_backup_tiers(cfg))
+        if card_id is not None:
+            _sync_excerpt_links(_ADDON_DIR, profile, int(card_id), text)
     word_mode = configured_writing_word_count_mode(cfg)
     changed_count = changed_text or previous.get("word_mode") != word_mode
     words = _count_words(text, word_mode) if changed_count else previous["words"]
@@ -780,6 +840,9 @@ def _publish_writing_save(snapshot, result, error):
         if error is not None:
             _set_status(t("writing_autosave_failed"))
             return
+        previous_text = _writing_saved_snapshot[3] if _writing_saved_snapshot else ''
+        anchors_changed = (re.findall(r'<!-- incremento-excerpt:[a-f0-9]{32} -->', previous_text)
+                           != re.findall(r'<!-- incremento-excerpt:[a-f0-9]{32} -->', text))
         _writing_saved_snapshot = (profile, card_id, relpath, text)
         words, today, baseline = result
         _writing_current_word_count = words
@@ -789,6 +852,13 @@ def _publish_writing_save(snapshot, result, error):
         _set_status(t("writing_autosave_on_typing"))
         _set_saved_time()
         _update_progress_display()
+        if anchors_changed:
+            _writing_dock._source_margin.reload()
+            try:
+                from .writing_excerpt_ui import refresh_readers
+            except ImportError:
+                from frontend.writing_excerpt_ui import refresh_readers
+            refresh_readers()
     taskman = getattr(mw, "taskman", None)
     if taskman is not None and hasattr(taskman, "run_on_main"):
         taskman.run_on_main(show)
@@ -1270,6 +1340,7 @@ def _refresh_writing_preview_snapshot() -> None:
     text = _writing_dock._editor.toPlainText()
     _writing_dock._current_word_count = _count_words(text)
     _refresh_markdown_preview(text)
+    _writing_dock._source_margin.render()
     _update_progress_display()
 
 
@@ -1293,7 +1364,7 @@ def _on_editor_selection_changed() -> None:
         return
     _update_editor_highlights()
     try:
-        selected = _writing_dock._editor.textCursor().selectedText()
+        selected = _strip_excerpt_markers(_writing_dock._editor.textCursor().selectedText())
         if not (selected or "").strip():
             return
         from . import add_card_dock as _add_card_dock_mod
@@ -1514,6 +1585,8 @@ def _add_editor_shortcuts(dock) -> None:
         ("Meta+I", lambda: _apply_markdown_transform("italic")),
         ("Ctrl+K", _insert_writing_reference),
         ("Meta+K", _insert_writing_reference),
+        ("Ctrl+J", lambda: dock._source_margin.preview_at_cursor()),
+        ("Meta+J", lambda: dock._source_margin.preview_at_cursor()),
     ]
     dock._shortcuts = []
     for sequence, callback in shortcuts:
@@ -1751,7 +1824,11 @@ def _build_writing_dock():
     editor_label.setContentsMargins(22, 0, 0, 0)
     editor_layout.addWidget(editor_label)
 
-    editor = QTextEdit(editor_host)
+    try:
+        from .writing_excerpt_ui import ExcerptEditor, SourceMargin
+    except ImportError:
+        from frontend.writing_excerpt_ui import ExcerptEditor, SourceMargin
+    editor = ExcerptEditor(editor_host)
     editor.setObjectName("incremento_writing_editor")
     editor.setAccessibleName(t("writing_markdown"))
     install_selection_search_menu(editor)
@@ -1762,7 +1839,11 @@ def _build_writing_dock():
     editor.setFont(base_font)
     editor.undoAvailable.connect(undo_btn.setEnabled)
     editor.redoAvailable.connect(redo_btn.setEnabled)
-    editor_layout.addWidget(editor, 1)
+    editor_body = QHBoxLayout()
+    editor_body.addWidget(editor, 1)
+    source_margin = SourceMargin(dock, editor)
+    editor_body.addWidget(source_margin)
+    editor_layout.addLayout(editor_body, 1)
     split.addWidget(editor_host)
 
     preview_host = QWidget(split)
@@ -1779,7 +1860,10 @@ def _build_writing_dock():
     preview.setFont(base_font)
     preview.document().setDefaultStyleSheet("h1 { font-size: 26px; font-weight: 600; } h2 { font-size: 21px; } h3 { font-size: 17px; } p { line-height: 145%; }")
     install_selection_search_menu(preview)
-    preview.setOpenExternalLinks(True)
+    preview.setOpenExternalLinks(False)
+    preview.setOpenLinks(False)
+    preview.anchorClicked.connect(source_margin.follow_preview)
+    preview.highlighted.connect(source_margin.preview_tooltip)
     preview_layout.addWidget(preview, 1)
     split.addWidget(preview_host)
     split.setStretchFactor(0, 1)
@@ -1841,6 +1925,7 @@ def _build_writing_dock():
     dock._title_lbl = title_lbl
     dock._file_lbl = file_lbl
     dock._editor = editor
+    dock._source_margin = source_margin
     dock._preview = preview
     dock._preview_host = preview_host
     dock._split = split
@@ -2006,7 +2091,13 @@ def show_writing_in_dock(card_id: int, title: str, relpath: str, *, keep_open: b
     try:
         _writing_dock._title_lbl.setText(title or "Writing")
         _writing_dock._file_lbl.setText(relpath)
-        _writing_dock._editor.setDocument(QTextDocument(_writing_dock))
+        try:
+            from .writing_excerpt_ui import ExcerptMarkers
+        except ImportError:
+            from frontend.writing_excerpt_ui import ExcerptMarkers
+        document = QTextDocument(_writing_dock)
+        document._excerpt_markers = ExcerptMarkers(document)
+        _writing_dock._editor.setDocument(document)
         _writing_dock._editor.setPlainText(text)
         _writing_dock._current_word_count = current_words
         _writing_dock._session_baseline_words = _writing_session_baseline_words
@@ -2047,6 +2138,7 @@ def show_writing_in_dock(card_id: int, title: str, relpath: str, *, keep_open: b
     _update_editor_highlights()
     _update_progress_display()
     _refresh_writing_bookmarks_panel()
+    _writing_dock._source_margin.reload()
     _set_status(t("writing_autosave_on_typing"))
     _writing_dock._saved_lbl.clear()
     _stash_writing_tab()
@@ -2107,7 +2199,7 @@ def get_selected_text() -> str:
     if _writing_dock is None:
         return ""
     try:
-        return _normalize_selection_text(_writing_dock._editor.textCursor().selectedText())
+        return _strip_excerpt_markers(_normalize_selection_text(_writing_dock._editor.textCursor().selectedText()))
     except Exception:
         return ""
 

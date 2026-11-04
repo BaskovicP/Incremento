@@ -7,6 +7,8 @@ epub_manager owns journaled profile storage, note creation, and the search index
 from __future__ import annotations
 
 from dataclasses import dataclass
+from base64 import b64encode, b64decode
+from html import escape
 import os
 import hashlib
 import io
@@ -17,7 +19,7 @@ import stat
 import shutil
 import tempfile
 import threading
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, unquote_to_bytes, urlsplit
 from xml.etree import ElementTree as ET
 import zipfile
 import uuid
@@ -26,10 +28,10 @@ from bs4 import BeautifulSoup
 import markdown
 
 try:
-    from .content_safety import external_plain_text, normalize_external_http_url
+    from .content_safety import external_plain_text, external_plain_text_to_markdown, normalize_external_http_url
     from .i18n import t
 except ImportError:
-    from content_safety import external_plain_text, normalize_external_http_url
+    from content_safety import external_plain_text, external_plain_text_to_markdown, normalize_external_http_url
     from i18n import t
 
 
@@ -39,6 +41,7 @@ MAX_TOTAL_IMAGE_BYTES = 48 * 1024 * 1024
 MAX_IMAGES = 128
 MAX_SECTIONS = 2_000
 MAX_LEGACY_HTML_BYTES = 16 * 1024 * 1024
+MAX_SNAPSHOT_HTML_BYTES = 16 * 1024 * 1024
 _ALLOWED_TAGS = {
     "p",
     "div",
@@ -108,6 +111,10 @@ class MarkdownImportError(RuntimeError):
 class PreparedMarkdown:
     path: str
     _temporary: tempfile.TemporaryDirectory
+    title: str = ""
+    capture: dict | None = None
+    preview: str = ""
+    preview_path: str = ""
 
     def close(self) -> None:
         self._temporary.cleanup()
@@ -126,6 +133,9 @@ class MarkdownDocument:
     images: dict
     assets: dict
     _archive: bytes
+    original_source: bytes | None = None
+    capture: dict | None = None
+    snapshot_html: str | None = None
 
 
 _edit_lock = threading.RLock()
@@ -290,7 +300,125 @@ def prepare_markdown_epub(markdown_path: str, *, title: str = "") -> PreparedMar
     return _prepare_bytes(raw, source, title=title)
 
 
-def _prepare_bytes(raw: bytes, source: Path, *, title: str, embedded_images=None, assets=None) -> PreparedMarkdown:
+def _snapshot_reader_copy(html: str) -> tuple[str, dict]:
+    """Keep snapshot appearance inside the existing EPUB safety boundary.
+
+    Forms become passive layout containers. SVGs/fonts use contained files,
+    which the reader already supports, rather than disallowed data MIME types.
+    The standalone captured HTML remains separate for faithful export.
+    """
+    try:
+        from .epub_manager import _CSS_URL_RE
+        from .webpage_resources import _css_target
+    except ImportError:
+        from epub_manager import _CSS_URL_RE
+        from webpage_resources import _css_target
+    extensions = {'image/svg+xml': 'svg', 'image/avif': 'avif', 'image/x-icon': 'ico',
+                  'font/woff2': 'woff2', 'font/woff': 'woff', 'font/ttf': 'ttf', 'font/otf': 'otf'}
+    files = {}
+    total = 0
+
+    def passive_svg(raw):
+        # SVG files may also be considered for a native cover. Keep them inert
+        # outside a browser image context as well: no entities or external refs.
+        if re.search(br'<!\s*ENTITY\b', raw, re.I):
+            raise ValueError('SVG document declarations are not supported')
+        # Common icon SVGs declare an external public DTD. Remove it without
+        # resolving it; internal subsets/entities remain unsupported.
+        cleaned_raw = re.sub(br'''<!DOCTYPE\s+(?:[^>"'\[]|"[^"]*"|'[^']*')*>''', b'', raw, flags=re.I)
+        if re.search(br'<!\s*DOCTYPE\b', cleaned_raw, re.I):
+            raise ValueError('SVG internal document declarations are not supported')
+        root = ET.fromstring(cleaned_raw)
+        if root.tag.rsplit('}', 1)[-1].casefold() != 'svg':
+            raise ValueError('Invalid SVG image')
+        changed = cleaned_raw != raw or bool(re.search(br'<\?(?!xml(?:\s|\?>))', raw, re.I))
+        def safe_css(value):
+            if '\\' in value or '@import' in value.casefold():
+                return ''
+            return _CSS_URL_RE.sub(lambda match: match[0] if _css_target(match[0]).startswith('#') else "url('')", value)
+        for parent in root.iter():
+            for child in list(parent):
+                if child.tag.rsplit('}', 1)[-1].casefold() in {'script', 'foreignobject', 'image'}:
+                    parent.remove(child)
+                    changed = True
+            for key, value in list(parent.attrib.items()):
+                local = key.rsplit('}', 1)[-1].casefold()
+                if local.startswith('on') or local == 'base' or (local in {'href', 'src'} and not value.startswith('#')):
+                    del parent.attrib[key]
+                    changed = True
+                elif local in {'style', 'fill', 'stroke', 'filter', 'mask', 'clip-path', 'cursor'}:
+                    cleaned = safe_css(value)
+                    if value != cleaned:
+                        parent.attrib[key] = cleaned
+                        changed = True
+            if parent.tag.rsplit('}', 1)[-1].casefold() == 'style' and parent.text:
+                cleaned = safe_css(parent.text)
+                if cleaned != parent.text:
+                    parent.text = cleaned
+                    changed = True
+        return ET.tostring(root, encoding='utf-8') if changed else raw
+
+    def localize(reference):
+        nonlocal total
+        if not reference.startswith('data:') or ',' not in reference:
+            return reference
+        header, encoded = reference[5:].split(',', 1)
+        mime = header.split(';', 1)[0].casefold()
+        if mime not in extensions:
+            return reference
+        raw = b64decode(encoded, validate=True) if ';base64' in header.casefold() else unquote_to_bytes(encoded)
+        if mime == 'image/svg+xml':
+            raw = passive_svg(raw)
+        name = 'snapshot-assets/' + hashlib.sha256(raw).hexdigest()[:32] + '.' + extensions[mime]
+        if name not in files:
+            if len(raw) > MAX_IMAGE_BYTES or len(files) >= 512 or total + len(raw) > MAX_TOTAL_IMAGE_BYTES:
+                raise MarkdownImportError(t('imports_markdown_images_too_large'))
+            files[name] = (raw, mime)
+            total += len(raw)
+        return name
+
+    def css(text):
+        def replace(match):
+            reference = _css_target(match[0])
+            target = localize(reference)
+            return 'url("' + target + '")' if target != reference else match[0]
+        return _CSS_URL_RE.sub(replace, text)
+
+    soup = BeautifulSoup(html, 'html.parser')
+    for tag in list(soup.find_all(['form', 'button', 'input', 'select', 'textarea'])):
+        if tag.parent is None:
+            continue
+        kind = tag.name
+        if kind == 'input' and str(tag.get('type') or '').casefold() == 'hidden':
+            tag.decompose()
+            continue
+        if kind == 'select':
+            option = tag.find('option', selected=True) or tag.find('option')
+            label = option.get_text() if option else ''
+            tag.clear()
+            tag.string = label
+        if kind == 'input':
+            value = '' if str(tag.get('type') or '').casefold() == 'password' else str(tag.get('value') or tag.get('placeholder') or '')
+            # HTML's void input tag must become a normal container on serialize.
+            replacement = soup.new_tag('span', attrs=dict(tag.attrs))
+            replacement.string = value
+            tag.replace_with(replacement)
+            tag = replacement
+        tag.name = 'div' if kind in {'form', 'textarea'} else 'span'
+        for name in ('action', 'formaction', 'tabindex', 'role'):
+            tag.attrs.pop(name, None)
+    for image in soup.find_all('img', src=True):
+        image['src'] = localize(str(image['src']))
+    for style in soup.find_all('style'):
+        style.string = css(style.get_text())
+    for tag in soup.find_all(style=True):
+        tag['style'] = css(str(tag['style']))
+    return str(soup), files
+
+
+def _prepare_bytes(raw: bytes, source: Path, *, title: str, embedded_images=None, assets=None,
+                   original_source: bytes | None = None, capture: dict | None = None,
+                   snapshot_html: str | None = None) -> PreparedMarkdown:
     text = raw.decode("utf-8-sig")
     if len(raw) > MAX_MARKDOWN_BYTES or not text.strip() or "\x00" in text:
         raise MarkdownImportError(t("imports_markdown_invalid_file"))
@@ -299,10 +427,13 @@ def _prepare_bytes(raw: bytes, source: Path, *, title: str, embedded_images=None
     soup, images = _prepare_html(
         external_plain_text(text, max_chars=len(text)), source, embedded_images=embedded_images, assets=assets
     )
-    sections = _split_sections(soup, name)
+    if snapshot_html is not None and len(snapshot_html.encode("utf-8")) > MAX_SNAPSHOT_HTML_BYTES:
+        raise MarkdownImportError(t("imports_markdown_too_large"))
+    sections = [(name, "")] if snapshot_html is not None else _split_sections(soup, name)
+    reader_snapshot, snapshot_files = _snapshot_reader_copy(snapshot_html) if snapshot_html is not None else (None, {})
     temporary = tempfile.TemporaryDirectory(prefix="incremento-markdown-")
     stem = re.sub(r"[^\w.-]", "_", source.stem)[:80].strip("._-") or "document"
-    prepared = PreparedMarkdown(str(Path(temporary.name) / f"{stem}.epub"), temporary)
+    prepared = PreparedMarkdown(str(Path(temporary.name) / f"{stem}.epub"), temporary, name, capture)
     try:
         package = ET.Element(
             "package", {"xmlns": "http://www.idpf.org/2007/opf", "version": "3.0", "unique-identifier": "book-id"}
@@ -325,20 +456,32 @@ def _prepare_bytes(raw: bytes, source: Path, *, title: str, embedded_images=None
         with zipfile.ZipFile(prepared.path, "w", compression=zipfile.ZIP_STORED) as archive:
             archive.writestr("mimetype", "application/epub+zip")
             archive.writestr("source.md", raw)
+            if original_source is not None:
+                if len(original_source) > MAX_MARKDOWN_BYTES:
+                    raise MarkdownImportError(t("imports_markdown_too_large"))
+                archive.writestr("original_source.md", original_source)
+            if capture is not None:
+                archive.writestr("capture.json", json.dumps(capture, ensure_ascii=False))
+            if snapshot_html is not None:
+                archive.writestr("snapshot.html", snapshot_html)
             archive.writestr("source_assets.json", json.dumps(assets, ensure_ascii=False))
             archive.writestr(
                 "META-INF/container.xml",
                 '<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>',
             )
             for index, (label, body) in enumerate(sections, 1):
-                filename = f"section-{index}.xhtml"
+                filename = f"section-{index}.html" if snapshot_html is not None else f"section-{index}.xhtml"
                 ET.SubElement(
                     manifest,
                     "item",
-                    {"id": f"section-{index}", "href": filename, "media-type": "application/xhtml+xml"},
+                    {"id": f"section-{index}", "href": filename,
+                     "media-type": "text/html" if snapshot_html is not None else "application/xhtml+xml"},
                 )
                 ET.SubElement(spine, "itemref", {"idref": f"section-{index}"})
                 ET.SubElement(ET.SubElement(listing, "li"), "a", {"href": filename}).text = label
+                if snapshot_html is not None:
+                    archive.writestr(f"OEBPS/{filename}", reader_snapshot)
+                    continue
                 # Labels and titles never enter an executable HTML interpolation.
                 document = BeautifulSoup(
                     '<html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8"/><title></title><style></style></head><body></body></html>',
@@ -352,6 +495,9 @@ def _prepare_bytes(raw: bytes, source: Path, *, title: str, embedded_images=None
                 archive.writestr(f"OEBPS/{filename}", str(document))
             for index, (filename, (data, mime)) in enumerate(images.items(), 1):
                 ET.SubElement(manifest, "item", {"id": f"image-{index}", "href": filename, "media-type": mime})
+                archive.writestr(f"OEBPS/{filename}", data)
+            for index, (filename, (data, mime)) in enumerate(snapshot_files.items(), 1):
+                ET.SubElement(manifest, "item", {"id": f"snapshot-{index}", "href": filename, "media-type": mime})
                 archive.writestr(f"OEBPS/{filename}", data)
             archive.writestr("OEBPS/nav.xhtml", ET.tostring(nav, encoding="utf-8", xml_declaration=True))
             archive.writestr("OEBPS/content.opf", ET.tostring(package, encoding="utf-8", xml_declaration=True))
@@ -452,7 +598,28 @@ def load_markdown_document(addon_dir: str, profile: str, filename: str) -> Markd
                     matches = [img.get("src") for img in rendered if img.get("alt") == image.get("alt")]
                     if len(set(matches)) == 1 and matches[0] in images:
                         assets[str(image.get("src") or "")] = matches[0]
-        return MarkdownDocument(text, hashlib.sha256(raw).hexdigest(), images, assets, raw)
+            original_source, capture = None, None
+            if "original_source.md" in members:
+                if members["original_source.md"].file_size > MAX_MARKDOWN_BYTES:
+                    raise ValueError("Original source budget exceeded")
+                original_source = archive.read("original_source.md")
+                original_source.decode("utf-8")
+            if "capture.json" in members:
+                if members["capture.json"].file_size > 16 * 1024:
+                    raise ValueError("Capture metadata budget exceeded")
+                capture = json.loads(archive.read("capture.json"))
+                if not isinstance(capture, dict) or capture.get("version") != 1:
+                    raise ValueError("Invalid capture metadata")
+                capture["url"] = normalize_external_http_url(capture.get("url"))
+                if not isinstance(capture.get("captured_at"), str) or len(capture["captured_at"]) > 64:
+                    raise ValueError("Invalid capture date")
+            snapshot_html = None
+            if capture and capture.get("format") == "html":
+                info = members.get("snapshot.html", members.get("OEBPS/section-1.html"))
+                if info is None or info.file_size > MAX_SNAPSHOT_HTML_BYTES:
+                    raise ValueError("Invalid HTML snapshot")
+                snapshot_html = archive.read(info).decode("utf-8")
+        return MarkdownDocument(text, hashlib.sha256(raw).hexdigest(), images, assets, raw, original_source, capture, snapshot_html)
     except (OSError, ValueError, KeyError, UnicodeError, zipfile.BadZipFile, RuntimeError) as exc:
         raise MarkdownImportError(t("imports_markdown_invalid_file")) from exc
 
@@ -474,6 +641,8 @@ def save_markdown_document(
     with _edit_lock:
         target = _managed_path(addon_dir, profile, filename)
         snapshot = load_markdown_document(addon_dir, profile, filename)
+        if snapshot.snapshot_html is not None:
+            raise MarkdownImportError(t("imports_markdown_edit_unavailable"))
         if snapshot.revision != expected_revision:
             raise MarkdownImportError(t("imports_markdown_edit_conflict"))
         conn = db.get_connection(addon_dir, profile)
@@ -491,6 +660,8 @@ def save_markdown_document(
             title=title,
             embedded_images=snapshot.images,
             assets=snapshot.assets,
+            original_source=snapshot.original_source,
+            capture=snapshot.capture,
         ) as prepared:
             stage_name = "markdown-edit-" + uuid.uuid4().hex + ".epub"
             cache = paths.get_epub_extract_root(addon_dir, profile) / filename
@@ -561,6 +732,71 @@ def save_markdown_document(
             finally:
                 if stage_cache.exists():
                     shutil.rmtree(stage_cache)
+
+
+def export_markdown_document(addon_dir: str, profile: str, filename: str, format: str, *, title: str = "") -> bytes:
+    """Render a saved copy without fetching anything or exposing local resources.
+
+    Raster images are data URLs so both HTML and Markdown remain single files.
+    """
+    if format not in {"html", "md", "txt"}:
+        raise ValueError("Export format must be html, md, or txt.")
+    snapshot = load_markdown_document(addon_dir, profile, filename)
+    if format == "html" and snapshot.snapshot_html is not None:
+        try:
+            from .webpage_resources import build_offline_webpage_html
+        except ImportError:
+            from webpage_resources import build_offline_webpage_html
+        # Reapply inert HTML policy to the saved file. A zero network deadline
+        # keeps even a modified archive from fetching resources during export.
+        return build_offline_webpage_html(snapshot.snapshot_html, snapshot.capture["url"], timeout_sec=0).encode("utf-8")
+    soup, _ = _prepare_html(snapshot.text, Path("export.md"), embedded_images=snapshot.images, assets=snapshot.assets)
+    data_urls = {name: "data:" + mime + ";base64," + b64encode(data).decode("ascii")
+                 for name, (data, mime) in snapshot.images.items()}
+    for image in soup.find_all("img"):
+        image["src"] = data_urls[image["src"]]
+    capture = snapshot.capture or {}
+    source = str(capture.get("url") or "")
+    captured_at = str(capture.get("captured_at") or "")
+    citation = "\n\n" + source + "\n" + captured_at + "\n" if source else ""
+    if format == "txt":
+        for image in soup.find_all("img"):
+            image.replace_with(image.get("alt", ""))
+        for block in soup.find_all(["p", "h1", "h2", "h3", "h4", "li", "pre", "tr", "blockquote"]):
+            block.insert_before("\n\n")
+        text = re.sub(r" +([.,;:!?])", r"\1", soup.get_text().strip())
+        return (text + citation).encode("utf-8")
+    if format == "md":
+        citation = ("\n\n" + external_plain_text_to_markdown(source) + "\n"
+                    + external_plain_text_to_markdown(captured_at) + "\n") if source else ""
+        protected = []
+        def protect_code(match):
+            protected.append(match[0])
+            return f"\x00{len(protected) - 1}\x00"
+        # Image syntax in fenced/inline code is an example, not a resource.
+        # Managed sources reject NUL, making these temporary tokens unambiguous.
+        text = re.sub(r"(?ms)^ {0,3}(`{3,}|~{3,})[^\n]*\n.*?(?:^ {0,3}\1[`~]*[ \t]*(?:\n|\Z)|\Z)",
+                      protect_code, snapshot.text)
+        text = re.sub(r"(?s)(`+).*?\1(?!`)", protect_code, text)
+        def replace_image(match):
+            href = match[2] if match[2] is not None else match[3]
+            name = snapshot.assets.get(href, href)
+            return f"![{match[1]}](<{data_urls[name]}>)" if name in data_urls else match[1]
+        text = re.sub(r"!\[((?:\\.|[^\]])*)\]\(\s*(?:<([^>\n]*)>|([^\s)]*))(?:\s+[\"'][^)]*)?\s*\)",
+                      replace_image, text)
+        # Raw HTML images in imported Markdown cannot remain remote references.
+        text = re.sub(r"<img\b[^>]*>", "", text, flags=re.I)
+        for index, code in enumerate(protected):
+            text = text.replace(f"\x00{index}\x00", code)
+        return (text.rstrip() + citation + "\n").encode("utf-8")
+    metadata = (f'<p><a href="{escape(source, quote=True)}">{escape(source)}</a><br>{escape(captured_at)}</p>'
+                if source else "")
+    html = ('<!doctype html><html><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'">'
+            f'<title>{escape(title or filename)}</title><style>{_STYLE}</style></head>'
+            f'<body>{metadata}{soup}</body></html>')
+    return html.encode("utf-8")
 
 
 def add_markdown_card(

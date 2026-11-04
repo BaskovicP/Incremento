@@ -995,6 +995,10 @@ def _bookshelf_summary_text(summary, fields=None, entry=None, *, reason_view=Fal
         "page_count": tn("reader_bookshelf_estimated_pages" if estimated else "reader_bookshelf_total_pages", total)
         if total is not None else t("reader_bookshelf_pages_unavailable"),
     }
+    if values.get('viewed_percent') is not None:
+        labels['read_progress'] = '\n'.join((
+            t('reader_coverage_viewed', percent=f"{values['viewed_percent']:.1f}".rstrip('0').rstrip('.')),
+            t('reader_coverage_marked', percent=f"{values['marked_percent']:.1f}".rstrip('0').rstrip('.'))))
     if entry:
         labels.update({
             "lists": " · ".join(entry.list_names) or t("reader_library_unlisted"),
@@ -1013,7 +1017,8 @@ def _bookshelf_summary_text(summary, fields=None, entry=None, *, reason_view=Fal
             if t("reader_bookshelf_info_loading") not in lines:
                 lines.append(t("reader_bookshelf_info_loading"))
         elif field in labels:
-            lines.append(" ".join(labels[field].split())[:256])
+            for line in labels[field].splitlines() if field == 'read_progress' else [labels[field]]:
+                lines.append(" ".join(line.split())[:256])
     return "\n".join(lines)
 
 
@@ -2634,6 +2639,7 @@ class _DocumentBookshelfDialog(QDialog):
         reason_view = hasattr(self, "_view_combo") and self._view_combo.currentData() == "reasons"
         line_height = self._list.fontMetrics().height()
         caption_rows = len(set(self._caption_fields) - ({"lists", "reason"} if reason_view else set()))
+        caption_rows += int("read_progress" in self._caption_fields)
         tile_height = max(_TILE_HEIGHT, 180 + line_height * (3 + caption_rows))
         reason_height = max(_REASON_ROW_HEIGHT, 28 + line_height * (5 + caption_rows))
         if hasattr(self, "_view_combo"):

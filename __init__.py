@@ -52,6 +52,7 @@ from .backend.pdf_manager import (
     get_page,
     get_zoom,
     get_read_page,
+    get_scroll_ratio,
     extract_pdf_pages_text,
     pdf_storage_abspath,
     regenerate_pdf_card_cover,
@@ -191,12 +192,14 @@ from .frontend import pdf_dock as _pdf_dock_mod
 from .frontend import epub_dock as _epub_dock_mod
 from .frontend import reader_links as _reader_links_mod
 from .frontend import selection_search as _selection_search_mod
+from .frontend import writing_excerpt_ui as _writing_excerpt_ui_mod
 from .frontend import document_link_ui as _document_link_ui_mod
 from .frontend import study_workspace as _study_workspace_mod
 from .frontend import reviewer_parent_context as _reviewer_parent_context_mod
 from .frontend import recording_link_dialog as _recording_link_dialog_mod
 from .frontend import card_resource_dialog as _card_resource_dialog_mod
 from .frontend import pdf_reference_workspace as _pdf_reference_workspace_mod
+from .frontend import epub_reference_workspace as _epub_reference_workspace_mod
 from .frontend import video_dock as _video_dock_mod
 from .frontend import web_dock as _web_dock_mod
 from .frontend import writing_dock as _writing_dock_mod
@@ -2585,6 +2588,7 @@ def _on_js_message(handled, message, context) -> tuple:
                 int(data.get("page") or 1),
                 scroll_ratio=data.get("scroll_ratio", 0),
                 owner=_pdf_dock_mod._pdf_dock,
+                passage=data.get("passage"),
                 excerpt=str(data.get("excerpt") or "") if data.get("scroll_ratio") is None else "",
             )
         except Exception:
@@ -2620,6 +2624,7 @@ def _on_js_message(handled, message, context) -> tuple:
                     int(anchor["section_index"]),
                     focus_offset=int(anchor["focus_offset"]),
                     scroll_ratio_override=anchor.get("scroll_ratio"),
+                    **({"passage": anchor["passage"]} if anchor.get("passage") else {}),
                 )
         except Exception:
             pass
@@ -2704,9 +2709,11 @@ def _add_document_link_context_actions(view, menu):
     profile, card_id = _active_profile(), int(card.id)
     def current():
         active = getattr(getattr(mw, "reviewer", None), "card", None)
-        return _active_profile() == profile and active is not None and int(active.id) == card_id
+        return (_active_profile() == profile and mw.state == 'review'
+                and active is not None and int(active.id) == card_id)
     source = {"card_id": card_id, "kind": "card", "quote": str(view.selectedText() or "")[:2000]}
     _recording_link_dialog_mod.add_context_actions(menu, source, is_current=current)
+    _writing_excerpt_ui_mod.add_context_actions(menu, dict(source, quote=str(view.selectedText() or '')[:2001]), is_current=current)
     for key, callback in (("reader_reference_add", _document_link_ui_mod.link_pdf),
                            ("reader_reference_links", _document_link_ui_mod.show_links)):
         action = menu.addAction(_t(key))
@@ -2720,6 +2727,7 @@ gui_hooks.reviewer_did_show_answer.append(_study_workspace_mod.reviewer_shown)
 gui_hooks.reviewer_will_end.append(_study_workspace_mod.reset)
 gui_hooks.profile_will_close.append(_study_workspace_mod.reset)
 gui_hooks.profile_will_close.append(_recording_link_dialog_mod.reset)
+gui_hooks.profile_will_close.append(_writing_excerpt_ui_mod.reset)
 gui_hooks.profile_will_close.append(_card_resource_dialog_mod.reset)
 gui_hooks.webview_did_receive_js_message.append(_study_workspace_mod.on_js_message)
 
@@ -3898,15 +3906,20 @@ def _open_writing_beside(*, arrange: bool = True) -> None:
         _writing_workspace_picker.close()
         _writing_workspace_picker.deleteLater()
 
-    def open_card(card_id):
-        try:
-            if _open_writing_card(card_id, keep_open=True) and arrange:
-                _workspace_layouts.beside(_writing_dock_mod._writing_dock)
-        except Exception as exc:
-            showInfo(_t("root_document_open_failed", error=exc))
-
-    _writing_workspace_picker = WritingPicker(mw, open_card=open_card, new_writing=addWritingFunction)
+    _writing_workspace_picker = WritingPicker(mw,
+        open_card=lambda cid: _open_writing_beside_card(cid, arrange=arrange), new_writing=addWritingFunction)
     _writing_workspace_picker.show()
+
+
+def _open_writing_beside_card(card_id, *, arrange=True):
+    try:
+        opened = _open_writing_card(card_id, keep_open=True)
+        if opened and arrange:
+            _workspace_layouts.beside(_writing_dock_mod._writing_dock)
+        return opened
+    except Exception as exc:
+        showInfo(_t("root_document_open_failed", error=exc))
+        return False
 
 
 def _open_writing_card(card_id: int, *, relpath: str = "", keep_open: bool = False) -> bool:
@@ -3946,6 +3959,11 @@ def _open_pdf_card(
     read_page = get_read_page(_ADDON_DIR, _active_profile(), card_id)
     _last_opened_pdf_cid = card_id
     _last_opened_document_cid = card_id
+    if _workspace_layouts.tabbed:
+        _pdf_reference_workspace_mod.open_reference(card_id, open_page, new_window=True,
+            owner=_pdf_dock_mod._pdf_dock, excerpt=jump_excerpt or search_query, zoom=zoom,
+            scroll_ratio=get_scroll_ratio(_ADDON_DIR, _active_profile(), card_id) if page is None else 0)
+        return
     _pdf_dock_mod.show_pdf_in_dock(
         card_id,
         filename,
@@ -3970,6 +3988,13 @@ def _open_epub_card(
     note = mw.col.get_note(card.nid)
     filename = note[EPUB_FILE_FIELD]
     current_section, current_ratio, _is_finished = get_epub_progress(_ADDON_DIR, _active_profile(), card_id)
+    if _workspace_layouts.tabbed:
+        _epub_reference_workspace_mod.open_reference(dict(card_id=card_id,
+            section=current_section if section_index is None else int(section_index),
+            offset=focus_offset, scroll=current_ratio), owner=_epub_dock_mod._epub_dock,
+            search_query=search_query)
+        _last_opened_document_cid = card_id
+        return
     _epub_dock_mod.show_epub_in_dock(
         card_id,
         filename,
@@ -5781,6 +5806,7 @@ def _new_writing_tab() -> None:
 
 _writing_dock_mod.configure_writing_tab_actions(
     open_existing=lambda: _open_writing_beside(arrange=False), new_writing=_new_writing_tab,
+    open_card=_open_writing_beside_card,
 )
 
 
@@ -5819,6 +5845,13 @@ def addLocalFileFunction() -> None:
         tooltip(_t("root_local_file_added", title=title, deck=dlg.deck_name))
     except Exception as e:
         showInfo(_t("root_local_file_add_failed", error=e))
+
+
+def addWebpageDocumentFunction() -> None:
+    from .frontend.webpage_document_dialog import WebpageDocumentDialog
+    dialog = WebpageDocumentDialog(_ADDON_DIR, [d.name for d in mw.col.decks.all_names_and_ids()],
+                                   parent=mw, on_open=_open_epub_card)
+    dialog.show()
 
 
 def addWebpageFunction() -> None:
@@ -7540,6 +7573,16 @@ def _build_incremento_menu() -> None:
     qconnect(_editMarkdownDocumentAction.triggered, _epub_dock_mod.edit_current_markdown_document)
     _menu.addAction(_editMarkdownDocumentAction)
     _register_shortcut_action("edit_markdown_document", _editMarkdownDocumentAction)
+
+    _addWebpageDocumentAction = QAction(_t("imports_webpage_document"), mw)
+    _addWebpageDocumentAction.setProperty("incremento_translation_key", "imports_webpage_document")
+    qconnect(_addWebpageDocumentAction.triggered, addWebpageDocumentFunction)
+    _addContentMenu.addAction(_addWebpageDocumentAction)
+
+    _exportMarkdownDocumentAction = QAction(_t("imports_export_document"), mw)
+    _exportMarkdownDocumentAction.setProperty("incremento_translation_key", "imports_export_document")
+    qconnect(_exportMarkdownDocumentAction.triggered, _epub_dock_mod.export_current_markdown_document)
+    _menu.addAction(_exportMarkdownDocumentAction)
 
     _addWebpageAction = QAction(_t("root_menu_webpage_to_pdf"), mw)
     _addWebpageAction.setProperty("incremento_translation_key", "root_menu_webpage_to_pdf")

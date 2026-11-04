@@ -4,9 +4,11 @@ import math
 try:
     from .db import get_connection
     from .document_links import _identity
+    from .document_passages import normalize_passage, encode_passage, decode_passage
 except ImportError:
     from db import get_connection
     from document_links import _identity
+    from document_passages import normalize_passage, encode_passage, decode_passage
 
 
 def normalize_location(value):
@@ -19,7 +21,10 @@ def normalize_location(value):
     scroll = value.get('scroll')
     if type(scroll) not in (int, float) or not math.isfinite(scroll) or not 0 <= scroll <= 1:
         raise ValueError('Invalid EPUB scroll position')
-    return {key: value[key] for key in ('card_id', 'section', 'offset', 'scroll')}
+    result = {key: value[key] for key in ('card_id', 'section', 'offset', 'scroll')}
+    if value.get('passage'):
+        result['passage'] = normalize_passage(value['passage'], 'epub')
+    return result
 
 
 def _match(side):
@@ -50,8 +55,9 @@ def add_connection(addon_dir, profile, source, target, *, quote=''):
         for p, identity in zip((source, target), identities):
             values.extend((p['card_id'], identity, p['section'], p['offset'], p['scroll']))
         return conn.execute('INSERT INTO epub_connections(source_card_id,source_content_id,source_section,'
-            'source_offset,source_scroll,target_card_id,target_content_id,target_section,target_offset,target_scroll,quote) '
-            'VALUES(?,?,?,?,?,?,?,?,?,?,?)', (*values, quote)).lastrowid
+            'source_offset,source_scroll,target_card_id,target_content_id,target_section,target_offset,target_scroll,quote,'
+            'source_passage,target_passage) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            (*values, quote, encode_passage(source.get('passage'), 'epub'), encode_passage(target.get('passage'), 'epub'))).lastrowid
 
 
 def list_connections(addon_dir, profile, card_id, section):
@@ -61,12 +67,15 @@ def list_connections(addon_dir, profile, card_id, section):
     for side, other, direction in (('source', 'target', 'outgoing'), ('target', 'source', 'incoming')):
         for row in conn.execute(
             f'SELECT l.id, CASE WHEN l.{other}_content_id IS NULL THEN l.{other}_card_id '
-            f'ELSE coalesce(c.card_id,0) END, l.{other}_section, l.{other}_offset, l.{other}_scroll, l.quote '
+            f'ELSE coalesce(c.card_id,0) END, l.{other}_section, l.{other}_offset, l.{other}_scroll, l.quote, l.{other}_passage '
             f'FROM epub_connections l LEFT JOIN content_items c ON c.content_id=l.{other}_content_id '
             f'WHERE {_match(side)} AND {side}_section=? ORDER BY l.id LIMIT 200',
             (identity, card_id, section)).fetchall():
             rows.append(dict(id=row[0], direction=direction,
                              target=dict(zip(('card_id', 'section', 'offset', 'scroll'), row[1:5])), quote=row[5]))
+            passage = decode_passage(row[6], 'epub')
+            if passage:
+                rows[-1]['target']['passage'] = passage
     return list({row['id']: row for row in sorted(rows, key=lambda r: r['id'])}.values())[:200]
 
 

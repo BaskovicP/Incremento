@@ -1626,3 +1626,63 @@ msgstr "固定列表"
 #: frontend/document_details.py
 msgid "imports_pin_lists_help"
 msgstr "为下一个导入的文档保留所选列表。每个文档保留各自的原因和来源。"
+
+msgid "imports_webpage_document"
+msgstr "保存网页以供离线阅读…"
+
+msgid "imports_webpage_document_description"
+msgstr "选择 HTML 快照以保留网页捕获时的布局、样式和图片，或选择可重排的阅读副本。保存前可预览。需要登录或 JavaScript 的页面请使用 Companion。仍可选择“网页转 PDF”。"
+
+msgid "imports_webpage_main_content"
+msgstr "主要文章"
+
+msgid "imports_webpage_entire_page"
+msgstr "整个页面"
+
+msgid "imports_webpage_capture_preview"
+msgstr "捕获并预览"
+
+msgid "imports_webpage_capturing"
+msgstr "正在捕获网页和图片…"
+
+msgid "imports_webpage_capture_ready"
+msgstr "可以保存。不可用或不支持的图片：{count}。预览仅显示文字。"
+
+msgid "imports_webpage_document_failed"
+msgstr "捕获失败：{error}"
+
+msgid "imports_webpage_browser_capture_required"
+msgstr "在浏览器中打开该页面，然后选择 Companion → 保存以供离线阅读。"
+
+msgid "imports_webpage_document_saved"
+msgstr "已离线保存：{title}"
+
+msgid "imports_webpage_open_document"
+msgstr "打开文档"
+
+msgid "imports_export_document"
+msgstr "导出文档…"
+
+msgid "imports_export_html_filter"
+msgstr "HTML 文档 (*.html)"
+
+msgid "imports_export_markdown_filter"
+msgstr "Markdown 文档 (*.md)"
+
+msgid "imports_export_text_filter"
+msgstr "纯文本 (*.txt)"
+
+msgid "imports_export_document_saved"
+msgstr "文档已导出。"
+
+msgid "imports_webpage_html_snapshot"
+msgstr "HTML 快照 — 网页外观"
+
+msgid "imports_webpage_reading_copy"
+msgstr "阅读副本 — 可重排 Markdown"
+
+msgid "imports_webpage_save_as"
+msgstr "另存为"
+
+msgid "imports_webpage_snapshot_ready"
+msgstr "HTML 快照已准备就绪，显示已捕获的样式和图片。不可用图片：{count}。"
