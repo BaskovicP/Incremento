@@ -3,16 +3,27 @@ import os
 import types
 from unittest.mock import MagicMock
 
+
+class ModuleMock(MagicMock):
+    """Keep lazy stand-ins concrete so fixture teardown can restore them."""
+
+    def __getattr__(self, name):
+        value = super().__getattr__(name)
+        if not name.startswith('_'):
+            self.__dict__[name] = value
+        return value
+
+
 # Mock Anki modules before any project code is imported
 for mod in ("anki", "anki.cards", "aqt", "aqt.utils", "aqt.qt"):
-    sys.modules.setdefault(mod, MagicMock())
+    sys.modules.setdefault(mod, ModuleMock())
 
 # Mock incremento sub-modules so that __init__.py can resolve relative imports.
 # These must be MagicMock so attribute access auto-creates stubs.
 for mod_name in ("incremento.backend", "incremento.backend.cards",
                  "incremento.backend.statistics", "incremento.backend.session",
                  "incremento.frontend", "incremento.frontend.stats_dialog"):
-    sys.modules.setdefault(mod_name, MagicMock())
+    sys.modules.setdefault(mod_name, ModuleMock())
 
 # Use a plain ModuleType for the package itself — NOT a MagicMock — so that
 # pytest's plugin discovery does `getattr(mod, "pytest_plugins", [])` and gets

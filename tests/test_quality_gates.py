@@ -89,6 +89,29 @@ def test_suite_standins_work_after_renaming_the_checkout(tmp_path) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_shared_anki_standins_survive_fixture_attribute_restoration() -> None:
+    import subprocess
+    import sys
+
+    script = """
+import runpy
+import sys
+import pytest
+runpy.run_path('tests/conftest.py')
+targets = [(sys.modules['aqt'], 'mw'), (sys.modules['aqt.qt'], 'QDockWidget'),
+           (sys.modules['aqt.qt'].QTimer, 'singleShot')]
+for target, name in targets:
+    original = getattr(target, name)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(target, name, object())
+    assert getattr(target, name, None) is original, f'Fixture restoration removed {name}'
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script], cwd=ROOT, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_ci_installs_the_linux_egl_runtime_before_loading_qt() -> None:
     workflow = (ROOT / ".github" / "workflows" / "verify.yml").read_text(
         encoding="utf-8"
@@ -98,6 +121,7 @@ def test_ci_installs_the_linux_egl_runtime_before_loading_qt() -> None:
 
     assert egl_install in workflow
     assert workflow.index(egl_install) < workflow.index(python_install)
+    assert "libpulse0" in workflow
 
 
 def test_dependabot_does_not_open_routine_version_update_pull_requests() -> None:

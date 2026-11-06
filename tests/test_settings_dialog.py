@@ -875,6 +875,7 @@ class TestIncrementoSettingsDialogTopicDoneTag:
         namespace.update({
             "__name__": "incremento", "mw": SimpleNamespace(addonManager=manager, col=col),
             "copy": __import__("copy"), "Exception": Exception,
+            "dict": dict, "str": str,
             "sorted": sorted, "IncrementoSettingsDialog": open_dialog,
             "_configured_topic_done_tag": config_service.configured_topic_done_tag,
             "_load_addon_config": config_service.load_addon_config, "_save_addon_config": save,

@@ -456,11 +456,7 @@ class TestLocalVideoHelpers:
             def wait(self):
                 return 0
 
-        monkeypatch.setattr(
-            _vm.shutil,
-            "which",
-            lambda name: "/usr/bin/ffmpeg" if name == "ffmpeg" else None,
-        )
+        monkeypatch.setattr(_vm, "_ffmpeg_path", lambda: "/usr/bin/ffmpeg")
         monkeypatch.setattr(_vm, "_probe_duration_seconds", lambda *_args: 1200.0)
         monkeypatch.setattr(_vm.subprocess, "Popen", _Proc)
 
@@ -489,7 +485,7 @@ class TestLocalVideoHelpers:
             def wait(self):
                 return 0
 
-        monkeypatch.setattr(_vm.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+        monkeypatch.setattr(_vm, "_ffmpeg_path", lambda: "/usr/bin/ffmpeg")
         monkeypatch.setattr(_vm, "_probe_duration_seconds", lambda *_args: 100.0)
         monkeypatch.setattr(_vm.subprocess, "Popen", _Proc)
         monkeypatch.setattr(_vm, "MAX_ANKI_VIDEO_CLIP_BYTES", 5)

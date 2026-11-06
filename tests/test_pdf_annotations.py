@@ -193,7 +193,8 @@ def test_incremento_highlight_and_unicode_note_become_one_editable_pdf_annotatio
     assert len(rows) == 1
     assert rows[0]['kind'] == 'Highlight'
     assert rows[0]['note'] == highlight['note']
-    assert rows[0]['vertices'] == pytest.approx([(60, 65), (210, 65), (60, 83), (210, 83)])
+    for actual, expected in zip(rows[0]['vertices'], [(60, 65), (210, 65), (60, 83), (210, 83)], strict=True):
+        assert actual == pytest.approx(expected)
     assert load_highlights(str(tmp_path), PROFILE, CARD)[0]['text'] == highlight['text']
     assert result['reader_path'] != str(filename)
     assert native_rows(result['reader_path']) == [], 'reader copy must prevent double-painted highlights'
@@ -656,9 +657,9 @@ def test_explicit_incremento_resize_wins_without_concurrent_position_duplicate(t
 
     assert result['conflicts'] == 0
     assert len(load_highlights(str(tmp_path), PROFILE, CARD)) == 1
-    assert native_rows(filename)[0]['vertices'] == pytest.approx(
-        [(90, 65), (170, 65), (90, 83), (170, 83)]
-    )
+    for actual, expected in zip(native_rows(filename)[0]['vertices'],
+                                [(90, 65), (170, 65), (90, 83), (170, 83)], strict=True):
+        assert actual == pytest.approx(expected)
 
 
 def test_resizing_original_retires_position_conflict_clones_from_prior_bug(tmp_path):
