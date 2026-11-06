@@ -5022,3 +5022,135 @@ msgstr "已标记读完 {percent}%"
 #. Document coverage and the separate linear marker.
 msgid "reader_linear_progress"
 msgstr "已读至此 {percent}%"
+
+msgid "workspace_switch_tabs"
+msgstr "查找标签页…"
+
+msgid "workspace_find_tabs"
+msgstr "搜索标题、类型、来源或分组"
+
+msgid "workspace_reopen_tab"
+msgstr "重新打开已关闭的标签页"
+
+msgid "workspace_next_tab"
+msgstr "下一个标签页"
+
+msgid "workspace_previous_tab"
+msgstr "上一个标签页"
+
+msgid "workspace_pin_tab"
+msgstr "固定标签页"
+
+msgid "workspace_pinned"
+msgstr "已固定"
+
+msgid "workspace_adaptive_tabs"
+msgstr "根据可用空间调整标签页"
+
+msgid "workspace_move_to_group"
+msgstr "移至分组"
+
+msgid "workspace_new_group"
+msgstr "新建分组…"
+
+msgid "workspace_group_name"
+msgstr "分组名称（最多80个字符）："
+
+msgid "workspace_ungroup_tab"
+msgstr "移出分组"
+
+msgid "workspace_collapse_group"
+msgstr "折叠分组"
+
+msgid "workspace_expand_group"
+msgstr "展开分组"
+
+msgid "workspace_group_summary"
+msgstr "▸ {name}（{count}）— {title}"
+
+msgid "workspace_group_label"
+msgstr "{name} · {title}"
+
+msgid "workspace_close_others"
+msgstr "关闭其他标签页"
+
+msgid "workspace_close_right"
+msgstr "关闭右侧标签页"
+
+msgid "workspace_close_unpinned"
+msgstr "关闭未固定的标签页"
+
+msgid "workspace_restore_session"
+msgstr "恢复上次标签页会话"
+
+msgid "workspace_restore_on_startup"
+msgstr "打开此配置时恢复上次会话的标签页"
+
+msgid "workspace_jump_to_tab"
+msgstr "转到标签页"
+
+msgid "workspace_page"
+msgstr "第 {number} 页"
+
+msgid "workspace_section"
+msgstr "第 {number} 节"
+
+msgid "workspace_status_loading"
+msgstr "正在加载…"
+
+msgid "workspace_status_failed"
+msgstr "无法加载或保存。打开此标签页查看详情。"
+
+msgid "workspace_status_unsaved"
+msgstr "有未保存的更改"
+
+msgid "workspace_kind_pdf"
+msgstr "PDF"
+
+msgid "workspace_kind_epub"
+msgstr "EPUB"
+
+msgid "workspace_kind_search"
+msgstr "浏览器"
+
+msgid "workspace_kind_web"
+msgstr "网页"
+
+msgid "workspace_kind_writing"
+msgstr "写作"
+
+msgid "workspace_kind_video"
+msgstr "视频"
+
+msgid "workspace_kind_add_card"
+msgstr "添加卡片"
+
+msgid "workspace_kind_local_file"
+msgstr "本地文件"
+
+msgid "workspace_tab_1"
+msgstr "标签页 1"
+
+msgid "workspace_tab_2"
+msgstr "标签页 2"
+
+msgid "workspace_tab_3"
+msgstr "标签页 3"
+
+msgid "workspace_tab_4"
+msgstr "标签页 4"
+
+msgid "workspace_tab_5"
+msgstr "标签页 5"
+
+msgid "workspace_tab_6"
+msgstr "标签页 6"
+
+msgid "workspace_tab_7"
+msgstr "标签页 7"
+
+msgid "workspace_tab_8"
+msgstr "标签页 8"
+
+msgid "workspace_tab_9"
+msgstr "标签页 9"

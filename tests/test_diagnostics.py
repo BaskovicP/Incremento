@@ -444,12 +444,15 @@ def test_config_sanitizer_preserves_behavior_but_removes_private_values() -> Non
     assert numeric_secret["settings"]["pin_hash"]["redacted"] is True
 
 
-def test_saved_workspaces_never_export_profile_names_card_ids_or_encoded_window_titles():
-    private = {'session_card_count': {'dialog': {'card_id': 42, 'state': 'private-window-title'}}}
-    result = diagnostics.sanitize_config({'workspace_layouts': private}, {'workspace_layouts': {}})
-    assert result['settings']['workspace_layouts']['redacted'] is True
+@pytest.mark.parametrize('setting', ['workspace_layouts', 'workspace_last_sessions'])
+def test_saved_workspaces_never_export_profile_names_card_ids_or_encoded_window_titles(setting):
+    private = {'session_card_count': {'dialog': {'card_id': 42, 'state': 'private-window-title',
+                                              'url': 'https://private.example/workspace'}}}
+    result = diagnostics.sanitize_config({setting: private}, {setting: {}})
+    assert result['settings'][setting]['redacted'] is True
     assert 'private-window-title' not in json.dumps(result)
     assert 'card_id' not in json.dumps(result)
+    assert 'https://private.example/workspace' not in json.dumps(result)
 
 
 def test_shipped_config_keys_are_explicitly_known() -> None:
@@ -470,10 +473,12 @@ def test_preview_size_registry_redacts_profile_names_while_workspace_toggle_stay
     settings = diagnostics.sanitize_config({
         "pdf_link_preview_size_by_profile": {"session_card_count": {"width": 640, "height": 480}},
         "study_workspace_enabled": False,
+        "workspace_restore_last_session": False,
     })["settings"]
     assert settings["pdf_link_preview_size_by_profile"]["redacted"] is True
     assert "session_card_count" not in json.dumps(settings)
     assert settings["study_workspace_enabled"] is False
+    assert settings["workspace_restore_last_session"] is False
 
 
 def test_search_and_pdf_focus_preferences_export_safe_behavior() -> None:

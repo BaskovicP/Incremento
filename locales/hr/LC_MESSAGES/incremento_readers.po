@@ -5108,3 +5108,135 @@ msgstr "Označeno pročitanim {percent}%"
 #. Document coverage and the separate linear marker.
 msgid "reader_linear_progress"
 msgstr "Pročitano do ovdje {percent}%"
+
+msgid "workspace_switch_tabs"
+msgstr "Pronađi karticu…"
+
+msgid "workspace_find_tabs"
+msgstr "Traži naslove, vrste, izvore ili grupe"
+
+msgid "workspace_reopen_tab"
+msgstr "Ponovno otvori zatvorenu karticu"
+
+msgid "workspace_next_tab"
+msgstr "Sljedeća kartica"
+
+msgid "workspace_previous_tab"
+msgstr "Prethodna kartica"
+
+msgid "workspace_pin_tab"
+msgstr "Prikvači karticu"
+
+msgid "workspace_pinned"
+msgstr "Prikvačeno"
+
+msgid "workspace_adaptive_tabs"
+msgstr "Prilagodi kartice dostupnom prostoru"
+
+msgid "workspace_move_to_group"
+msgstr "Premjesti u grupu"
+
+msgid "workspace_new_group"
+msgstr "Nova grupa…"
+
+msgid "workspace_group_name"
+msgstr "Naziv grupe (do 80 znakova):"
+
+msgid "workspace_ungroup_tab"
+msgstr "Ukloni iz grupe"
+
+msgid "workspace_collapse_group"
+msgstr "Sažmi grupu"
+
+msgid "workspace_expand_group"
+msgstr "Proširi grupu"
+
+msgid "workspace_group_summary"
+msgstr "▸ {name} ({count}) — {title}"
+
+msgid "workspace_group_label"
+msgstr "{name} · {title}"
+
+msgid "workspace_close_others"
+msgstr "Zatvori ostale kartice"
+
+msgid "workspace_close_right"
+msgstr "Zatvori kartice desno"
+
+msgid "workspace_close_unpinned"
+msgstr "Zatvori neprikvačene kartice"
+
+msgid "workspace_restore_session"
+msgstr "Vrati prethodnu sesiju kartica"
+
+msgid "workspace_restore_on_startup"
+msgstr "Pri otvaranju profila vrati kartice iz prethodne sesije"
+
+msgid "workspace_jump_to_tab"
+msgstr "Idi na karticu"
+
+msgid "workspace_page"
+msgstr "Stranica {number}"
+
+msgid "workspace_section"
+msgstr "Odjeljak {number}"
+
+msgid "workspace_status_loading"
+msgstr "Učitavanje…"
+
+msgid "workspace_status_failed"
+msgstr "Učitavanje ili spremanje nije uspjelo. Otvori karticu za pojedinosti."
+
+msgid "workspace_status_unsaved"
+msgstr "Nespremljene promjene"
+
+msgid "workspace_kind_pdf"
+msgstr "PDF"
+
+msgid "workspace_kind_epub"
+msgstr "EPUB"
+
+msgid "workspace_kind_search"
+msgstr "Preglednik"
+
+msgid "workspace_kind_web"
+msgstr "Web"
+
+msgid "workspace_kind_writing"
+msgstr "Pisanje"
+
+msgid "workspace_kind_video"
+msgstr "Video"
+
+msgid "workspace_kind_add_card"
+msgstr "Dodaj karticu"
+
+msgid "workspace_kind_local_file"
+msgstr "Lokalna datoteka"
+
+msgid "workspace_tab_1"
+msgstr "Kartica 1"
+
+msgid "workspace_tab_2"
+msgstr "Kartica 2"
+
+msgid "workspace_tab_3"
+msgstr "Kartica 3"
+
+msgid "workspace_tab_4"
+msgstr "Kartica 4"
+
+msgid "workspace_tab_5"
+msgstr "Kartica 5"
+
+msgid "workspace_tab_6"
+msgstr "Kartica 6"
+
+msgid "workspace_tab_7"
+msgstr "Kartica 7"
+
+msgid "workspace_tab_8"
+msgstr "Kartica 8"
+
+msgid "workspace_tab_9"
+msgstr "Kartica 9"

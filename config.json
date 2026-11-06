@@ -38,6 +38,8 @@
     "study_layout_by_profile": {},
     "study_workspace_enabled": true,
     "workspace_layouts": {},
+    "workspace_last_sessions": {},
+    "workspace_restore_last_session": true,
     "priority_lower_is_more_important": true,
     "remember_browser_card_scroll": true,
     "companion_browser": "chrome",

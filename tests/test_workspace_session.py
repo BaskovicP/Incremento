@@ -49,6 +49,34 @@ def test_workspace_load_skips_deleted_cards_and_discards_stale_success(monkeypat
     assert opened == [1] and len(finished[0][0]) == 1 and finished[0][1] == 1
 
 
+@pytest.mark.parametrize('page,maximum,expected', [(17, 100, (17, .4)), (17, 3, (3, 0))])
+def test_closed_pdf_tab_resumes_its_own_position_and_obeys_current_reading_limit(
+        monkeypatch, module, page, maximum, expected):
+    created = []
+    dock = SimpleNamespace(setObjectName=Mock())
+    reader = SimpleNamespace(_windows=[], _pending_windows=set(), _MAX_WINDOWS=8,
+        ReferenceWindow=lambda snapshot, **kw: created.append(kw) or dock)
+    session = module.WorkspaceSession(SimpleNamespace(), lambda: 'A')
+    monkeypatch.setattr(session, '_module', lambda kind: reader)
+    monkeypatch.setattr(session, '_restore_pdf_controls', Mock())
+    session._open(dict(kind='pdf_reference', card_id=42, name='incremento_pdf_reference_saved_0',
+                       resume_position=True, page=page, scroll=.4, zoom=1.5),
+                  dict(snapshot={'filename': 'canonical.pdf'}, maximum=maximum, position={'page': 31, 'scroll': .8}))
+    assert (created[0]['page'], created[0]['scroll_ratio']) == expected
+    assert created[0]['zoom'] == 1.5
+
+
+def test_search_tab_recovery_uses_the_isolated_browser_without_collection_queries(monkeypatch, module):
+    dock = SimpleNamespace(setObjectName=Mock())
+    browser = SimpleNamespace(open_search_url=Mock(return_value=dock))
+    session = module.WorkspaceSession(SimpleNamespace(), lambda: 'A')
+    monkeypatch.setattr(session, '_module', lambda kind: browser)
+    entry = dict(kind='search', name='incremento_search_dock_saved_0', url='https://example.test/word')
+    result = session._resolve(None, 'A', entry)
+    assert session._open(entry, result) is dock
+    browser.open_search_url.assert_called_once_with(entry['url'], parent=session.main, new_tab=True, activate=False)
+
+
 @pytest.mark.parametrize('kind,model', [('pdf', 'Basic'), ('writing', 'Incremento PDF'), ('epub', 'Basic')])
 def test_workspace_rejects_a_saved_card_whose_note_type_changed(kind, model, module):
     class Note(dict):

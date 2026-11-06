@@ -53,6 +53,70 @@ def _run_popup_test(script):
     assert 'Release of profile requested but WebEnginePage still not deleted' not in result.stderr
 
 
+def test_browser_tabs_show_page_titles_and_load_status_and_recover_url_and_custom_caption():
+    _run_popup_test('''
+        import copy
+        from unittest.mock import patch
+        from aqt.qt import QMainWindow, QLabel, QInputDialog, QCoreApplication, QEvent, QUrl
+        from PyQt6.QtWebEngineWidgets import QWebEngineView
+        from PyQt6 import sip
+        from frontend import selection_search as search, workspace_session as sessions
+        from frontend.workspace import WorkspaceLayouts
+        class Query:
+            def __init__(self, **kw): self.kw = kw
+            def failure(self, callback): return self
+            def run_in_background(self): self.kw['success'](self.kw['op'](None))
+        main = QMainWindow(); main.setCentralWidget(QLabel('Reviewer')); main.resize(1000, 700)
+        config = {}
+        class Config:
+            def getConfig(self, package): return copy.deepcopy(config)
+            def writeConfig(self, package, value): config.update(copy.deepcopy(value))
+        main.addonManager = Config()
+        search._active_profile = lambda: 'Synthetic'
+        manager = WorkspaceLayouts(main, profile=lambda: 'Synthetic')
+        manager.enable_dragging()
+        manager.tabbed = True
+        main.show()
+        loaded = []
+        try:
+            with patch.object(QWebEngineView, 'load', lambda view, url: loaded.append(url.toString())), patch.object(sessions, 'QueryOp', Query):
+                popup = search.open_search_url('https://example.test/dictionary?q=word', parent=main)
+                app.processEvents(); app.processEvents()
+                popup._view.titleChanged.emit('<Dictionary> — word')
+                app.processEvents()
+                assert popup.windowTitle() == '<Dictionary> — word'
+                popup._view.loadStarted.emit()
+                assert popup._workspace_loading
+                title, detail, icon = manager._tabs.details(popup)
+                assert title == '<Dictionary> — word' and 'Loading' in detail and not icon.isNull()
+                popup._view.loadFinished.emit(False)
+                assert not popup._workspace_loading and popup._workspace_failed
+                with patch.object(QInputDialog, 'getText', return_value=('My dictionary', True)):
+                    manager._tabs.rename(popup)
+                popup._view.titleChanged.emit('New page title')
+                assert popup.windowTitle() == 'My dictionary'
+                assert manager._tabs.close(popup)
+                app.processEvents(); QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete); app.processEvents()
+                assert sip.isdeleted(popup)
+                assert manager._tabs.reopen()
+                app.processEvents(); app.processEvents()
+                restored = search._popup
+                assert restored is not popup and restored.windowTitle() == 'My dictionary'
+                assert loaded[-1] == 'https://example.test/dictionary?q=word'
+                assert manager.save_last_session()
+                assert config['workspace_last_sessions']['Synthetic']['panes'][0]['url'] == loaded[-1]
+                assert manager.restore_last_session()
+                app.processEvents(); app.processEvents()
+                assert len(search._popups) == 1, 'Restoring the same session must reuse its live browser'
+                assert search._popup is restored
+        finally:
+            manager._tabs.suspended = True
+            search.reset_for_profile_switch()
+            app.processEvents()
+            main.close()
+    ''')
+
+
 def test_real_popup_is_nonmodal_isolated_and_disposed_on_profile_close():
     script = dedent('''
         from types import SimpleNamespace
@@ -247,7 +311,8 @@ def test_search_can_share_workspace_tabs_without_reloading_or_sharing_reader_sto
                     done([])
             manager._session = Session()
             manager.save_named('Desk')
-            assert captured == [reader], 'Saved workspaces must not persist transient browsing state'
+            # Session recovery now deliberately includes validated browser URLs.
+            assert captured == [reader, popup, next_popup]
             search.reset_for_profile_switch()
             assert search._popup is None and sip.isdeleted(popup) and sip.isdeleted(profile)
             assert reader.isVisible() and reader.widget().toPlainText() == 'Live reader'

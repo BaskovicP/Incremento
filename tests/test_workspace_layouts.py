@@ -132,6 +132,44 @@ def test_saved_workspace_bounds_both_pdf_and_epub_reader_tabs(count, valid):
     assert (normalize_workspace(raw) is not None) is valid
 
 
+def test_saved_tab_groups_pin_order_and_recovery_are_profile_local_and_bounded():
+    from workspace_layouts import normalize_workspace
+    raw = snapshot()
+    raw['panes'][0].update(tab_group='  Reading  ', tab_pinned=True, tab_collapsed=True,
+                           tab_adaptive=False, tab_order=3, resume_position=True)
+    clean = normalize_workspace(raw)
+    assert clean['panes'][0] | {} == raw['panes'][0] | {'tab_group': 'Reading'}
+    raw['panes'][0].update(tab_group='x'*81, tab_pinned='yes', tab_collapsed=1,
+                           tab_adaptive='yes', tab_order=-1, resume_position='yes')
+    clean = normalize_workspace(raw)
+    assert all(key not in clean['panes'][0] for key in ('tab_group', 'tab_pinned', 'tab_collapsed',
+                                                      'tab_adaptive', 'tab_order', 'resume_position'))
+
+
+@pytest.mark.parametrize('url,valid', [('https://example.test/word?q=book', True),
+    ('file:///private/document.pdf', False), ('javascript:alert(1)', False),
+    ('https://user:secret@example.test/', False), ('https://example.test/\nsecret', False)])
+def test_saved_search_tabs_validate_urls_without_requiring_a_card(url, valid):
+    from workspace_layouts import normalize_workspace
+    raw = snapshot()
+    raw['panes'].append(dict(name='incremento_search_dock_saved_0', kind='search', url=url,
+                             tab_name='Dictionary'))
+    clean = normalize_workspace(raw)
+    assert (clean is not None) is valid
+    if valid:
+        assert clean['panes'][-1]['url'] == url
+        assert 'card_id' not in clean['panes'][-1]
+
+
+def test_last_tab_sessions_normalize_independently_of_named_workspaces():
+    raw = {'workspace_last_sessions': {'A': snapshot(), 'B': {'version': 99}},
+           'workspace_restore_last_session': True, 'future_setting': {'keep': True}}
+    normalized = config_service.normalize_config(raw)
+    assert normalized['workspace_last_sessions'] == {'A': snapshot()}
+    assert normalized['workspace_restore_last_session'] is True
+    assert config_service.normalize_config(normalized) == normalized
+
+
 @pytest.mark.parametrize('tabs', [[True], [0], [71, -1], [71] * 33, [71, 71], [99], '71'])
 def test_invalid_or_unbounded_writing_tab_lists_fall_back_to_the_active_card(tabs):
     from workspace_layouts import normalize_workspace

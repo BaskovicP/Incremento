@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 import re
 from threading import Lock
 import time
-from urllib.parse import urldefrag, urljoin, urlsplit
+from urllib.parse import urldefrag, unquote_to_bytes, urljoin, urlsplit
 from urllib.request import Request
 
 from bs4 import BeautifulSoup
@@ -182,8 +182,18 @@ class _Resources:
             if len(reference) <= MAX_RESOURCE_BYTES * 2 and (
                 header.startswith(("data:image/", "data:font/")) or (css and header.startswith("data:text/css"))
             ):
-                self.claim_output(len(reference.encode("utf-8")))
-                return reference
+                try:
+                    encoded = unquote_to_bytes(reference.split(",", 1)[1])
+                    raw = base64.b64decode(b"".join(encoded.split()), validate=True) if ";base64" in header else encoded
+                except (ValueError, IndexError):
+                    return ""
+                if len(raw) > MAX_RESOURCE_BYTES:
+                    return ""
+                # A decoded SVG can contain quotes and parentheses. Canonical
+                # base64 keeps embedding it in a CSS url() syntactically inert.
+                prefix = header.split(";", 1)[0] + ";base64,"
+                self.claim_output(len(prefix) + 4 * ((len(raw) + 2) // 3))
+                return prefix + base64.b64encode(raw).decode("ascii")
             return ""
         url = self.absolute(reference, base_url)
         if url in chain or (css and len(chain) >= _MAX_CSS_DEPTH):

@@ -190,7 +190,7 @@ _CSS_IMPORT_RE = re.compile(r"@import\b[^;]*(?:;|$)", re.IGNORECASE)
 _CSS_STRING = r'''(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')'''
 _CSS_URL_RE = re.compile(rf'''url\(\s*({_CSS_STRING}|[^)"']*)\s*\)''', re.IGNORECASE)
 _CSS_ACTIVE_RE = re.compile(
-    r"(?:expression\s*\(|behavior\s*:|-moz-binding\s*:)",
+    r"(?<![\w-])(?:(?P<expression>expression\s*\()|(?:behavior|-moz-binding)\s*:)",
     re.IGNORECASE,
 )
 _EPUB_LIMIT_MODE_LABELS = {
@@ -498,7 +498,7 @@ def _safe_epub_anchor_url(value: object) -> bool:
 
 def _sanitize_css_text(css_text: str) -> str:
     cleaned = _CSS_IMPORT_RE.sub("", str(css_text or ""))
-    cleaned = _CSS_ACTIVE_RE.sub("blocked(", cleaned)
+    cleaned = _CSS_ACTIVE_RE.sub(lambda match: "blocked(" if match.group("expression") else "blocked:", cleaned)
 
     def _replace_url(match: re.Match) -> str:
         raw = str(match.group(1) or "").strip().strip("\"'")

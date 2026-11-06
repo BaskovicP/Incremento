@@ -1,0 +1,4 @@
+# Keep this folder available for local security notes and proof files.
+# Ignoring files does not encrypt or protect them from local access.
+/*
+!/.gitignore

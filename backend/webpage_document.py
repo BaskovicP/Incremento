@@ -67,6 +67,39 @@ def prepare_webpage_document(url: str, *, html: str = "", title: str = "", conte
             snapshot.head.append(snapshot.new_tag("meta", attrs={"name": name, "content": value}))
         snapshot_html = html = str(snapshot)
         check()
+    return _prepare_captured_content(url, html, title=title, content_scope=content_scope,
+        capture_format=capture_format, captured_at=captured_at, check=check, snapshot_html=snapshot_html)
+
+
+def prepare_edited_webpage_snapshot(prepared, html: str, *, is_cancelled=lambda: False):
+    """Rebuild preview edits without reloading the site or changing capture time.
+
+    The rendered DOM is untrusted. Reapply the snapshot policy with network
+    access disabled, and derive every export from the same cleaned content.
+    The caller retains ownership of the original prepared document.
+    """
+    capture = dict(prepared.capture or {})
+    if capture.get('format') != 'html' or not isinstance(html, str) or not html.strip():
+        raise ValueError('An HTML snapshot is required.')
+    if len(html.encode('utf-8')) > markdown_manager.MAX_SNAPSHOT_HTML_BYTES:
+        raise ValueError('HTML snapshot exceeds the size limit.')
+    def check():
+        if is_cancelled():
+            raise InterruptedError('Webpage capture cancelled.')
+    check()
+    url = normalize_external_http_url(capture['url'])
+    html = build_offline_webpage_html(prepare_export_html(html, url, style='website'), url, timeout_sec=0)
+    snapshot = BeautifulSoup(html, 'html.parser')
+    for name, value in (('incremento-source-url', url), ('incremento-captured-at', capture['captured_at'])):
+        for meta in snapshot.find_all('meta', attrs={'name':name}):
+            meta.decompose()
+        snapshot.head.append(snapshot.new_tag('meta', attrs={'name':name, 'content':value}))
+    html = str(snapshot)
+    return _prepare_captured_content(url, html, title=prepared.title, content_scope='full',
+        capture_format='html', captured_at=capture['captured_at'], check=check, snapshot_html=html)
+
+
+def _prepare_captured_content(url, html, *, title, content_scope, capture_format, captured_at, check, snapshot_html=None):
     result = convert_webpage_html_to_markdown(url, html, content_scope=content_scope, include_images=True)
     title = title.strip() or result["title"]
     text = result["markdown"]
@@ -92,6 +125,8 @@ def prepare_webpage_document(url: str, *, html: str = "", title: str = "", conte
                 if len(data) > markdown_manager.MAX_IMAGE_BYTES:
                     raise ValueError("Image size limit exceeded")
             else:
+                if snapshot_html is not None:
+                    raise ValueError('Snapshot images must already be embedded.')
                 image_url = normalize_external_http_url(reference)
                 request = Request(image_url, headers={"User-Agent": "Incremento/1.0", "Accept": "image/*"})
                 with open_public_http(request, timeout=max(1, min(5, remaining))) as response:

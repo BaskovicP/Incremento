@@ -24,6 +24,8 @@ def test_inactive_anki_cleanup_stays_above_its_import_and_saves_or_aborts(tmp_pa
         from PyQt6.QtWebEngineCore import QWebEngineScript, QWebEnginePage, QWebEngineProfile
         from PyQt6.QtWebEngineWidgets import QWebEngineView
         from PyQt6.QtCore import QEventLoop
+        from PyQt6.QtCore import QPoint
+        from PyQt6.QtTest import QTest
         from PyQt6 import sip
         QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.Software)
         app = QApplication(['cleanup-fixture'])
@@ -80,7 +82,7 @@ def test_inactive_anki_cleanup_stays_above_its_import_and_saves_or_aborts(tmp_pa
                 # Qt's top-level order varies; bind this preview before the
                 # asynchronous callback runs and the loop visits another window.
                 def removed(result, preview=dialog):
-                    if result != 'none':
+                    if result is not True:
                         errors.append(AssertionError('Picker failed: ' + str(result)))
                         preview.reject()
                     elif outcome == 'save':
@@ -93,7 +95,8 @@ def test_inactive_anki_cleanup_stays_above_its_import_and_saves_or_aborts(tmp_pa
                         owner.close()
                     else:
                         profile[0] = 'Second'
-                view.page().runJavaScript("document.querySelector('nav').dispatchEvent(new MouseEvent('click', {bubbles:true})); getComputedStyle(document.querySelector('nav')).display",
+                QTest.mouseClick(view.focusProxy() or view, Qt.MouseButton.LeftButton, pos=QPoint(20,16))
+                view.page().runJavaScript("document.querySelector('nav') === null",
                     QWebEngineScript.ScriptWorldId.ApplicationWorld, removed)
         poll = QTimer()
         poll.timeout.connect(interact)

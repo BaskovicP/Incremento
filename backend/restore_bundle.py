@@ -68,14 +68,17 @@ class BackupSwap:
     changes: list[tuple[Path, Path | None]]
 
     def rollback(self) -> None:
-        for target, previous in reversed(self.changes):
+        while self.changes:
+            target, previous = self.changes[-1]
+            if previous is not None and not previous.exists():
+                raise FileNotFoundError(previous)
             if target.is_dir() and not target.is_symlink():
                 shutil.rmtree(target)
             elif target.exists() or target.is_symlink():
                 target.unlink()
             if previous is not None:
                 os.replace(previous, target)
-        self.changes.clear()
+            self.changes.pop()
 
     def commit(self) -> None:
         for _, previous in self.changes:
@@ -375,8 +378,12 @@ def stage_backup(
     if (archive_stat.st_size, archive_stat.st_mtime_ns) != (report.archive_size, report.archive_mtime_ns):
         raise BackupValidationError("Backup changed after its pre-check; check it again.")
     profile_stage_dir = Path(tempfile.mkdtemp(prefix=".incremento-restore-", dir=collection.parent))
-    runtime.parent.mkdir(parents=True, exist_ok=True)
-    runtime_stage_dir = Path(tempfile.mkdtemp(prefix=".incremento-restore-", dir=runtime.parent))
+    try:
+        runtime.parent.mkdir(parents=True, exist_ok=True)
+        runtime_stage_dir = Path(tempfile.mkdtemp(prefix=".incremento-restore-", dir=runtime.parent))
+    except Exception:
+        shutil.rmtree(profile_stage_dir, ignore_errors=True)
+        raise
     staged = StagedBackup(
         collection=profile_stage_dir / "collection.anki2",
         media=profile_stage_dir / "collection.media",
@@ -450,14 +457,9 @@ def swap_staged_backup(
                     staged.runtime_stage_dir if target == runtime else staged.profile_stage_dir
                 ) / f"previous-{index}"
                 os.replace(target, previous)
-            try:
-                if replacement is not None:
-                    os.replace(replacement, target)
-            except Exception:
-                if previous is not None:
-                    os.replace(previous, target)
-                raise
             swap.changes.append((target, previous))
+            if replacement is not None:
+                os.replace(replacement, target)
         return swap
     except Exception as exc:
         try:

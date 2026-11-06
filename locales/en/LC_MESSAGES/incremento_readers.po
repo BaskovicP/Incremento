@@ -5065,3 +5065,135 @@ msgstr "Marked read {percent}%"
 #. Document coverage and the separate linear marker.
 msgid "reader_linear_progress"
 msgstr "Read to here {percent}%"
+
+msgid "workspace_switch_tabs"
+msgstr "Find tab…"
+
+msgid "workspace_find_tabs"
+msgstr "Search titles, types, sources, or groups"
+
+msgid "workspace_reopen_tab"
+msgstr "Reopen closed tab"
+
+msgid "workspace_next_tab"
+msgstr "Next tab"
+
+msgid "workspace_previous_tab"
+msgstr "Previous tab"
+
+msgid "workspace_pin_tab"
+msgstr "Pin tab"
+
+msgid "workspace_pinned"
+msgstr "Pinned"
+
+msgid "workspace_adaptive_tabs"
+msgstr "Fit tabs to available space"
+
+msgid "workspace_move_to_group"
+msgstr "Move to group"
+
+msgid "workspace_new_group"
+msgstr "New group…"
+
+msgid "workspace_group_name"
+msgstr "Group name (up to 80 characters):"
+
+msgid "workspace_ungroup_tab"
+msgstr "Remove from group"
+
+msgid "workspace_collapse_group"
+msgstr "Collapse group"
+
+msgid "workspace_expand_group"
+msgstr "Expand group"
+
+msgid "workspace_group_summary"
+msgstr "▸ {name} ({count}) — {title}"
+
+msgid "workspace_group_label"
+msgstr "{name} · {title}"
+
+msgid "workspace_close_others"
+msgstr "Close other tabs"
+
+msgid "workspace_close_right"
+msgstr "Close tabs to the right"
+
+msgid "workspace_close_unpinned"
+msgstr "Close unpinned tabs"
+
+msgid "workspace_restore_session"
+msgstr "Restore last tab session"
+
+msgid "workspace_restore_on_startup"
+msgstr "Restore tabs from the last session when opening this profile"
+
+msgid "workspace_jump_to_tab"
+msgstr "Go to tab"
+
+msgid "workspace_page"
+msgstr "Page {number}"
+
+msgid "workspace_section"
+msgstr "Section {number}"
+
+msgid "workspace_status_loading"
+msgstr "Loading…"
+
+msgid "workspace_status_failed"
+msgstr "Could not load or save. Open this tab for details."
+
+msgid "workspace_status_unsaved"
+msgstr "Unsaved changes"
+
+msgid "workspace_kind_pdf"
+msgstr "PDF"
+
+msgid "workspace_kind_epub"
+msgstr "EPUB"
+
+msgid "workspace_kind_search"
+msgstr "Browser"
+
+msgid "workspace_kind_web"
+msgstr "Web"
+
+msgid "workspace_kind_writing"
+msgstr "Writing"
+
+msgid "workspace_kind_video"
+msgstr "Video"
+
+msgid "workspace_kind_add_card"
+msgstr "Add Card"
+
+msgid "workspace_kind_local_file"
+msgstr "Local file"
+
+msgid "workspace_tab_1"
+msgstr "Tab 1"
+
+msgid "workspace_tab_2"
+msgstr "Tab 2"
+
+msgid "workspace_tab_3"
+msgstr "Tab 3"
+
+msgid "workspace_tab_4"
+msgstr "Tab 4"
+
+msgid "workspace_tab_5"
+msgstr "Tab 5"
+
+msgid "workspace_tab_6"
+msgstr "Tab 6"
+
+msgid "workspace_tab_7"
+msgstr "Tab 7"
+
+msgid "workspace_tab_8"
+msgstr "Tab 8"
+
+msgid "workspace_tab_9"
+msgstr "Tab 9"

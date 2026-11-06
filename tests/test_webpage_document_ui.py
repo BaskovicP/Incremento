@@ -155,17 +155,30 @@ def test_snapshot_choice_loads_html_preview_and_saves_html_provenance(tmp_path):
         from types import SimpleNamespace
         import sys
         import aqt.operations
-        from aqt.qt import QApplication, QTextBrowser
+        from aqt.qt import QApplication, QTextBrowser, pyqtSignal
         from backend import paths, webpage_document
         from backend.i18n import initialize_language
         from frontend import webpage_document_dialog as module
         app = QApplication(['snapshot-dialog-test'])
         initialize_language('en'); paths.set_active_profile('Captured')
-        jobs, operations, imports = [], [], []
+        jobs, operations, imports, imported_text = [], [], [], []
         class Preview(QTextBrowser):
+            loadFinished = pyqtSignal(bool)
+            is_ready = False
             def load_snapshot(self, path):
                 self.loaded_path = path
                 self.setPlainText(Path(path).read_text())
+                self.is_ready = True
+                self.loadFinished.emit(True)
+            def snapshot_html(self, callback):
+                from bs4 import BeautifulSoup
+                edited = BeautifulSoup(self.toPlainText(), 'html.parser')
+                edited.aside.decompose()
+                callback(str(edited))
+            def set_editable(self, enabled): self.editable = enabled
+            def clear(self):
+                self.is_ready = False
+                super().clear()
         # The real script-disabled WebEngine page is covered separately.
         sys.modules['frontend.webpage_snapshot_preview'] = SimpleNamespace(SnapshotPreview=Preview)
         class Taskman:
@@ -178,15 +191,21 @@ def test_snapshot_choice_loads_html_preview_and_saves_html_provenance(tmp_path):
         class Operation:
             def __init__(self, parent, op): self.operation = op
             def success(self, callback): self.done = callback; return self
-            def failure(self, callback): return self
+            def failure(self, callback): self.failed = callback; return self
             def run_in_background(self): operations.append(self)
         col = Collection(); module.mw = SimpleNamespace(col=col, taskman=Taskman())
         aqt.operations.CollectionOp = Operation
-        module.epub_manager.add_epub_card = lambda *args, **kwargs: imports.append(kwargs) or 42
+        def add(*args, **kwargs):
+            import zipfile
+            with zipfile.ZipFile(args[2]) as archive:
+                imported_text.append((archive.read('snapshot.html').decode(),archive.read('source.md').decode()))
+            imports.append(kwargs)
+            return 42
+        module.epub_manager.add_epub_card = add
         module.set_priority = lambda *args: None
         original_prepare = webpage_document.prepare_webpage_document
         module.prepare_webpage_document = lambda url, **kwargs: original_prepare(url,
-            html='<html><head><style>.layout{display:grid}</style></head><body><main class="layout">Website appearance</main></body></html>', **kwargs)
+            html='<html><head><style>.layout{display:grid}</style></head><body><aside>Unwanted sidebar</aside><main class="layout">Website appearance</main></body></html>', **kwargs)
         d = module.WebpageDocumentDialog(sys.argv[1], ['Topics'])
         assert d._format.currentData() == 'html' and d._scope.currentData() == 'full'
         assert not d._scope.isEnabled()
@@ -195,13 +214,48 @@ def test_snapshot_choice_loads_html_preview_and_saves_html_provenance(tmp_path):
         assert d._preview_stack.currentWidget() is d._snapshot_preview
         assert '.layout{display:grid}' in d._snapshot_preview.toPlainText()
         assert d._save_btn.isEnabled()
-        d._save(); op = operations.pop(); op.done(op.operation(col))
+        captured_at = prepared.capture['captured_at']
+        d._save(); d._save()
+        assert len(jobs) == 1 and not operations
+        task, done = jobs.pop(); revised = task(); f = Future(); f.set_result(revised); done(f)
+        assert not Path(prepared.path).exists()
+        op = operations.pop()
+        op.failed(RuntimeError('Collection temporarily unavailable'))
+        assert d._prepared is revised and Path(revised.path).exists() and d._save_btn.isEnabled()
+        # Retrying must keep the existing edited archive and original capture time.
+        d._save(); task, done = jobs.pop(); final = task(); f = Future(); f.set_result(final); done(f)
+        assert not Path(revised.path).exists()
+        op = operations.pop(); op.done(op.operation(col))
         assert imports[0]['source_type'] == 'HTML'
         assert imports[0]['source_metadata']['Incremento_Source_Type'] == 'HTML'
+        assert imports[0]['source_metadata']['Incremento_Imported_At'] == captured_at
+        assert all('Unwanted sidebar' not in text and 'Website appearance' in text for text in imported_text[0])
+        assert not d._snapshot_preview.editable
         assert not Path(prepared.path).exists() and not Path(prepared.preview_path).exists()
         d._format.setCurrentIndex(d._format.findData('markdown'))
         assert d._scope.isEnabled() and d._scope.currentData() == 'main'
         d.reject()
+        for phase in ('serialization', 'preparation'):
+            paths.set_active_profile('Captured')
+            d = module.WebpageDocumentDialog(sys.argv[1], ['Topics'])
+            d._url_edit.setText('https://example.com/article'); d._capture()
+            task, done = jobs.pop(); original = task(); f = Future(); f.set_result(original); done(f)
+            if phase == 'serialization':
+                callbacks = []
+                d._snapshot_preview.snapshot_html = callbacks.append
+            d._save()
+            if phase == 'preparation':
+                task, done = jobs.pop(); stale = task()
+            paths.set_active_profile('Other')
+            if phase == 'serialization':
+                callbacks.pop()(d._snapshot_preview.toPlainText())
+                assert not jobs
+            else:
+                f = Future(); f.set_result(stale); done(f)
+                assert not Path(stale.path).exists()
+            assert not operations and len(imports) == 1
+            assert not Path(original.path).exists()
+            d.reject()
         print('HTML snapshot dialog: ok')
     ''')
     result = subprocess.run([sys.executable, "-c", script, str(tmp_path)],

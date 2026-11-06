@@ -42,6 +42,12 @@ class PaneTitleBar(QWidget):
         title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         row.addWidget(title, 1)
         dock.windowTitleChanged.connect(title.setText)
+        find_tabs = QToolButton(self)
+        find_tabs.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowDown))
+        find_tabs.setAccessibleName(t('workspace_switch_tabs'))
+        find_tabs.setToolTip(t('workspace_switch_tabs'))
+        find_tabs.clicked.connect(lambda: controller.manager._tabs.show_switcher())
+        row.addWidget(find_tabs)
         for key, icon, callback in (
             ('workspace_float', QStyle.StandardPixmap.SP_TitleBarNormalButton, self.toggle_float),
             ('workspace_close', QStyle.StandardPixmap.SP_TitleBarCloseButton, dock.close),
@@ -216,7 +222,7 @@ class WorkspaceDrag(QObject):
         if pane_changed and kind == QEvent.Type.Show and watched not in self.manager._tab_members:
             watched._workspace_open_profile = self.manager._profile()
         tabs_changed = (isinstance(watched, QTabBar) and watched.parentWidget() is self.manager.main
-                        and kind in (QEvent.Type.Show, QEvent.Type.LayoutRequest))
+                        and kind in (QEvent.Type.Show, QEvent.Type.LayoutRequest, QEvent.Type.Resize))
         if pane_changed or tabs_changed:
             if not self._refresh_pending:
                 self._refresh_pending = True

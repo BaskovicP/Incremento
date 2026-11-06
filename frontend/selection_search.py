@@ -11,10 +11,12 @@ try:
     from ..backend.i18n import t
     from ..backend.config_service import configured_web_search_engine, configured_search_remember_logins
     from ..backend.paths import get_active_profile as _active_profile
+    from ..backend.content_safety import normalize_external_http_url
 except ImportError:
     from backend.i18n import t
     from backend.config_service import configured_web_search_engine, configured_search_remember_logins
     from backend.paths import get_active_profile as _active_profile
+    from backend.content_safety import normalize_external_http_url
 
 
 _ACTION_NAME = "incremento_search_google"
@@ -142,9 +144,17 @@ def _release_unused_shared_profile():
 
 def show_google_search(text: str, parent=None) -> None:
     """Open the selected provider (legacy entry-point name)."""
-    global _popup, _shared_profile, _shared_anki_profile
     url = search_url(text, _search_engine)
-    if url is None:
+    if url is not None:
+        return open_search_url(url, parent=parent)
+
+
+def open_search_url(url, parent=None, *, new_tab=False, activate=True):
+    """Use the same isolated browser lifetime for explicit opens and tab recovery."""
+    global _popup, _shared_profile, _shared_anki_profile
+    try:
+        url = normalize_external_http_url(url)
+    except (TypeError, ValueError):
         return
     from .google_search_dialog import GoogleSearchDialog
 
@@ -153,7 +163,7 @@ def show_google_search(text: str, parent=None) -> None:
     if ((existing is not None and existing.anki_profile != profile)
             or (_shared_profile is not None and _shared_anki_profile != profile)):
         reset_for_profile_switch()
-    owner = _tabbed_owner(parent)
+    owner = parent if new_tab else _tabbed_owner(parent)
     if owner is not None and len(_popups) >= 32:
         from aqt.utils import tooltip
         tooltip(t('reader_reference_unavailable'))
@@ -204,7 +214,9 @@ def show_google_search(text: str, parent=None) -> None:
     _popup.search(url)
     _popup.show()
     _popup.raise_()
-    _popup.activateWindow()
+    if activate:
+        _popup.activateWindow()
+    return _popup
 
 
 def reset_for_profile_switch() -> None:

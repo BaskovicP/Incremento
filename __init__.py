@@ -354,6 +354,7 @@ def show_database_entries_dialog(*args, **kwargs):
 _activate_pymupdf()
 
 _workspace_layouts = WorkspaceLayouts(mw)
+gui_hooks.profile_will_close.append(_workspace_layouts.close_profile)
 _writing_workspace_picker = None
 
 _learning_leech_tracker = LearningLeechTracker()
@@ -3194,6 +3195,8 @@ def _on_profile_did_open() -> None:
             _create_topics_deck()
     except Exception:
         pass
+    QTimer.singleShot(0, lambda: _workspace_layouts.start_profile()
+        if mw.col is collection and _current_profile_name() == profile else None)
 
 
 _anki_hooks.notes_will_be_deleted.append(_pdf_notes_will_be_deleted)
@@ -4889,7 +4892,7 @@ def _start_full_backup(
         export_stats_json,
     )
     from .backend.export_bundle import snapshot_database, snapshot_tree
-    from .frontend.backup_progress import AutomaticBackupProgress
+    from .frontend.backup_progress import AutomaticBackupProgress, ManualBackupProgress
     from .backend.activity_log import (
         start_activity, update_activity, finish_activity, fail_activity,
     )
@@ -4933,14 +4936,13 @@ def _start_full_backup(
     activity_id = start_activity(
         _t("root_backup_activity_title"), category=_t("root_backup_activity_category"), detail=_t("root_backup_activity_preparing"),
     )
-    progress = AutomaticBackupProgress(mw) if automatic_policy is not None else None
-    if progress is not None:
-        try:
-            progress.start()
-        except Exception as exc:
-            fail_activity(activity_id, _t("root_backup_progress_failed", error=exc))
-            os.remove(archive_tmp_path)
-            return False
+    progress = AutomaticBackupProgress(mw) if automatic_policy is not None else ManualBackupProgress(mw)
+    try:
+        progress.start()
+    except Exception as exc:
+        fail_activity(activity_id, _t("root_backup_progress_failed", error=exc))
+        os.remove(archive_tmp_path)
+        return False
     _full_backup_running = True
 
     def _restore_instructions() -> str:
@@ -4977,8 +4979,7 @@ def _start_full_backup(
 
     def _progress(label: str) -> None:
         update_activity(activity_id, detail=label)
-        if progress is not None:
-            progress.update(label)
+        progress.update(label)
 
     try:
         # This touches Qt/WebEngine-owned dock state and must stay on the main
@@ -5036,6 +5037,7 @@ def _start_full_backup(
             profile_stage = user_files_stage / profile
             profile_stage.mkdir(parents=True, exist_ok=True)
 
+            _progress(_t("root_backup_activity_snapshotting"))
             user_files_stats = snapshot_tree(
                 user_files_dir,
                 str(profile_stage),
@@ -5104,6 +5106,7 @@ def _start_full_backup(
                     "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2)
                 )
 
+            _progress(_t("admin_full_restore_checking_backup"))
             with zipfile.ZipFile(archive_tmp_path, "r") as check_zip:
                 corrupt_member = check_zip.testzip()
             if corrupt_member:
@@ -5186,8 +5189,7 @@ def _start_full_backup(
             _on_done(fut)
         finally:
             try:
-                if progress is not None:
-                    progress.finish()
+                progress.finish()
             finally:
                 callbacks = _backup_idle_callbacks
                 _backup_idle_callbacks = []
@@ -5199,8 +5201,7 @@ def _start_full_backup(
     except Exception as exc:
         _full_backup_running = False
         fail_activity(activity_id, _t("root_backup_start_failed", error=exc))
-        if progress is not None:
-            progress.finish()
+        progress.finish()
         try:
             os.remove(archive_tmp_path)
         except OSError:
@@ -7122,6 +7123,7 @@ def openSettingsFunction() -> None:
         current_reviewer_button_visibility=configured_reviewer_button_visibility(cfg),
         current_reviewer_button_group_visible=configured_reviewer_button_group_visible(cfg),
         current_study_workspace_enabled=cfg['study_workspace_enabled'],
+        current_workspace_restore_last_session=cfg['workspace_restore_last_session'],
         current_bookshelf_caption_fields=cfg['bookshelf_caption_fields'],
         current_show_incremento_fields=configured_show_incremento_fields(cfg),
         current_day_end_time=cfg.get("day_end_time", "04:00"),
@@ -7190,7 +7192,7 @@ def openSettingsFunction() -> None:
     # Reader controls and study layouts are saved directly, independently of Settings.
     latest_reader_config = _load_addon_config(mw.addonManager, __name__)
     for reader_preference in ('pdf_controls_collapsed_by_profile', 'epub_controls_collapsed_by_profile',
-                              'study_layout_by_profile', 'workspace_layouts',
+                              'study_layout_by_profile', 'workspace_layouts', 'workspace_last_sessions',
                               'reader_default_highlight_color_by_profile', 'pdf_link_preview_size_by_profile'):
         cfg[reader_preference] = copy.deepcopy(latest_reader_config.get(reader_preference, {}))
     if dlg.reader_default_highlight_color_changed:
@@ -7224,6 +7226,7 @@ def openSettingsFunction() -> None:
     cfg["reviewer_button_visibility"] = visibility
     cfg["reviewer_button_group_visible"] = dlg.reviewer_button_group_visible
     cfg['study_workspace_enabled'] = dlg.study_workspace_enabled
+    cfg['workspace_restore_last_session'] = dlg.workspace_restore_last_session
     cfg["show_incremento_fields"] = dlg.show_incremento_fields
     cfg["day_end_time"] = dlg.day_end_time
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
@@ -7518,7 +7521,8 @@ def _build_incremento_menu() -> None:
     _activityCenterAction.setProperty("incremento_translation_key", "root_menu_activity_center")
     qconnect(_activityCenterAction.triggered, _open_activity_center)
     _menu.addAction(_activityCenterAction)
-    add_workspace_menu(_menu, _workspace_layouts, _open_writing_beside, open_pdf=_open_pdf_workspace_window)
+    add_workspace_menu(_menu, _workspace_layouts, _open_writing_beside, open_pdf=_open_pdf_workspace_window,
+                       register_action=_register_shortcut_action)
     _register_shortcut_action("activity_center", _activityCenterAction)
 
     _settingsAction = QAction(_t("root_menu_settings"), mw)

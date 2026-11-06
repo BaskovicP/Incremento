@@ -128,9 +128,10 @@ class GoogleSearchDialog(QDockWidget):
         self._status.setWordWrap(True)
         self._status.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self._status)
-        self._view.loadStarted.connect(lambda: self._status.setText(t("selection_search_loading")))
+        self._view.loadStarted.connect(self._loading)
         self._view.loadFinished.connect(self._loaded)
         self._view.urlChanged.connect(self._update_back)
+        self._view.titleChanged.connect(self._page_title)
         self._back.clicked.connect(self._view.back)
         self._back.setEnabled(False)
         external.clicked.connect(self._open_browser)
@@ -148,12 +149,25 @@ class GoogleSearchDialog(QDockWidget):
 
     def search(self, url: str) -> None:
         if _http_url(QUrl(url)):
+            self._workspace_url = url
+            self.setWindowTitle(QUrl(url).host() or t('selection_search_title'))
             self._view.load(QUrl(url))
+
+    def _page_title(self, title):
+        title = ' '.join(str(title).split())[:160]
+        self.setWindowTitle(title or self._view.url().host() or t('selection_search_title'))
+
+    def _loading(self):
+        self._workspace_loading = True
+        self._workspace_failed = False
+        self._status.setText(t('selection_search_loading'))
 
     def _update_back(self, *_args) -> None:
         self._back.setEnabled(self._view.history().canGoBack())
 
     def _loaded(self, ok: bool) -> None:
+        self._workspace_loading = False
+        self._workspace_failed = not ok
         self._status.setText("" if ok else t("selection_search_failed"))
         self._update_back()
 

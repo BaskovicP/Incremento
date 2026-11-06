@@ -2,6 +2,7 @@
 
 import io
 import json
+from pathlib import Path
 import shutil
 import zipfile
 
@@ -18,6 +19,35 @@ HTML = '''<html><title>Saved article</title><nav>Navigation</nav><article>
 <h1>Reading</h1><p>Original <strong>passage</strong>.</p>
 <img src="/picture.png" alt="diagram"><img src="/picture.png" alt="again">
 <a href="/more">More</a><script>alert(1)</script></article></html>'''
+
+
+def test_cleaned_snapshot_rebuilds_all_exports_offline_and_keeps_capture_identity(tmp_path, monkeypatch):
+    import webpage_resources
+    html = '<html><head><style>main{display:grid}</style></head><body><aside>Remove clutter</aside><main><h1>Keep article</h1><p>Retained passage.</p></main></body></html>'
+    with webpage_document.prepare_webpage_document('https://example.com/article', html=html, capture_format='html') as original:
+        captured = dict(original.capture)
+        cleaned = BeautifulSoup(Path(original.preview_path).read_text(), 'html.parser')
+        cleaned.aside.decompose()
+        # A compromised serialization must not get a new network capability.
+        image = cleaned.new_tag('img', src='https://example.com/new.png')
+        cleaned.main.append(image)
+        def no_network(*args, **kwargs):
+            pytest.fail('Saving preview edits fetched a webpage/resource')
+        monkeypatch.setattr(webpage_document, 'open_public_http', no_network)
+        monkeypatch.setattr(webpage_resources, 'open_public_http', no_network)
+        monkeypatch.setattr(webpage_document, 'fetch_webpage_html', no_network)
+        with webpage_document.prepare_edited_webpage_snapshot(original, str(cleaned)) as revised:
+            assert revised.capture['captured_at'] == captured['captured_at']
+            assert revised.capture['url'] == captured['url']
+            target = paths.get_epub_dir(str(tmp_path), 'Saved') / 'cleaned.epub'
+            target.parent.mkdir(parents=True)
+            shutil.copyfile(revised.path, target)
+            for format in ('html', 'md', 'txt'):
+                exported = markdown_manager.export_markdown_document(str(tmp_path), 'Saved', target.name, format).decode()
+                assert 'Remove clutter' not in exported
+                assert 'Keep article' in exported and 'Retained passage.' in exported
+            assert 'display:grid' in markdown_manager.export_markdown_document(str(tmp_path), 'Saved', target.name, 'html').decode()
+        assert Path(original.path).is_file()
 
 
 def test_loaded_page_capture_keeps_local_images_source_and_frozen_original(tmp_path, monkeypatch):

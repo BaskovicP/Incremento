@@ -8,8 +8,11 @@ except ImportError:
     from backend.i18n import t, format_number
 
 import copy
+from concurrent.futures import Future
 from pathlib import Path
 from typing import Callable
+
+from .backup_progress import FullRestoreProgress
 
 try:
     from ..backend.activity_log import fail_activity, finish_activity, start_activity, update_activity
@@ -17,12 +20,14 @@ try:
         RestoreRollbackError, precheck_backup, stage_backup, swap_staged_backup,
     )
     from ..backend.paths import get_user_files_dir
+    from ..backend.db import close_current_connection
 except ImportError:
     from backend.activity_log import fail_activity, finish_activity, start_activity, update_activity
     from backend.restore_bundle import (
         RestoreRollbackError, precheck_backup, stage_backup, swap_staged_backup,
     )
     from backend.paths import get_user_files_dir
+    from backend.db import close_current_connection
 
 
 _restore_running = False
@@ -52,7 +57,7 @@ def restore_full_backup(
     """Pre-check, stage, confirm, then replace the closed profile with rollback."""
     from aqt.operations import QueryOp
     from aqt.qt import QFileDialog, QMessageBox
-    from aqt.utils import showWarning, tooltip
+    from aqt.utils import showInfo, showWarning, tooltip
 
     global _restore_running
     if _restore_running or backup_running():
@@ -69,6 +74,7 @@ def restore_full_backup(
         return
 
     collection = Path(main_window.pm.collectionPath())
+    original_collection = main_window.col
     media = collection.parent / "collection.media"
     runtime = get_user_files_dir(addon_dir, profile_key)
     old_config = copy.deepcopy(current_config)
@@ -78,6 +84,11 @@ def restore_full_backup(
         t('admin_full_restore_restore_full_profile_backup'), category=t('admin_full_restore_backup'), detail=t('admin_full_restore_checking_backup')
     )
     _restore_running = True
+    progress = FullRestoreProgress(main_window)
+
+    def update_progress(detail: str) -> None:
+        update_activity(activity, detail=detail)
+        progress.update(detail)
 
     def same_profile() -> bool:
         return main_window.pm.name == profile_name
@@ -86,21 +97,33 @@ def restore_full_backup(
         main_window.pm.profile["autoSync"] = old_auto_sync
         main_window.pm.profile["autoSyncMediaMinutes"] = old_periodic_media_sync
 
+    def run_background(work, done, *, uses_collection=True) -> None:
+        try:
+            main_window.taskman.run_in_background(work, done, uses_collection=uses_collection)
+        except Exception as exc:
+            # A rejected task needs the same recovery as a failed worker. In
+            # particular, replacement may be queued after the profile closes.
+            future = Future()
+            future.set_exception(exc)
+            done(future)
+
     def fail(message: str, *, stage=None) -> None:
         global _restore_running
         _restore_running = False
+        progress.finish()
         if stage is not None:
-            main_window.taskman.run_in_background(stage.cleanup, lambda _future: None)
+            run_background(stage.cleanup, lambda _future: None)
         fail_activity(activity, message)
         showWarning(message)
 
     def after_check(future) -> None:
+        progress.finish()
         try:
             report, stage = future.result()
         except Exception as exc:
             fail(t('admin_full_restore_backup_pre_check_failed_error', error=exc))
             return
-        if not same_profile() or backup_running():
+        if not same_profile() or main_window.col is not original_collection or backup_running():
             fail(t('admin_full_restore_restore_stopped_because_the_profile_changed_or_a'), stage=stage)
             return
         prompt = QMessageBox(main_window)
@@ -127,26 +150,26 @@ def restore_full_backup(
         prompt.button(QMessageBox.StandardButton.No).setText(t("admin_no"))
         prompt.setDefaultButton(QMessageBox.StandardButton.No)
         if prompt.exec() != QMessageBox.StandardButton.Yes:
-            main_window.taskman.run_in_background(stage.cleanup, lambda _future: None)
+            run_background(stage.cleanup, lambda _future: None)
             finish_activity(activity, detail=t('admin_full_restore_restore_cancelled_after_successful_pre_check'))
             global _restore_running
             _restore_running = False
             return
 
-        update_activity(activity, detail=t('admin_full_restore_creating_safety_backup'))
-
         def safety_failed(error: Exception) -> None:
             fail(t('admin_full_restore_could_not_create_an_anki_safety_backup_error', error=error), stage=stage)
 
         def after_safety(_unused) -> None:
+            if not same_profile() or main_window.col is not original_collection or backup_running():
+                fail(t('admin_full_restore_restore_stopped_because_the_profile_changed_or_a'), stage=stage)
+                return
             try:
-                if not same_profile() or backup_running():
-                    raise RuntimeError(t('admin_full_restore_the_profile_changed_or_a_backup_started'))
                 main_window.pm.profile["autoSync"] = False
                 main_window.pm.profile["autoSyncMediaMinutes"] = 0
                 main_window.pm.save()
                 main_window.restoring_backup = True
-                update_activity(activity, detail=t('admin_full_restore_closing_profile_for_restore'))
+                update_progress(t('admin_full_restore_closing_profile_for_restore'))
+                progress.finish()
                 main_window.unloadProfile(after_unload)
             except Exception as exc:
                 restore_sync_preferences()
@@ -162,9 +185,17 @@ def restore_full_backup(
             if not same_profile():
                 fail(t('admin_full_restore_restore_stopped_because_the_active_profile_changed'), stage=stage)
                 return
-            update_activity(activity, detail=t('admin_full_restore_replacing_profile_files'))
-            main_window.taskman.run_in_background(
-                lambda: swap_staged_backup(stage, collection, media, runtime),
+            progress.start()
+            update_progress(t('admin_full_restore_replacing_profile_files'))
+
+            def replace_files():
+                # Profile-close hooks release only Qt's handle. This serialized
+                # worker can still own the old DB, including a Windows file lock.
+                close_current_connection(addon_dir, profile_key)
+                return swap_staged_backup(stage, collection, media, runtime)
+
+            run_background(
+                replace_files,
                 after_swap,
             )
 
@@ -199,7 +230,7 @@ def restore_full_backup(
 
             def rollback_restore(reason: Exception) -> None:
                 """Close a loaded collection before moving the prior files back."""
-                update_activity(activity, detail=t('admin_full_restore_rolling_back_failed_restore'))
+                update_progress(t('admin_full_restore_rolling_back_failed_restore'))
 
                 def after_rollback(rollback_future) -> None:
                     try:
@@ -243,18 +274,27 @@ def restore_full_backup(
 
                 def do_rollback() -> None:
                     main_window.restoring_backup = False
-                    main_window.taskman.run_in_background(swap.rollback, after_rollback)
+                    progress.start()
+                    update_progress(t('admin_full_restore_rolling_back_failed_restore'))
+
+                    def rollback_files():
+                        close_current_connection(addon_dir, profile_key)
+                        swap.rollback()
+
+                    run_background(rollback_files, after_rollback)
 
                 if main_window.col is not None:
                     try:
                         reset_close_gate()
                         main_window.restoring_backup = True
+                        progress.finish()
                         main_window.unloadProfile(do_rollback)
                     except Exception as close_exc:
                         fail(
                             t('admin_full_restore_restore_failed_reason_the_restored_collection_could_not', reason=reason, close_error=close_exc, profile_path=stage.profile_stage_dir, runtime_path=stage.runtime_stage_dir)
                         )
                 else:
+                    progress.finish()
                     do_rollback()
 
             try:
@@ -263,7 +303,7 @@ def restore_full_backup(
                     old_config.get("automatic_backups", {})
                 )
                 save_config(restored_config)
-                update_activity(activity, detail=t('admin_full_restore_opening_restored_profile'))
+                update_progress(t('admin_full_restore_opening_restored_profile'))
                 main_window.loadProfile()
                 if main_window.col is None:
                     raise RuntimeError(t('admin_full_restore_anki_could_not_open_the_restored_collection'))
@@ -274,33 +314,44 @@ def restore_full_backup(
             def after_cleanup(cleanup_future) -> None:
                 global _restore_running
                 _restore_running = False
+                progress.finish()
                 try:
                     cleanup_future.result()
                 except Exception as exc:
-                    fail_activity(
-                        activity,
+                    fail(
                         t('admin_full_restore_restore_succeeded_but_old_file_cleanup_failed_error', error=exc, profile_path=stage.profile_stage_dir, runtime_path=stage.runtime_stage_dir),
                     )
                     return
                 finish_activity(activity, detail=t('admin_full_restore_profile_restored_automatic_sync_is_off'))
-                tooltip(t('admin_full_restore_full_backup_restored_review_the_profile_before_syncing'))
+                showInfo(t('admin_full_restore_full_backup_restored_review_the_profile_before_syncing'))
 
             def cleanup() -> None:
                 swap.commit()
                 stage.cleanup()
 
-            main_window.taskman.run_in_background(cleanup, after_cleanup)
+            run_background(cleanup, after_cleanup)
 
-        QueryOp(
-            parent=main_window,
-            op=lambda _collection: main_window.create_backup_now(),
-            success=after_safety,
-        ).failure(safety_failed).with_progress().run_in_background()
+        try:
+            progress.start()
+            update_progress(t('admin_full_restore_creating_safety_backup'))
+            QueryOp(
+                parent=main_window,
+                op=lambda _collection: main_window.create_backup_now(),
+                success=after_safety,
+            ).failure(safety_failed).run_in_background()
+        except Exception as exc:
+            safety_failed(exc)
 
     def check_and_stage():
         report = precheck_backup(selected, target_profile=profile_key)
-        update_activity(activity, detail=t('admin_full_restore_staging_checked_backup'))
+        update_progress(t('admin_full_restore_staging_checked_backup'))
         stage = stage_backup(selected, report, collection, runtime)
         return report, stage
 
-    main_window.taskman.run_in_background(check_and_stage, after_check)
+    try:
+        progress.start()
+        # ZIPs and disposable databases only: a busy collection queue must not
+        # prevent the user from reaching the restore confirmation.
+        run_background(check_and_stage, after_check, uses_collection=False)
+    except Exception as exc:
+        fail(t('admin_full_restore_backup_pre_check_failed_error', error=exc))

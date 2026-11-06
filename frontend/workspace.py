@@ -2,22 +2,23 @@
 from contextlib import ExitStack
 import base64
 from weakref import WeakSet
+from PyQt6 import sip
 
 from aqt.qt import (
     QApplication, QByteArray, QDockWidget, QInputDialog, QMainWindow, QMenu,
-    QRect, QSignalBlocker, QTabWidget, Qt,
+    QRect, QSignalBlocker, QTabWidget, QTimer, Qt, QAction,
 )
 
 try:
     from ..backend.i18n import t
     from ..backend.paths import get_active_profile
     from ..backend.config_service import load_addon_config, save_addon_config
-    from ..backend.workspace_layouts import MAX_WORKSPACES, normalize_workspace, saved_workspaces, workspace_name
+    from ..backend.workspace_layouts import TAB_OPTIONS, MAX_WORKSPACES, normalize_workspace, saved_workspaces, workspace_name
 except ImportError:
     from backend.i18n import t
     from backend.paths import get_active_profile
     from backend.config_service import load_addon_config, save_addon_config
-    from backend.workspace_layouts import MAX_WORKSPACES, normalize_workspace, saved_workspaces, workspace_name
+    from backend.workspace_layouts import TAB_OPTIONS, MAX_WORKSPACES, normalize_workspace, saved_workspaces, workspace_name
 
 _ADDON_PKG = __name__.split('.')[0] if '.' in __name__ else 'incremento'
 
@@ -62,6 +63,11 @@ class WorkspaceLayouts:
         self.tabbed = False
         self._tab_members = WeakSet()
         self._tab_anchor = None
+        self._session_profile = None
+        self._restoring = False
+        self._session_timer = QTimer(main)
+        self._session_timer.setInterval(15000)
+        self._session_timer.timeout.connect(self.save_last_session)
         main._incremento_workspace_layouts = self
         main.tabifiedDockWidgetActivated.connect(self._tab_activated)
 
@@ -119,8 +125,7 @@ class WorkspaceLayouts:
 
     def save_named(self, name, done=lambda ok: None):
         name = workspace_name(name)
-        # Search is a transient browser, not card-backed workspace content.
-        panes = [dock for dock in self.visible_panes() if not dock.objectName().startswith('incremento_search_dock')]
+        panes = self.visible_panes()
         if name is None or not panes:
             done(False)
             return
@@ -128,11 +133,11 @@ class WorkspaceLayouts:
         generation, profile = self._generation, self._profile()
         # Use stable layout slots instead of persisting reference bridge nonces.
         names = {dock: dock.objectName() for dock in panes}
-        tab_options = {dock: {key: getattr(dock, '_workspace_' + key, '')
-                             for key in ('tab_name', 'tab_size', 'tab_color')} for dock in panes}
+        tab_options = {dock: self.tab_options(dock) for dock in panes}
         aliases = {pane_name: 'incremento_' + ('pdf_reference' if pane_name.startswith('incremento_pdf_reference_')
-                    else 'epub_reference') + '_saved_' + str(index)
-                   for index, pane_name in enumerate(names.values()) if '_reference_' in pane_name}
+                    else 'epub_reference' if pane_name.startswith('incremento_epub_reference_') else 'search_dock')
+                    + '_saved_' + str(index) for index, pane_name in enumerate(names.values())
+                   if '_reference_' in pane_name or pane_name.startswith('incremento_search_dock')}
         try:
             for dock, pane_name in names.items():
                 if pane_name in aliases:
@@ -166,7 +171,7 @@ class WorkspaceLayouts:
                 done(False)
                 return
             for dock, entry in zip(panes, clean['panes']):
-                if entry['kind'].endswith('_reference'):
+                if entry['kind'].endswith('_reference') or entry['kind'] == 'search':
                     dock._workspace_saved_name = entry['name']
             done(True)
         self._content().capture(panes, captured)
@@ -189,13 +194,19 @@ class WorkspaceLayouts:
         if snapshot is None:
             done(False, 0)
             return
+        self._restore_snapshot(snapshot, done)
+
+    def _restore_snapshot(self, snapshot, done=lambda ok, missing: None):
+        self._restoring = True
         self._generation += 1
         generation, profile = self._generation, self._profile()
         def current():
-            return generation == self._generation and profile == self._profile()
+            return (not sip.isdeleted(self.main) and generation == self._generation
+                    and profile == self._profile())
         def opened(panes, missing):
             if not current():
                 return
+            self._restoring = False
             if not panes:
                 done(False, missing)
                 return
@@ -213,8 +224,9 @@ class WorkspaceLayouts:
                     self._keep_on_screen(dock)
                 options = {entry['name']: entry for entry in snapshot['panes']}
                 for dock in panes:
-                    for key in ('tab_name', 'tab_size', 'tab_color'):
+                    for key in TAB_OPTIONS:
                         setattr(dock, '_workspace_' + key, options.get(dock.objectName(), {}).get(key, ''))
+                    dock._workspace_apply_order = True
                 focused = {entry['name'] for entry in snapshot['panes'] if entry.get('focused')}
                 for dock in panes:
                     mode = _focus(dock)
@@ -230,6 +242,101 @@ class WorkspaceLayouts:
                 self._tabs.refresh()
             done(ok, missing)
         self._content().restore(snapshot['panes'], current, opened)
+
+    def tab_options(self, dock):
+        options = {key: getattr(dock, '_workspace_' + key, '') for key in TAB_OPTIONS}
+        if self._tabs is not None:
+            bar = self._tabs.bar_for(dock)
+            if bar is not None:
+                options['tab_order'] = next(i for i in range(bar.count()) if self._tabs.dock_for(bar, i) is dock)
+        return options
+
+    def capture_entries(self, panes):
+        content = self._content()
+        capture = getattr(content, 'capture_immediate', None)
+        if capture is not None:
+            return capture(panes)
+        result = []
+        content.capture(panes, result.extend)
+        return result
+
+    def save_last_session(self):
+        """Store only bounded descriptions and Qt geometry; content stays in its owner."""
+        profile = self._profile()
+        if self._restoring:
+            return False
+        if self._session_profile is not None and self._session_profile != profile:
+            return False
+        panes = self.visible_panes()
+        try:
+            entries = self.capture_entries(panes) if panes else []
+            if len(entries) != len(panes):
+                return False
+            names = {dock: dock.objectName() for dock in panes}
+            try:
+                for index, dock in enumerate(panes):
+                    kind = entries[index]['kind']
+                    if kind in ('pdf_reference', 'epub_reference', 'search'):
+                        with QSignalBlocker(dock):
+                            dock.setObjectName('incremento_' + ('search_dock' if kind == 'search' else kind)
+                                               + '_saved_' + str(index))
+                snapshot = {'version': 1, 'state': base64.b64encode(bytes(self.main.saveState())).decode('ascii'),
+                            'geometry': base64.b64encode(bytes(self.main.saveGeometry())).decode('ascii'),
+                            'open_as_tabs': self.tabbed,
+                            'panes': [entry | self.tab_options(dock) | {'name': dock.objectName(), 'resume_position': True}
+                                      for dock, entry in zip(panes, entries)]}
+            finally:
+                for dock, name in names.items():
+                    with QSignalBlocker(dock):
+                        dock.setObjectName(name)
+            clean = normalize_workspace(snapshot) if panes else None
+            if panes and clean is None:
+                return False
+            config = load_addon_config(self.main.addonManager, _ADDON_PKG)
+            sessions = config.setdefault('workspace_last_sessions', {})
+            changed = sessions.get(profile) != clean
+            if clean is None:
+                sessions.pop(profile, None)
+            else:
+                sessions[profile] = clean
+            if changed:
+                save_addon_config(self.main.addonManager, _ADDON_PKG, config)
+            if clean is not None:
+                for dock, entry in zip(panes, clean['panes']):
+                    if entry['kind'].endswith('_reference') or entry['kind'] == 'search':
+                        dock._workspace_saved_name = entry['name']
+            return True
+        except Exception:
+            return False
+
+    def restore_last_session(self):
+        config = load_addon_config(self.main.addonManager, _ADDON_PKG)
+        snapshot = config.get('workspace_last_sessions', {}).get(self._profile())
+        if snapshot is None:
+            return False
+        self.enable_dragging()
+        def restored(ok, missing):
+            if missing or not ok:
+                from aqt.utils import tooltip
+                tooltip(t('workspace_load_partial', count=missing) if missing else t('workspace_open_failed'))
+        self._restore_snapshot(snapshot, restored)
+        return True
+
+    def start_profile(self):
+        self._session_profile = self._profile()
+        self.enable_dragging()
+        self._tabs.suspended = False
+        config = load_addon_config(self.main.addonManager, _ADDON_PKG)
+        if config['workspace_restore_last_session']:
+            self.restore_last_session()
+        self._session_timer.start()
+
+    def close_profile(self):
+        self._session_timer.stop()
+        if self._session_profile == self._profile():
+            self.save_last_session()
+        if self._tabs is not None:
+            self._tabs.suspended = True
 
     @staticmethod
     def _keep_on_screen(dock):
@@ -350,6 +457,8 @@ class WorkspaceLayouts:
 
     def _tabify(self, target, dock):
         dock._workspace_tab_size = getattr(target, '_workspace_tab_size', '')
+        dock._workspace_tab_adaptive = getattr(target, '_workspace_tab_adaptive', True)
+        dock._workspace_tab_group = getattr(target, '_workspace_tab_group', '')
         self.main.setDockOptions(self.main.dockOptions() | QMainWindow.DockOption.AllowTabbedDocks)
         self.main.setTabPosition(self.main.dockWidgetArea(target), QTabWidget.TabPosition.North)
         self.main.tabifyDockWidget(target, dock)
@@ -463,20 +572,45 @@ class WorkspaceLayouts:
         self.tabbed = False
         self._tab_members.clear()
         self._tab_anchor = None
+        self._session_timer.stop()
+        self._session_profile = None
+        self._restoring = False
         for dock in self.main.findChildren(QDockWidget):
             if self.is_workspace_pane(dock):
-                dock._workspace_tab_name = ''
-                dock._workspace_tab_size = ''
-                dock._workspace_tab_color = ''
+                for key in TAB_OPTIONS:
+                    setattr(dock, '_workspace_' + key, '')
+                dock._workspace_group_display = ''
         if self._tabs is not None:
+            self._tabs.clear_history()
             self._tabs.refresh()
 
 
-def add_workspace_menu(parent, manager, open_writing, open_pdf=None):
+def add_workspace_menu(parent, manager, open_writing, open_pdf=None, register_action=None):
     """Rebuild window targets when shown, so closed windows cannot remain actionable."""
     manager.enable_dragging()
     menu = parent.addMenu(t('workspace_title'))
     menu.menuAction().setProperty('incremento_translation_key', 'workspace_title')
+    tabs = manager._tabs
+    commands = {
+        'workspace_switch_tabs': tabs.show_switcher,
+        'workspace_next_tab': lambda: tabs.navigate(1),
+        'workspace_previous_tab': lambda: tabs.navigate(-1),
+        'workspace_close_tab': lambda: tabs.close(tabs.current()),
+        'workspace_reopen_tab': tabs.reopen,
+    }
+    commands.update({'workspace_tab_' + str(i+1): lambda i=i: tabs.jump(i) for i in range(9)})
+    tab_actions = getattr(manager, '_tab_actions', {})
+    for key, callback in commands.items():
+        if key not in tab_actions:
+            item = QAction(t(key), manager.main)
+            item.setObjectName('incremento_' + key)
+            item.setProperty('incremento_translation_key', key)
+            item.triggered.connect(lambda checked=False, callback=callback: callback())
+            manager.main.addAction(item)
+            tab_actions[key] = item
+        if register_action is not None:
+            register_action(key, tab_actions[key])
+    manager._tab_actions = tab_actions
 
     def action(owner, key, callback, enabled=True):
         item = owner.addAction(t(key))
@@ -526,13 +660,20 @@ def add_workspace_menu(parent, manager, open_writing, open_pdf=None):
 
     def rebuild():
         menu.clear()
+        for key in ('workspace_switch_tabs', 'workspace_next_tab', 'workspace_previous_tab',
+                    'workspace_close_tab', 'workspace_reopen_tab'):
+            menu.addAction(tab_actions[key])
+        jumps = menu.addMenu(t('workspace_jump_to_tab'))
+        for i in range(9):
+            jumps.addAction(tab_actions['workspace_tab_' + str(i+1)])
+        menu.addSeparator()
+        action(menu, 'workspace_restore_session', manager.restore_last_session)
         if open_pdf is not None:
             action(menu, 'workspace_open_pdf_window', open_pdf)
         action(menu, 'workspace_write_beside', open_writing)
         menu.addSeparator()
         panes = manager.visible_panes()
-        action(menu, 'workspace_save', save,
-               any(not d.objectName().startswith('incremento_search_dock') for d in panes))
+        action(menu, 'workspace_save', save, bool(panes))
         names = manager.saved_names()
         saved_menu = menu.addMenu(t('workspace_load'))
         delete_menu = menu.addMenu(t('workspace_delete'))

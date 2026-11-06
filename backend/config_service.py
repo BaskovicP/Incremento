@@ -17,10 +17,10 @@ except ImportError:
 
 try:
     from .backup_schedule import normalize_policy
-    from .workspace_layouts import normalize_workspaces
+    from .workspace_layouts import normalize_workspaces, normalize_last_sessions
 except ImportError:
     from backup_schedule import normalize_policy
-    from workspace_layouts import normalize_workspaces
+    from workspace_layouts import normalize_workspaces, normalize_last_sessions
 
 
 CONFIG_SCHEMA_VERSION = 3
@@ -469,6 +469,8 @@ def normalize_config(raw: Mapping[str, Any] | None) -> dict:
         config.get('reader_default_highlight_color_by_profile'))
     config['study_layout_by_profile'] = normalize_study_layout_preferences(config.get('study_layout_by_profile'))
     config['workspace_layouts'] = normalize_workspaces(config.get('workspace_layouts'))
+    config['workspace_last_sessions'] = normalize_last_sessions(config.get('workspace_last_sessions'))
+    config['workspace_restore_last_session'] = config.get('workspace_restore_last_session') is not False
     preview_zooms = config.get("pdf_link_preview_zoom_by_profile")
     config["pdf_link_preview_zoom_by_profile"] = {
         profile: normalize_pdf_link_preview_zoom(value)

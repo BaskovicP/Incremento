@@ -73,6 +73,7 @@ def test_full_backup_saves_healthy_database_despite_cached_connection_fts_error(
         system_temp = tmp_path / "system-temp"
         system_temp.mkdir()
         monkeypatch.setattr(tempfile, "tempdir", str(system_temp))
+        progress_stages = []
         namespace = {
             "_active_profile": lambda: "P",
             "profile": "P",
@@ -84,7 +85,7 @@ def test_full_backup_saves_healthy_database_despite_cached_connection_fts_error(
             "tempfile": tempfile,
             "Path": Path,
             "DB_NAME": db.DB_NAME,
-            "_progress": lambda *_: None,
+            "_progress": progress_stages.append,
             "_t": Translator("en").t,
             "FullBackupPackageExporter": _PackageExporter,
             "collection": object(),
@@ -125,6 +126,11 @@ def test_full_backup_saves_healthy_database_despite_cached_connection_fts_error(
                 "SELECT card_id, page FROM pdf_text_fts WHERE pdf_text_fts MATCH 'searchable'"
             ).fetchall() == [(1, 1)]
         assert source.read_bytes() == before
+        assert progress_stages == [namespace["_t"](key) for key in (
+            "root_backup_activity_snapshotting", "root_backup_activity_creating_package",
+            "root_backup_activity_snapshotting", "root_backup_activity_writing_zip",
+            "admin_full_restore_checking_backup",
+        )]
         assert _PackageExporter.output_path.parent.parent == target.parent
         assert not _PackageExporter.output_path.parent.exists()
         assert list(system_temp.iterdir()) == []

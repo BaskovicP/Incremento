@@ -17,6 +17,14 @@ PNG = base64.b64decode(
 )
 
 
+def test_inline_svg_css_urls_are_canonicalized_without_breaking_quotes():
+    resources = webpage_resources._Resources(0, 0)
+    svg = '<svg xmlns="http://www.w3.org/2000/svg"><path fill="red"/></svg>'
+    css = r'.icon{background:url("data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\"><path fill=\"red\"/></svg>")}body{margin:0}'
+    expected = 'data:image/svg+xml;base64,' + base64.b64encode(svg.encode()).decode()
+    assert resources.css(css, 'https://example.com') == '.icon{background:url("' + expected + '")}body{margin:0}'
+
+
 @pytest.fixture
 def assets(monkeypatch):
     files, calls = {}, []

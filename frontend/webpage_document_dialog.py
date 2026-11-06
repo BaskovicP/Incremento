@@ -9,7 +9,7 @@ from aqt.qt import (QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QHBoxLayout
 
 try:
     from ..backend import paths, epub_manager
-    from ..backend.webpage_document import prepare_webpage_document
+    from ..backend.webpage_document import prepare_webpage_document, prepare_edited_webpage_snapshot
     from ..backend.note_metadata import build_incremento_metadata
     from ..backend.priority_manager import set_priority
     from ..backend.i18n import t
@@ -17,7 +17,7 @@ try:
     from .tag_edit import QuickTagEdit
 except ImportError:
     from backend import paths, epub_manager
-    from backend.webpage_document import prepare_webpage_document
+    from backend.webpage_document import prepare_webpage_document, prepare_edited_webpage_snapshot
     from backend.note_metadata import build_incremento_metadata
     from backend.priority_manager import set_priority
     from backend.i18n import t
@@ -132,8 +132,19 @@ class WebpageDocumentDialog(QDialog):
         for control in (self._url_edit, self._title_edit, self._format, self._deck, self._tags, self._priority, self._capture_btn):
             control.setEnabled(not busy)
         self._scope.setEnabled(not busy and self._format.currentData() == "markdown")
-        self._save_btn.setEnabled(not busy and self._prepared is not None)
+        self._preview_stack.setEnabled(not busy)
+        ready = self._prepared is not None and (not self._prepared.preview_path or
+            self._snapshot_preview is not None and self._snapshot_preview.is_ready)
+        self._save_btn.setEnabled(not busy and ready)
         self._close_btn.setEnabled(not self._saving)
+
+    def _snapshot_loaded(self, ok):
+        if self._current() and self._prepared is not None:
+            self._save_btn.setEnabled(bool(ok) and not self._busy)
+            if not ok:
+                self._status.setText(t('imports_webpage_preview_failed'))
+            else:
+                self._status.setText(t('imports_webpage_snapshot_ready', count=self._prepared.capture['omitted_images']))
 
     def _capture(self):
         if self._busy or not self._current():
@@ -165,6 +176,7 @@ class WebpageDocumentDialog(QDialog):
                 if self._snapshot_preview is None:
                     from .webpage_snapshot_preview import SnapshotPreview
                     self._snapshot_preview = SnapshotPreview(self)
+                    self._snapshot_preview.loadFinished.connect(self._snapshot_loaded)
                     self._preview_stack.addWidget(self._snapshot_preview)
                 self._snapshot_preview.load_snapshot(prepared.preview_path)
                 self._preview_stack.setCurrentWidget(self._snapshot_preview)
@@ -187,41 +199,82 @@ class WebpageDocumentDialog(QDialog):
             return
         from aqt.operations import CollectionOp
         prepared, self._prepared = self._prepared, None
+        pending = [prepared]
+        generation = self._generation
+        cancel = self._cancel
         addon, profile, collection = self._addon_dir, self._profile, self._collection
         deck, tags, priority = self._deck.currentText(), self._tags.tags(), self._priority.value()
         self._saving = True
         self._set_busy(True)
         self._status.setText(t("imports_markdown_edit_saving"))
 
-        def operation(col):
-            if col is not collection or paths.get_active_profile() != profile or self._cancel.is_set():
-                raise RuntimeError(t("imports_markdown_cancelled"))
-            step = col.add_custom_undo_entry(t("imports_webpage_document"))
-            source_type = "HTML" if prepared.capture.get("format") == "html" else "Markdown"
-            cid = epub_manager.add_epub_card(addon, col, prepared.path, prepared.title, deck_name=deck, tags=tags,
-                profile=profile, source_type=source_type, source_metadata=build_incremento_metadata(
-                    source_type=source_type, source_title=prepared.title, source_link=prepared.capture["url"],
-                    imported_at=prepared.capture["captured_at"]))
-            set_priority(addon, profile, cid, priority)
-            return SimpleNamespace(card_id=cid, changes=col.merge_undo_entries(step))
-
         def failure(error):
-            prepared.close()
             self._saving = False
-            if self._current():
+            if self._current() and generation == self._generation:
+                # Retain the edited preview and archive so a failed save can retry.
+                self._prepared = pending[0]
                 self._set_busy(False)
                 self._status.setText(t("imports_markdown_failed", error=str(error)))
+            else:
+                pending[0].close()
 
         def success(result):
-            prepared.close()
+            pending[0].close()
             self._saving = False
             if self._current():
                 self.created_card_id = result.card_id
                 self._set_busy(False)
+                if self._snapshot_preview is not None:
+                    self._snapshot_preview.set_editable(False)
                 self._open_btn.show()
                 self._status.setText(t("imports_webpage_document_saved", title=prepared.title))
 
-        try:
-            CollectionOp(self, operation).success(success).failure(failure).run_in_background()
-        except Exception as exc:
-            failure(exc)
+        def start_import(document):
+            pending[0] = document
+            def operation(col):
+                if col is not collection or paths.get_active_profile() != profile or cancel.is_set():
+                    raise RuntimeError(t("imports_markdown_cancelled"))
+                step = col.add_custom_undo_entry(t("imports_webpage_document"))
+                source_type = "HTML" if document.capture.get("format") == "html" else "Markdown"
+                cid = epub_manager.add_epub_card(addon, col, document.path, document.title, deck_name=deck, tags=tags,
+                    profile=profile, source_type=source_type, source_metadata=build_incremento_metadata(
+                        source_type=source_type, source_title=document.title, source_link=document.capture["url"],
+                        imported_at=document.capture["captured_at"]))
+                set_priority(addon, profile, cid, priority)
+                return SimpleNamespace(card_id=cid, changes=col.merge_undo_entries(step))
+            try:
+                CollectionOp(self, operation).success(success).failure(failure).run_in_background()
+            except Exception as exc:
+                failure(exc)
+
+        def serialized(html):
+            if not self._current() or generation != self._generation:
+                prepared.close()
+                self._saving = False
+                return
+            if html is None:
+                failure(RuntimeError(t('imports_webpage_preview_failed')))
+                return
+            def done(future):
+                try:
+                    revised = future.result()
+                except Exception as exc:
+                    failure(exc)
+                    return
+                if not self._current() or generation != self._generation:
+                    revised.close()
+                    prepared.close()
+                    self._saving = False
+                    return
+                prepared.close()
+                start_import(revised)
+            try:
+                mw.taskman.run_in_background(lambda: prepare_edited_webpage_snapshot(prepared, html,
+                    is_cancelled=cancel.is_set), done, uses_collection=False)
+            except Exception as exc:
+                failure(exc)
+
+        if prepared.preview_path:
+            self._snapshot_preview.snapshot_html(serialized)
+        else:
+            start_import(prepared)

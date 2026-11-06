@@ -22,6 +22,7 @@ class _ConnectionRecord:
     cache_key: str
     connection: sqlite3.Connection
     thread_ref: "weakref.ReferenceType[threading.Thread]"
+    file_identity: tuple[int, int]
 
 
 class ProfileConnectionManager:
@@ -39,6 +40,14 @@ class ProfileConnectionManager:
     def _thread_key() -> tuple[int, int]:
         thread = threading.current_thread()
         return int(thread.ident or 0), id(thread)
+
+    @staticmethod
+    def _file_identity(path: Path) -> tuple[int, int] | None:
+        try:
+            status = path.stat()
+        except FileNotFoundError:
+            return None
+        return status.st_dev, status.st_ino
 
     def _close_record(self, key: tuple[int, int], record: _ConnectionRecord) -> None:
         self._records.pop(key, None)
@@ -66,7 +75,8 @@ class ProfileConnectionManager:
         with self._lock:
             thread_key = self._thread_key()
             current = self._records.get(thread_key)
-            if current is not None and current.cache_key == cache_key:
+            if (current is not None and current.cache_key == cache_key
+                    and current.file_identity == self._file_identity(db_path)):
                 return current.connection
             self._prune_dead_threads()
             if current is not None:
@@ -81,10 +91,13 @@ class ProfileConnectionManager:
             check_same_thread=False,
         )
         try:
+            identity = self._file_identity(db_path)
             connection.execute(f"PRAGMA busy_timeout={self._busy_timeout_ms}")
             connection.execute("PRAGMA journal_mode=WAL")
             connection.execute("PRAGMA synchronous=NORMAL")
             initialize(connection)
+            if identity is None or identity != self._file_identity(db_path):
+                raise RuntimeError("Database changed during initialization.")
         except Exception:
             connection.close()
             raise
@@ -93,7 +106,7 @@ class ProfileConnectionManager:
                 connection.close()
                 raise RuntimeError("Database initialization retired during shutdown.")
             self._records[thread_key] = _ConnectionRecord(
-                cache_key, connection, weakref.ref(threading.current_thread()),
+                cache_key, connection, weakref.ref(threading.current_thread()), identity,
             )
             self._local.cache_key = cache_key
             return connection

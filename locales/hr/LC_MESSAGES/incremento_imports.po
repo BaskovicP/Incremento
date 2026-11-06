@@ -1561,7 +1561,7 @@ msgstr "Ukloni suvišne elemente"
 
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_help"
-msgstr "Klikni neželjeni element kako bi ga sakrio. Shift-klik uklanja njegov nadređeni spremnik. Poništi vraća zadnje uklanjanje; Vrati sve vraća sve elemente. Isključi Uklanjanje za odabir teksta. Uključuje se samo već učitani sadržaj."
+msgstr "Uključi uklanjanje, prijeđi pokazivačem preko elementa za crveni okvir pa klikni za uklanjanje. Drži Shift za veće područje. Poništi ili Vrati sve vraća uklonjeno. Tipkovnica: strelice biraju područje, Delete uklanja, Esc isključuje uklanjanje."
 
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_zap"
@@ -1698,3 +1698,11 @@ msgstr "Spremi kao"
 
 msgid "imports_webpage_snapshot_ready"
 msgstr "HTML snimka je spremna. Prikazani su spremljeni stilovi i slike. Nedostupne slike: {count}."
+
+#: frontend/webpage_snapshot_preview.py frontend/webpage_document_dialog.py
+msgid "imports_webpage_cleanup_count"
+msgstr "Uklonjeno: {count}"
+
+#: frontend/webpage_snapshot_preview.py frontend/webpage_document_dialog.py
+msgid "imports_webpage_preview_failed"
+msgstr "Nije moguće pročitati pregled. Ponovno snimi stranicu."

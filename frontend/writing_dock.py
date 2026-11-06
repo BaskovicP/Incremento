@@ -838,12 +838,16 @@ def _publish_writing_save(snapshot, result, error):
                 or card_id != _current_writing_card_id or relpath != _current_writing_relpath):
             return
         if error is not None:
+            _writing_dock._workspace_dirty = True
+            _writing_dock._workspace_failed = True
             _set_status(t("writing_autosave_failed"))
             return
         previous_text = _writing_saved_snapshot[3] if _writing_saved_snapshot else ''
         anchors_changed = (re.findall(r'<!-- incremento-excerpt:[a-f0-9]{32} -->', previous_text)
                            != re.findall(r'<!-- incremento-excerpt:[a-f0-9]{32} -->', text))
         _writing_saved_snapshot = (profile, card_id, relpath, text)
+        _writing_dock._workspace_dirty = False
+        _writing_dock._workspace_failed = False
         words, today, baseline = result
         _writing_current_word_count = words
         _writing_dock._current_word_count = words
@@ -1347,6 +1351,7 @@ def _refresh_writing_preview_snapshot() -> None:
 def _on_editor_text_changed() -> None:
     if _writing_dock is None or _loading_editor or not _current_writing_relpath:
         return
+    _writing_dock._workspace_dirty = True
     _writing_dock._preview_timer.start()
     _set_status(t("writing_saving"))
     if _autosave_timer is not None:
@@ -2099,6 +2104,8 @@ def show_writing_in_dock(card_id: int, title: str, relpath: str, *, keep_open: b
         document._excerpt_markers = ExcerptMarkers(document)
         _writing_dock._editor.setDocument(document)
         _writing_dock._editor.setPlainText(text)
+        _writing_dock._workspace_dirty = False
+        _writing_dock._workspace_failed = False
         _writing_dock._current_word_count = current_words
         _writing_dock._session_baseline_words = _writing_session_baseline_words
         _writing_dock._daily_logical_date = daily_logical_date

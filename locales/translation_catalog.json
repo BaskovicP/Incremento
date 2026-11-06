@@ -8063,9 +8063,19 @@
     },
     {
       "component": "addon",
+      "key": "imports_webpage_cleanup_count",
+      "form": "",
+      "source": "Removed: {count}",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_webpage_cleanup_help",
       "form": "",
-      "source": "Click unwanted elements to hide them. Shift-click removes their parent container. Undo restores the last removal; Reset restores everything. Turn Zap off to select text. Only loaded content is included.",
+      "source": "With Zap on, hover to see the red outline, then click to remove. Hold Shift to target a larger area. Undo or Restore all to recover. Keyboard: arrows choose an area, Delete removes it, Esc leaves Zap.",
       "tokens": [],
       "markup": []
     },
@@ -8081,7 +8091,7 @@
       "component": "addon",
       "key": "imports_webpage_cleanup_reset",
       "form": "",
-      "source": "Reset",
+      "source": "Restore all",
       "tokens": [],
       "markup": []
     },
@@ -8289,6 +8299,14 @@
       "tokens": [
         "{seconds}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_preview_failed",
+      "form": "",
+      "source": "Could not read the preview. Capture the page again.",
+      "tokens": [],
       "markup": []
     },
     {
@@ -33042,6 +33060,118 @@
     },
     {
       "component": "addon",
+      "key": "shortcut_workspace_close_tab",
+      "form": "",
+      "source": "Close Workspace Tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_next_tab",
+      "form": "",
+      "source": "Next Workspace Tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_previous_tab",
+      "form": "",
+      "source": "Previous Workspace Tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_reopen_tab",
+      "form": "",
+      "source": "Reopen Closed Workspace Tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_switch_tabs",
+      "form": "",
+      "source": "Find Workspace Tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_1",
+      "form": "",
+      "source": "Workspace Tab 1",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_2",
+      "form": "",
+      "source": "Workspace Tab 2",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_3",
+      "form": "",
+      "source": "Workspace Tab 3",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_4",
+      "form": "",
+      "source": "Workspace Tab 4",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_5",
+      "form": "",
+      "source": "Workspace Tab 5",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_6",
+      "form": "",
+      "source": "Workspace Tab 6",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_7",
+      "form": "",
+      "source": "Workspace Tab 7",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_8",
+      "form": "",
+      "source": "Workspace Tab 8",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_9",
+      "form": "",
+      "source": "Workspace Tab 9",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "shortcut_youtube_video",
       "form": "",
       "source": "Add Video",
@@ -36277,6 +36407,14 @@
     },
     {
       "component": "addon",
+      "key": "workspace_adaptive_tabs",
+      "form": "",
+      "source": "Fit tabs to available space",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_bottom",
       "form": "",
       "source": "Bottom half",
@@ -36317,9 +36455,41 @@
     },
     {
       "component": "addon",
+      "key": "workspace_close_others",
+      "form": "",
+      "source": "Close other tabs",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_close_right",
+      "form": "",
+      "source": "Close tabs to the right",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_close_tab",
       "form": "",
       "source": "Close tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_close_unpinned",
+      "form": "",
+      "source": "Close unpinned tabs",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_collapse_group",
+      "form": "",
+      "source": "Collapse group",
       "tokens": [],
       "markup": []
     },
@@ -36367,6 +36537,22 @@
     },
     {
       "component": "addon",
+      "key": "workspace_expand_group",
+      "form": "",
+      "source": "Expand group",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_find_tabs",
+      "form": "",
+      "source": "Search titles, types, sources, or groups",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_float",
       "form": "",
       "source": "Float / dock window",
@@ -36383,6 +36569,45 @@
     },
     {
       "component": "addon",
+      "key": "workspace_group_label",
+      "form": "",
+      "source": "{name} · {title}",
+      "tokens": [
+        "{name}",
+        "{title}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_group_name",
+      "form": "",
+      "source": "Group name (up to 80 characters):",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_group_summary",
+      "form": "",
+      "source": "▸ {name} ({count}) — {title}",
+      "tokens": [
+        "{count}",
+        "{name}",
+        "{title}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_jump_to_tab",
+      "form": "",
+      "source": "Go to tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_keep_open",
       "form": "",
       "source": "Keep open while studying",
@@ -36394,6 +36619,70 @@
       "key": "workspace_keep_open_hint",
       "form": "",
       "source": "Keep this writing card visible when reviewing other cards or leaving review. Closing the writing pane turns this off.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_add_card",
+      "form": "",
+      "source": "Add Card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_epub",
+      "form": "",
+      "source": "EPUB",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_local_file",
+      "form": "",
+      "source": "Local file",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_pdf",
+      "form": "",
+      "source": "PDF",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_search",
+      "form": "",
+      "source": "Browser",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_video",
+      "form": "",
+      "source": "Video",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_web",
+      "form": "",
+      "source": "Web",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_writing",
+      "form": "",
+      "source": "Writing",
       "tokens": [],
       "markup": []
     },
@@ -36457,6 +36746,14 @@
     },
     {
       "component": "addon",
+      "key": "workspace_move_to_group",
+      "form": "",
+      "source": "Move to group",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_name",
       "form": "",
       "source": "Workspace name (up to 80 characters):",
@@ -36473,9 +36770,25 @@
     },
     {
       "component": "addon",
+      "key": "workspace_new_group",
+      "form": "",
+      "source": "New group…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_new_writing",
       "form": "",
       "source": "New writing…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_next_tab",
+      "form": "",
+      "source": "Next tab",
       "tokens": [],
       "markup": []
     },
@@ -36521,12 +36834,38 @@
     },
     {
       "component": "addon",
+      "key": "workspace_page",
+      "form": "",
+      "source": "Page {number}",
+      "tokens": [
+        "{number}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_pdf_window_limit",
       "form": "",
       "source": "Up to {count} PDF windows can be open at once. Close one before opening another.",
       "tokens": [
         "{count}"
       ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_pin_tab",
+      "form": "",
+      "source": "Pin tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_pinned",
+      "form": "",
+      "source": "Pinned",
+      "tokens": [],
       "markup": []
     },
     {
@@ -36539,9 +36878,25 @@
     },
     {
       "component": "addon",
+      "key": "workspace_previous_tab",
+      "form": "",
+      "source": "Previous tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_rename_tab",
       "form": "",
       "source": "Rename tab…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_reopen_tab",
+      "form": "",
+      "source": "Reopen closed tab",
       "tokens": [],
       "markup": []
     },
@@ -36597,6 +36952,22 @@
     },
     {
       "component": "addon",
+      "key": "workspace_restore_on_startup",
+      "form": "",
+      "source": "Restore tabs from the last session when opening this profile",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_restore_session",
+      "form": "",
+      "source": "Restore last tab session",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_right",
       "form": "",
       "source": "Right half",
@@ -36640,6 +37011,120 @@
       "key": "workspace_search",
       "form": "",
       "source": "Search writing titles",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_section",
+      "form": "",
+      "source": "Section {number}",
+      "tokens": [
+        "{number}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_status_failed",
+      "form": "",
+      "source": "Could not load or save. Open this tab for details.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_status_loading",
+      "form": "",
+      "source": "Loading…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_status_unsaved",
+      "form": "",
+      "source": "Unsaved changes",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_switch_tabs",
+      "form": "",
+      "source": "Find tab…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_1",
+      "form": "",
+      "source": "Tab 1",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_2",
+      "form": "",
+      "source": "Tab 2",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_3",
+      "form": "",
+      "source": "Tab 3",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_4",
+      "form": "",
+      "source": "Tab 4",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_5",
+      "form": "",
+      "source": "Tab 5",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_6",
+      "form": "",
+      "source": "Tab 6",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_7",
+      "form": "",
+      "source": "Tab 7",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_8",
+      "form": "",
+      "source": "Tab 8",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_9",
+      "form": "",
+      "source": "Tab 9",
       "tokens": [],
       "markup": []
     },
@@ -36728,6 +37213,14 @@
       "key": "workspace_top_right",
       "form": "",
       "source": "Top right quarter",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_ungroup_tab",
+      "form": "",
+      "source": "Remove from group",
       "tokens": [],
       "markup": []
     },

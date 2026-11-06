@@ -1549,7 +1549,7 @@ msgstr "清理网页"
 
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_help"
-msgstr "点击不需要的元素将其隐藏。按住 Shift 点击可移除其父容器。撤销可恢复上次移除的元素，重置可恢复全部。关闭移除模式可选择文本。仅包含已加载的内容。"
+msgstr "开启移除模式后，悬停查看红色边框，点击移除。按住 Shift 可选择更大区域。使用撤销或全部恢复找回内容。键盘：方向键选择区域，Delete 移除，Esc 退出移除模式。"
 
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_zap"
@@ -1561,7 +1561,7 @@ msgstr "撤销移除"
 
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_reset"
-msgstr "重置"
+msgstr "全部恢复"
 
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_save"
@@ -1686,3 +1686,11 @@ msgstr "另存为"
 
 msgid "imports_webpage_snapshot_ready"
 msgstr "HTML 快照已准备就绪，显示已捕获的样式和图片。不可用图片：{count}。"
+
+#: frontend/webpage_snapshot_preview.py frontend/webpage_document_dialog.py
+msgid "imports_webpage_cleanup_count"
+msgstr "已移除：{count}"
+
+#: frontend/webpage_snapshot_preview.py frontend/webpage_document_dialog.py
+msgid "imports_webpage_preview_failed"
+msgstr "无法读取预览。请重新捕获网页。"
