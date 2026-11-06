@@ -572,7 +572,8 @@ def _stage_pdf(doc, destination, *, temporary_path=None):
 
         doc.save(temporary, encryption=fitz.PDF_ENCRYPT_KEEP, no_new_id=True, garbage=3, deflate=True)
         _check_file(temporary)
-        with temporary.open('rb') as stream:
+        # Windows refuses fsync on a read-only handle (EBADF).
+        with temporary.open('r+b') as stream:
             os.fsync(stream.fileno())
         return temporary
     except BaseException:
@@ -607,7 +608,8 @@ def _backup(addon_dir, profile, card_id, destination, expected_signature, *, sou
         shutil.copyfile(destination, temporary)
         if _file_signature(temporary)[-1] != expected_signature[-1]:
             raise PdfAnnotationSyncError('file_changed')
-        with temporary.open('rb') as stream:
+        # Windows refuses fsync on a read-only handle (EBADF).
+        with temporary.open('r+b') as stream:
             os.fsync(stream.fileno())
         os.replace(temporary, target)
     finally:
@@ -781,6 +783,10 @@ def _sync_locked(addon_dir, profile, card_id, filename, source_path, cancel, dea
     current_state = pdf_annotation_sync_state(addon_dir, profile, card_id)
     if not current_state or (current_state['filename'], current_state['document_id']) != (filename, document_id):
         raise PdfAnnotationSyncError('document_changed')
+    # Windows cannot replace a file that is still open; nothing reads the documents after this point.
+    for doc in documents:
+        doc.close()
+    documents.clear()
     for temporary, target, signature in writes:
         _backup(addon_dir, profile, card_id, target, signature, source=target != managed)
         _atomic_replace_pdf(temporary, target, signature)
