@@ -296,6 +296,9 @@ def test_real_epub_dock_can_be_narrowed_with_expanded_or_hidden_controls(scale, 
                     )
 
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
     ''')
     result = subprocess.run(
         [sys.executable, "-c", script],

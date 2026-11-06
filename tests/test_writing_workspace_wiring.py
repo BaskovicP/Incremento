@@ -43,9 +43,60 @@ def test_a_changed_note_type_is_not_opened_as_writing():
 
 def test_workspace_menu_and_profile_teardown_are_registered():
     source = (ROOT / '__init__.py').read_text()
-    assert 'add_workspace_menu(_menu, _workspace_layouts, _open_writing_beside, open_pdf=_open_pdf_workspace_window)' in source
+    menu = next(node for node in ast.walk(ast.parse(source))
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == 'add_workspace_menu')
+    assert [ast.unparse(argument) for argument in menu.args] == [
+        '_menu', '_workspace_layouts', '_open_writing_beside',
+    ]
+    assert {keyword.arg: ast.unparse(keyword.value) for keyword in menu.keywords} == {
+        'open_pdf': '_open_pdf_workspace_window', 'register_action': '_register_shortcut_action',
+    }
     assert 'gui_hooks.profile_will_close.append(_reset_writing_workspace)' in source
     nodes = {node.name: ast.get_source_segment(source, node) for node in ast.parse(source).body
              if isinstance(node, ast.FunctionDef)}
     assert '_writing_dock_mod.reset_for_profile_switch()' in nodes['_reset_writing_workspace']
     assert nodes['_on_profile_did_open'].index('_reset_writing_workspace()') < nodes['_on_profile_did_open'].index('_paths.set_active_profile(profile)')
+
+
+def test_mcp_editor_guard_includes_inactive_writing_tabs():
+    tree = ast.parse((ROOT / '__init__.py').read_text())
+    controller = next(node.value for node in tree.body if isinstance(node, ast.Assign)
+                      and any(isinstance(target, ast.Name) and target.id == '_mcp_controller' for target in node.targets))
+    callback = next(keyword.value for keyword in controller.keywords if keyword.arg == 'open_writing_cards')
+    namespace = {'_writing_dock_mod': SimpleNamespace(open_writing_card_ids=lambda: [11, 22],
+                                                    current_writing_card_id=lambda: 22)}
+    value = eval(compile(ast.Expression(callback), '<MCP writing guard>', 'eval'), namespace)
+    assert value() == [11, 22]
+
+
+def test_new_writing_tab_opens_the_new_card_in_the_existing_workspace():
+    tree = ast.parse((ROOT / '__init__.py').read_text())
+    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == '_new_writing_tab')
+    opened = []
+    namespace = {'addWritingFunction': lambda: 73,
+                 '_open_writing_card': lambda *args, **kwargs: opened.append((args, kwargs))}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), '<new writing tab>', 'exec'), namespace)
+    namespace['_new_writing_tab']()
+    assert opened == [((73,), {'keep_open': True})]
+
+
+def test_excerpt_destination_callback_opens_the_selected_writing_card_beside_the_reader():
+    tree = ast.parse((ROOT / '__init__.py').read_text())
+    function = next(node for node in tree.body
+                    if isinstance(node, ast.FunctionDef) and node.name == '_open_writing_beside_card')
+    registration = next(node for node in tree.body if isinstance(node, ast.Expr)
+                        and isinstance(node.value, ast.Call)
+                        and isinstance(node.value.func, ast.Attribute)
+                        and node.value.func.attr == 'configure_writing_tab_actions')
+    namespace, opened = _opening_adapter('Incremento Writing')
+    dock, arranged, callbacks = object(), [], {}
+    namespace['_writing_dock_mod']._writing_dock = dock
+    namespace['_writing_dock_mod'].configure_writing_tab_actions = lambda **kw: callbacks.update(kw)
+    namespace['_workspace_layouts'] = SimpleNamespace(beside=arranged.append)
+    namespace['_new_writing_tab'] = lambda: None
+    exec(compile(ast.Module(body=[function, registration], type_ignores=[]), '<excerpt destination>', 'exec'), namespace)
+
+    assert callbacks['open_card'](77)
+    assert opened == [((77, 'Synthetic writing', 'writing/synthetic.md'), {'keep_open': True})]
+    assert arranged == [dock]

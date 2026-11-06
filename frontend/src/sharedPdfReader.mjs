@@ -14,7 +14,7 @@ export function sharedPdfReaderStartup(config) {
       cardId: config.card_id, filename: config.filename, page: config.page,
       zoom: config.zoom || 1, scrollRatio: config.scroll_ratio || 0,
       pageY: config.page_y, readPage: config.read_page || 0, readAnchor: config.read_anchor,
-      jumpExcerpt: config.excerpt || '', bookmarks: config.bookmarks || [],
+      jumpExcerpt: config.excerpt || '', jumpPassage: config.passage || null, bookmarks: config.bookmarks || [],
       locale: config.locale, customLanguage: config.custom_language,
       appearanceMode: config.appearance || 'original', limitStatus,
       autoHighlightOnExtract: config.auto_highlight !== false,

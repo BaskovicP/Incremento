@@ -107,10 +107,12 @@ export function usePdfRender() {
   /* ── Text layer (PDF.js 4.x) ──────────────────────────────────────────────── */
   // The page wrapper grows with zoom. Measure the viewport so that growth
   // cannot feed back into subsequent zoom or fit-width calculations.
-  const readerWidth = useCallback(() => (
-    window.document?.documentElement?.clientWidth || window.innerWidth
-    || containerRef.current?.offsetWidth || 800
-  ), []);
+  const readerWidth = useCallback(() => {
+    const viewport = window.document?.documentElement?.clientWidth || window.innerWidth
+      || containerRef.current?.offsetWidth || 800;
+    const margin = window.document?.getElementById?.('pdf-writing-margin')?.offsetWidth || 0;
+    return Math.max(100, viewport - margin);
+  }, []);
 
   const renderTextLayer = useCallback((pg, viewport) => {
     const tl  = textLayerRef.current;

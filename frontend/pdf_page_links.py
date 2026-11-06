@@ -1,5 +1,6 @@
 """Current-view bridge for visible, bidirectional PDF page connections."""
 from pathlib import Path
+import re
 from weakref import WeakSet
 
 from aqt import mw
@@ -12,12 +13,14 @@ try:
     from ..backend.paths import get_active_profile
     from ..backend.pdf_manager import get_pdf_daily_limit_status
     from ..backend.pdf_reference import resolve_pdf_reference
+    from ..backend.writing_links import list_links as writing_links
 except ImportError:
     from backend.document_links import list_pdf_page_links, remove_pdf_page_link
     from backend.i18n import t
     from backend.paths import get_active_profile
     from backend.pdf_manager import get_pdf_daily_limit_status
     from backend.pdf_reference import resolve_pdf_reference
+    from backend.writing_links import list_links as writing_links
 
 _ADDON_DIR = str(Path(__file__).resolve().parent.parent)
 _bridges = WeakSet()
@@ -81,11 +84,22 @@ class PdfPageLinksBridge:
                        for key in ('page', 'request', 'generation'))
                 or payload['page'] > 1_000_000):
             return False
+        try:
+            try:
+                from ..backend.document_passages import normalize_passage
+            except ImportError:
+                from backend.document_passages import normalize_passage
+            passage_anchor = normalize_passage(payload.get('passage'))
+        except (ValueError, TypeError):
+            return False
         operation = payload.get('operation')
         point = payload.get('page_y')
         if point is not None and (type(point) not in (int, float) or not 0 <= point <= 1):
             return False
-        if operation not in ('list', 'jump', 'create', 'manage', 'remove', 'recordings', 'link_recording'):
+        if operation not in ('list', 'jump', 'create', 'manage', 'remove', 'recordings', 'link_recording', 'writing'):
+            return False
+        if operation == 'writing' and (not isinstance(payload.get('anchor'), str)
+                or re.fullmatch('[a-f0-9]{32}', payload['anchor']) is None):
             return False
         location = tuple(payload[key] for key in ('page', 'request', 'generation'))
         if operation == 'list':
@@ -116,6 +130,10 @@ class PdfPageLinksBridge:
                 return True
             if operation in ('create', 'manage'):
                 return True
+            passage = dict(kind='pdf', card_id=self.card_id, page=location[0])
+            if operation == 'writing':
+                return any(row['anchor'] == payload['anchor'] for row in writing_links(
+                    _ADDON_DIR, self.profile, source=passage))
             rows = list_pdf_page_links(_ADDON_DIR, self.profile, self.card_id, location[0])
             if operation in ('jump', 'remove'):
                 link = next((row for row in rows if row['id'] == payload['id']
@@ -144,12 +162,26 @@ class PdfPageLinksBridge:
                     title, available = t('reader_reference_unavailable'), False
                 visible.append({key: row[key] for key in ('id', 'direction', 'target_page')}
                                | {'title': title[:240], 'available': available})
-            return visible
+            excerpts = []
+            for row in writing_links(_ADDON_DIR, self.profile, source=passage):
+                try:
+                    note = col.get_note(col.get_card(row['writing_card_id']).nid)
+                    excerpts.append(dict(anchor=row['anchor'], title=str(note['Title'])[:240], quote=row['source']['quote']))
+                except (KeyError, ValueError):
+                    continue
+            return visible, excerpts
         def ready(result):
             if not current() or result is None:
                 return
             if operation == 'list':
-                self.reply({**request, 'links': result})
+                self.reply({**request, 'links': result[0], 'writing': result[1]})
+            elif operation == 'writing' and result:
+                try:
+                    from .writing_excerpt_ui import open_backlink
+                except ImportError:
+                    from frontend.writing_excerpt_ui import open_backlink
+                open_backlink(dict(kind='pdf', card_id=self.card_id, page=location[0]), payload['anchor'],
+                              is_current=current)
             elif operation == 'remove':
                 if result:
                     refresh_page_links()
@@ -161,7 +193,7 @@ class PdfPageLinksBridge:
                     except ImportError:
                         from pdf_reference_workspace import open_reference
                     open_reference(snapshot['card_id'], link['target_page'], scroll_ratio=link['target_scroll'],
-                                   page_y=link.get('target_y'), beside=True, owner=self.owner, is_current=current)
+                                   page_y=link.get('target_y'), passage=link.get('target_passage'), beside=True, owner=self.owner, is_current=current)
                 else:
                     self.open_pdf(snapshot, link)
             elif operation in ('recordings', 'link_recording'):
@@ -174,7 +206,7 @@ class PdfPageLinksBridge:
                     from . import document_link_ui
                 except ImportError:
                     import document_link_ui
-                source = {'card_id': self.card_id, 'kind': 'pdf', 'page': location[0], 'filename': self.filename}
+                source = {'card_id': self.card_id, 'kind': 'pdf', 'page': location[0], 'filename': self.filename, 'passage': passage_anchor}
                 if point is not None:
                     source['page_y'] = point
                 if operation == 'create':
@@ -184,7 +216,7 @@ class PdfPageLinksBridge:
         def failed(error):
             if current():
                 if operation == 'list':
-                    self.reply({**request, 'links': [], 'error': True})
+                    self.reply({**request, 'links': [], 'writing': [], 'error': True})
                 else:
                     tooltip(t('reader_reference_unavailable'))
         QueryOp(parent=mw, op=work, success=ready).failure(failed).run_in_background()

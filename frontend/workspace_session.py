@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from aqt.operations import QueryOp
-from aqt.qt import QTimer
+from aqt.qt import QTimer, QUrl
 
 try:
     from ..backend.workspace_layouts import pane_kind, normalize_controls
@@ -41,6 +41,8 @@ class WorkspaceSession:
 
     @staticmethod
     def _module(kind):
+        if kind == 'search':
+            return import_module('.selection_search', __package__)
         name = kind + ('_workspace' if kind.endswith('_reference') else '_dock')
         return import_module('.' + name, __package__)
 
@@ -48,11 +50,15 @@ class WorkspaceSession:
         kind = pane_kind(dock.objectName())
         entry = {'name': dock.objectName(), 'kind': kind}
         module = self._module(kind)
-        if kind == 'pdf_reference':
+        if kind == 'search':
+            entry['url'] = (dock._view.url().toString(QUrl.ComponentFormattingOption.FullyEncoded)
+                            or getattr(dock, '_workspace_url', ''))
+        elif kind == 'pdf_reference':
             state = dock.state
-            entry.update(card_id=state.card_id, zoom=state.zoom)
+            entry.update(card_id=state.card_id, zoom=state.zoom, page=state.page, scroll=state.scroll_ratio)
         elif kind == 'epub_reference':
             entry['card_id'] = dock.location['card_id']
+            entry.update({key: dock.location[key] for key in ('section', 'offset', 'scroll')})
             entry['controls'] = {'links': dock.links_enabled, 'scale': dock.scale,
                                  'appearance': dock.snapshot.get('appearance', 'original')}
         elif kind == 'add_card':
@@ -61,13 +67,20 @@ class WorkspaceSession:
             entry['card_id'] = module._current_card_id
         else:
             entry['card_id'] = getattr(module, 'current_' + kind + '_card_id')()
-            if kind == 'epub':
+            if kind == 'pdf':
+                location = module._live_pdf_location(entry['card_id'])
+                if location:
+                    entry.update(page=location['page'], scroll=location['scroll_ratio'], zoom=location['zoom'])
+            elif kind == 'epub':
+                entry.update(section=module._current_epub_section_index, offset=-1,
+                             scroll=module._current_epub_scroll_ratio)
                 entry.update(controls={'collapsed': dock._controls_collapsed,
                                        'groups': dock._epub_control_visibility,
                                        'scale': module._current_epub_font_scale,
                                        'appearance': dock._appearance_combo.currentData(),
                                        'links': dock._links_btn.isChecked()})
             elif kind == 'writing':
+                entry['writing_tabs'] = module.open_writing_card_ids()
                 entry['controls'] = {'preview': dock._preview_visible, 'wrap': dock._wrap_enabled,
                                      'focus': dock._focus_mode, 'scale': dock._font_scale,
                                      'keep_open': module._writing_keep_open, 'split': dock._split.sizes()}
@@ -77,6 +90,10 @@ class WorkspaceSession:
         if mode is not None:
             entry['focused'] = mode.active
         return entry
+
+    def capture_immediate(self, panes):
+        """UI-owned live positions only: no collection or filesystem work at shutdown."""
+        return [self._describe(dock) for dock in panes]
 
     def capture(self, panes, done):
         """Wait for PDF toolbar state; an interrupted capture must never save half a workspace."""
@@ -133,6 +150,8 @@ class WorkspaceSession:
 
     def _resolve(self, col, profile, entry):
         kind = entry['kind']
+        if kind == 'search':
+            return {'url': entry['url']}
         if kind == 'add_card':
             return {}
         cid = entry['card_id']
@@ -165,7 +184,19 @@ class WorkspaceSession:
             path = Path(writing_file_abspath(_ADDON_DIR, relpath, profile=profile))
             if not relpath or not path.is_relative_to(root / 'writing') or not path.is_file():
                 raise ValueError('Saved writing unavailable')
-            return {'title': str(note['Title']), 'relpath': relpath}
+            result = {'title': str(note['Title']), 'relpath': relpath}
+            if 'writing_tabs' in entry:
+                tabs = []
+                for tab_id in entry['writing_tabs']:
+                    try:
+                        tab = dict(result) if tab_id == cid else self._resolve(
+                            col, profile, {'kind': 'writing', 'card_id': tab_id})
+                        tabs.append((tab_id, tab))
+                    except Exception:
+                        continue
+                result['writing_tabs'] = tabs
+                result['missing_writing_tabs'] = len(entry['writing_tabs']) - len(tabs)
+            return result
         if kind == 'video':
             return {'url': str(note['YouTube_URL'] or ''), 'media': get_video_note_media(note)}
         return {'card_id': cid, 'note_id': card.nid}
@@ -201,6 +232,7 @@ class WorkspaceSession:
                 if result is None:
                     missing += 1
                     continue
+                missing += result.get('missing_writing_tabs', 0)
                 try:
                     dock = self._open(entry, result)
                     if dock is None:
@@ -257,7 +289,21 @@ class WorkspaceSession:
                     other_id = window.state.card_id if kind == 'pdf_reference' else window.location['card_id']
                     if other_id != cid:
                         window.setObjectName(entry['name'] + '_kept_' + str(id(window)))
-        if kind == 'pdf':
+        if entry.get('resume_position'):
+            if kind in ('pdf', 'pdf_reference') and 'page' in entry:
+                result = dict(result, position={'page': entry['page'], 'scroll': entry.get('scroll', 0)})
+            elif kind in ('epub', 'epub_reference') and 'section' in entry:
+                location = validate_location(result['snapshot'], dict(card_id=cid,
+                    section=entry['section'], offset=entry.get('offset', -1), scroll=entry.get('scroll', 0)))
+                if location_allowed(location, result['limit']):
+                    result = dict(result, location=location)
+        if kind == 'search':
+            dock = next((popup for popup in getattr(module, '_popups', [])
+                         if popup.anki_profile == self.profile() and not popup.isHidden()
+                         and entry['name'] in (popup.objectName(), getattr(popup, '_workspace_saved_name', None))), None)
+            if dock is None:
+                dock = module.open_search_url(result['url'], parent=self.main, new_tab=True, activate=False)
+        elif kind == 'pdf':
             position = self._pdf_position(cid, result)
             module.show_pdf_in_dock(cid, result['snapshot']['filename'],
                 position['page'], entry.get('zoom', 1),
@@ -267,7 +313,10 @@ class WorkspaceSession:
             dock = next((window for window in module._windows
                          if entry['name'] in (window.objectName(), getattr(window, '_workspace_saved_name', None))
                          and window.state.card_id == cid and not window.state.closed), None)
-            position = self._pdf_position(cid, result, dock)
+            position = (result['position'] if dock is None and entry.get('resume_position')
+                        else self._pdf_position(cid, result, dock))
+            page = max(1, min(position['page'], result['maximum']))
+            position = {'page': page, 'scroll': position['scroll'] if page == position['page'] else 0}
             if dock is None:
                 if len(module._windows) + len(module._pending_windows) >= module._MAX_WINDOWS:
                     return None
@@ -301,8 +350,11 @@ class WorkspaceSession:
             dock = next((window for window in module._windows
                          if entry['name'] in (window.objectName(), getattr(window, '_workspace_saved_name', None))
                          and window.location['card_id'] == cid and not window.closed), None)
-            location = self._epub_position(cid, result, dock)
+            location = (result['location'] if dock is None and entry.get('resume_position')
+                        else self._epub_position(cid, result, dock))
             if dock is None:
+                if len(module._windows) + len(module._pending_windows) >= module._MAX_WINDOWS:
+                    return None
                 dock = module.EpubReferenceWindow(result['reference'], location,
                     profile=self.profile(), beside=False)
                 module._windows.append(dock)
@@ -322,7 +374,13 @@ class WorkspaceSession:
             if previous is not None and previous != cid and not module._flush_editor_state():
                 return None
             keep_open = controls.get('keep_open', True)
-            module.show_writing_in_dock(cid, result['title'], result['relpath'], keep_open=keep_open)
+            for tab_id, tab in result.get('writing_tabs', []):
+                if module.show_writing_in_dock(tab_id, tab['title'], tab['relpath'], keep_open=keep_open) is False:
+                    return None
+            if 'writing_tabs' in result:
+                module.reorder_writing_tabs([tab_id for tab_id, _ in result['writing_tabs']])
+            if module.show_writing_in_dock(cid, result['title'], result['relpath'], keep_open=keep_open) is False:
+                return None
             module.set_keep_open(keep_open)
             dock = module._writing_dock
             for key, function in (('wrap', '_apply_wrap_mode'), ('focus', '_apply_focus_mode'),

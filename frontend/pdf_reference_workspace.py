@@ -61,7 +61,7 @@ class _ReferencePage(QWebEnginePage):
             return
 
 
-def create_reference_view(parent, snapshot, state, handler, *, page_y=None, excerpt='', choosing=False,
+def create_reference_view(parent, snapshot, state, handler, *, page_y=None, excerpt='', passage=None, choosing=False,
                           full_reader=False):
     """Share the restricted PDF engine between a reader and a destination dialog."""
     from . import pdf_dock
@@ -90,7 +90,7 @@ def create_reference_view(parent, snapshot, state, handler, *, page_y=None, exce
     config = {**snapshot, 'url': QUrl.fromLocalFile(snapshot['path']).toString(), 'byte_range': byte_range,
               'page': state.page, 'zoom': state.zoom, 'scroll_ratio': state.scroll_ratio, 'max_page': state.max_page,
               'worker': pdf_dock._WORKER_URL, 'locale': get_locale(), 'custom_language': get_custom_reader_payload(),
-              'excerpt': excerpt, 'page_y': page_y, 'choose_destination': choosing}
+              'excerpt': excerpt, 'passage': passage, 'page_y': page_y, 'choose_destination': choosing}
     config.pop('path', None)
     nonce = state.nonce
     def loaded(ok):
@@ -118,7 +118,7 @@ def create_reference_view(parent, snapshot, state, handler, *, page_y=None, exce
 
 
 class ReferenceWindow(QDockWidget):
-    def __init__(self, snapshot, *, profile, page, scroll_ratio, max_page, beside, owner, excerpt='', page_y=None, independent=False, zoom=1, embedded=False):
+    def __init__(self, snapshot, *, profile, page, scroll_ratio, max_page, beside, owner, excerpt='', page_y=None, passage=None, independent=False, zoom=1, embedded=False):
         super().__init__(snapshot["title"], owner if embedded else mw)
         self.embedded = embedded
         self.state = PdfReaderState(profile, snapshot["card_id"], snapshot["filename"],
@@ -141,7 +141,13 @@ class ReferenceWindow(QDockWidget):
         config = self.reader_config(initial)
         self._reader_path = config['path']
         self.view, self.page, self._engine_profile, self._interceptor = create_reference_view(
-            self, config, self.state, self.command, excerpt=excerpt, page_y=page_y, full_reader=True)
+            self, config, self.state, self.command, excerpt=excerpt, page_y=page_y, passage=passage, full_reader=True)
+        try:
+            from .reader_coverage import install_pdf_tracker
+        except ImportError:
+            from frontend.reader_coverage import install_pdf_tracker
+        install_pdf_tracker(self, _ADDON_DIR, profile, self.state.card_id, self.state.filename,
+            mw=mw, view=self.view, current=self.reader.current)
         self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.view.customContextMenuRequested.connect(self.show_context_menu)
         self.view.loadFinished.connect(lambda ok: self.reader.sync_annotations() if ok and self.reader.current() else None)
@@ -177,6 +183,12 @@ class ReferenceWindow(QDockWidget):
     def pin(self):
         if self.state.closed or getattr(self, 'embedded', False):
             return
+        workspace = getattr(mw, '_incremento_workspace_layouts', None)
+        if workspace is not None and workspace.tabbed is True:
+            self.keep_window()
+            self.show()
+            workspace.add_as_tab(self)
+            return
         self.setFloating(False)
         self._claim_slot()
         owner = self.owner
@@ -197,7 +209,13 @@ class ReferenceWindow(QDockWidget):
                     with QSignalBlocker(owner):
                         owner.setFloating(False)
                 owner.show()
-                mw.splitDockWidget(owner, self, Qt.Orientation.Horizontal)
+                if mw.tabifiedDockWidgets(owner):
+                    # splitDockWidget() cannot split a tab group. Add a column
+                    # in the same area so both the group and destination show.
+                    mw.addDockWidget(mw.dockWidgetArea(owner), self, Qt.Orientation.Horizontal)
+                else:
+                    mw.splitDockWidget(owner, self, Qt.Orientation.Horizontal)
+                owner.raise_()
                 self.owner = owner
             except RuntimeError:
                 pass
@@ -217,9 +235,11 @@ class ReferenceWindow(QDockWidget):
                 return
             try:
                 from .recording_link_dialog import add_context_actions
+                from .writing_excerpt_ui import add_context_actions as writing_actions
                 from ..backend.recording_links import normalize_source
             except ImportError:
                 from recording_link_dialog import add_context_actions
+                from frontend.writing_excerpt_ui import add_context_actions as writing_actions
                 from backend.recording_links import normalize_source
             try:
                 source = normalize_source(dict(kind='pdf', card_id=self.state.card_id,
@@ -228,6 +248,12 @@ class ReferenceWindow(QDockWidget):
             except (KeyError, ValueError):
                 return
             add_context_actions(menu, source, owner=self, is_current=self.reader.current)
+            try:
+                from .reader_coverage import add_coverage_actions
+            except ImportError:
+                from frontend.reader_coverage import add_coverage_actions
+            add_coverage_actions(menu, getattr(self, '_coverage_tracker', None), anchor, owner=self, current=self.reader.current)
+            writing_actions(menu, dict(source, quote=str(self.view.selectedText() or '')[:2001]), owner=self, is_current=self.reader.current)
         return show_reader_anchor_context_menu(self.view, position,
             resolver_script=f'window.incrementoPdfAnchorAtPoint?.({x}, {y}) || null;',
             on_copy=copy, action_label=t('reader_copy_link_to_place'), populate_menu=populate)
@@ -250,7 +276,7 @@ class ReferenceWindow(QDockWidget):
             'link_preview_zoom': s.configured_pdf_link_preview_zoom(),
             'link_preview_size': s.configured_pdf_link_preview_size(profile=state.profile)}
 
-    def reload_reader(self, result):
+    def reload_reader(self, result, *, excerpt='', page_y=None):
         if not self.reader.current():
             return
         config = self.reader_config(result)
@@ -261,7 +287,7 @@ class ReferenceWindow(QDockWidget):
         config.update(url=QUrl.fromLocalFile(config.pop('path')).toString(),
             worker=self.reader.service._WORKER_URL, page=self.state.page, zoom=self.state.zoom,
             scroll_ratio=self.state.scroll_ratio, max_page=self.state.max_page,
-            locale=get_locale(), custom_language=get_custom_reader_payload())
+            locale=get_locale(), custom_language=get_custom_reader_payload(), excerpt=excerpt, page_y=page_y)
         self.page.runJavaScript('window.incrementoReferenceReload?.(' + json.dumps(config) + ');')
 
     def extract_reader_selection(self, data):
@@ -299,7 +325,7 @@ class ReferenceWindow(QDockWidget):
                 return
             if message.startswith(('incremento_pdf_nav:', 'incremento_pdf_zoom:', 'incremento_pdf_scroll:',
                                    'incremento_pdf_find:', 'incremento_pdf_find_nav:', 'incremento_pdf_controls:',
-                                   'incremento_pdf_page_labels:')):
+                                   'incremento_pdf_page_labels:', 'incremento_reader_coverage:')):
                 self.reader.handle(message)
             else:
                 self.command('validated_reader', {'command': message})
@@ -315,7 +341,7 @@ class ReferenceWindow(QDockWidget):
                     return self.state.is_current(get_active_profile(), nonce)
                 def jump(snapshot, link):
                     open_reference(snapshot['card_id'], link['target_page'], scroll_ratio=link['target_scroll'],
-                                   page_y=link.get('target_y'), beside=not self.isFloating(),
+                                   page_y=link.get('target_y'), passage=link.get('target_passage'), beside=not self.isFloating(),
                                    owner=self.owner, is_current=current)
                 bridge = PdfPageLinksBridge(profile=self.state.profile, card_id=self.state.card_id,
                     filename=self.state.filename, source_path=getattr(self, '_source_path', None),
@@ -380,6 +406,9 @@ class ReferenceWindow(QDockWidget):
     def _apply_action(self, action, location, payload, snapshot):
         data = {'card_id': location.card_id, 'filename': location.filename,
                 'page': location.page, 'scroll_ratio': location.scroll_ratio}
+        if payload.get('passage'):
+            from ..backend.document_passages import normalize_passage
+            data['passage'] = normalize_passage(payload['passage'])
         command = 'incremento_open_pdf_ref:' + json.dumps(data)
         display_page = self.reader.citation_page(location.page) if hasattr(self, 'reader') else location.page
         label = t('reader_pdf_copied_label', title=snapshot['title'], page=display_page)
@@ -460,11 +489,70 @@ def refresh_reference_readers(profile, card_id, kind, *, annotation_result=None)
                     window.reload_reader(annotation_result)
 
 
+def _reveal_open_source(snapshot, profile, page, scroll_ratio, page_y, excerpt, *, service=None,
+                        is_current=lambda: True, maximum=1_000_000):
+    if profile != get_active_profile() or not is_current():
+        return False
+    if service is None:
+        from .pdf_shared_reader import reader_service
+        service = reader_service()
+    payload = dict(cardId=snapshot['card_id'], page=page, scrollRatio=scroll_ratio, pageY=page_y, excerpt=excerpt)
+    script = 'window.incrementoRevealPdfExcerpt?.(' + json.dumps(payload) + ');'
+    dock = service._pdf_dock
+    visible = getattr(service, '_pdf_reader_is_visible', lambda: dock is not None and dock.isVisible())
+    if dock is not None and visible() and getattr(dock, '_reader_location', {}).get('profile') == profile:
+        view, card_id, filename = dock._view, service._current_pdf_card_id, service._current_pdf_filename
+        def current():
+            return (profile == get_active_profile() and is_current() and service._pdf_dock is dock
+                    and visible() and dock._view is view and service._current_pdf_card_id == card_id
+                    and service._current_pdf_filename == filename)
+        def load_source():
+            if current():
+                service.show_pdf_in_dock(snapshot['card_id'], snapshot['filename'], page,
+                    getattr(dock, '_reader_location', {}).get('zoom', 1), via_link=True,
+                    jump_excerpt=excerpt, preserve_history=True, offer_due_review_prompt=False,
+                    scroll_ratio_override=scroll_ratio, page_y_override=page_y)
+        if card_id == snapshot['card_id'] and filename == snapshot['filename']:
+            view.page().runJavaScript(script, lambda revealed: load_source() if revealed is not True else None)
+        else:
+            load_source()
+        view.setFocus()
+        return True
+    for window in _windows:
+        state = window.state
+        if (not state.closed and window.isVisible() and state.profile == profile
+                and state.card_id == snapshot['card_id'] and state.filename == snapshot['filename']
+                and window._source_path == snapshot['path']):
+            def reload_source(revealed, window=window, state=state):
+                if (revealed is True or profile != get_active_profile() or not is_current()
+                        or window.state is not state or state.closed or not window.isVisible()):
+                    return
+                state.page, state.scroll_ratio, state.max_page = page, scroll_ratio, maximum
+                result = service._initial_pdf_annotation_result(profile, state.card_id, snapshot['path'])
+                window.reload_reader(result, excerpt=excerpt, page_y=page_y)
+            window.page.runJavaScript(script, reload_source)
+            window.view.setFocus()
+            return True
+    return False
+
+
 def open_reference(card_id, page=1, *, scroll_ratio=0, beside=False, owner=None, is_current=lambda: True,
-                   excerpt='', page_y=None, new_window=False):
+                   excerpt='', page_y=None, passage=None, new_window=False, reuse_source=False, zoom=1):
     """Resolve under serialized read-only collection access, then create Qt UI."""
+    try:
+        try:
+            from ..backend.document_passages import normalize_passage
+        except ImportError:
+            from backend.document_passages import normalize_passage
+        passage = normalize_passage(passage)
+    except ValueError:
+        tooltip(t('reader_reference_unavailable'))
+        return
     beside = bool(beside)
-    if new_window and len(_windows) + len(_pending_windows) >= _MAX_WINDOWS:
+    workspace = getattr(mw, '_incremento_workspace_layouts', None)
+    new_window = new_window or (workspace is not None and workspace.tabbed is True)
+    if new_window and (len(_pending_windows) >= _MAX_WINDOWS
+                       or (not reuse_source and len(_windows) + len(_pending_windows) >= _MAX_WINDOWS)):
         tooltip(t('workspace_pdf_window_limit', count=_MAX_WINDOWS))
         return
     token = object()
@@ -473,8 +561,10 @@ def open_reference(card_id, page=1, *, scroll_ratio=0, beside=False, owner=None,
     else:
         _slot_requests[beside] += 1
     request, generation, profile = _slot_requests[beside], _request, get_active_profile()
+    collection = getattr(mw, 'col', None)
     def request_current():
         return (profile == get_active_profile() and generation == _request
+                and collection is getattr(mw, 'col', None)
                 and (new_window or request == _slot_requests[beside]))
     if type(page) is not int or page < 1:
         page = 1
@@ -496,7 +586,17 @@ def open_reference(card_id, page=1, *, scroll_ratio=0, beside=False, owner=None,
         if not request_current() or not is_current() or result is None:
             return
         snapshot, maximum = result
+        if reuse_source:
+            if page > maximum:
+                tooltip(t('reader_reference_unavailable'))
+                return
+            if _reveal_open_source(snapshot, profile, page, scroll_ratio, page_y, str(excerpt or '')[:2000],
+                                   maximum=maximum, is_current=lambda: request_current() and is_current()):
+                return
         # Explicit windows coexist. Only legacy, unplaced previews are replaced.
+        if beside and owner in _windows:
+            # A link opened from a reference must not replace its own source.
+            owner.keep_window()
         if not new_window:
             for old in list(_windows):
                 if not getattr(old, 'independent', False) and old.isFloating() == (not beside):
@@ -506,7 +606,8 @@ def open_reference(card_id, page=1, *, scroll_ratio=0, beside=False, owner=None,
             return
         window = ReferenceWindow(snapshot, profile=profile, page=page, scroll_ratio=scroll_ratio,
                                  max_page=maximum, beside=beside, owner=owner,
-                                 excerpt=str(excerpt or '')[:320], page_y=page_y, independent=new_window)
+                                 excerpt=str(excerpt or '')[:2000], page_y=page_y, independent=new_window, zoom=zoom,
+                                 **({'passage': passage} if passage else {}))
         _windows.append(window)
         window.show()
     def failed(error):

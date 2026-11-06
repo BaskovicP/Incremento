@@ -6,6 +6,22 @@ import db
 from document_links import add_document_link, list_document_links, remove_document_link, replace_document_target
 
 
+def test_passage_ranges_follow_the_opposite_endpoint_and_retargeting_clears_old_text(tmp_path):
+    from document_links import list_pdf_page_links, replace_pdf_page_link
+    source = {'quote': 'Source phrase', 'rects': [[.1, .2, .3, .04]]}
+    target = {'quote': 'Exact explanation', 'prefix': 'Before ', 'suffix': ' after',
+              'rects': [[.2, .7, .4, .05]]}
+    root = str(tmp_path)
+    link = add_document_link(root, 'A', source_card_id=7, source_kind='pdf', source_page=3,
+        target_card_id=8, target_page=42, source_passage=source, target_passage=target)
+    assert list_document_links(root, 'A', 7)[0]['target_passage'] == target
+    assert list_pdf_page_links(root, 'A', 7, 3)[0]['target_passage'] == target
+    assert list_pdf_page_links(root, 'A', 8, 42)[0]['target_passage'] == source
+    replace_pdf_page_link(root, 'A', 7, 3, link, direction='outgoing', target_card_id=9, target_page=4)
+    assert list_pdf_page_links(root, 'A', 7, 3)[0]['target_passage'] == {}
+    assert list_pdf_page_links(root, 'A', 9, 4)[0]['target_passage'] == source
+
+
 def test_connection_note_is_shared_editable_and_separate_from_the_quoted_passage(tmp_path):
     from document_links import list_pdf_page_links, set_document_link_note
     root = str(tmp_path)

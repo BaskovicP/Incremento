@@ -851,3 +851,45 @@ msgstr "Koristi radni prostor za učenje tijekom ponavljanja"
 
 msgid "settings_study_workspace_hint"
 msgstr "Prikaži prikaze Kartica, Dokumenti i Videozapisi tijekom ponavljanja. Isključi za uobičajeni Anki prikaz kartice. Spremljene poveznice ostaju dostupne u izborniku Resursi za učenje na kartici. Primjenjuje se nakon spremanja postavki."
+
+msgid "shortcut_workspace_switch_tabs"
+msgstr "Pronađi karticu radnog prostora"
+
+msgid "shortcut_workspace_next_tab"
+msgstr "Sljedeća kartica radnog prostora"
+
+msgid "shortcut_workspace_previous_tab"
+msgstr "Prethodna kartica radnog prostora"
+
+msgid "shortcut_workspace_close_tab"
+msgstr "Zatvori karticu radnog prostora"
+
+msgid "shortcut_workspace_reopen_tab"
+msgstr "Ponovno otvori zatvorenu karticu radnog prostora"
+
+msgid "shortcut_workspace_tab_1"
+msgstr "Kartica radnog prostora 1"
+
+msgid "shortcut_workspace_tab_2"
+msgstr "Kartica radnog prostora 2"
+
+msgid "shortcut_workspace_tab_3"
+msgstr "Kartica radnog prostora 3"
+
+msgid "shortcut_workspace_tab_4"
+msgstr "Kartica radnog prostora 4"
+
+msgid "shortcut_workspace_tab_5"
+msgstr "Kartica radnog prostora 5"
+
+msgid "shortcut_workspace_tab_6"
+msgstr "Kartica radnog prostora 6"
+
+msgid "shortcut_workspace_tab_7"
+msgstr "Kartica radnog prostora 7"
+
+msgid "shortcut_workspace_tab_8"
+msgstr "Kartica radnog prostora 8"
+
+msgid "shortcut_workspace_tab_9"
+msgstr "Kartica radnog prostora 9"

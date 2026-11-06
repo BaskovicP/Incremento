@@ -60,12 +60,6 @@
     "reason": "Fixed bookmark icon prefix wrapped around an already-localized reader action label."
   },
   {
-    "file": "frontend/extract_card_dialog.py",
-    "sink": "QLabel",
-    "text": "f\"{fname}:\"",
-    "reason": "User/Anki-owned note field name."
-  },
-  {
     "file": "frontend/knowledge_tree_dialog.py",
     "sink": "QLabel",
     "text": "f\"{field_name}:\"",

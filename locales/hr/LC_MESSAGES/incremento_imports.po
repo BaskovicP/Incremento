@@ -1561,7 +1561,7 @@ msgstr "Ukloni suvišne elemente"
 
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_help"
-msgstr "Klikni neželjeni element kako bi ga sakrio. Shift-klik uklanja njegov nadređeni spremnik. Poništi vraća zadnje uklanjanje; Vrati sve vraća sve elemente. Isključi Uklanjanje za odabir teksta. Uključuje se samo već učitani sadržaj."
+msgstr "Uključi uklanjanje, prijeđi pokazivačem preko elementa za crveni okvir pa klikni za uklanjanje. Drži Shift za veće područje. Poništi ili Vrati sve vraća uklonjeno. Tipkovnica: strelice biraju područje, Delete uklanja, Esc isključuje uklanjanje."
 
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_zap"
@@ -1638,3 +1638,71 @@ msgstr "Zadrži popise"
 #: frontend/document_details.py
 msgid "imports_pin_lists_help"
 msgstr "Zadrži odabrane popise za sljedeći uvezeni dokument. Svaki dokument zadržava vlastiti razlog i izvor."
+
+msgid "imports_webpage_document"
+msgstr "Spremi web-stranicu za izvanmrežno čitanje…"
+
+msgid "imports_webpage_document_description"
+msgstr "Odaberi HTML snimku za očuvanje spremljenog rasporeda, stilova i slika web-stranice ili prilagodljivu kopiju za čitanje. Pregledaj prije spremanja. Za prijavu ili JavaScript koristi Companion. PDF je i dalje dostupan putem Web-stranica u PDF."
+
+msgid "imports_webpage_main_content"
+msgstr "Glavni članak"
+
+msgid "imports_webpage_entire_page"
+msgstr "Cijela stranica"
+
+msgid "imports_webpage_capture_preview"
+msgstr "Snimi i pregledaj"
+
+msgid "imports_webpage_capturing"
+msgstr "Snimanje web-stranice i slika…"
+
+msgid "imports_webpage_capture_ready"
+msgstr "Spremno za spremanje. Nedostupne ili nepodržane slike: {count}. Pregled prikazuje samo tekst."
+
+msgid "imports_webpage_document_failed"
+msgstr "Snimanje nije uspjelo: {error}"
+
+msgid "imports_webpage_browser_capture_required"
+msgstr "Otvori stranicu u pregledniku i odaberi Companion → Spremi za izvanmrežno čitanje."
+
+msgid "imports_webpage_document_saved"
+msgstr "Spremljeno za izvanmrežno čitanje: {title}"
+
+msgid "imports_webpage_open_document"
+msgstr "Otvori dokument"
+
+msgid "imports_export_document"
+msgstr "Izvezi dokument…"
+
+msgid "imports_export_html_filter"
+msgstr "HTML dokument (*.html)"
+
+msgid "imports_export_markdown_filter"
+msgstr "Markdown dokument (*.md)"
+
+msgid "imports_export_text_filter"
+msgstr "Običan tekst (*.txt)"
+
+msgid "imports_export_document_saved"
+msgstr "Dokument je izvezen."
+
+msgid "imports_webpage_html_snapshot"
+msgstr "HTML snimka — izgled web-stranice"
+
+msgid "imports_webpage_reading_copy"
+msgstr "Kopija za čitanje — prilagodljivi Markdown"
+
+msgid "imports_webpage_save_as"
+msgstr "Spremi kao"
+
+msgid "imports_webpage_snapshot_ready"
+msgstr "HTML snimka je spremna. Prikazani su spremljeni stilovi i slike. Nedostupne slike: {count}."
+
+#: frontend/webpage_snapshot_preview.py frontend/webpage_document_dialog.py
+msgid "imports_webpage_cleanup_count"
+msgstr "Uklonjeno: {count}"
+
+#: frontend/webpage_snapshot_preview.py frontend/webpage_document_dialog.py
+msgid "imports_webpage_preview_failed"
+msgstr "Nije moguće pročitati pregled. Ponovno snimi stranicu."

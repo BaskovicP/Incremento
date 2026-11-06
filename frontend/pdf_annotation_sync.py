@@ -118,6 +118,7 @@ class PdfAnnotationSyncQueue:
         job = {'cancel': cancel, 'source': source_path,
                'callbacks': {callback_key if callback_key is not None else callback: callback} if callback else {},
                'pending': False, 'passes': 0, 'running': False, 'timer': None, 'immediate': immediate,
+               'display_changes': {},
                'activity': activity_log.start_activity(t('reader_pdf_sync_title'), cancel=cancel.set)}
         self.jobs[key] = job
         self._schedule(key, job)
@@ -159,6 +160,12 @@ class PdfAnnotationSyncQueue:
             result, error = None, None
             try:
                 result = future.result()
+                # A later overlay-only pass must not hide a byte replacement
+                # that open readers have not received yet.
+                for flag in ('reader_changed', 'appearance_changed'):
+                    if result.get(flag):
+                        job['display_changes'][flag] = True
+                result = {**result, **job['display_changes']}
             except Exception as caught:
                 error = caught
             if not job['cancel'].is_set() and not error and (job['pending'] or result.get('retry_needed')):

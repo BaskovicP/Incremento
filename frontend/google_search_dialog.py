@@ -1,6 +1,9 @@
 """Selected-text web search, with optional isolated persistent website storage."""
 
-from aqt.qt import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, Qt, QUrl
+from aqt.qt import (
+    QDockWidget, QHBoxLayout, QKeySequence, QLabel, QMainWindow, QPushButton,
+    QShortcut, QVBoxLayout, Qt, QUrl, QWidget, pyqtSignal,
+)
 from PyQt6.QtWebEngineCore import (
     QWebEnginePage, QWebEngineProfile, QWebEngineSettings, QWebEngineUrlRequestInterceptor,
 )
@@ -47,9 +50,22 @@ class _SearchPage(QWebEnginePage):
         return []
 
 
-class GoogleSearchDialog(QDialog):
-    def __init__(self, parent=None, *, anki_profile, addon_dir=None, remember_logins=False):
+class GoogleSearchDialog(QDockWidget):
+    """Legacy entry-point name; the live browser can float, split, or join tabs."""
+
+    finished = pyqtSignal(int)
+
+    def __init__(self, parent=None, *, anki_profile, addon_dir=None, remember_logins=False, browser_profile=None):
+        # Reader windows are floating docks whose ancestor is still Anki's main
+        # window. Editor-owned searches retain their original cleanup lifetime.
+        ancestor = parent
+        while ancestor is not None:
+            if isinstance(ancestor, QMainWindow):
+                parent = ancestor
+                break
+            ancestor = ancestor.parentWidget()
         super().__init__(parent)
+        self.setObjectName('incremento_search_dock')
         self.anki_profile = anki_profile
         # Keep a remembered browser alive when hidden so rapidly reopening it
         # cannot create two profiles writing to the same Chromium database.
@@ -58,7 +74,9 @@ class GoogleSearchDialog(QDialog):
         self.setWindowTitle(t("selection_search_title"))
         self.resize(760, 560)
 
-        layout = QVBoxLayout(self)
+        host = QWidget(self)
+        self.setWidget(host)
+        layout = QVBoxLayout(host)
         toolbar = QHBoxLayout()
         self._back = QPushButton(t("reader_back"))
         toolbar.addWidget(self._back)
@@ -69,17 +87,20 @@ class GoogleSearchDialog(QDialog):
         toolbar.addWidget(close)
         layout.addLayout(toolbar)
 
-        self._view = QWebEngineView(self)
+        self._view = QWebEngineView(host)
         self._view.setAccessibleName(t("selection_search_results"))
         # Search never shares cookies or the reader's bridge with the Web dock.
-        self._profile = (create_browser_profile(addon_dir, anki_profile, search=True)
-                         if remember_logins else QWebEngineProfile())
+        self._owns_profile = browser_profile is None
+        self._profile = browser_profile if browser_profile is not None else (
+            create_browser_profile(addon_dir, anki_profile, search=True) if remember_logins else QWebEngineProfile())
         # The view was added first and owns the page. Parenting the profile after
         # it also guarantees ordered cleanup if the originating editor closes.
-        self._profile.setParent(self)
-        self._profile.downloadRequested.connect(lambda download: download.cancel())
-        self._requests = _SearchRequests(self._profile)
-        self._profile.setUrlRequestInterceptor(self._requests)
+        if self._owns_profile:
+            self._profile.setParent(self)
+            self._profile.downloadRequested.connect(lambda download: download.cancel())
+            self._profile._incremento_search_requests = _SearchRequests(self._profile)
+            self._profile.setUrlRequestInterceptor(self._profile._incremento_search_requests)
+        self._requests = self._profile._incremento_search_requests
         self._page = _SearchPage(self._profile, self._view)
         self._view.setPage(self._page)
         for name in (
@@ -107,9 +128,10 @@ class GoogleSearchDialog(QDialog):
         self._status.setWordWrap(True)
         self._status.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self._status)
-        self._view.loadStarted.connect(lambda: self._status.setText(t("selection_search_loading")))
+        self._view.loadStarted.connect(self._loading)
         self._view.loadFinished.connect(self._loaded)
         self._view.urlChanged.connect(self._update_back)
+        self._view.titleChanged.connect(self._page_title)
         self._back.clicked.connect(self._view.back)
         self._back.setEnabled(False)
         external.clicked.connect(self._open_browser)
@@ -117,15 +139,35 @@ class GoogleSearchDialog(QDialog):
         # Prevent Enter in the web view from activating a dialog button.
         for button in (self._back, external, close):
             button.setAutoDefault(False)
+        self._escape = QShortcut(QKeySequence(QKeySequence.StandardKey.Cancel), self)
+        self._escape.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self._escape.activated.connect(self.close)
+        if isinstance(parent, QMainWindow):
+            parent.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self)
+        self.setFloating(True)
+        self.resize(760, 560)
 
     def search(self, url: str) -> None:
         if _http_url(QUrl(url)):
+            self._workspace_url = url
+            self.setWindowTitle(QUrl(url).host() or t('selection_search_title'))
             self._view.load(QUrl(url))
+
+    def _page_title(self, title):
+        title = ' '.join(str(title).split())[:160]
+        self.setWindowTitle(title or self._view.url().host() or t('selection_search_title'))
+
+    def _loading(self):
+        self._workspace_loading = True
+        self._workspace_failed = False
+        self._status.setText(t('selection_search_loading'))
 
     def _update_back(self, *_args) -> None:
         self._back.setEnabled(self._view.history().canGoBack())
 
     def _loaded(self, ok: bool) -> None:
+        self._workspace_loading = False
+        self._workspace_failed = not ok
         self._status.setText("" if ok else t("selection_search_failed"))
         self._update_back()
 
@@ -134,9 +176,14 @@ class GoogleSearchDialog(QDialog):
         if _http_url(url):
             open_companion_url(url.toString(QUrl.ComponentFormattingOption.FullyEncoded))
 
-    def done(self, result: int) -> None:
+    def closeEvent(self, event) -> None:
         self._view.stop()
-        super().done(result)
+        super().closeEvent(event)
+        if event.isAccepted():
+            self.finished.emit(0)
+
+    def reject(self) -> None:
+        self.close()
 
     def dispose(self) -> None:
-        destroy_browser(self, self._profile)
+        destroy_browser(self, self._profile if self._owns_profile else None)

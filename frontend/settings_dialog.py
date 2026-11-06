@@ -260,6 +260,15 @@ SHORTCUT_ACTION_SPECS = [
     },
 ]
 
+SHORTCUT_ACTION_SPECS.extend([
+    {'id': 'workspace_switch_tabs', 'label': 'Find Workspace Tab', 'default': 'Ctrl+Shift+L', 'group': 'Navigation'},
+    {'id': 'workspace_next_tab', 'label': 'Next Workspace Tab', 'default': 'Ctrl+Tab', 'group': 'Navigation'},
+    {'id': 'workspace_previous_tab', 'label': 'Previous Workspace Tab', 'default': 'Ctrl+Shift+Tab', 'group': 'Navigation'},
+    {'id': 'workspace_close_tab', 'label': 'Close Workspace Tab', 'default': 'Ctrl+Alt+W', 'group': 'Navigation'},
+    {'id': 'workspace_reopen_tab', 'label': 'Reopen Closed Workspace Tab', 'default': 'Ctrl+Shift+T', 'group': 'Navigation'},
+] + [{'id': 'workspace_tab_' + str(i), 'label': 'Workspace Tab ' + str(i), 'default': '', 'group': 'Navigation'}
+     for i in range(1, 10)])
+
 def localized_shortcut_action_specs() -> list[dict]:
     """Translate labels at display time while retaining English search aliases."""
     return [
@@ -501,6 +510,7 @@ class IncrementoSettingsDialog(QDialog):
         current_pdf_citation_page_numbering: str = "printed",
         current_study_workspace_enabled: bool = True,
         current_bookshelf_caption_fields=None,
+        current_workspace_restore_last_session: bool = True,
     ):
         super().__init__(parent)
         self.setWindowTitle(t('settings_incremento_settings'))
@@ -887,6 +897,10 @@ class IncrementoSettingsDialog(QDialog):
         study_workspace_hint = QLabel(t('settings_study_workspace_hint'))
         study_workspace_hint.setWordWrap(True)
         review_layout.addWidget(study_workspace_hint)
+        self._restore_tabs_cb = QCheckBox(t('workspace_restore_on_startup'))
+        self._restore_tabs_cb.setChecked(current_workspace_restore_last_session is not False)
+        self._restore_tabs_cb.setAccessibleName(t('workspace_restore_on_startup'))
+        review_layout.addWidget(self._restore_tabs_cb)
 
         review_priority_form = _section_form()
 
@@ -2185,6 +2199,10 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def study_workspace_enabled(self) -> bool:
         return bool(self._study_workspace_enabled_cb.isChecked())
+
+    @property
+    def workspace_restore_last_session(self) -> bool:
+        return bool(self._restore_tabs_cb.isChecked())
 
     @property
     def remember_browser_card_scroll(self) -> bool:

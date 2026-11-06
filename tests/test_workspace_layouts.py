@@ -62,6 +62,122 @@ def test_duplicate_pane_names_and_excessive_reference_windows_are_rejected():
     raw = snapshot()
     raw['panes'].append(deepcopy(raw['panes'][0]))
     assert normalize_workspace(raw) is None
+
+
+def test_saved_writing_tabs_keep_order_and_active_card_without_persisting_content():
+    from workspace_layouts import normalize_workspace
+    raw = snapshot()
+    raw['panes'][1]['writing_tabs'] = [80, 71, 99]
+    raw['panes'][1]['draft_text'] = 'Must never enter workspace config'
+    clean = normalize_workspace(raw)
+    assert clean['panes'][1]['writing_tabs'] == [80, 71, 99]
+    assert clean['panes'][1]['card_id'] == 71
+    assert 'draft_text' not in clean['panes'][1]
+
+
+@pytest.mark.parametrize('label,expected', [
+    ('My reading tab', 'My reading tab'), ('  Notes & passages  ', 'Notes & passages'),
+    ('x'*80, 'x'*80), ('x'*81, None), ('', None), ('bad\nlabel', None), (42, None),
+])
+def test_saved_workspace_tab_names_are_bounded_display_labels(label, expected):
+    from workspace_layouts import normalize_workspace
+    raw = snapshot()
+    raw['panes'][0]['tab_name'] = label
+    clean = normalize_workspace(raw)
+    assert clean['panes'][0].get('tab_name') == expected
+    assert clean['panes'][0]['card_id'] == 42
+    assert clean['panes'][0]['name'] == 'incremento_pdf_dock'
+
+
+@pytest.mark.parametrize('size,color,expected_size,expected_color', [
+    ([180, 36], '#A1b2C3', [180, 36], '#a1b2c3'),
+    ([80, 24], '#000000', [80, 24], '#000000'),
+    ([480, 80], '#ffffff', [480, 80], '#ffffff'),
+    ([79, 36], 'red', None, None),
+    ([180, 81], '#12345678', None, None),
+    ([True, 36], 'url(secret)', None, None),
+    ([180, 36, 50], '#12345g', None, None),
+    ('180x36', None, None, None),
+])
+def test_saved_tab_appearance_keeps_only_bounded_dimensions_and_opaque_hex_colors(
+        size, color, expected_size, expected_color):
+    from workspace_layouts import normalize_workspace
+    raw = snapshot()
+    raw['panes'][0].update(tab_size=size, tab_color=color)
+    before = deepcopy(raw)
+    clean = normalize_workspace(raw)
+    assert clean['panes'][0].get('tab_size') == expected_size
+    assert clean['panes'][0].get('tab_color') == expected_color
+    assert normalize_workspace(clean) == clean
+    assert raw == before
+
+
+@pytest.mark.parametrize('mode', [True, False, None, 'true'])
+def test_saved_workspace_keeps_only_boolean_open_as_tabs_policy(mode):
+    from workspace_layouts import normalize_workspace
+    raw = snapshot() | {'open_as_tabs': mode}
+    clean = normalize_workspace(raw)
+    if type(mode) is bool:
+        assert clean['open_as_tabs'] is mode
+    else:
+        assert 'open_as_tabs' not in clean
+
+
+@pytest.mark.parametrize('count,valid', [(8, True), (9, False)])
+def test_saved_workspace_bounds_both_pdf_and_epub_reader_tabs(count, valid):
+    from workspace_layouts import normalize_workspace
+    raw = snapshot()
+    raw['panes'] = [dict(name='incremento_'+kind+'_'+str(i), kind=kind, card_id=i+1)
+                    for kind in ('pdf_reference', 'epub_reference') for i in range(count)]
+    assert (normalize_workspace(raw) is not None) is valid
+
+
+def test_saved_tab_groups_pin_order_and_recovery_are_profile_local_and_bounded():
+    from workspace_layouts import normalize_workspace
+    raw = snapshot()
+    raw['panes'][0].update(tab_group='  Reading  ', tab_pinned=True, tab_collapsed=True,
+                           tab_adaptive=False, tab_order=3, resume_position=True)
+    clean = normalize_workspace(raw)
+    assert clean['panes'][0] | {} == raw['panes'][0] | {'tab_group': 'Reading'}
+    raw['panes'][0].update(tab_group='x'*81, tab_pinned='yes', tab_collapsed=1,
+                           tab_adaptive='yes', tab_order=-1, resume_position='yes')
+    clean = normalize_workspace(raw)
+    assert all(key not in clean['panes'][0] for key in ('tab_group', 'tab_pinned', 'tab_collapsed',
+                                                      'tab_adaptive', 'tab_order', 'resume_position'))
+
+
+@pytest.mark.parametrize('url,valid', [('https://example.test/word?q=book', True),
+    ('file:///private/document.pdf', False), ('javascript:alert(1)', False),
+    ('https://user:secret@example.test/', False), ('https://example.test/\nsecret', False)])
+def test_saved_search_tabs_validate_urls_without_requiring_a_card(url, valid):
+    from workspace_layouts import normalize_workspace
+    raw = snapshot()
+    raw['panes'].append(dict(name='incremento_search_dock_saved_0', kind='search', url=url,
+                             tab_name='Dictionary'))
+    clean = normalize_workspace(raw)
+    assert (clean is not None) is valid
+    if valid:
+        assert clean['panes'][-1]['url'] == url
+        assert 'card_id' not in clean['panes'][-1]
+
+
+def test_last_tab_sessions_normalize_independently_of_named_workspaces():
+    raw = {'workspace_last_sessions': {'A': snapshot(), 'B': {'version': 99}},
+           'workspace_restore_last_session': True, 'future_setting': {'keep': True}}
+    normalized = config_service.normalize_config(raw)
+    assert normalized['workspace_last_sessions'] == {'A': snapshot()}
+    assert normalized['workspace_restore_last_session'] is True
+    assert config_service.normalize_config(normalized) == normalized
+
+
+@pytest.mark.parametrize('tabs', [[True], [0], [71, -1], [71] * 33, [71, 71], [99], '71'])
+def test_invalid_or_unbounded_writing_tab_lists_fall_back_to_the_active_card(tabs):
+    from workspace_layouts import normalize_workspace
+    raw = snapshot()
+    raw['panes'][1]['writing_tabs'] = tabs
+    clean = normalize_workspace(raw)
+    assert 'writing_tabs' not in clean['panes'][1]
+    assert clean['panes'][1]['card_id'] == 71
     raw['panes'] = [{'name': 'incremento_pdf_reference_' + str(i), 'kind': 'pdf_reference',
                      'card_id': i + 1} for i in range(9)]
     assert normalize_workspace(raw) is None

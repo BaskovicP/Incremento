@@ -851,3 +851,45 @@ msgstr "复习时使用学习工作区"
 
 msgid "settings_study_workspace_hint"
 msgstr "复习时显示卡片、文档和视频视图。关闭后使用 Anki 的常规卡片布局。已保存的关联仍可从卡片的学习资源菜单访问。保存设置后生效。"
+
+msgid "shortcut_workspace_switch_tabs"
+msgstr "查找工作区标签页"
+
+msgid "shortcut_workspace_next_tab"
+msgstr "下一个工作区标签页"
+
+msgid "shortcut_workspace_previous_tab"
+msgstr "上一个工作区标签页"
+
+msgid "shortcut_workspace_close_tab"
+msgstr "关闭工作区标签页"
+
+msgid "shortcut_workspace_reopen_tab"
+msgstr "重新打开已关闭的工作区标签页"
+
+msgid "shortcut_workspace_tab_1"
+msgstr "工作区标签页 1"
+
+msgid "shortcut_workspace_tab_2"
+msgstr "工作区标签页 2"
+
+msgid "shortcut_workspace_tab_3"
+msgstr "工作区标签页 3"
+
+msgid "shortcut_workspace_tab_4"
+msgstr "工作区标签页 4"
+
+msgid "shortcut_workspace_tab_5"
+msgstr "工作区标签页 5"
+
+msgid "shortcut_workspace_tab_6"
+msgstr "工作区标签页 6"
+
+msgid "shortcut_workspace_tab_7"
+msgstr "工作区标签页 7"
+
+msgid "shortcut_workspace_tab_8"
+msgstr "工作区标签页 8"
+
+msgid "shortcut_workspace_tab_9"
+msgstr "工作区标签页 9"

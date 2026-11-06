@@ -15,6 +15,8 @@ jobs:
   python:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PYTHONFAULTHANDLER: "1"
     strategy:
       matrix:
         python-version: ["3.12", "3.13"]
@@ -23,7 +25,7 @@ jobs:
       - name: Install Qt system runtime
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends libegl1 gettext
+          sudo apt-get install --yes --no-install-recommends libegl1 gettext libpulse0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -36,7 +38,7 @@ jobs:
       - run: python -m ruff check .
       - run: python -m mypy
       - run: python scripts/llm_repair_eval.py tests/repair_cases --deterministic-only --json
-      - run: python -m pytest tests/ -q
+      - run: python -m pytest tests/ -q -x
       - run: python scripts/mutation_smoke.py
 
   web-assets:

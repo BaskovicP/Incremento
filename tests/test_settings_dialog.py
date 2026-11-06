@@ -7,6 +7,19 @@ from unittest.mock import Mock
 import pytest
 
 
+def test_tab_restore_setting_and_navigation_shortcuts_share_normal_settings_validation():
+    dialog = IncrementoSettingsDialog({})
+    assert dialog.workspace_restore_last_session is True
+    dialog._restore_tabs_cb.setChecked(False)
+    assert dialog.workspace_restore_last_session is False
+    restored = IncrementoSettingsDialog({}, current_workspace_restore_last_session=False)
+    assert restored.workspace_restore_last_session is False
+    from frontend.shortcut_conflicts import find_shortcut_conflicts
+    defaults = default_shortcuts()
+    assert len([key for key in defaults if key.startswith('workspace_')]) == 14
+    assert not find_shortcut_conflicts(defaults)
+
+
 def test_mcp_settings_default_off_and_restore_both_permissions():
     dialog = IncrementoSettingsDialog({})
     assert dialog.mcp_enabled is False
@@ -862,6 +875,7 @@ class TestIncrementoSettingsDialogTopicDoneTag:
         namespace.update({
             "__name__": "incremento", "mw": SimpleNamespace(addonManager=manager, col=col),
             "copy": __import__("copy"), "Exception": Exception,
+            "dict": dict, "str": str,
             "sorted": sorted, "IncrementoSettingsDialog": open_dialog,
             "_configured_topic_done_tag": config_service.configured_topic_done_tag,
             "_load_addon_config": config_service.load_addon_config, "_save_addon_config": save,

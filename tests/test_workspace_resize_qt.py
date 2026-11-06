@@ -52,7 +52,8 @@ def run_resize_scene(script, *, scale='1'):
             mouse(widget, QEvent.Type.MouseButtonPress, start)
             return widget, start
     ''')
-    result = subprocess.run([sys.executable, '-c', setup + dedent(script)],
+    cleanup = '\nfrom PyQt6 import sip\nif not sip.isdeleted(main): sip.delete(main)\n'
+    result = subprocess.run([sys.executable, '-c', setup + dedent(script) + cleanup],
         cwd=Path(__file__).resolve().parents[1], env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen', 'QT_SCALE_FACTOR': scale},
         capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stdout + result.stderr

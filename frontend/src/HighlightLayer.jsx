@@ -53,9 +53,6 @@ export default function HighlightLayer({
   endHighlightResize,
   cancelHighlightResize,
   focusedHighlightId,
-  showHighlightNote,
-  moveHighlightNote,
-  hideHighlightNote,
 }) {
   const displayHighlights = pdfDisplayHighlights(pageHighlights);
   const renderNoteIcon = (hasNote) => (
@@ -136,30 +133,6 @@ export default function HighlightLayer({
             </svg>}
           </div>
         );})
-      )}
-
-      {/* ── Hover targets for note-bearing highlights — above text layer ── */}
-      {showHighlightControls && displayHighlights.map(h =>
-        !hasAnnotationNote(h)
-          ? null
-          : h.rects.map((r, ri) => (
-              <div
-                key={`note-${h.id}-${ri}`}
-                onMouseEnter={(event) => showHighlightNote(h, event)}
-                onMouseMove={moveHighlightNote}
-                onMouseLeave={hideHighlightNote}
-                style={{
-                  position: 'absolute',
-                  left: renderInfo.tlLeft + r.x * renderInfo.scale,
-                  top: r.y * renderInfo.scale,
-                  width: r.w * renderInfo.scale,
-                  height: r.h * renderInfo.scale,
-                  background: 'transparent',
-                  cursor: 'help',
-                  zIndex: 9,
-                }}
-              />
-            ))
       )}
 
       {/* ── Highlight action buttons — above text layer (z:10), one cluster per highlight ── */}

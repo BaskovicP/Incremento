@@ -15,6 +15,7 @@ try:
     from .pdf_reader_state import maximum_reference_page
     from .pdf_manager import get_pdf_daily_limit_status
     from .paths import get_videos_dir
+    from .note_metadata import INCREMENTO_METADATA_FIELDS, INCREMENTO_OPTIONAL_METADATA_FIELDS
     from .recording_links import normalize_source, list_recording_links, validate_segment
     from .video_manager import get_video_note_media, local_video_abspath, supported_local_video_extensions
 except ImportError:
@@ -26,6 +27,7 @@ except ImportError:
     from pdf_reader_state import maximum_reference_page
     from pdf_manager import get_pdf_daily_limit_status
     from paths import get_videos_dir
+    from note_metadata import INCREMENTO_METADATA_FIELDS, INCREMENTO_OPTIONAL_METADATA_FIELDS
     from recording_links import normalize_source, list_recording_links, validate_segment
     from video_manager import get_video_note_media, local_video_abspath, supported_local_video_extensions
 
@@ -42,6 +44,41 @@ def note_field(note, key):
         return str(note[key] or "").strip()
     except (KeyError, TypeError, AttributeError):
         return ""
+
+
+def is_incremento_card(addon_dir, profile, collection, card, *, config=None):
+    """Recognize Incremento use without treating every non-topic as an item.
+
+    Standard Anki note types may hold extracts or explicitly linked resources.
+    Supplemental lookups are limited to the current card in the captured profile.
+    """
+    if card is None or collection is None:
+        return False
+    try:
+        # Resource/path utilities are also imported without a running Anki UI.
+        try:
+            from .topic_scheduler import is_topic_card, resolve_topic_card_classifier
+        except ImportError:
+            from topic_scheduler import is_topic_card, resolve_topic_card_classifier
+        note = card.note()
+        classifier = resolve_topic_card_classifier(config)
+        tags = {str(tag).strip().casefold() for tag in getattr(note, 'tags', [])}
+        if (str((note.note_type() or {}).get('name') or '').startswith('Incremento ')
+                or bool(tags & classifier.item_tags)
+                or is_topic_card(card, classifier=classifier, col=collection)
+                or any(note_field(note, field) for field in
+                       INCREMENTO_METADATA_FIELDS + INCREMENTO_OPTIONAL_METADATA_FIELDS)):
+            return True
+        return bool(
+            get_knowledge_tree_node(addon_dir, profile, int(card.id))
+            or list_document_links(addon_dir, profile, int(card.id))
+            or source_locations(addon_dir, profile, collection, int(card.id))
+            or _VIDEO.search(_note_text(note))
+            or list_recording_links(addon_dir, profile, source=dict(kind='card', card_id=int(card.id)))
+        )
+    except Exception:
+        # Missing/deleted cards and unavailable stores must not decorate normal review.
+        return False
 
 
 def file_signature(path):
@@ -118,7 +155,16 @@ def inline_locations(text):
             data, _ = json.JSONDecoder().raw_decode(part)
             result.append(normalize_source(dict(kind="pdf", card_id=data["card_id"], page=data["page"],
                 scroll=data.get("scroll_ratio") or 0, page_y=data.get('page_y'),
-                quote=str(data.get("excerpt") or "")[:2000])))
+                quote=str(data.get("excerpt") or "")[:2000], passage=data.get("passage"))))
+        except (ValueError, TypeError, KeyError):
+            continue
+    for part in text.split('incremento_open_epub:')[1:MAX_RESOURCES + 1]:
+        if not part.startswith('{'):
+            continue
+        try:
+            data, _ = json.JSONDecoder().raw_decode(part)
+            result.append(normalize_source(dict(kind='epub', card_id=data['card_id'], section=data['section_index'],
+                offset=data['focus_offset'], scroll=data.get('scroll_ratio', 0), passage=data.get('passage'))))
         except (ValueError, TypeError, KeyError):
             continue
     for match in list(_OLD_PDF.finditer(text))[:MAX_RESOURCES]:
@@ -143,7 +189,7 @@ def source_locations(addon_dir, profile, collection, card_id):
     for row in list_document_links(addon_dir, profile, card_id):
         if row["target_card_id"] > 0:
             sources.append(dict(kind="pdf", card_id=row["target_card_id"], page=row["target_page"],
-                                scroll=row["target_scroll"], page_y=row.get("target_y"), quote=row["quote"]))
+                                scroll=row["target_scroll"], page_y=row.get("target_y"), quote=row["quote"], passage=row.get("target_passage")))
     sources.extend(inline_locations(_note_text(note)))
     for cid, page, quote in conn.execute(
         "SELECT pdf_card_id,page,excerpt FROM pdf_card_sources WHERE note_id=? ORDER BY id LIMIT ?",

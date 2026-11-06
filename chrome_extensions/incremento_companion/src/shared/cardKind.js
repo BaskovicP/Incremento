@@ -8,6 +8,7 @@ export function cardKindMessage(kind) {
     case "video": return message("video_kind");
     case "webpage": return message("webpage_kind");
     case "writing": return message("writing_kind");
+    case "document": return message("document_kind");
     default: return message("content_kind");
   }
 }

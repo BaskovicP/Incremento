@@ -113,3 +113,22 @@ test('remove accepts a visible missing destination but rejects stale and forged 
   model.remove(row);
   assert.equal(sent.length, afterNavigation);
 });
+
+test('writing backlinks keep the source page identity and reject forged or stale anchors', () => {
+  const sent = [], updates = [];
+  const model = createPdfPageLinks(value => sent.push(value), value => updates.push(value));
+  model.start(7, 3, 1);
+  const request = sent.at(-1);
+  const row = {anchor: 'a'.repeat(32), title: 'Draft', quote: 'Original passage'};
+  model.receive({...request, links: [], writing: [row, {anchor: 'javascript:bad', title: 'Bad', quote: ''}]});
+  assert.deepEqual(updates.at(-1).writing, [row]);
+  model.openWriting(row);
+  assert.deepEqual(sent.at(-1), {...request, operation: 'writing', anchor: row.anchor});
+  const count = sent.length;
+  model.openWriting({...row});
+  assert.equal(sent.length, count);
+  model.start(7, 4, 1);
+  model.openWriting(row);
+  assert.equal(sent.at(-1).operation, 'list');
+  assert.deepEqual(updates.at(-1).writing, []);
+});

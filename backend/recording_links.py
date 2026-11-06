@@ -48,6 +48,12 @@ def normalize_source(source):
     elif result["kind"] == "epub":
         result["section"] = _integer(source.get("section"), 0, 1_000_000)
         result["offset"] = _integer(source.get("offset", -1), -1, 50_000_000)
+    if source.get('passage') and result['kind'] in ('pdf', 'epub'):
+        try:
+            from .document_passages import normalize_passage
+        except ImportError:
+            from document_passages import normalize_passage
+        result['passage'] = normalize_passage(source['passage'], result['kind'])
     return result
 
 

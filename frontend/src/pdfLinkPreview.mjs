@@ -22,12 +22,13 @@ export function normalizePdfLinkPreviewSize(raw) {
     height: Math.round(Math.min(4096, Math.max(160, raw.height)))};
 }
 
-export function pdfLinkPreviewLayout(size, anchor, viewportWidth, viewportHeight) {
+export function pdfLinkPreviewLayout(size, anchor, viewportWidth, viewportHeight, position = null) {
   const preferred = normalizePdfLinkPreviewSize(size) || {width: 560, height: 360};
   const width = Math.max(1, Math.min(preferred.width, viewportWidth - 24));
   const height = Math.max(1, Math.min(preferred.height, viewportHeight - 24));
-  const left = Math.max(12, Math.min(anchor.x - 24, viewportWidth - width - 12));
-  const top = anchor.y + height + 20 < viewportHeight
+  const left = Math.max(12, Math.min(position?.left ?? anchor.x - 24, viewportWidth - width - 12));
+  const top = position ? Math.max(12, Math.min(position.top, viewportHeight - height - 12))
+    : anchor.y + height + 20 < viewportHeight
     ? anchor.y + 20 : Math.max(12, anchor.y - height - 20);
   return {width, height, left, top,
     maxWidth: Math.max(1, viewportWidth - left - 12),
@@ -175,11 +176,35 @@ export function createPdfPreviewRenderer({createCanvas, onChange, pixelRatio = 1
   return renderer;
 }
 
-// Passive listeners leave native selection and opt-in link activation alone.
+// Hover leaves native selection and opt-in links alone; only resize grips intercept drags/arrows.
 export function attachPdfLinkPreview({container, popup, host, links, tlLeft, doc, preview, maxPage = null, onResize}) {
   let active = null, dismissed = null, timer = null, interacting = false, initialSize = null;
+  let leftResize = null;
+  const resizeFromLeft = (rect, dx, dy = 0) => {
+    const width = Math.min(rect.right - 12, Math.max(Math.min(280, rect.right - 12), rect.width - dx));
+    const height = Math.min(host.innerHeight - rect.top - 12,
+      Math.max(Math.min(160, host.innerHeight - rect.top - 12), rect.height + dy));
+    const left = rect.right - width;
+    Object.assign(popup.style, {left: left + 'px', width: width + 'px', height: height + 'px',
+      maxWidth: host.innerWidth - left - 12 + 'px'});
+    return {left, top: rect.top, width, height};
+  };
+  const cancelLeftResize = () => {
+    if (leftResize) resizeFromLeft(leftResize.rect, 0);
+    leftResize = null;
+  };
+  const resizeGrip = event => {
+    const grip = event.target?.closest?.('[data-pdf-preview-resize]');
+    return grip && popup.contains(grip) ? grip : null;
+  };
+  const saveSize = rect => {
+    const size = normalizePdfLinkPreviewSize(rect);
+    if (size) onResize?.(size, {left: rect.left, top: rect.top});
+  };
   const cancelClose = () => {if (timer != null) host.clearTimeout(timer); timer = null;};
-  const close = () => {cancelClose(); active = null; interacting = false; initialSize = null; preview.clear();};
+  const close = () => {
+    cancelClose(); cancelLeftResize(); active = null; interacting = false; initialSize = null; preview.clear();
+  };
   const scheduleClose = () => {if (!interacting && timer == null) timer = host.setTimeout(close, 180);};
   const leave = () => {dismissed = null; scheduleClose();};
   const open = (link, x, y) => {
@@ -204,26 +229,45 @@ export function attachPdfLinkPreview({container, popup, host, links, tlLeft, doc
     const rect = target.getBoundingClientRect();
     open(link, rect.left, rect.bottom);
   };
-  const key = event => {if (event.key === 'Escape' && active) {dismissed = active; close();}};
+  const key = event => {
+    if (event.key === 'Escape' && active) {dismissed = active; close(); return;}
+    if (interacting || !resizeGrip(event)) return;
+    const delta = {ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20]}[event.key];
+    if (!delta) return;
+    event.preventDefault();
+    saveSize(resizeFromLeft(popup.getBoundingClientRect(), ...delta));
+  };
   const scroll = event => {if (!popup.contains(event.target)) close();};
   const pointerDown = event => {
     if (!popup.contains(event.target)) {close(); return;}
     interacting = true;
     initialSize = popup.getBoundingClientRect();
     cancelClose();
+    const grip = resizeGrip(event);
+    if (grip && event.button === 0) {
+      event.preventDefault();
+      leftResize = {rect: initialSize, x: event.clientX, y: event.clientY,
+        corner: grip.dataset.pdfPreviewResize === 'corner'};
+    }
+  };
+  const pointerMove = event => {
+    if (!leftResize) return;
+    event.preventDefault?.();
+    resizeFromLeft(leftResize.rect, event.clientX - leftResize.x,
+      leftResize.corner ? event.clientY - leftResize.y : 0);
   };
   const pointerUp = event => {
     if (!interacting) return;
     interacting = false;
+    leftResize = null;
     const rect = popup.getBoundingClientRect();
-    const size = normalizePdfLinkPreviewSize(rect);
-    if (size && initialSize && (rect.width !== initialSize.width || rect.height !== initialSize.height)) {
-      onResize?.(size);
+    if (initialSize && (rect.width !== initialSize.width || rect.height !== initialSize.height)) {
+      saveSize(rect);
     }
     initialSize = null;
     if (!popup.contains(event.target)) scheduleClose();
   };
-  const pointerCancel = event => {initialSize = null; pointerUp(event);};
+  const pointerCancel = event => {cancelLeftResize(); initialSize = null; pointerUp(event);};
   const listeners = [
     [container, 'pointermove', move], [container, 'pointerleave', leave],
     [container, 'focusin', focus], [container, 'focusout', scheduleClose],
@@ -231,6 +275,7 @@ export function attachPdfLinkPreview({container, popup, host, links, tlLeft, doc
     [popup, 'focusin', cancelClose], [popup, 'focusout', scheduleClose],
     [host, 'keydown', key], [host, 'scroll', scroll], [host, 'resize', close],
     [host, 'blur', close], [host, 'pointerdown', pointerDown],
+    [host, 'pointermove', pointerMove],
     [host, 'pointerup', pointerUp], [host, 'pointercancel', pointerCancel],
   ];
   // Enter/leave and window blur must target the surface itself. Capturing them

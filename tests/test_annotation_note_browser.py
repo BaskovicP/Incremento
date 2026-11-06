@@ -68,6 +68,7 @@ def test_saved_rich_note_renders_updates_and_opens_links_through_the_reader_brid
             expect(page.get_by_role('tooltip').locator('img')).to_be_visible()
             assert page.get_by_role('tooltip').locator('img').evaluate('img => img.naturalWidth') == 200
             page.get_by_role('button', name='Show controls', exact=True).click()
+            assert page.get_by_role('tooltip').count() == 0, 'Clicking reader controls dismisses the hover preview'
             panel_button = page.get_by_role('button', name=re.compile(r'Highlights \('))
             panel_button.click()
             link = page.locator('a[href="https://example.com/note"]')

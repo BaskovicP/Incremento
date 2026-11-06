@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import json
+try:
+    from ..backend.document_passages import normalize_passage, parse_epub_reference
+except ImportError:
+    from backend.document_passages import normalize_passage, parse_epub_reference
 import math
 import re
 import textwrap
@@ -250,7 +254,7 @@ def _valid_reader_anchor_command(command: object) -> bool:
             "page",
             "excerpt",
             "highlight_id",
-            "scroll_ratio",
+            "scroll_ratio", "passage",
         }
         if not {"card_id", "filename", "page"}.issubset(payload) or not set(payload).issubset(
             allowed_keys
@@ -289,35 +293,16 @@ def _valid_reader_anchor_command(command: object) -> bool:
                 return False
             if not math.isfinite(ratio) or not 0.0 <= ratio <= 1.0:
                 return False
+        if 'passage' in payload:
+            try:
+                normalize_passage(payload['passage'])
+            except ValueError:
+                return False
         return True
 
     epub_prefix = "incremento_open_epub:"
     if command.startswith(epub_prefix):
-        parts = command.split(":")
-        if len(parts) not in {4, 5}:
-            return False
-        try:
-            card_id = int(parts[1])
-            section_index = int(parts[2])
-            focus_offset = int(parts[3])
-        except (TypeError, ValueError, OverflowError):
-            return False
-        if (
-            card_id <= 0
-            or section_index < 0
-            or section_index > 1_000_000
-            or focus_offset < -1
-            or focus_offset > 50_000_000
-        ):
-            return False
-        if len(parts) == 5:
-            try:
-                ratio = float(parts[4])
-            except (TypeError, ValueError, OverflowError):
-                return False
-            if not math.isfinite(ratio) or not 0.0 <= ratio <= 1.0:
-                return False
-        return True
+        return parse_epub_reference(command) is not None
 
     return False
 
@@ -1141,91 +1126,6 @@ def _card_hover_excerpt_candidates(
     for line_count in range(min(6, len(lines)), 0, -1):
         _append(" ".join(lines[-line_count:]))
     return candidates
-
-
-def rebuild_pdf_reference_card_contexts(
-    html: object,
-    page_text_loader,
-    *,
-    context_rows: int = _PDF_HOVER_CONTEXT_ROWS,
-) -> tuple[str, int, int]:
-    """Insert or replace syncable context blocks for PDF citations in one field."""
-    rendered = str(html or "")
-    if (
-        "incremento_open_pdf_ref:" not in rendered
-        or len(rendered) > _MAX_PDF_CONTEXT_FIELD_HTML_CHARS
-        or not callable(page_text_loader)
-    ):
-        return rendered, 0, 0
-
-    cache: dict[tuple[int, int], str] = {}
-    pieces: list[str] = []
-    cursor = 0
-    updated = 0
-    skipped = 0
-    matches = list(_PDF_REFERENCE_LINK_RE.finditer(rendered))
-    for match in matches[:_MAX_PDF_CONTEXT_LINKS_PER_FIELD]:
-        if match.start() < cursor:
-            continue
-        pieces.append(rendered[cursor : match.start()])
-        original = match.group(0)
-        command = reader_anchor_command_from_html(original)
-        prefix = "incremento_open_pdf_ref:"
-        if command is None or not command.startswith(prefix):
-            pieces.append(original)
-            cursor = match.end()
-            skipped += 1
-            continue
-        try:
-            payload = json.loads(command[len(prefix) :])
-            card_id = int(payload["card_id"])
-            page = int(payload["page"])
-        except (KeyError, TypeError, ValueError, OverflowError, json.JSONDecodeError):
-            pieces.append(original)
-            cursor = match.end()
-            skipped += 1
-            continue
-
-        key = (card_id, page)
-        if key not in cache:
-            try:
-                cache[key] = str(page_text_loader(card_id, page) or "")
-            except Exception:
-                cache[key] = ""
-        page_text = cache[key]
-        excerpt_candidates = [str(payload.get("excerpt") or "").strip()]
-        if not excerpt_candidates[0]:
-            excerpt_candidates = _card_hover_excerpt_candidates(rendered[: match.start()])
-        context_html = ""
-        for excerpt in excerpt_candidates:
-            context_html = pdf_context_card_html(
-                page_text,
-                excerpt=excerpt,
-                scroll_ratio=payload.get("scroll_ratio"),
-                context_rows=context_rows,
-            )
-            if context_html:
-                break
-        if not context_html:
-            pieces.append(original)
-            cursor = match.end()
-            skipped += 1
-            continue
-
-        after_link = rendered[match.end() :]
-        old_context = _PDF_CARD_TEXT_PREVIEW_AFTER_LINK_RE.match(after_link)
-        if old_context is None:
-            old_context = _PDF_CARD_CONTEXT_AFTER_LINK_RE.match(after_link)
-        old_end = match.end() + (old_context.end() if old_context else 0)
-        replacement = original + "<br>" + context_html
-        if replacement != rendered[match.start() : old_end]:
-            updated += 1
-        cursor = old_end
-        pieces.append(replacement)
-
-    pieces.append(rendered[cursor:])
-    skipped += max(0, len(matches) - _MAX_PDF_CONTEXT_LINKS_PER_FIELD)
-    return "".join(pieces), updated, skipped
 
 
 def decorate_pdf_reference_link_previews(

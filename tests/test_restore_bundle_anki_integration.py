@@ -8,10 +8,12 @@ from pathlib import Path
 import pytest
 
 
-def test_real_anki_package_prechecks_and_reopens_in_temporary_profile():
+@pytest.mark.parametrize("reinstalled", [False, True], ids=["fresh-profile", "same-profile-after-reinstall"])
+def test_real_anki_package_prechecks_and_reopens_in_temporary_profile(reinstalled):
     root = Path(__file__).resolve().parents[1]
     script = textwrap.dedent("""
         import json
+        import shutil
         import sqlite3
         import tempfile
         import zipfile
@@ -21,6 +23,7 @@ def test_real_anki_package_prechecks_and_reopens_in_temporary_profile():
         from anki.exporting import AnkiPackageExporter
         from backend.restore_bundle import precheck_backup, stage_backup, swap_staged_backup
 
+        reinstalled = __REINSTALLED__
         with tempfile.TemporaryDirectory(prefix='incremento-restore-integration-') as temporary:
             root = Path(temporary)
             source = root / 'source'
@@ -37,6 +40,11 @@ def test_real_anki_package_prechecks_and_reopens_in_temporary_profile():
             exporter.did = None
             exporter.cids = None
             exporter.exportInto(str(package))
+            if reinstalled:
+                newer = collection.new_note(collection.models.by_name('Basic'))
+                newer['Front'] = 'added after backup'
+                collection.add_note(newer, collection.decks.id('Restore Test'))
+                assert collection.card_count() == 2
             collection.close()
 
             db_path = root / 'incremento.db'
@@ -50,20 +58,29 @@ def test_real_anki_package_prechecks_and_reopens_in_temporary_profile():
                 'schema_version': 2, 'addon': 'Incremento', 'scope': 'current_profile',
                 'profile': 'Source', 'profile_storage_key': 'Source',
                 'database': {'schema_version': 1, 'integrity_check': 'ok'},
-                'counts': {'anki_cards_exported': 1, 'user_files_copied': 1,
-                           'user_files_bytes': db_path.stat().st_size},
+                'counts': {'anki_cards_exported': 1, 'user_files_copied': 2,
+                           'user_files_bytes': db_path.stat().st_size + len(b'saved writing')},
             }
             with zipfile.ZipFile(backup, 'w') as archive:
                 archive.write(package, 'anki/all_decks.apkg')
                 archive.write(db_path, 'user_files/Source/incremento.db')
+                archive.writestr('user_files/Source/writing/note.md', b'saved writing')
                 archive.writestr('config.json', '{}')
                 archive.writestr('manifest.json', json.dumps(manifest))
 
-            target = root / 'target'
-            target.mkdir()
+            target = source if reinstalled else root / 'target'
+            target.mkdir(exist_ok=True)
             target_collection = target / 'collection.anki2'
-            runtime = root / 'addon' / 'user_files' / 'Target'
-            report = precheck_backup(backup, target_profile='Target')
+            target_profile = 'Source' if reinstalled else 'Target'
+            addon = root / 'addon'
+            runtime = addon / 'user_files' / target_profile
+            if reinstalled:
+                runtime.mkdir(parents=True)
+                (runtime / 'old-local-file').write_bytes(b'old addon data')
+                shutil.rmtree(addon)
+                addon.mkdir()
+                assert target_collection.is_file() and not runtime.exists()
+            report = precheck_backup(backup, target_profile=target_profile)
             assert report.card_count == 1
             staged = stage_backup(backup, report, target_collection, runtime)
             swap = swap_staged_backup(
@@ -75,9 +92,10 @@ def test_real_anki_package_prechecks_and_reopens_in_temporary_profile():
                 assert reopened.note_count() == 1
             finally:
                 reopened.close()
+            assert (runtime / 'writing' / 'note.md').read_bytes() == b'saved writing'
             swap.commit()
             staged.cleanup()
-    """)
+    """).replace('__REINSTALLED__', repr(reinstalled))
     process = subprocess.run(
         [sys.executable, "-c", script], cwd=root,
         capture_output=True, text=True, check=False, timeout=30,

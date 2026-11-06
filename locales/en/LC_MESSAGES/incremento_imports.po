@@ -1555,7 +1555,7 @@ msgstr "Clean up webpage"
 
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_help"
-msgstr "Click unwanted elements to hide them. Shift-click removes their parent container. Undo restores the last removal; Reset restores everything. Turn Zap off to select text. Only loaded content is included."
+msgstr "With Zap on, hover to see the red outline, then click to remove. Hold Shift to target a larger area. Undo or Restore all to recover. Keyboard: arrows choose an area, Delete removes it, Esc leaves Zap."
 
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_zap"
@@ -1567,7 +1567,7 @@ msgstr "Undo removal"
 
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_reset"
-msgstr "Reset"
+msgstr "Restore all"
 
 #: frontend/webpage_cleanup.py frontend/webpage_dialog.py
 msgid "imports_webpage_cleanup_save"
@@ -1632,3 +1632,71 @@ msgstr "Pin lists"
 #: frontend/document_details.py
 msgid "imports_pin_lists_help"
 msgstr "Reuse the selected lists for the next imported document. Each document keeps its own reason and source."
+
+msgid "imports_webpage_document"
+msgstr "Save Webpage for Offline Reading…"
+
+msgid "imports_webpage_document_description"
+msgstr "Choose an HTML snapshot to preserve the webpage’s captured layout, styling, and images, or a reflowable reading copy. Preview before saving. For sign-in or JavaScript pages, use Companion. PDF remains available under Webpage to PDF."
+
+msgid "imports_webpage_main_content"
+msgstr "Main article"
+
+msgid "imports_webpage_entire_page"
+msgstr "Entire page"
+
+msgid "imports_webpage_capture_preview"
+msgstr "Capture and preview"
+
+msgid "imports_webpage_capturing"
+msgstr "Capturing webpage and images…"
+
+msgid "imports_webpage_capture_ready"
+msgstr "Ready to save. Images unavailable or unsupported: {count}. Preview shows text only."
+
+msgid "imports_webpage_document_failed"
+msgstr "Capture failed: {error}"
+
+msgid "imports_webpage_browser_capture_required"
+msgstr "Open the page in your browser and use Companion → Save for offline reading."
+
+msgid "imports_webpage_document_saved"
+msgstr "Saved offline: {title}"
+
+msgid "imports_webpage_open_document"
+msgstr "Open document"
+
+msgid "imports_export_document"
+msgstr "Export Document…"
+
+msgid "imports_export_html_filter"
+msgstr "HTML document (*.html)"
+
+msgid "imports_export_markdown_filter"
+msgstr "Markdown document (*.md)"
+
+msgid "imports_export_text_filter"
+msgstr "Plain text (*.txt)"
+
+msgid "imports_export_document_saved"
+msgstr "Document exported."
+
+msgid "imports_webpage_html_snapshot"
+msgstr "HTML snapshot — website appearance"
+
+msgid "imports_webpage_reading_copy"
+msgstr "Reading copy — reflowable Markdown"
+
+msgid "imports_webpage_save_as"
+msgstr "Save as"
+
+msgid "imports_webpage_snapshot_ready"
+msgstr "HTML snapshot ready. Captured styling and images are shown. Unavailable images: {count}."
+
+#: frontend/webpage_snapshot_preview.py frontend/webpage_document_dialog.py
+msgid "imports_webpage_cleanup_count"
+msgstr "Removed: {count}"
+
+#: frontend/webpage_snapshot_preview.py frontend/webpage_document_dialog.py
+msgid "imports_webpage_preview_failed"
+msgstr "Could not read the preview. Capture the page again."

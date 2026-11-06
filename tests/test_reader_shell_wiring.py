@@ -8,7 +8,7 @@ from textwrap import dedent
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_package_reader_shell_uses_initialized_locale_without_top_level_backend():
+def test_package_reader_shell_uses_initialized_locale_without_top_level_backend(tmp_path):
     script = dedent("""
         import os
         import sys
@@ -32,7 +32,7 @@ def test_package_reader_shell_uses_initialized_locale_without_top_level_backend(
     """)
     result = subprocess.run(
         [sys.executable, "-c", script],
-        cwd="/private/tmp",
+        cwd=tmp_path,
         env={**os.environ, "INCREMENTO_TEST_ROOT": str(ROOT)},
         capture_output=True,
         text=True,

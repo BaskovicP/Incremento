@@ -7,6 +7,10 @@ from aqt import mw
 from aqt.operations import QueryOp
 from aqt.qt import QDialog, QLabel, QPlainTextEdit, QVBoxLayout, Qt
 from aqt.utils import tooltip
+try:
+    from ..backend.document_passages import normalize_passage
+except ImportError:
+    from backend.document_passages import normalize_passage
 
 try:
     from ..backend.i18n import t
@@ -87,6 +91,7 @@ class PdfDestinationDialog(QDialog):
             return
         try:
             note = normalize_connection_note(self.note_editor.toPlainText()) if self.note_editor is not None else ''
+            passage = normalize_passage(payload.get('passage'))
         except ValueError:
             tooltip(t('reader_connection_note_invalid'))
             return
@@ -104,7 +109,8 @@ class PdfDestinationDialog(QDialog):
                                                count_current_page=False, persist_usage=False)
             if location.page > maximum_reference_page(status):
                 raise ValueError('Destination page is locked')
-            selected = {**snapshot, 'page': location.page, 'scroll_ratio': location.scroll_ratio, 'page_y': point}
+            selected = {**snapshot, 'page': location.page, 'scroll_ratio': location.scroll_ratio, 'page_y': point,
+                        'passage': passage}
             if self.note_editor is not None:
                 selected['connection_note'] = note
             return selected

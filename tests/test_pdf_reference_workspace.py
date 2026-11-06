@@ -151,6 +151,112 @@ def test_preview_request_does_not_cancel_a_pending_pinned_reader(workspace, monk
     assert opened == [7, 8]
 
 
+def test_source_reveal_reuses_matching_open_pdf_and_rejects_stale_profile(workspace):
+    module, calls = workspace.module, []
+    view = SimpleNamespace(page=lambda: SimpleNamespace(runJavaScript=lambda script, callback: (calls.append(script), callback(True))), setFocus=lambda: None)
+    dock = SimpleNamespace(_view=view, _reader_location={'profile': 'A'},
+        show=lambda: None, isVisible=lambda: True)
+    service = SimpleNamespace(_pdf_dock=dock, _current_pdf_card_id=7, _current_pdf_filename='book.pdf')
+    snapshot = {'card_id': 7, 'filename': 'book.pdf', 'path': '/unused/book.pdf'}
+    assert module._reveal_open_source(snapshot, 'A', 3, .4, .2, 'Exact passage', service=service)
+    payload = json.loads(calls[0].split('?.(')[1].removesuffix(');'))
+    assert payload == dict(cardId=7, page=3, scrollRatio=.4, pageY=.2, excerpt='Exact passage')
+    assert not module._reveal_open_source(snapshot, 'B', 3, .4, .2, 'Exact passage', service=service)
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize('same_document', [False, True], ids=['another-pdf-open', 'viewer-not-ready'])
+@pytest.mark.parametrize('focused', [False, True], ids=['dock', 'focus-window'])
+def test_show_source_loads_existing_left_pdf_instead_of_creating_a_window(workspace, same_document, focused):
+    module, callbacks, loaded = workspace.module, [], []
+    page = SimpleNamespace(runJavaScript=lambda script, callback: callbacks.append(callback))
+    view = SimpleNamespace(page=lambda: page, setFocus=lambda: None)
+    dock = SimpleNamespace(_view=view, _reader_location={'profile': 'A', 'zoom': 1.5},
+        show=lambda: None, isVisible=lambda: not focused)
+    service = SimpleNamespace(_pdf_dock=dock, _current_pdf_card_id=7 if same_document else 99,
+        _current_pdf_filename='book.pdf' if same_document else 'other.pdf',
+        _pdf_reader_is_visible=lambda: True,
+        show_pdf_in_dock=lambda *args, **kwargs: loaded.append((args, kwargs)))
+    snapshot = {'card_id': 7, 'filename': 'book.pdf', 'path': '/unused/book.pdf'}
+    assert module._reveal_open_source(snapshot, 'A', 3, .4, .2, 'Exact passage', service=service)
+    if same_document:
+        assert not loaded
+        callbacks.pop()(False)
+    assert len(loaded) == 1
+    args, options = loaded[0]
+    assert args == (7, 'book.pdf', 3, 1.5)
+    assert options['jump_excerpt'] == 'Exact passage'
+    assert options['scroll_ratio_override'] == .4 and options['page_y_override'] == .2
+    assert not options['offer_due_review_prompt']
+    assert service._pdf_dock is dock and not module._windows and not workspace.pending
+
+
+@pytest.mark.parametrize('retire', ['profile', 'document', 'origin', 'close'])
+def test_unready_pdf_source_callback_cannot_replace_a_newer_or_closed_reader(workspace, retire):
+    module, callbacks, loaded, alive, visible = workspace.module, [], [], [True], [True]
+    view = SimpleNamespace(page=lambda: SimpleNamespace(runJavaScript=lambda script, callback: callbacks.append(callback)), setFocus=lambda: None)
+    dock = SimpleNamespace(_view=view, _reader_location={'profile': 'A'},
+        show=lambda: None, isVisible=lambda: visible[0])
+    service = SimpleNamespace(_pdf_dock=dock, _current_pdf_card_id=7, _current_pdf_filename='book.pdf',
+        show_pdf_in_dock=lambda *args, **kwargs: loaded.append(args))
+    snapshot = {'card_id': 7, 'filename': 'book.pdf', 'path': '/unused/book.pdf'}
+    assert module._reveal_open_source(snapshot, 'A', 3, .4, .2, 'Exact passage',
+        service=service, is_current=lambda: alive[0])
+    if retire == 'profile':
+        workspace.profile[0] = 'B'
+    elif retire == 'document':
+        service._current_pdf_card_id = 99
+    elif retire == 'close':
+        visible[0] = False
+    else:
+        alive[0] = False
+    callbacks.pop()(False)
+    assert not loaded and not module._windows and not workspace.pending
+
+
+def test_unready_matching_side_pdf_reloads_inside_the_same_window(workspace):
+    from pdf_reader_state import PdfReaderState
+    module, callbacks, loaded = workspace.module, [], []
+    state = PdfReaderState('A', 7, 'book.pdf', page=1)
+    window = SimpleNamespace(state=state, _source_path='/unused/book.pdf', isVisible=lambda: True,
+        page=SimpleNamespace(runJavaScript=lambda script, callback: callbacks.append(callback)),
+        view=SimpleNamespace(setFocus=lambda: None),
+        reload_reader=lambda result, **kwargs: loaded.append((result, kwargs)))
+    module._windows.append(window)
+    service = SimpleNamespace(_pdf_dock=None, _initial_pdf_annotation_result=lambda *args: {'reader_path': args[-1]})
+    snapshot = {'card_id': 7, 'filename': 'book.pdf', 'path': '/unused/book.pdf'}
+    assert module._reveal_open_source(snapshot, 'A', 3, .4, .2, 'Exact passage', service=service, maximum=8)
+    callbacks.pop()(None)
+    assert module._windows == [window] and not workspace.pending
+    assert (state.page, state.scroll_ratio, state.max_page) == (3, .4, 8)
+    assert loaded == [({'reader_path': '/unused/book.pdf'}, {'excerpt': 'Exact passage', 'page_y': .2})]
+
+
+def test_source_request_reuses_main_reader_before_considering_another_window(workspace, monkeypatch):
+    module, opened = workspace.module, []
+    dock = SimpleNamespace(_reader_location={'profile': 'A'}, isVisible=lambda: True,
+        _view=SimpleNamespace(setFocus=lambda: None))
+    service = SimpleNamespace(_pdf_dock=dock, _current_pdf_card_id=99, _current_pdf_filename='other.pdf',
+        show_pdf_in_dock=lambda *args, **kwargs: opened.append(args))
+    reveal = module._reveal_open_source
+    monkeypatch.setattr(module, '_reveal_open_source', lambda *args, **kwargs: reveal(*args, service=service, **kwargs))
+    monkeypatch.setattr(module, 'ReferenceWindow', lambda *args, **kwargs: pytest.fail('Must reuse the left pane'))
+    module.open_reference(7, 3, excerpt='Exact passage', reuse_source=True, beside=True)
+    workspace.pending.pop().options['success'](({'card_id': 7, 'filename': 'book.pdf'}, 10))
+    assert opened == [(7, 'book.pdf', 3, 1)]
+    assert not module._windows
+
+
+def test_source_preview_drops_result_after_the_collection_changes(workspace, monkeypatch):
+    module, opened = workspace.module, []
+    module.mw.col = object()
+    monkeypatch.setattr(module, 'ReferenceWindow', lambda *args, **kwargs: opened.append(kwargs))
+    module.open_reference(7)
+    module.mw.col = object()
+    workspace.pending[0].options['success'](({'card_id': 7}, 10))
+    assert not opened
+
+
 def test_deleted_or_relinked_reference_cannot_copy_a_misleading_citation(workspace, monkeypatch):
     from pdf_reader_state import PdfReaderState
     module, copied = workspace.module, []
@@ -368,3 +474,16 @@ def test_pending_pdf_windows_are_bounded_and_profile_close_cancels_all(workspace
     assert opened == []
     module.open_reference(7, new_window=True)
     assert len(workspace.pending) == 9, 'Closing the profile releases pending reservations'
+
+
+def test_grouped_source_reveal_can_reuse_a_reader_at_the_tab_limit(workspace, monkeypatch):
+    module = workspace.module
+    monkeypatch.setattr(module, 'mw', SimpleNamespace(
+        _incremento_workspace_layouts=SimpleNamespace(tabbed=True), col=object()))
+    monkeypatch.setattr(module, '_windows', [object() for _ in range(8)])
+    revealed = []
+    monkeypatch.setattr(module, '_reveal_open_source', lambda *a, **kw: revealed.append(a) or True)
+    module.open_reference(7, 3, reuse_source=True)
+    assert len(workspace.pending) == 1, 'Reusing an open source does not need another reader slot'
+    workspace.pending[0].options['success'](({'card_id': 7}, 10))
+    assert len(revealed) == 1 and not module._pending_windows

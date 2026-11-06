@@ -107,6 +107,30 @@ def test_wrap_selection_text_uses_placeholder_for_empty_selection():
     assert writing_dock._wrap_selection_text("", "**", "**", "bold") == "**bold**"
 
 
+def test_publishing_link_escapes_markdown_and_rejects_unsafe_targets():
+    assert writing_dock._markdown_reference('A [label]', 'https://example.test/a(b)') == (
+        '[A \\[label\\]](<https://example.test/a%28b%29>)'
+    )
+    assert writing_dock._markdown_reference('Cover', 'https://example.test/cover.png', image=True) == (
+        '![Cover](<https://example.test/cover.png>)'
+    )
+    for target in ('javascript:alert(1)', 'file:///private/example', 'https://user:secret@example.test',
+                   'https://example.test/\nunsafe', 'https://example.test/<script>'):
+        with pytest.raises(ValueError):
+            writing_dock._markdown_reference('Label', target)
+
+
+def test_translation_url_preserves_text_and_refuses_empty_or_oversized_passages():
+    from urllib.parse import parse_qs, urlsplit
+    text = 'Čitanje & writing\n下一行'
+    url = writing_dock._writing_translation_url(text)
+    assert urlsplit(url).netloc == 'translate.google.com'
+    assert parse_qs(urlsplit(url).query)['text'] == [text]
+    for text in ('', '  ', 'a' * 1001, '\ud800'):
+        with pytest.raises(ValueError):
+            writing_dock._writing_translation_url(text)
+
+
 def test_wrap_selection_text_normalizes_multiline_selection():
     assert writing_dock._wrap_selection_text("first\u2029second", "*", "*", "x") == "*first\nsecond*"
 
@@ -256,3 +280,9 @@ def test_pinned_writing_is_not_replaced_by_another_writing_review(monkeypatch):
     monkeypatch.setattr(writing_dock, 'show_writing_in_dock', lambda *args: opened.append(args))
     writing_dock.on_writing_question_shown(SimpleNamespace(id=22, nid=22))
     assert opened == []
+
+
+def test_source_anchors_are_not_counted_as_written_words():
+    text = 'Two words\n<!-- incremento-excerpt:' + 'a' * 32 + ' -->'
+    assert writing_dock._count_words(text, 'simple') == 2
+    assert writing_dock._count_words(text, 'word_like') == 2

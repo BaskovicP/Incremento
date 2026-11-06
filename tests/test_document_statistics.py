@@ -59,6 +59,8 @@ def library(tmp_path, monkeypatch):
     supplemental.executescript("CREATE TABLE pdf_progress(card_id, read_page); INSERT INTO pdf_progress VALUES(1, 26); "
                               "CREATE TABLE epub_progress(card_id, read_section_index, is_finished, read_anchor_json); "
                               "INSERT INTO epub_progress VALUES(2, 1, 0, '');")
+    supplemental.executescript("CREATE TABLE content_items(card_id,content_id); "
+        "CREATE TABLE document_coverage(document_key,kind,filename,position,viewed_json,read_json,unread_json);")
     profiles = []
     def connection(addon_dir, profile):
         profiles.append((addon_dir, profile))
@@ -87,6 +89,16 @@ def test_library_includes_unopened_and_missing_documents_with_honest_unknowns(li
     assert all(row["percent"] is None for row in rows[2:])
     assert profiles and set(profiles) == {(str(root), "Synthetic")}
     assert len(reads) == 1 and str(reads[0]).endswith("Synthetic/pdfs/book.pdf")
+
+
+def test_bookshelf_summary_includes_non_linear_views_and_confirmed_ranges(library):
+    collection, _, _, root = library
+    conn = documents.get_connection(str(root), 'Synthetic')
+    conn.execute("INSERT INTO document_coverage VALUES('card:1','pdf','book.pdf',0,'[[90,100]]','[[90,95]]','[]')")
+    rows = documents.document_progress_from_collection(collection, str(root), 'Synthetic', card_ids=[1])
+    assert rows[0]['viewed'] == 36
+    assert rows[0]['marked'] == rows[0]['read'] == 31
+    assert rows[0]['percent'] == 31
 
 
 def test_library_fails_closed_on_cancellation_and_symlink_escape(library):

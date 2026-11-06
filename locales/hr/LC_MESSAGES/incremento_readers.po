@@ -3945,6 +3945,42 @@ msgstr "Posloži okomito"
 msgid "workspace_grid"
 msgstr "Mreža"
 
+msgid "workspace_tabs"
+msgstr "Grupiraj u kartice"
+
+msgid "workspace_close_tab"
+msgstr "Zatvori karticu"
+
+msgid "workspace_rename_tab"
+msgstr "Preimenuj karticu…"
+
+msgid "workspace_reset_tab_name"
+msgstr "Vrati izvorni naziv kartice"
+
+msgid "workspace_resize_tabs"
+msgstr "Promijeni veličinu kartica…"
+
+msgid "workspace_reset_tab_size"
+msgstr "Vrati veličinu kartica"
+
+msgid "workspace_tab_color"
+msgstr "Boja kartice…"
+
+msgid "workspace_reset_tab_color"
+msgstr "Vrati boju kartice"
+
+msgid "workspace_tab_width"
+msgstr "Širina (px):"
+
+msgid "workspace_tab_height"
+msgstr "Visina (px):"
+
+msgid "workspace_tab_size_help"
+msgstr "Primjenjuje se na sve kartice u ovoj grupi, uključujući novootvorene kartice."
+
+msgid "workspace_tab_name"
+msgstr "Naziv kartice (do 80 znakova):"
+
 msgid "workspace_restore"
 msgstr "Vrati prethodni raspored"
 
@@ -4012,7 +4048,7 @@ msgid "workspace_choose_writing"
 msgstr "Odaberi karticu za pisanje. Ostaje otvorena uz dokument tijekom učenja."
 
 msgid "workspace_no_writing"
-msgstr "Još nema kartica za pisanje. Izradi je pomoću Novo pisanje…, a zatim je ovdje odaberi."
+msgstr "Još nema kartica za pisanje. Najprije izradite karticu pisanja, a zatim se vratite ovdje."
 
 msgid "workspace_writing_limit"
 msgstr "Prikazano je prvih {count} kartica za pisanje. Ostale pronađi pomoću Brzog otvaranja sadržaja."
@@ -4044,7 +4080,7 @@ msgid "workspace_drag_title"
 msgstr "Premjesti panel"
 
 msgid "workspace_drag_hint"
-msgstr "Povuci naslovnu traku do ruba zaslona za polovicu, do kuta za četvrtinu ili do ruba drugog panela za spajanje. Escape odustaje."
+msgstr "Povuci naslovnu traku u sredinu drugog panela za grupiranje u kartice ili do njegova ruba za podjelu. Rubovi zaslona koriste polovice, a kutovi četvrtine. Escape odustaje."
 
 msgid "workspace_float"
 msgstr "Odvoji / usidri prozor"
@@ -4300,6 +4336,9 @@ msgstr "Poredaj po:"
 
 msgid "reader_bookshelf_sort_title"
 msgstr "Naslov (A–Ž)"
+
+msgid "reader_bookshelf_sort_last_added"
+msgstr "Zadnje dodano (najnovije prvo)"
 
 msgid "reader_bookshelf_sort_priority"
 msgstr "Prioritet (najvažnije prvo)"
@@ -4961,3 +5000,243 @@ msgstr "Broj stranica"
 
 msgid "reader_bookshelf_display_priority"
 msgstr "Prioritet"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_send_excerpt"
+msgstr "Pošalji u Pisanje"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_send_excerpt_hint"
+msgstr "Odaberite odlomak, a zatim odredišnu karticu pisanja."
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_backlinks"
+msgstr "Odlomci u pisanju"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_sources"
+msgstr "Izvori"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_preview"
+msgstr "Prikaži izvor"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_jump"
+msgstr "Idi na odlomak"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_unlink"
+msgstr "Ukloni poveznicu"
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_missing"
+msgstr "Sidro ovog odlomka uklonjeno je iz teksta pisanja."
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_failed"
+msgstr "Poveznicu odlomka nije moguće učitati ili spremiti. Vaš tekst pisanja je sačuvan."
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_excerpt_none"
+msgstr "Nijedan odlomak pisanja nije povezan s ovim mjestom."
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_send_excerpt_limit"
+msgstr "Za slanje u Pisanje odaberite najviše 2.000 znakova."
+
+#: frontend/writing_excerpt_ui.py
+msgid "writing_choose_destination"
+msgstr "Pošalji na drugu karticu za pisanje…"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_coverage_summary"
+msgstr "Pregledano {viewed}% · Označeno pročitanim {marked}%"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_coverage_unavailable"
+msgstr "Podaci o pregledanom sadržaju nisu dostupni"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_coverage_accessible"
+msgstr "Pregledanost dokumenta"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_page_read"
+msgstr "Označi ovu stranicu pročitanom"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_page_unread"
+msgstr "Ukloni oznaku pročitanosti ove stranice"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_range_read"
+msgstr "Označi stranice pročitanima…"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_page_range_prompt"
+msgstr "Stranica ili raspon (na primjer, 5–12):"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_passage_read"
+msgstr "Označi ovaj odlomak pročitanim"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_passage_unread"
+msgstr "Ukloni oznaku pročitanosti ovog odlomka"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_mark_section_read"
+msgstr "Označi ovaj odjeljak pročitanim"
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_passage_unavailable"
+msgstr "Otvorena je spremljena pozicija; točan odlomak nije pronađen."
+
+#. Passage navigation and non-linear document coverage.
+msgid "reader_return_document"
+msgstr "Povratak na prethodni dokument i poziciju"
+
+#. Document coverage and the separate linear marker.
+msgid "reader_coverage_viewed"
+msgstr "Pregledano {percent}%"
+
+#. Document coverage and the separate linear marker.
+msgid "reader_coverage_marked"
+msgstr "Označeno pročitanim {percent}%"
+
+#. Document coverage and the separate linear marker.
+msgid "reader_linear_progress"
+msgstr "Pročitano do ovdje {percent}%"
+
+msgid "workspace_switch_tabs"
+msgstr "Pronađi karticu…"
+
+msgid "workspace_find_tabs"
+msgstr "Traži naslove, vrste, izvore ili grupe"
+
+msgid "workspace_reopen_tab"
+msgstr "Ponovno otvori zatvorenu karticu"
+
+msgid "workspace_next_tab"
+msgstr "Sljedeća kartica"
+
+msgid "workspace_previous_tab"
+msgstr "Prethodna kartica"
+
+msgid "workspace_pin_tab"
+msgstr "Prikvači karticu"
+
+msgid "workspace_pinned"
+msgstr "Prikvačeno"
+
+msgid "workspace_adaptive_tabs"
+msgstr "Prilagodi kartice dostupnom prostoru"
+
+msgid "workspace_move_to_group"
+msgstr "Premjesti u grupu"
+
+msgid "workspace_new_group"
+msgstr "Nova grupa…"
+
+msgid "workspace_group_name"
+msgstr "Naziv grupe (do 80 znakova):"
+
+msgid "workspace_ungroup_tab"
+msgstr "Ukloni iz grupe"
+
+msgid "workspace_collapse_group"
+msgstr "Sažmi grupu"
+
+msgid "workspace_expand_group"
+msgstr "Proširi grupu"
+
+msgid "workspace_group_summary"
+msgstr "▸ {name} ({count}) — {title}"
+
+msgid "workspace_group_label"
+msgstr "{name} · {title}"
+
+msgid "workspace_close_others"
+msgstr "Zatvori ostale kartice"
+
+msgid "workspace_close_right"
+msgstr "Zatvori kartice desno"
+
+msgid "workspace_close_unpinned"
+msgstr "Zatvori neprikvačene kartice"
+
+msgid "workspace_restore_session"
+msgstr "Vrati prethodnu sesiju kartica"
+
+msgid "workspace_restore_on_startup"
+msgstr "Pri otvaranju profila vrati kartice iz prethodne sesije"
+
+msgid "workspace_jump_to_tab"
+msgstr "Idi na karticu"
+
+msgid "workspace_page"
+msgstr "Stranica {number}"
+
+msgid "workspace_section"
+msgstr "Odjeljak {number}"
+
+msgid "workspace_status_loading"
+msgstr "Učitavanje…"
+
+msgid "workspace_status_failed"
+msgstr "Učitavanje ili spremanje nije uspjelo. Otvori karticu za pojedinosti."
+
+msgid "workspace_status_unsaved"
+msgstr "Nespremljene promjene"
+
+msgid "workspace_kind_pdf"
+msgstr "PDF"
+
+msgid "workspace_kind_epub"
+msgstr "EPUB"
+
+msgid "workspace_kind_search"
+msgstr "Preglednik"
+
+msgid "workspace_kind_web"
+msgstr "Web"
+
+msgid "workspace_kind_writing"
+msgstr "Pisanje"
+
+msgid "workspace_kind_video"
+msgstr "Video"
+
+msgid "workspace_kind_add_card"
+msgstr "Dodaj karticu"
+
+msgid "workspace_kind_local_file"
+msgstr "Lokalna datoteka"
+
+msgid "workspace_tab_1"
+msgstr "Kartica 1"
+
+msgid "workspace_tab_2"
+msgstr "Kartica 2"
+
+msgid "workspace_tab_3"
+msgstr "Kartica 3"
+
+msgid "workspace_tab_4"
+msgstr "Kartica 4"
+
+msgid "workspace_tab_5"
+msgstr "Kartica 5"
+
+msgid "workspace_tab_6"
+msgstr "Kartica 6"
+
+msgid "workspace_tab_7"
+msgstr "Kartica 7"
+
+msgid "workspace_tab_8"
+msgstr "Kartica 8"
+
+msgid "workspace_tab_9"
+msgstr "Kartica 9"

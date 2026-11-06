@@ -92,7 +92,7 @@ def test_pdf_annotation_palette_recolors_and_dismisses_without_losing_metadata(t
             page.get_by_role('button', name='Zoom in', exact=True).click()
             page.get_by_role('button', name='Fit Width', exact=True).click()
             expect_fitted()
-            assert page.evaluate("testCommands.at(-1)") == 'incremento_pdf_zoom:42:1'
+            assert page.evaluate("testCommands.filter(c => c.startsWith('incremento_pdf_zoom:')).at(-1)") == 'incremento_pdf_zoom:42:1'
             page.get_by_role('button', name='Show controls', exact=True).click()
             page.get_by_role('button', name='Fit Width', exact=True).click()
             expect_fitted()
@@ -131,6 +131,25 @@ def test_pdf_annotation_palette_recolors_and_dismisses_without_losing_metadata(t
             hover_passage(note)
             expect_actions(0, False)
             expect_actions(1, True)
+            expect(page.get_by_role('tooltip')).to_have_text('Keep this note')
+            # A saved note must leave the underlying PDF selectable, including
+            # a partial quote for the native selected-text search menu.
+            word = note.evaluate("""node => {
+                const range = document.createRange();
+                range.setStart(node.firstChild, 0); range.setEnd(node.firstChild, 9);
+                const r = range.getBoundingClientRect();
+                return {x: r.x, y: r.y + r.height * .65, width: r.width};
+            }""")
+            page.mouse.move(word['x'] + .5, word['y'])
+            page.mouse.down()
+            page.mouse.move(word['x'] + word['width'] - .5, word['y'], steps=8)
+            page.mouse.up()
+            assert page.evaluate('getSelection().toString()') == 'Highlight', 'Note overlays must not intercept text selection'
+            expect(page.get_by_role('tooltip')).not_to_be_visible()
+            expect(page.get_by_role('dialog', name='Annotation appearance', exact=True)).not_to_be_visible()
+            page.mouse.click(word['x'] + 2, word['y'], button='right')
+            assert page.evaluate('getSelection().toString()') == 'Highlight', 'Right-click search must retain the selected quote'
+            page.evaluate('getSelection().removeAllRanges()')
             hover_passage(text)
             for button in clusters.first.get_by_role('button').all():
                 button.hover()
@@ -172,7 +191,7 @@ def test_pdf_annotation_palette_recolors_and_dismisses_without_losing_metadata(t
             assert len(updates) == 1
             assert json.loads(updates[0].split(':', 1)[1]) == {
                 'cardId': 42, 'highlight': dict(fixture['highlights'][0], color='blue')}
-            # Clicking the note's hover overlay must reach the same palette.
+            # Clicking noted text must still reach the same palette.
             note_text = page.locator('#pdf-text-layer span').filter(has_text='Highlight with a note')
             box = note_text.bounding_box()
             page.mouse.click(box['x'] + min(8, box['width'] / 2), box['y'] + box['height'] / 2)

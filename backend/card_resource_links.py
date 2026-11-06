@@ -3,11 +3,13 @@ from html import unescape
 import re
 
 try:
+    from .document_passages import encode_passage
     from .db import get_connection
     from .document_links import add_document_link, list_document_links, _identity, _SOURCE_MATCH
     from .recording_links import add_recording_link, normalize_source, validate_segment, list_recording_links
     from .study_resources import resolve_document, resolve_recording, note_field, file_signature
 except ImportError:
+    from document_passages import encode_passage
     from db import get_connection
     from document_links import add_document_link, list_document_links, _identity, _SOURCE_MATCH
     from recording_links import add_recording_link, normalize_source, validate_segment, list_recording_links
@@ -17,7 +19,7 @@ MAX_BATCH = 32
 MAX_LIBRARY = 500
 _RESTORE_COLUMNS = {
     'pdf': ('document_links', 'source_card_id,source_content_id,source_kind,source_page,quote,'
-            'target_card_id,target_content_id,target_page,target_scroll,source_y,target_y,connection_note'),
+            'target_card_id,target_content_id,target_page,target_scroll,source_y,target_y,connection_note,source_passage,target_passage'),
     'recording': ('recording_links', 'source_card_id,source_content_id,source_kind,source_position,source_json,'
                   'recording_card_id,recording_content_id,start,end,label'),
 }
@@ -126,9 +128,9 @@ def save_card_resource_links(addon_dir, profile, collection, card_id, selection,
                         (row['card_id'], row['page'], row['scroll'], row.get('page_y')) for d in documents):
                         raise ValueError('Resource location already linked')
                     cursor = conn.execute('UPDATE document_links SET target_card_id=?,target_content_id=?, '
-                        'target_page=?,target_scroll=?,target_y=?,quote=? WHERE id=? AND source_kind=\'card\' AND ' + _SOURCE_MATCH,
+                        'target_page=?,target_scroll=?,target_y=?,quote=?,target_passage=? WHERE id=? AND source_kind=\'card\' AND ' + _SOURCE_MATCH,
                         (row['card_id'], _identity(conn, row['card_id']), row['page'], row['scroll'],
-                         row.get('page_y'), row['label'], link_id, _identity(conn, card_id), card_id))
+                         row.get('page_y'), row['label'], encode_passage(row.get('passage')), link_id, _identity(conn, card_id), card_id))
                     if cursor.rowcount != 1:
                         raise ValueError('Link no longer available')
                 else:
@@ -138,7 +140,7 @@ def save_card_resource_links(addon_dir, profile, collection, card_id, selection,
                     link_id = duplicate['id'] if duplicate else add_document_link(addon_dir, profile,
                         source_card_id=card_id, source_kind='card', target_card_id=row['card_id'],
                         target_page=row['page'], target_scroll=row['scroll'], target_y=row.get('page_y'),
-                        quote=row['label'], _connection=conn)
+                        quote=row['label'], target_passage=row.get('passage'), _connection=conn)
                     documents = list_document_links(addon_dir, profile, card_id)
             elif link_id:
                 if not any(r['id'] == link_id for r in recordings):

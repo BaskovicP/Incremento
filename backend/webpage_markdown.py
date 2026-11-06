@@ -27,6 +27,8 @@ except ImportError:
 
 
 _BLOCK_TAGS = {
+    "html",
+    "h1", "h2", "h3", "h4", "h5", "h6",
     "article",
     "aside",
     "blockquote",
@@ -53,7 +55,7 @@ _BLOCK_TAGS = {
     "ul",
 }
 _VOID_TAGS = {"br", "hr", "img", "input", "meta", "link"}
-_ALWAYS_SKIP_TAGS = {"script", "style", "noscript", "template", "svg", "canvas", "iframe"}
+_ALWAYS_SKIP_TAGS = {"head", "title", "script", "style", "noscript", "template", "svg", "canvas", "iframe"}
 _MAIN_SCOPE_SKIP_TAGS = {"aside", "footer", "form", "header", "nav"}
 _NOISE_RE = re.compile(
     r"(cookie|banner|promo|advert|sidebar|comment|related|share|social|footer|header|menu|nav|subscribe)",
@@ -95,6 +97,7 @@ class _Node:
     attrs: dict[str, str] = field(default_factory=dict)
     children: list = field(default_factory=list)
     parent: "_Node | None" = None
+    render_image: bool = False
 
     def add_child(self, child) -> None:
         self.children.append(child)
@@ -173,10 +176,9 @@ def _iter_nodes(node: _Node):
 
 
 def _looks_hidden(node: _Node) -> bool:
-    hidden = str(node.attrs.get("hidden", "")).strip()
     style = str(node.attrs.get("style", "")).lower()
     aria = str(node.attrs.get("aria-hidden", "")).lower()
-    return bool(hidden) or "display:none" in style.replace(" ", "") or aria == "true"
+    return "hidden" in node.attrs or "display:none" in style.replace(" ", "") or aria == "true"
 
 
 def _is_noise_node(node: _Node, content_scope: str) -> bool:
@@ -245,9 +247,10 @@ def _pick_content_root(root: _Node, content_scope: str) -> _Node:
 
 def _render_inline(node, base_url: str) -> str:
     if isinstance(node, str):
-        return external_plain_text_to_markdown(_collapse_ws(node))
+        text = _collapse_ws(node)
+        return external_plain_text_to_markdown(text, max_chars=len(text))
 
-    if node.tag in _ALWAYS_SKIP_TAGS:
+    if node.tag in _ALWAYS_SKIP_TAGS or _looks_hidden(node):
         return ""
 
     if node.tag == "br":
@@ -272,12 +275,14 @@ def _render_inline(node, base_url: str) -> str:
         if not src:
             return ""
         target = _markdown_link_target(base_url, src)
+        if node.render_image and re.fullmatch(r"data:image/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/]*={0,2}", src):
+            target = src
         if not target:
             return ""
         alt = external_plain_text_to_markdown(
             _collapse_ws(node.attrs.get("alt", "")) or "image"
         )
-        return f"[Image: {alt}](<{target}>)"
+        return f"![{alt}](<{target}>)" if node.render_image else f"[Image: {alt}](<{target}>)"
 
     parts = []
     for child in node.children:
@@ -328,6 +333,7 @@ def _render_list(node: _Node, base_url: str, ordered: bool, level: int, content_
 def _render_block(node: _Node, base_url: str, content_scope: str, level: int = 0) -> str:
     if isinstance(node, str):
         text = _collapse_ws(node)
+        text = external_plain_text_to_markdown(text, max_chars=len(text))
         return f"{text}\n\n" if text else ""
 
     if _is_noise_node(node, content_scope):
@@ -386,8 +392,13 @@ def _render_block(node: _Node, base_url: str, content_scope: str, level: int = 0
                     cell_text = _collapse_ws(" ".join(_render_inline(child, base_url) for child in cell.children))
                     cols.append(cell_text)
                 if cols:
-                    rows.append(" | ".join(cols))
-        return "\n".join(rows) + ("\n\n" if rows else "")
+                    rows.append(cols)
+        if not rows:
+            return ""
+        width = max(len(row) for row in rows)
+        lines = [" | ".join(row + [""] * (width - len(row))) for row in rows]
+        lines.insert(1, " | ".join(["---"] * width))
+        return "\n".join(lines) + "\n\n"
 
     if node.tag == "img":
         inline = _render_inline(node, base_url)
@@ -401,6 +412,9 @@ def _render_block(node: _Node, base_url: str, content_scope: str, level: int = 0
     inline_parts = []
     for child in node.children:
         if isinstance(child, _Node) and child.tag in _BLOCK_TAGS:
+            if inline_parts:
+                pieces.append(_collapse_ws(" ".join(inline_parts)) + "\n\n")
+                inline_parts = []
             piece = _render_block(child, base_url, content_scope, level)
             if piece:
                 pieces.append(piece)
@@ -409,7 +423,7 @@ def _render_block(node: _Node, base_url: str, content_scope: str, level: int = 0
             if inline:
                 inline_parts.append(inline)
     if inline_parts:
-        pieces.insert(0, _collapse_ws(" ".join(inline_parts)) + "\n\n")
+        pieces.append(_collapse_ws(" ".join(inline_parts)) + "\n\n")
     return "".join(pieces)
 
 
@@ -455,6 +469,7 @@ def convert_webpage_html_to_markdown(
     *,
     title: str = "",
     content_scope: str = "main",
+    include_images: bool = False,
 ) -> dict:
     clean_url = _normalize_http_url(url)
     clean_html = str(html or "").strip()
@@ -468,6 +483,12 @@ def convert_webpage_html_to_markdown(
 
     resolved_title = _extract_document_title(parser.root, fallback=title)
     content_root = _pick_content_root(parser.root, scope)
+    if include_images:
+        pending = [content_root]
+        while pending:
+            node = pending.pop()
+            node.render_image = True
+            pending.extend(child for child in node.children if isinstance(child, _Node))
     markdown = _clean_markdown(_render_block(content_root, clean_url, scope))
     if not markdown:
         markdown = _clean_markdown(

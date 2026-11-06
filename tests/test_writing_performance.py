@@ -56,7 +56,8 @@ def test_profile_teardown_invalidates_saved_file_cache(monkeypatch):
 
 def test_snapshot_writes_capture_profile_and_skip_unchanged_text(monkeypatch):
     monkeypatch.setattr(writing_dock, "_writing_persisted_state", {})
-    write, stats, progress = Mock(), Mock(), Mock()
+    write, stats, progress, links = Mock(), Mock(), Mock(), Mock()
+    monkeypatch.setattr(writing_dock, "_sync_excerpt_links", links)
     monkeypatch.setattr(writing_dock, "write_writing_text", write)
     monkeypatch.setattr(writing_dock, "set_writing_word_stats", stats)
     monkeypatch.setattr(writing_dock, "set_writing_progress", progress)
@@ -75,6 +76,7 @@ def test_snapshot_writes_capture_profile_and_skip_unchanged_text(monkeypatch):
     )
     assert writing_dock._write_writing_snapshot(snapshot)[0] == 2
     writing_dock._write_writing_snapshot(snapshot)
+    links.assert_called_once_with(writing_dock._ADDON_DIR, "Captured", 7, "two words")
     write.assert_called_once()
     assert write.call_args.kwargs["profile"] == "Captured"
     stats.assert_called_once()
@@ -84,7 +86,7 @@ def test_snapshot_writes_capture_profile_and_skip_unchanged_text(monkeypatch):
 
 def test_queued_snapshots_keep_first_baseline_across_midnight(monkeypatch):
     monkeypatch.setattr(writing_dock, "_writing_persisted_state", {})
-    for name in ("write_writing_text", "set_writing_word_stats", "set_writing_progress"):
+    for name in ("write_writing_text", "set_writing_word_stats", "set_writing_progress", "_sync_excerpt_links"):
         monkeypatch.setattr(writing_dock, name, Mock())
     snapshot = ("Captured", 7, "writing/a.md", "two words", {}, "2026-10-26", "2026-10-25", 0, {}, 1)
     assert writing_dock._write_writing_snapshot(snapshot) == (2, "2026-10-26", 2)
@@ -94,7 +96,7 @@ def test_queued_snapshots_keep_first_baseline_across_midnight(monkeypatch):
 
 def test_unchanged_text_recounts_after_word_count_setting_changes(monkeypatch):
     monkeypatch.setattr(writing_dock, "_writing_persisted_state", {})
-    for name in ("write_writing_text", "set_writing_word_stats", "set_writing_progress"):
+    for name in ("write_writing_text", "set_writing_word_stats", "set_writing_progress", "_sync_excerpt_links"):
         monkeypatch.setattr(writing_dock, name, Mock())
     snapshot = ("Captured", 7, "writing/a.md", "Hello --- world", {}, "2026-10-26", "2026-10-26", 0, {}, 1)
     assert writing_dock._write_writing_snapshot(snapshot)[0] == 3

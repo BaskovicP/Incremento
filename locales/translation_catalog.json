@@ -5701,6 +5701,46 @@
     },
     {
       "component": "addon",
+      "key": "imports_export_document",
+      "form": "",
+      "source": "Export Document…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_export_document_saved",
+      "form": "",
+      "source": "Document exported.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_export_html_filter",
+      "form": "",
+      "source": "HTML document (*.html)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_export_markdown_filter",
+      "form": "",
+      "source": "Markdown document (*.md)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_export_text_filter",
+      "form": "",
+      "source": "Plain text (*.txt)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_extract_create",
       "form": "",
       "source": "Create Card",
@@ -7901,6 +7941,14 @@
     },
     {
       "component": "addon",
+      "key": "imports_webpage_browser_capture_required",
+      "form": "",
+      "source": "Open the page in your browser and use Companion → Save for offline reading.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_webpage_browser_handoff_failed",
       "form": "",
       "source": "Automatic browser capture did not finish. Keep Incremento Companion enabled and allow access to this site, then try again.",
@@ -7981,6 +8029,32 @@
     },
     {
       "component": "addon",
+      "key": "imports_webpage_capture_preview",
+      "form": "",
+      "source": "Capture and preview",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_capture_ready",
+      "form": "",
+      "source": "Ready to save. Images unavailable or unsupported: {count}. Preview shows text only.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_capturing",
+      "form": "",
+      "source": "Capturing webpage and images…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_webpage_card_title_label",
       "form": "",
       "source": "Card title:",
@@ -7989,9 +8063,19 @@
     },
     {
       "component": "addon",
+      "key": "imports_webpage_cleanup_count",
+      "form": "",
+      "source": "Removed: {count}",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_webpage_cleanup_help",
       "form": "",
-      "source": "Click unwanted elements to hide them. Shift-click removes their parent container. Undo restores the last removal; Reset restores everything. Turn Zap off to select text. Only loaded content is included.",
+      "source": "With Zap on, hover to see the red outline, then click to remove. Hold Shift to target a larger area. Undo or Restore all to recover. Keyboard: arrows choose an area, Delete removes it, Esc leaves Zap.",
       "tokens": [],
       "markup": []
     },
@@ -8007,7 +8091,7 @@
       "component": "addon",
       "key": "imports_webpage_cleanup_reset",
       "form": "",
-      "source": "Reset",
+      "source": "Restore all",
       "tokens": [],
       "markup": []
     },
@@ -8045,6 +8129,42 @@
     },
     {
       "component": "addon",
+      "key": "imports_webpage_document",
+      "form": "",
+      "source": "Save Webpage for Offline Reading…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_document_description",
+      "form": "",
+      "source": "Choose an HTML snapshot to preserve the webpage’s captured layout, styling, and images, or a reflowable reading copy. Preview before saving. For sign-in or JavaScript pages, use Companion. PDF remains available under Webpage to PDF.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_document_failed",
+      "form": "",
+      "source": "Capture failed: {error}",
+      "tokens": [
+        "{error}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_document_saved",
+      "form": "",
+      "source": "Saved offline: {title}",
+      "tokens": [
+        "{title}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_webpage_dynamic",
       "form": "",
       "source": "Load content added by JavaScript",
@@ -8061,6 +8181,14 @@
     },
     {
       "component": "addon",
+      "key": "imports_webpage_entire_page",
+      "form": "",
+      "source": "Entire page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_webpage_fetch_hint",
       "form": "",
       "source": "Fetches webpage content into markdown. Main content tries to ignore navigation and sidebars.",
@@ -8072,6 +8200,14 @@
       "key": "imports_webpage_generating_pdf",
       "form": "",
       "source": "Generating PDF…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_html_snapshot",
+      "form": "",
+      "source": "HTML snapshot — website appearance",
       "tokens": [],
       "markup": []
     },
@@ -8109,6 +8245,14 @@
     },
     {
       "component": "addon",
+      "key": "imports_webpage_main_content",
+      "form": "",
+      "source": "Main article",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_webpage_markdown",
       "form": "",
       "source": "Import webpage markdown",
@@ -8133,6 +8277,14 @@
     },
     {
       "component": "addon",
+      "key": "imports_webpage_open_document",
+      "form": "",
+      "source": "Open document",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_webpage_pdf_failed",
       "form": "",
       "source": "Failed to generate PDF.",
@@ -8151,9 +8303,33 @@
     },
     {
       "component": "addon",
+      "key": "imports_webpage_preview_failed",
+      "form": "",
+      "source": "Could not read the preview. Capture the page again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "imports_webpage_queue",
       "form": "",
       "source": "Webpage import queue",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_reading_copy",
+      "form": "",
+      "source": "Reading copy — reflowable Markdown",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_save_as",
+      "form": "",
+      "source": "Save as",
       "tokens": [],
       "markup": []
     },
@@ -8195,6 +8371,16 @@
       "form": "",
       "source": "Webpage scope:",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "imports_webpage_snapshot_ready",
+      "form": "",
+      "source": "HTML snapshot ready. Captured styling and images are shown. Unavailable images: {count}.",
+      "tokens": [
+        "{count}"
+      ],
       "markup": []
     },
     {
@@ -12134,6 +12320,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_bookshelf_sort_last_added",
+      "form": "",
+      "source": "Last added (newest first)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_bookshelf_sort_priority",
       "form": "",
       "source": "Priority (most important first)",
@@ -12801,6 +12995,53 @@
       "form": "",
       "source": "Copy Link to This Place",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_coverage_accessible",
+      "form": "",
+      "source": "Document coverage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_coverage_marked",
+      "form": "",
+      "source": "Marked read {percent}%",
+      "tokens": [
+        "{percent}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_coverage_summary",
+      "form": "",
+      "source": "Viewed {viewed}% · Marked read {marked}%",
+      "tokens": [
+        "{marked}",
+        "{viewed}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_coverage_unavailable",
+      "form": "",
+      "source": "Reading coverage unavailable",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_coverage_viewed",
+      "form": "",
+      "source": "Viewed {percent}%",
+      "tokens": [
+        "{percent}"
+      ],
       "markup": []
     },
     {
@@ -15194,6 +15435,16 @@
     },
     {
       "component": "addon",
+      "key": "reader_linear_progress",
+      "form": "",
+      "source": "Read to here {percent}%",
+      "tokens": [
+        "{percent}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_link_this_page",
       "form": "",
       "source": "Link this page…",
@@ -15236,9 +15487,57 @@
     },
     {
       "component": "addon",
+      "key": "reader_mark_page_read",
+      "form": "",
+      "source": "Mark this page read",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_mark_page_unread",
+      "form": "",
+      "source": "Unmark this page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_mark_passage_read",
+      "form": "",
+      "source": "Mark this passage read",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_mark_passage_unread",
+      "form": "",
+      "source": "Unmark this passage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_mark_range_read",
+      "form": "",
+      "source": "Mark pages read…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_mark_read_to_here",
       "form": "",
       "source": "Mark pages as read up to here without placing an exact marker",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_mark_section_read",
+      "form": "",
+      "source": "Mark this section read",
       "tokens": [],
       "markup": []
     },
@@ -18091,6 +18390,22 @@
     },
     {
       "component": "addon",
+      "key": "reader_page_range_prompt",
+      "form": "",
+      "source": "Page or range (for example, 5–12):",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_passage_unavailable",
+      "form": "",
+      "source": "Opened the saved location; the exact passage could not be matched.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_pdf_add_target_failed",
       "form": "",
       "source": "Could not read the current Add Card target.\n\n{error}",
@@ -20344,6 +20659,14 @@
       "key": "reader_render_error",
       "form": "",
       "source": "Could not render this PDF page.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "reader_return_document",
+      "form": "",
+      "source": "Return to the previous document and position",
       "tokens": [],
       "markup": []
     },
@@ -32737,6 +33060,118 @@
     },
     {
       "component": "addon",
+      "key": "shortcut_workspace_close_tab",
+      "form": "",
+      "source": "Close Workspace Tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_next_tab",
+      "form": "",
+      "source": "Next Workspace Tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_previous_tab",
+      "form": "",
+      "source": "Previous Workspace Tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_reopen_tab",
+      "form": "",
+      "source": "Reopen Closed Workspace Tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_switch_tabs",
+      "form": "",
+      "source": "Find Workspace Tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_1",
+      "form": "",
+      "source": "Workspace Tab 1",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_2",
+      "form": "",
+      "source": "Workspace Tab 2",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_3",
+      "form": "",
+      "source": "Workspace Tab 3",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_4",
+      "form": "",
+      "source": "Workspace Tab 4",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_5",
+      "form": "",
+      "source": "Workspace Tab 5",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_6",
+      "form": "",
+      "source": "Workspace Tab 6",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_7",
+      "form": "",
+      "source": "Workspace Tab 7",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_8",
+      "form": "",
+      "source": "Workspace Tab 8",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "shortcut_workspace_tab_9",
+      "form": "",
+      "source": "Workspace Tab 9",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "shortcut_youtube_video",
       "form": "",
       "source": "Add Video",
@@ -35972,6 +36407,14 @@
     },
     {
       "component": "addon",
+      "key": "workspace_adaptive_tabs",
+      "form": "",
+      "source": "Fit tabs to available space",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_bottom",
       "form": "",
       "source": "Bottom half",
@@ -36012,6 +36455,46 @@
     },
     {
       "component": "addon",
+      "key": "workspace_close_others",
+      "form": "",
+      "source": "Close other tabs",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_close_right",
+      "form": "",
+      "source": "Close tabs to the right",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_close_tab",
+      "form": "",
+      "source": "Close tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_close_unpinned",
+      "form": "",
+      "source": "Close unpinned tabs",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_collapse_group",
+      "form": "",
+      "source": "Collapse group",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_columns",
       "form": "",
       "source": "Side by side",
@@ -36040,7 +36523,7 @@
       "component": "addon",
       "key": "workspace_drag_hint",
       "form": "",
-      "source": "Drag this title bar to a screen edge for a half, a corner for a quarter, or another pane’s edge to dock beside it. Escape cancels.",
+      "source": "Drag this title bar to another pane’s centre to group as tabs, or its edge to split. Screen edges snap to halves and corners to quarters. Escape cancels.",
       "tokens": [],
       "markup": []
     },
@@ -36049,6 +36532,22 @@
       "key": "workspace_drag_title",
       "form": "",
       "source": "Move pane",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_expand_group",
+      "form": "",
+      "source": "Expand group",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_find_tabs",
+      "form": "",
+      "source": "Search titles, types, sources, or groups",
       "tokens": [],
       "markup": []
     },
@@ -36070,6 +36569,45 @@
     },
     {
       "component": "addon",
+      "key": "workspace_group_label",
+      "form": "",
+      "source": "{name} · {title}",
+      "tokens": [
+        "{name}",
+        "{title}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_group_name",
+      "form": "",
+      "source": "Group name (up to 80 characters):",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_group_summary",
+      "form": "",
+      "source": "▸ {name} ({count}) — {title}",
+      "tokens": [
+        "{count}",
+        "{name}",
+        "{title}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_jump_to_tab",
+      "form": "",
+      "source": "Go to tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_keep_open",
       "form": "",
       "source": "Keep open while studying",
@@ -36081,6 +36619,70 @@
       "key": "workspace_keep_open_hint",
       "form": "",
       "source": "Keep this writing card visible when reviewing other cards or leaving review. Closing the writing pane turns this off.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_add_card",
+      "form": "",
+      "source": "Add Card",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_epub",
+      "form": "",
+      "source": "EPUB",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_local_file",
+      "form": "",
+      "source": "Local file",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_pdf",
+      "form": "",
+      "source": "PDF",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_search",
+      "form": "",
+      "source": "Browser",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_video",
+      "form": "",
+      "source": "Video",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_web",
+      "form": "",
+      "source": "Web",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_kind_writing",
+      "form": "",
+      "source": "Writing",
       "tokens": [],
       "markup": []
     },
@@ -36144,6 +36746,14 @@
     },
     {
       "component": "addon",
+      "key": "workspace_move_to_group",
+      "form": "",
+      "source": "Move to group",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_name",
       "form": "",
       "source": "Workspace name (up to 80 characters):",
@@ -36160,6 +36770,14 @@
     },
     {
       "component": "addon",
+      "key": "workspace_new_group",
+      "form": "",
+      "source": "New group…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_new_writing",
       "form": "",
       "source": "New writing…",
@@ -36168,9 +36786,17 @@
     },
     {
       "component": "addon",
+      "key": "workspace_next_tab",
+      "form": "",
+      "source": "Next tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_no_writing",
       "form": "",
-      "source": "No writing cards yet. Create one with New writing…, then select it here.",
+      "source": "No writing cards yet. Create a writing card first, then return here.",
       "tokens": [],
       "markup": []
     },
@@ -36208,6 +36834,16 @@
     },
     {
       "component": "addon",
+      "key": "workspace_page",
+      "form": "",
+      "source": "Page {number}",
+      "tokens": [
+        "{number}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_pdf_window_limit",
       "form": "",
       "source": "Up to {count} PDF windows can be open at once. Close one before opening another.",
@@ -36218,9 +36854,49 @@
     },
     {
       "component": "addon",
+      "key": "workspace_pin_tab",
+      "form": "",
+      "source": "Pin tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_pinned",
+      "form": "",
+      "source": "Pinned",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_position",
       "form": "",
       "source": "Position window",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_previous_tab",
+      "form": "",
+      "source": "Previous tab",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_rename_tab",
+      "form": "",
+      "source": "Rename tab…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_reopen_tab",
+      "form": "",
+      "source": "Reopen closed tab",
       "tokens": [],
       "markup": []
     },
@@ -36236,9 +36912,57 @@
     },
     {
       "component": "addon",
+      "key": "workspace_reset_tab_color",
+      "form": "",
+      "source": "Reset tab color",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_reset_tab_name",
+      "form": "",
+      "source": "Reset tab name",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_reset_tab_size",
+      "form": "",
+      "source": "Reset tab size",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_resize_tabs",
+      "form": "",
+      "source": "Resize tabs…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_restore",
       "form": "",
       "source": "Restore previous layout",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_restore_on_startup",
+      "form": "",
+      "source": "Restore tabs from the last session when opening this profile",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_restore_session",
+      "form": "",
+      "source": "Restore last tab session",
       "tokens": [],
       "markup": []
     },
@@ -36292,6 +37016,168 @@
     },
     {
       "component": "addon",
+      "key": "workspace_section",
+      "form": "",
+      "source": "Section {number}",
+      "tokens": [
+        "{number}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_status_failed",
+      "form": "",
+      "source": "Could not load or save. Open this tab for details.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_status_loading",
+      "form": "",
+      "source": "Loading…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_status_unsaved",
+      "form": "",
+      "source": "Unsaved changes",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_switch_tabs",
+      "form": "",
+      "source": "Find tab…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_1",
+      "form": "",
+      "source": "Tab 1",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_2",
+      "form": "",
+      "source": "Tab 2",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_3",
+      "form": "",
+      "source": "Tab 3",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_4",
+      "form": "",
+      "source": "Tab 4",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_5",
+      "form": "",
+      "source": "Tab 5",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_6",
+      "form": "",
+      "source": "Tab 6",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_7",
+      "form": "",
+      "source": "Tab 7",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_8",
+      "form": "",
+      "source": "Tab 8",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_9",
+      "form": "",
+      "source": "Tab 9",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_color",
+      "form": "",
+      "source": "Tab color…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_height",
+      "form": "",
+      "source": "Height (px):",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_name",
+      "form": "",
+      "source": "Tab name (up to 80 characters):",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_size_help",
+      "form": "",
+      "source": "Applies to all tabs in this group, including newly opened tabs.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tab_width",
+      "form": "",
+      "source": "Width (px):",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_tabs",
+      "form": "",
+      "source": "Group as tabs",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "workspace_title",
       "form": "",
       "source": "Workspace",
@@ -36327,6 +37213,14 @@
       "key": "workspace_top_right",
       "form": "",
       "source": "Top right quarter",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "workspace_ungroup_tab",
+      "form": "",
+      "source": "Remove from group",
       "tokens": [],
       "markup": []
     },
@@ -36369,6 +37263,14 @@
       "key": "writing_add_content_hint",
       "form": "",
       "source": "Use Incremento → Add Content → Add to Markdown.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_add_tab",
+      "form": "",
+      "source": "New or open writing tab",
       "tokens": [],
       "markup": []
     },
@@ -36534,6 +37436,14 @@
     },
     {
       "component": "addon",
+      "key": "writing_choose_destination",
+      "form": "",
+      "source": "Send to another writing card…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_clear",
       "form": "",
       "source": "Clear",
@@ -36558,6 +37468,118 @@
     },
     {
       "component": "addon",
+      "key": "writing_draft_label",
+      "form": "",
+      "source": "Draft · Markdown",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_excerpt_backlinks",
+      "form": "",
+      "source": "Writing excerpts",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_excerpt_failed",
+      "form": "",
+      "source": "The excerpt link could not be loaded or saved. Your writing text is preserved.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_excerpt_jump",
+      "form": "",
+      "source": "Go to excerpt",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_excerpt_missing",
+      "form": "",
+      "source": "This excerpt anchor was removed from the writing text.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_excerpt_none",
+      "form": "",
+      "source": "No writing excerpts are linked to this place.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_excerpt_preview",
+      "form": "",
+      "source": "Show source",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_excerpt_sources",
+      "form": "",
+      "source": "Sources",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_excerpt_unlink",
+      "form": "",
+      "source": "Unlink",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_export",
+      "form": "",
+      "source": "Export",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_export_failed",
+      "form": "",
+      "source": "Could not export this draft. The draft is still open.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_export_html",
+      "form": "",
+      "source": "Web page (.html)…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_export_markdown",
+      "form": "",
+      "source": "Markdown (.md)…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_exported",
+      "form": "",
+      "source": "Draft exported",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_focus",
       "form": "",
       "source": "Focus",
@@ -36574,9 +37596,41 @@
     },
     {
       "component": "addon",
+      "key": "writing_heading_one",
+      "form": "",
+      "source": "Heading 1",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_heading_three",
+      "form": "",
+      "source": "Heading 3",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_heading_two",
+      "form": "",
+      "source": "Heading 2",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_horizontal_rule",
       "form": "",
       "source": "Horizontal rule",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_html_filter",
+      "form": "",
+      "source": "Web page (*.html)",
       "tokens": [],
       "markup": []
     },
@@ -36590,9 +37644,49 @@
     },
     {
       "component": "addon",
+      "key": "writing_inline_code",
+      "form": "",
+      "source": "Inline code",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_insert",
+      "form": "",
+      "source": "Insert",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_insert_heading",
       "form": "",
       "source": "Insert heading",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_insert_image",
+      "form": "",
+      "source": "Image from URL…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_insert_link",
+      "form": "",
+      "source": "Link",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_invalid_url",
+      "form": "",
+      "source": "Enter a valid HTTP(S) URL without credentials, whitespace, or angle brackets.",
       "tokens": [],
       "markup": []
     },
@@ -36673,6 +37767,14 @@
     },
     {
       "component": "addon",
+      "key": "writing_markdown_filter",
+      "form": "",
+      "source": "Markdown (*.md)",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_marker_line",
       "form": "",
       "source": "Marker {line}",
@@ -36694,6 +37796,14 @@
       "key": "writing_marker_unavailable",
       "form": "",
       "source": "Saved marker line is no longer available.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_more",
+      "form": "",
+      "source": "More",
       "tokens": [],
       "markup": []
     },
@@ -36726,6 +37836,22 @@
       "key": "writing_numbered_list",
       "form": "",
       "source": "Numbered list",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_open_tab",
+      "form": "",
+      "source": "Open writing…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_paragraph",
+      "form": "",
+      "source": "Paragraph",
       "tokens": [],
       "markup": []
     },
@@ -36787,6 +37913,14 @@
     },
     {
       "component": "addon",
+      "key": "writing_placeholder_text",
+      "form": "",
+      "source": "Text",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_preview_tooltip",
       "form": "",
       "source": "Show or hide the markdown preview",
@@ -36806,6 +37940,22 @@
       "key": "writing_quote",
       "form": "",
       "source": "Quote",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_redo",
+      "form": "",
+      "source": "Redo",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_reference_label",
+      "form": "",
+      "source": "Link text / image description:",
       "tokens": [],
       "markup": []
     },
@@ -36885,6 +38035,30 @@
     },
     {
       "component": "addon",
+      "key": "writing_send_excerpt",
+      "form": "",
+      "source": "Send to Writing",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_send_excerpt_hint",
+      "form": "",
+      "source": "Select a passage to choose its writing destination.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_send_excerpt_limit",
+      "form": "",
+      "source": "Select at most 2,000 characters to send to Writing.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_session",
       "form": "",
       "source": "Session",
@@ -36938,6 +38112,48 @@
     },
     {
       "component": "addon",
+      "key": "writing_strike",
+      "form": "",
+      "source": "Strikethrough",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_style",
+      "form": "",
+      "source": "Style",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_tab_limit",
+      "form": "",
+      "source": "Up to {count} writing tabs can stay open. Close a tab before opening another draft.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_table",
+      "form": "",
+      "source": "Table",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_tabs",
+      "form": "",
+      "source": "Writing drafts",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_title",
       "form": "",
       "source": "Writing",
@@ -36954,9 +38170,65 @@
     },
     {
       "component": "addon",
+      "key": "writing_translate",
+      "form": "",
+      "source": "Translate…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_translate_failed",
+      "form": "",
+      "source": "Could not open Google Translate in the selected Companion browser.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_translate_hint",
+      "form": "",
+      "source": "Review or edit the text below (1–1,000 characters). Open Google Translate sends this text to Google in your Companion browser and requires internet. Choose the target language there. Your draft stays unchanged.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_translate_open",
+      "form": "",
+      "source": "Open Google Translate",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_translate_passage",
+      "form": "",
+      "source": "Text to translate",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_undo",
+      "form": "",
+      "source": "Undo",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "writing_unknown_time",
       "form": "",
       "source": "Unknown time",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "writing_url_prompt",
+      "form": "",
+      "source": "HTTP(S) URL:",
       "tokens": [],
       "markup": []
     },
@@ -38031,6 +39303,14 @@
     },
     {
       "component": "extension",
+      "key": "document_kind",
+      "form": "",
+      "source": "document",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
       "key": "download_bookmarks",
       "form": "",
       "source": "Download bookmarks",
@@ -39098,7 +40378,7 @@
       "component": "extension",
       "key": "markdown_scope",
       "form": "",
-      "source": "Webpage markdown scope",
+      "source": "Webpage content scope",
       "tokens": [],
       "markup": []
     },
@@ -39219,6 +40499,48 @@
       "key": "note_type",
       "form": "",
       "source": "Note type",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "offline_html_snapshot",
+      "form": "",
+      "source": "HTML snapshot — website appearance",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "offline_images_omitted",
+      "form": "",
+      "source": "Saved offline. Unavailable or unsupported images: $COUNT$.",
+      "tokens": [
+        "$COUNT$"
+      ],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "offline_reading_copy",
+      "form": "",
+      "source": "Reading copy — reflowable Markdown",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "offline_save_as",
+      "form": "",
+      "source": "Save offline as",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "offline_snapshot_help",
+      "form": "",
+      "source": "HTML snapshots save the entire page with its captured appearance. Content scope applies to reading copies and Markdown.",
       "tokens": [],
       "markup": []
     },
@@ -39543,6 +40865,14 @@
       "key": "save_manual_time",
       "form": "",
       "source": "Save manual time",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "extension",
+      "key": "save_offline_document",
+      "form": "",
+      "source": "Save for offline reading",
       "tokens": [],
       "markup": []
     },
@@ -40736,6 +42066,53 @@
     },
     {
       "component": "reader",
+      "key": "reader_coverage_accessible",
+      "form": "",
+      "source": "Document coverage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_coverage_marked",
+      "form": "",
+      "source": "Marked read {percent}%",
+      "tokens": [
+        "{percent}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_coverage_summary",
+      "form": "",
+      "source": "Viewed {viewed}% · Marked read {marked}%",
+      "tokens": [
+        "{marked}",
+        "{viewed}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_coverage_unavailable",
+      "form": "",
+      "source": "Reading coverage unavailable",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_coverage_viewed",
+      "form": "",
+      "source": "Viewed {percent}%",
+      "tokens": [
+        "{percent}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_create_card",
       "form": "",
       "source": "Create Card",
@@ -41207,6 +42584,16 @@
     },
     {
       "component": "reader",
+      "key": "reader_linear_progress",
+      "form": "",
+      "source": "Read to here {percent}%",
+      "tokens": [
+        "{percent}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_link_preview",
       "form": "",
       "source": "Footnote / link preview",
@@ -41234,6 +42621,14 @@
       "key": "reader_link_preview_loading",
       "form": "",
       "source": "Loading preview…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_link_preview_resize",
+      "form": "",
+      "source": "Resize preview (arrow keys)",
       "tokens": [],
       "markup": []
     },
@@ -41297,9 +42692,57 @@
     },
     {
       "component": "reader",
+      "key": "reader_mark_page_read",
+      "form": "",
+      "source": "Mark this page read",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_mark_page_unread",
+      "form": "",
+      "source": "Unmark this page",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_mark_passage_read",
+      "form": "",
+      "source": "Mark this passage read",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_mark_passage_unread",
+      "form": "",
+      "source": "Unmark this passage",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_mark_range_read",
+      "form": "",
+      "source": "Mark pages read…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_mark_read_to_here",
       "form": "",
       "source": "Mark pages as read up to here without placing an exact marker",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_mark_section_read",
+      "form": "",
+      "source": "Mark this section read",
       "tokens": [],
       "markup": []
     },
@@ -41687,6 +43130,22 @@
       "key": "reader_page_numbering_hint",
       "form": "",
       "source": "Printed page labels come from PDF metadata. PDF page numbers count every page, including covers and front matter.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_page_range_prompt",
+      "form": "",
+      "source": "Page or range (for example, 5–12):",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "reader_passage_unavailable",
+      "form": "",
+      "source": "Opened the saved location; the exact passage could not be matched.",
       "tokens": [],
       "markup": []
     },
@@ -42148,6 +43607,14 @@
     },
     {
       "component": "reader",
+      "key": "reader_return_document",
+      "form": "",
+      "source": "Return to the previous document and position",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
       "key": "reader_return_to_search_page",
       "form": "",
       "source": "Return to p.{page}",
@@ -42455,6 +43922,14 @@
       "key": "study_resources",
       "form": "",
       "source": "Study resources",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "reader",
+      "key": "writing_excerpt_backlinks",
+      "form": "",
+      "source": "Writing excerpts",
       "tokens": [],
       "markup": []
     }

@@ -134,7 +134,8 @@ def test_build_reviewer_priority_badge_js_can_disable_existing_badge():
     assert "spacer.remove();" in js
 
 
-def test_reviewer_hides_existing_badge_when_next_card_type_is_disabled():
+def test_reviewer_hides_existing_badge_when_next_card_type_is_disabled(tmp_path):
+    import study_resources
     path = Path(__file__).resolve().parents[1] / "__init__.py"
     function = next(
         node for node in ast.parse(path.read_text(encoding="utf-8")).body
@@ -143,7 +144,13 @@ def test_reviewer_hides_existing_badge_when_next_card_type_is_disabled():
     )
     scripts: list[str] = []
     fetched_priorities: list[int] = []
-    card = SimpleNamespace(id=17, nid=21)
+    class Note(dict):
+        tags = ['item']
+        fields = []
+        def note_type(self):
+            return {'name': 'Basic'}
+    note = Note()
+    card = SimpleNamespace(id=17, nid=21, note=lambda: note)
     config = {"reviewer_priority_badge_card_types": {"topics": False, "items": True}}
     namespace = {
         "mw": SimpleNamespace(
@@ -155,6 +162,7 @@ def test_reviewer_hides_existing_badge_when_next_card_type_is_disabled():
             ),
         ),
         "_is_topic_card": lambda _card, **_kwargs: False,
+        "_is_incremento_card": study_resources.is_incremento_card,
         "should_show_reviewer_priority_badge": should_show_reviewer_priority_badge,
         "_load_addon_config": lambda _manager, _package: config,
         "get_priority": lambda _addon_dir, _profile, card_id: (
@@ -164,7 +172,7 @@ def test_reviewer_hides_existing_badge_when_next_card_type_is_disabled():
         "get_custom_schedule_rule": lambda *_args: None,
         "_format_custom_schedule_rule": lambda _rule: "",
         "_active_profile": lambda: "TestProfile",
-        "_ADDON_DIR": "/tmp/incremento-badge-test",
+        "_ADDON_DIR": str(tmp_path),
         "WEB_NOTE_TYPE": "Incremento Web",
         "configured_priority_lower_is_more_important": lambda config=None: True,
         "_resolve_topic_card_classifier": lambda config: object(),
@@ -189,3 +197,12 @@ def test_reviewer_hides_existing_badge_when_next_card_type_is_disabled():
     )
     namespace["_sync_reviewer_priority_badge"]()
     assert "var enabled = true;" in scripts[-1]
+
+    namespace['mw'].col = SimpleNamespace(get_card=lambda _cid: card, get_note=lambda _nid: note)
+    note.tags = []
+    fetched_priorities.clear()
+    namespace["_sync_reviewer_priority_badge"]()
+    assert not fetched_priorities
+    assert "var enabled = false;" in scripts[-1]
+    assert "badge.remove();" in scripts[-1]
+    assert "spacer.remove();" in scripts[-1]

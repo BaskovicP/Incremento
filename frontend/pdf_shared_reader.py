@@ -21,7 +21,7 @@ READER_COMMANDS = frozenset({
     'incremento_pdf_limit_override', 'incremento_pdf_annotations',
     'incremento_fill_field', 'incremento_pdf_snapshot',
     'incremento_pdf_controls',
-    'incremento_pdf_page_labels',
+    'incremento_pdf_page_labels', 'incremento_reader_coverage',
 })
 
 
@@ -137,6 +137,11 @@ class SharedPdfReader:
 
     def _handle(self, name, raw, data):
         s, state = self.service, self.state
+        if name == 'incremento_reader_coverage':
+            tracker = getattr(self.owner, '_coverage_tracker', None)
+            if tracker is not None and isinstance(data, dict) and data.get('start') == state.page - 1:
+                return tracker.receive(data)
+            return False
         if name in ('incremento_pdf_nav', 'incremento_pdf_zoom'):
             cid, value = raw.split(':')
             if int(cid) != state.card_id:
@@ -212,6 +217,9 @@ class SharedPdfReader:
             anchor = data.get('anchor')
             self.storage('set_read_page', page, anchor if isinstance(anchor, dict) else None)
             self.on_change('reading')
+            tracker = getattr(self.owner, '_coverage_tracker', None)
+            if tracker is not None:
+                tracker.refresh()
         elif name == 'incremento_pdf_appearance':
             if data.get('mode') not in ('original', 'dark', 'night'):
                 return False

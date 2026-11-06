@@ -71,7 +71,7 @@ function viewer(props = {}, startup = {}) {
       './PdfSnapshotLayer.jsx': { __esModule: true, default: () => null, PdfSnapshotButton: () => null },
       './PdfHighlightTooltip.jsx': { __esModule: true, default: () => null },
       './PdfLinkPreview.jsx': { __esModule: true, default: PdfLinkPreview },
-      './PdfPageLinks.jsx': { __esModule: true, default: PdfPageLinks, usePdfPageLinks: () => ({}) },
+      './PdfPageLinks.jsx': { __esModule: true, default: PdfPageLinks, PdfWritingMargin: () => null, usePdfPageLinks: () => ({}) },
     })[specifier],
   });
   function elements(node) {
@@ -121,7 +121,8 @@ function viewer(props = {}, startup = {}) {
       dom.incrementoPdfOpenFind();
     },
     pageLinks: nodes => nodes.filter(node => node.type === PdfPageLinks), elements,
-    preview: nodes => nodes.find(node => node.type === PdfLinkPreview) };
+    preview: nodes => nodes.find(node => node.type === PdfLinkPreview),
+    tooltip: nodes => nodes.find(node => node.props?.tooltip)?.props.tooltip };
 }
 
 for (const readingOnly of [false, true]) {
@@ -229,16 +230,50 @@ test('hovering notes and unrelated toolbar updates reuse the page annotation ind
   const annotation = {id: 'note', page: 1, color: 'yellow', note: 'Useful note',
     rects: [{x: 1, y: 2, w: 3, h: 4}]};
   ui.bridge().incrementoReceivePdfHighlights([annotation]);
+  ui.renderState.containerRef.current.querySelectorAll = () => [];
   const first = ui.layer(ui.render()).props;
+  const wrapper = ui.render().find(node => node.props?.id === 'pdf-canvas-wrapper');
+  const tooltip = ui.tooltip(ui.render());
   const writes = ui.stateWrites();
-  first.showHighlightNote(annotation, {clientX: 10, clientY: 20});
-  for (let x = 0; x < 100; x++) first.moveHighlightNote({clientX: x, clientY: 20});
-  first.hideHighlightNote();
+  wrapper.props.onMouseMove({clientX: 2, clientY: 3});
+  assert.equal(tooltip.getSnapshot().note, 'Useful note');
+  for (let i = 0; i < 100; i++) wrapper.props.onMouseMove({clientX: 2, clientY: 3});
+  ui.render()[0].props.onPointerDown();
+  assert.equal(tooltip.getSnapshot(), null, 'starting a selection hides the preview immediately');
   assert.equal(ui.stateWrites(), writes, 'pointer movement must not rerender the reader and all its annotations');
   assert.equal(ui.layer(ui.render()).props.pageHighlights, first.pageHighlights);
   ui.bridge().incrementoReceivePdfHighlights([{...annotation, note: 'Updated'}]);
   assert.equal(ui.layer(ui.render()).props.pageHighlights[0].note, 'Updated');
 });
+
+for (const readingOnly of [false, true]) {
+  for (const [kind, note, html] of [
+    ['plain', 'Arabic العربية\n\nA saved note', ''],
+    ['blank', ' \n ', ''],
+    ['image', '', '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAD0lEQVR4nGP4z8DA8J8BAAf/Af8Bf4mnAAAAAElFTkSuQmCC" width="2" height="1" alt="">'],
+  ]) {
+    test(`hovering ${kind} notes uses a custom preview without obstructing a selection (${readingOnly ? 'side' : 'main'})`, () => {
+      const ui = viewer({readingOnly}); ui.render();
+      ui.bridge().incrementoReceivePdfHighlights([{id: 'saved', page: 1, color: 'yellow', note, note_html: html,
+        rects: [{x: 10, y: 20, w: 100, h: 20}]}]);
+      ui.renderState.containerRef.current.querySelectorAll = () => [];
+      const nodes = ui.render(), tooltip = ui.tooltip(nodes);
+      const wrapper = nodes.find(node => node.props?.id === 'pdf-canvas-wrapper');
+      wrapper.props.onMouseMove({clientX: 30, clientY: 25});
+      if (kind === 'blank') assert.equal(tooltip.getSnapshot(), null);
+      else {
+        assert.deepEqual(tooltip.getSnapshot(), {id: 'saved', note: note.trim(),
+          ...(html ? {html} : {}), x: 30, y: 25});
+        wrapper.props.onMouseLeave();
+        assert.ok(tooltip.getSnapshot(), 'leaving the text allows time to move onto the scrollable preview');
+        tooltip.cancelHide();
+      }
+      wrapper.props.onMouseMove({clientX: 40, clientY: 25, buttons: 1});
+      assert.equal(tooltip.getSnapshot(), null, 'dragging must keep the PDF clear for selection');
+      assert.deepEqual(ui.commands, [], 'hovering and selecting cannot edit the saved annotation');
+    });
+  }
+}
 
 // Contract: a plain annotation click exposes a small in-page palette. Recoloring
 // updates only that annotation, keeps its metadata, and cannot target another page.

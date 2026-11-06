@@ -7033,6 +7033,7 @@
         readPage: config.read_page || 0,
         readAnchor: config.read_anchor,
         jumpExcerpt: config.excerpt || "",
+        jumpPassage: config.passage || null,
         bookmarks: config.bookmarks || [],
         locale: config.locale,
         customLanguage: config.custom_language,
@@ -7047,6 +7048,167 @@
         defaultHighlightColor: config.default_highlight_color
       }
     };
+  }
+  const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+  function joinPdfTextParts(left, right) {
+    const previous = String(left || "");
+    const next = String(right || "");
+    if (!previous) return next;
+    if (!next) return previous;
+    const last = Array.from(previous).at(-1);
+    const first = Array.from(next)[0];
+    return `${previous}${CJK.test(last) && CJK.test(first) ? "" : " "}${next}`;
+  }
+  function truncatePdfText(value, length) {
+    return Array.from(String(value || "")).slice(0, Math.max(0, length)).join("");
+  }
+  const normalize = (text) => String(text || "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+  function matchExcerpt(parts, quote, occurrence = 0) {
+    const anchor = typeof quote === "object" && quote ? quote : { quote };
+    const target = normalize(anchor.quote);
+    if (!target || target.length > 2e3) return null;
+    let text = "";
+    const points = [];
+    for (let part = 0; part < parts.length; part += 1) {
+      const value = String(parts[part]);
+      if (text.length + value.length > 1e6) return null;
+      const last = text.slice(-2), first = value.slice(0, 2);
+      if (text && joinPdfTextParts(last, first).length > last.length + first.length) {
+        if (!text.endsWith(" ")) {
+          text += " ";
+          points.push(null);
+        }
+      }
+      for (let offset = 0; offset < value.length; ) {
+        const char = String.fromCodePoint(value.codePointAt(offset));
+        const folded = char.normalize("NFKC").toLowerCase().replace(/\s/g, " ");
+        for (const letter of folded) {
+          if (letter === " " && (!text || text.endsWith(" "))) continue;
+          text += letter;
+          for (let unit = 0; unit < letter.length; unit += 1) points.push({ part, offset, end: offset + char.length });
+        }
+        offset += char.length;
+      }
+    }
+    let index = text.indexOf(target);
+    const prefix = normalize(anchor.prefix), suffix = normalize(anchor.suffix);
+    while (index >= 0) {
+      const matches = (!prefix || text.slice(0, index).trimEnd().endsWith(prefix)) && (!suffix || text.slice(index + target.length).trimStart().startsWith(suffix));
+      if (matches && occurrence-- <= 0) break;
+      index = text.indexOf(target, index + 1);
+    }
+    if (index < 0) return null;
+    const start = points[index], end = points[index + target.length - 1];
+    return start && end ? { start: { part: start.part, offset: start.offset }, end: { part: end.part, offset: end.end } } : null;
+  }
+  function capturePdfPassage(page, textLayer, selection = window.getSelection()) {
+    if (!page || !textLayer || !(selection == null ? void 0 : selection.rangeCount) || selection.isCollapsed) return {};
+    const range = selection.getRangeAt(0);
+    if (!textLayer.contains(range.commonAncestorContainer)) return {};
+    const joined = (source, tail = false) => {
+      const fragment = source.cloneContents(), walker = document.createTreeWalker(fragment, 4);
+      let result = "";
+      while (walker.nextNode()) {
+        result = joinPdfTextParts(result, walker.currentNode.textContent);
+        if (tail) result = result.slice(-160);
+        else if (result.length >= 2e3) break;
+      }
+      return result;
+    };
+    const quote = joined(range).slice(0, 2e3);
+    if (!quote.trim()) return {};
+    const before = document.createRange(), after = document.createRange();
+    before.selectNodeContents(textLayer);
+    before.setEnd(range.startContainer, range.startOffset);
+    after.selectNodeContents(textLayer);
+    after.setStart(range.endContainer, range.endOffset);
+    const bounds = page.getBoundingClientRect();
+    const rects = bounds.width > 0 && bounds.height > 0 ? Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0).slice(0, 64).map((rect) => {
+      const x = Math.max(0, Math.min(1, (rect.left - bounds.left) / bounds.width));
+      const y = Math.max(0, Math.min(1, (rect.top - bounds.top) / bounds.height));
+      return [x, y, Math.min(1 - x, rect.width / bounds.width), Math.min(1 - y, rect.height / bounds.height)];
+    }).filter((rect) => rect[2] > 0 && rect[3] > 0) : [];
+    return { quote, prefix: joined(before, true), suffix: joined(after).slice(0, 160), rects };
+  }
+  function pdfExcerptRange(textLayer, quote) {
+    var _a, _b, _c;
+    if (!textLayer) return null;
+    const nodes = [];
+    const walker = document.createTreeWalker(
+      textLayer,
+      4
+      /* SHOW_TEXT */
+    );
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    const parts = nodes.map((node) => node.textContent);
+    const page = (_a = textLayer.parentElement) == null ? void 0 : _a.getBoundingClientRect();
+    const expected = typeof quote === "object" ? (_c = (_b = quote == null ? void 0 : quote.rects) == null ? void 0 : _b[0]) == null ? void 0 : _c[1] : null;
+    let nearest = null, distance = Infinity;
+    for (let occurrence = 0; occurrence < 64; occurrence += 1) {
+      const match = matchExcerpt(parts, quote, occurrence);
+      if (!match) break;
+      const range = document.createRange();
+      range.setStart(nodes[match.start.part], match.start.offset);
+      range.setEnd(nodes[match.end.part], match.end.offset);
+      if (!Number.isFinite(expected) || !(page == null ? void 0 : page.height)) return range;
+      const rect = range.getBoundingClientRect();
+      const delta = Math.abs((rect.top - page.top) / page.height - expected);
+      if (delta < distance) {
+        nearest = range;
+        distance = delta;
+      }
+    }
+    return nearest;
+  }
+  function revealPdfExcerpt(textLayer, wrapper, quote, options) {
+    const range = pdfExcerptRange(textLayer, quote);
+    const bounds = wrapper.getBoundingClientRect();
+    const fallback = !(quote == null ? void 0 : quote.quote) && Array.isArray(quote == null ? void 0 : quote.rects) ? quote.rects.map(([x, y, w, h]) => ({
+      left: bounds.left + x * bounds.width,
+      top: bounds.top + y * bounds.height,
+      width: w * bounds.width,
+      height: h * bounds.height
+    })) : [];
+    const overlays = Array.from((range == null ? void 0 : range.getClientRects()) || fallback).filter((rect) => rect.width && rect.height).map((rect) => {
+      const overlay = document.createElement("div");
+      overlay.dataset.incExcerptReveal = "1";
+      Object.assign(overlay.style, {
+        position: "absolute",
+        pointerEvents: "none",
+        zIndex: 9,
+        left: `${rect.left - bounds.left}px`,
+        top: `${rect.top - bounds.top}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        borderRadius: "2px",
+        background: "rgba(59,130,246,.28)",
+        outline: "1px solid rgba(59,130,246,.8)"
+      });
+      wrapper.append(overlay);
+      return overlay;
+    });
+    if (!overlays.length) return null;
+    overlays[0].scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+    return dismissibleReveal(() => overlays.forEach((overlay) => overlay.remove()), options);
+  }
+  function dismissibleReveal(remove, { duration = 4e3, onDismiss = () => {
+  } } = {}) {
+    let timer;
+    const clear = (notify = true) => {
+      clearTimeout(timer);
+      remove();
+      document.removeEventListener("pointerdown", onPointer, true);
+      document.removeEventListener("keydown", onKey, true);
+      if (notify === true) onDismiss();
+    };
+    const onPointer = () => clear();
+    const onKey = (event) => {
+      if (event.key === "Escape") clear();
+    };
+    document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("keydown", onKey, true);
+    timer = setTimeout(clear, duration);
+    return clear;
   }
   function observeSearchText(target, {
     render,
@@ -7643,19 +7805,6 @@
     const label = totalPages > 0 ? labels == null ? void 0 : labels[page - 1] : null;
     return label ? tr("reader_page_location_labeled", { label, current, total }) : tr("reader_page_location", { current, total });
   }
-  const CJK = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
-  function joinPdfTextParts(left, right) {
-    const previous = String(left || "");
-    const next = String(right || "");
-    if (!previous) return next;
-    if (!next) return previous;
-    const last = Array.from(previous).at(-1);
-    const first = Array.from(next)[0];
-    return `${previous}${CJK.test(last) && CJK.test(first) ? "" : " "}${next}`;
-  }
-  function truncatePdfText(value, length) {
-    return Array.from(String(value || "")).slice(0, Math.max(0, length)).join("");
-  }
   function annotatePdfTextStyles(textDivs, textContent, commonObjs) {
     var _a, _b, _c, _d;
     const items = (_a = textContent == null ? void 0 : textContent.items) == null ? void 0 : _a.filter((item) => typeof (item == null ? void 0 : item.str) === "string");
@@ -8243,8 +8392,10 @@
       return () => document2.removeEventListener("visibilitychange", changed);
     }, []);
     const readerWidth = reactExports.useCallback(() => {
-      var _a, _b, _c;
-      return ((_b = (_a = window.document) == null ? void 0 : _a.documentElement) == null ? void 0 : _b.clientWidth) || window.innerWidth || ((_c = containerRef.current) == null ? void 0 : _c.offsetWidth) || 800;
+      var _a, _b, _c, _d, _e, _f;
+      const viewport = ((_b = (_a = window.document) == null ? void 0 : _a.documentElement) == null ? void 0 : _b.clientWidth) || window.innerWidth || ((_c = containerRef.current) == null ? void 0 : _c.offsetWidth) || 800;
+      const margin = ((_f = (_e = (_d = window.document) == null ? void 0 : _d.getElementById) == null ? void 0 : _e.call(_d, "pdf-writing-margin")) == null ? void 0 : _f.offsetWidth) || 0;
+      return Math.max(100, viewport - margin);
     }, []);
     const renderTextLayer = reactExports.useCallback((pg, viewport) => {
       var _a;
@@ -8670,6 +8821,7 @@
   const reader_links_enable$2 = "Enable clickable links in this PDF";
   const reader_link_preview$2 = "Footnote / link preview";
   const reader_link_preview_zoom$2 = "Footnote preview zoom";
+  const reader_link_preview_resize$2 = "Resize preview (arrow keys)";
   const reader_link_preview_loading$2 = "Loading preview…";
   const reader_link_preview_unavailable$2 = "Preview unavailable for this link.";
   const reader_link_preview_limit$2 = "This page is beyond your reading limit.";
@@ -8861,6 +9013,22 @@
   const reader_style_dotted$2 = "Dotted";
   const reader_style_strikeout$2 = "Strikethrough";
   const reader_choose_replacement_pdf$2 = "Choose Replacement PDF";
+  const writing_excerpt_backlinks$2 = "Writing excerpts";
+  const reader_coverage_summary$2 = "Viewed {viewed}% · Marked read {marked}%";
+  const reader_coverage_unavailable$2 = "Reading coverage unavailable";
+  const reader_coverage_accessible$2 = "Document coverage";
+  const reader_mark_page_read$2 = "Mark this page read";
+  const reader_mark_page_unread$2 = "Unmark this page";
+  const reader_mark_range_read$2 = "Mark pages read…";
+  const reader_page_range_prompt$2 = "Page or range (for example, 5–12):";
+  const reader_mark_passage_read$2 = "Mark this passage read";
+  const reader_mark_passage_unread$2 = "Unmark this passage";
+  const reader_mark_section_read$2 = "Mark this section read";
+  const reader_passage_unavailable$2 = "Opened the saved location; the exact passage could not be matched.";
+  const reader_return_document$2 = "Return to the previous document and position";
+  const reader_coverage_viewed$2 = "Viewed {percent}%";
+  const reader_coverage_marked$2 = "Marked read {percent}%";
+  const reader_linear_progress$2 = "Read to here {percent}%";
   const en = {
     reader_pdf_focus_mode_hint: reader_pdf_focus_mode_hint$2,
     reader_pdf_focus_mode: reader_pdf_focus_mode$2,
@@ -8901,6 +9069,7 @@
     reader_links_enable: reader_links_enable$2,
     reader_link_preview: reader_link_preview$2,
     reader_link_preview_zoom: reader_link_preview_zoom$2,
+    reader_link_preview_resize: reader_link_preview_resize$2,
     reader_link_preview_loading: reader_link_preview_loading$2,
     reader_link_preview_unavailable: reader_link_preview_unavailable$2,
     reader_link_preview_limit: reader_link_preview_limit$2,
@@ -9091,7 +9260,23 @@
     reader_style_dashed: reader_style_dashed$2,
     reader_style_dotted: reader_style_dotted$2,
     reader_style_strikeout: reader_style_strikeout$2,
-    reader_choose_replacement_pdf: reader_choose_replacement_pdf$2
+    reader_choose_replacement_pdf: reader_choose_replacement_pdf$2,
+    writing_excerpt_backlinks: writing_excerpt_backlinks$2,
+    reader_coverage_summary: reader_coverage_summary$2,
+    reader_coverage_unavailable: reader_coverage_unavailable$2,
+    reader_coverage_accessible: reader_coverage_accessible$2,
+    reader_mark_page_read: reader_mark_page_read$2,
+    reader_mark_page_unread: reader_mark_page_unread$2,
+    reader_mark_range_read: reader_mark_range_read$2,
+    reader_page_range_prompt: reader_page_range_prompt$2,
+    reader_mark_passage_read: reader_mark_passage_read$2,
+    reader_mark_passage_unread: reader_mark_passage_unread$2,
+    reader_mark_section_read: reader_mark_section_read$2,
+    reader_passage_unavailable: reader_passage_unavailable$2,
+    reader_return_document: reader_return_document$2,
+    reader_coverage_viewed: reader_coverage_viewed$2,
+    reader_coverage_marked: reader_coverage_marked$2,
+    reader_linear_progress: reader_linear_progress$2
   };
   const reader_pdf_focus_mode_hint$1 = "Sakrijte lijevi Anki prikaz i proširite PDF preko pune raspoložive širine. Radi na zaslonima Špilovi i Pregled te tijekom ponavljanja. Gumbi za odgovore ostaju vidljivi, a odabir se sprema.";
   const reader_pdf_focus_mode$1 = "Fokus na PDF";
@@ -9133,6 +9318,7 @@
   const reader_links_enable$1 = "Uključi poveznice u ovom PDF-u";
   const reader_link_preview$1 = "Pregled fusnote / poveznice";
   const reader_link_preview_zoom$1 = "Povećanje pregleda fusnote";
+  const reader_link_preview_resize$1 = "Promijeni veličinu pregleda (tipke sa strelicama)";
   const reader_link_preview_loading$1 = "Učitavanje pregleda…";
   const reader_link_preview_unavailable$1 = "Pregled ove poveznice nije dostupan.";
   const reader_link_preview_limit$1 = "Ova je stranica izvan vašeg ograničenja čitanja.";
@@ -9325,6 +9511,22 @@
   const reader_style_dotted$1 = "Točkasto";
   const reader_style_strikeout$1 = "Precrtano";
   const reader_choose_replacement_pdf$1 = "Odaberi zamjenski PDF";
+  const writing_excerpt_backlinks$1 = "Odlomci u pisanju";
+  const reader_coverage_summary$1 = "Pregledano {viewed}% · Označeno pročitanim {marked}%";
+  const reader_coverage_unavailable$1 = "Podaci o pregledanom sadržaju nisu dostupni";
+  const reader_coverage_accessible$1 = "Pregledanost dokumenta";
+  const reader_mark_page_read$1 = "Označi ovu stranicu pročitanom";
+  const reader_mark_page_unread$1 = "Ukloni oznaku pročitanosti ove stranice";
+  const reader_mark_range_read$1 = "Označi stranice pročitanima…";
+  const reader_page_range_prompt$1 = "Stranica ili raspon (na primjer, 5–12):";
+  const reader_mark_passage_read$1 = "Označi ovaj odlomak pročitanim";
+  const reader_mark_passage_unread$1 = "Ukloni oznaku pročitanosti ovog odlomka";
+  const reader_mark_section_read$1 = "Označi ovaj odjeljak pročitanim";
+  const reader_passage_unavailable$1 = "Otvorena je spremljena pozicija; točan odlomak nije pronađen.";
+  const reader_return_document$1 = "Povratak na prethodni dokument i poziciju";
+  const reader_coverage_viewed$1 = "Pregledano {percent}%";
+  const reader_coverage_marked$1 = "Označeno pročitanim {percent}%";
+  const reader_linear_progress$1 = "Pročitano do ovdje {percent}%";
   const hr = {
     reader_pdf_focus_mode_hint: reader_pdf_focus_mode_hint$1,
     reader_pdf_focus_mode: reader_pdf_focus_mode$1,
@@ -9366,6 +9568,7 @@
     reader_links_enable: reader_links_enable$1,
     reader_link_preview: reader_link_preview$1,
     reader_link_preview_zoom: reader_link_preview_zoom$1,
+    reader_link_preview_resize: reader_link_preview_resize$1,
     reader_link_preview_loading: reader_link_preview_loading$1,
     reader_link_preview_unavailable: reader_link_preview_unavailable$1,
     reader_link_preview_limit: reader_link_preview_limit$1,
@@ -9557,7 +9760,23 @@
     reader_style_dashed: reader_style_dashed$1,
     reader_style_dotted: reader_style_dotted$1,
     reader_style_strikeout: reader_style_strikeout$1,
-    reader_choose_replacement_pdf: reader_choose_replacement_pdf$1
+    reader_choose_replacement_pdf: reader_choose_replacement_pdf$1,
+    writing_excerpt_backlinks: writing_excerpt_backlinks$1,
+    reader_coverage_summary: reader_coverage_summary$1,
+    reader_coverage_unavailable: reader_coverage_unavailable$1,
+    reader_coverage_accessible: reader_coverage_accessible$1,
+    reader_mark_page_read: reader_mark_page_read$1,
+    reader_mark_page_unread: reader_mark_page_unread$1,
+    reader_mark_range_read: reader_mark_range_read$1,
+    reader_page_range_prompt: reader_page_range_prompt$1,
+    reader_mark_passage_read: reader_mark_passage_read$1,
+    reader_mark_passage_unread: reader_mark_passage_unread$1,
+    reader_mark_section_read: reader_mark_section_read$1,
+    reader_passage_unavailable: reader_passage_unavailable$1,
+    reader_return_document: reader_return_document$1,
+    reader_coverage_viewed: reader_coverage_viewed$1,
+    reader_coverage_marked: reader_coverage_marked$1,
+    reader_linear_progress: reader_linear_progress$1
   };
   const reader_pdf_focus_mode_hint = "隐藏左侧 Anki 区域，让 PDF 占满可用宽度。可在牌组列表、概览和复习时使用。回答按钮仍保持可见，您的选择会自动保存。";
   const reader_pdf_focus_mode = "PDF 专注模式";
@@ -9597,6 +9816,7 @@
   const reader_links_enable = "启用此 PDF 中的可点击链接";
   const reader_link_preview = "脚注／链接预览";
   const reader_link_preview_zoom = "脚注预览缩放";
+  const reader_link_preview_resize = "调整预览大小（方向键）";
   const reader_link_preview_loading = "正在加载预览…";
   const reader_link_preview_unavailable = "无法预览此链接。";
   const reader_link_preview_limit = "此页超出了您的阅读限制。";
@@ -9787,6 +10007,22 @@
   const reader_style_dotted = "点线";
   const reader_style_strikeout = "删除线";
   const reader_choose_replacement_pdf = "选择替换 PDF";
+  const writing_excerpt_backlinks = "写作摘录";
+  const reader_coverage_summary = "已浏览 {viewed}% · 已标记读完 {marked}%";
+  const reader_coverage_unavailable = "阅读覆盖数据不可用";
+  const reader_coverage_accessible = "文档覆盖情况";
+  const reader_mark_page_read = "将此页标记为已读";
+  const reader_mark_page_unread = "取消此页的已读标记";
+  const reader_mark_range_read = "将页面范围标记为已读…";
+  const reader_page_range_prompt = "页码或范围（例如 5–12）：";
+  const reader_mark_passage_read = "将此段落标记为已读";
+  const reader_mark_passage_unread = "取消此段落的已读标记";
+  const reader_mark_section_read = "将此节标记为已读";
+  const reader_passage_unavailable = "已打开保存的位置，但未能匹配到确切段落。";
+  const reader_return_document = "返回上一个文档及位置";
+  const reader_coverage_viewed = "已浏览 {percent}%";
+  const reader_coverage_marked = "已标记读完 {percent}%";
+  const reader_linear_progress = "已读至此 {percent}%";
   const zhHans = {
     reader_pdf_focus_mode_hint,
     reader_pdf_focus_mode,
@@ -9826,6 +10062,7 @@
     reader_links_enable,
     reader_link_preview,
     reader_link_preview_zoom,
+    reader_link_preview_resize,
     reader_link_preview_loading,
     reader_link_preview_unavailable,
     reader_link_preview_limit,
@@ -10015,7 +10252,23 @@
     reader_style_dashed,
     reader_style_dotted,
     reader_style_strikeout,
-    reader_choose_replacement_pdf
+    reader_choose_replacement_pdf,
+    writing_excerpt_backlinks,
+    reader_coverage_summary,
+    reader_coverage_unavailable,
+    reader_coverage_accessible,
+    reader_mark_page_read,
+    reader_mark_page_unread,
+    reader_mark_range_read,
+    reader_page_range_prompt,
+    reader_mark_passage_read,
+    reader_mark_passage_unread,
+    reader_mark_section_read,
+    reader_passage_unavailable,
+    reader_return_document,
+    reader_coverage_viewed,
+    reader_coverage_marked,
+    reader_linear_progress
   };
   const CATALOGS = { en, hr, "zh-Hans": zhHans };
   function normalizeReaderLocale(value) {
@@ -10244,10 +10497,7 @@
     moveHighlightResize,
     endHighlightResize,
     cancelHighlightResize,
-    focusedHighlightId,
-    showHighlightNote,
-    moveHighlightNote,
-    hideHighlightNote
+    focusedHighlightId
   }) {
     const displayHighlights = pdfDisplayHighlights(pageHighlights);
     const renderNoteIcon = (hasNote) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -10354,27 +10604,6 @@
             `${h.id}-${ri}`
           );
         })
-      ),
-      showHighlightControls && displayHighlights.map(
-        (h) => !hasAnnotationNote(h) ? null : h.rects.map((r, ri) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "div",
-          {
-            onMouseEnter: (event) => showHighlightNote(h, event),
-            onMouseMove: moveHighlightNote,
-            onMouseLeave: hideHighlightNote,
-            style: {
-              position: "absolute",
-              left: renderInfo.tlLeft + r.x * renderInfo.scale,
-              top: r.y * renderInfo.scale,
-              width: r.w * renderInfo.scale,
-              height: r.h * renderInfo.scale,
-              background: "transparent",
-              cursor: "help",
-              zIndex: 9
-            }
-          },
-          `note-${h.id}-${ri}`
-        ))
       ),
       showHighlightControls && displayHighlights.map((h) => {
         if (!h.rects.length) return null;
@@ -11276,12 +11505,12 @@
       height: Math.round(Math.min(4096, Math.max(160, raw.height)))
     };
   }
-  function pdfLinkPreviewLayout(size, anchor, viewportWidth, viewportHeight) {
+  function pdfLinkPreviewLayout(size, anchor, viewportWidth, viewportHeight, position = null) {
     const preferred = normalizePdfLinkPreviewSize(size) || { width: 560, height: 360 };
     const width = Math.max(1, Math.min(preferred.width, viewportWidth - 24));
     const height = Math.max(1, Math.min(preferred.height, viewportHeight - 24));
-    const left = Math.max(12, Math.min(anchor.x - 24, viewportWidth - width - 12));
-    const top = anchor.y + height + 20 < viewportHeight ? anchor.y + 20 : Math.max(12, anchor.y - height - 20);
+    const left = Math.max(12, Math.min((position == null ? void 0 : position.left) ?? anchor.x - 24, viewportWidth - width - 12));
+    const top = position ? Math.max(12, Math.min(position.top, viewportHeight - height - 12)) : anchor.y + height + 20 < viewportHeight ? anchor.y + 20 : Math.max(12, anchor.y - height - 20);
     return {
       width,
       height,
@@ -11458,12 +11687,42 @@
   }
   function attachPdfLinkPreview({ container: container2, popup, host, links, tlLeft, doc, preview, maxPage = null, onResize }) {
     let active = null, dismissed = null, timer = null, interacting = false, initialSize = null;
+    let leftResize = null;
+    const resizeFromLeft = (rect, dx, dy = 0) => {
+      const width = Math.min(rect.right - 12, Math.max(Math.min(280, rect.right - 12), rect.width - dx));
+      const height = Math.min(
+        host.innerHeight - rect.top - 12,
+        Math.max(Math.min(160, host.innerHeight - rect.top - 12), rect.height + dy)
+      );
+      const left = rect.right - width;
+      Object.assign(popup.style, {
+        left: left + "px",
+        width: width + "px",
+        height: height + "px",
+        maxWidth: host.innerWidth - left - 12 + "px"
+      });
+      return { left, top: rect.top, width, height };
+    };
+    const cancelLeftResize = () => {
+      if (leftResize) resizeFromLeft(leftResize.rect, 0);
+      leftResize = null;
+    };
+    const resizeGrip = (event) => {
+      var _a, _b;
+      const grip = (_b = (_a = event.target) == null ? void 0 : _a.closest) == null ? void 0 : _b.call(_a, "[data-pdf-preview-resize]");
+      return grip && popup.contains(grip) ? grip : null;
+    };
+    const saveSize = (rect) => {
+      const size = normalizePdfLinkPreviewSize(rect);
+      if (size) onResize == null ? void 0 : onResize(size, { left: rect.left, top: rect.top });
+    };
     const cancelClose = () => {
       if (timer != null) host.clearTimeout(timer);
       timer = null;
     };
     const close = () => {
       cancelClose();
+      cancelLeftResize();
       active = null;
       interacting = false;
       initialSize = null;
@@ -11509,7 +11768,13 @@
       if (event.key === "Escape" && active) {
         dismissed = active;
         close();
+        return;
       }
+      if (interacting || !resizeGrip(event)) return;
+      const delta = { ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20] }[event.key];
+      if (!delta) return;
+      event.preventDefault();
+      saveSize(resizeFromLeft(popup.getBoundingClientRect(), ...delta));
     };
     const scroll = (event) => {
       if (!popup.contains(event.target)) close();
@@ -11522,19 +11787,40 @@
       interacting = true;
       initialSize = popup.getBoundingClientRect();
       cancelClose();
+      const grip = resizeGrip(event);
+      if (grip && event.button === 0) {
+        event.preventDefault();
+        leftResize = {
+          rect: initialSize,
+          x: event.clientX,
+          y: event.clientY,
+          corner: grip.dataset.pdfPreviewResize === "corner"
+        };
+      }
+    };
+    const pointerMove = (event) => {
+      var _a;
+      if (!leftResize) return;
+      (_a = event.preventDefault) == null ? void 0 : _a.call(event);
+      resizeFromLeft(
+        leftResize.rect,
+        event.clientX - leftResize.x,
+        leftResize.corner ? event.clientY - leftResize.y : 0
+      );
     };
     const pointerUp = (event) => {
       if (!interacting) return;
       interacting = false;
+      leftResize = null;
       const rect = popup.getBoundingClientRect();
-      const size = normalizePdfLinkPreviewSize(rect);
-      if (size && initialSize && (rect.width !== initialSize.width || rect.height !== initialSize.height)) {
-        onResize == null ? void 0 : onResize(size);
+      if (initialSize && (rect.width !== initialSize.width || rect.height !== initialSize.height)) {
+        saveSize(rect);
       }
       initialSize = null;
       if (!popup.contains(event.target)) scheduleClose();
     };
     const pointerCancel = (event) => {
+      cancelLeftResize();
       initialSize = null;
       pointerUp(event);
     };
@@ -11552,6 +11838,7 @@
       [host, "resize", close],
       [host, "blur", close],
       [host, "pointerdown", pointerDown],
+      [host, "pointermove", pointerMove],
       [host, "pointerup", pointerUp],
       [host, "pointercancel", pointerCancel]
     ];
@@ -11585,6 +11872,7 @@
     const capturing = reactExports.useSyncExternalStore(snapshotMode.subscribe, snapshotMode.getSnapshot);
     const unavailable = disabled || capturing;
     const [preview, setPreview] = reactExports.useState(null);
+    const [position, setPosition] = reactExports.useState(null);
     const popupRef = reactExports.useRef(null);
     const contentRef = reactExports.useRef(null);
     const rendererRef = reactExports.useRef(null);
@@ -11598,7 +11886,10 @@
       if (!container2 || !popup || !doc || unavailable || !links.length) return;
       const renderer = createPdfPreviewRenderer({
         createCanvas: () => document.createElement("canvas"),
-        onChange: setPreview,
+        onChange: (value) => {
+          if (!value) setPosition(null);
+          setPreview(value);
+        },
         pixelRatio: window.devicePixelRatio,
         zoom: zoomRef.current
       });
@@ -11612,9 +11903,10 @@
         doc,
         preview: renderer,
         maxPage,
-        onResize: (value) => {
+        onResize: (value, nextPosition) => {
           var _a2;
-          return (_a2 = onResizeRef.current) == null ? void 0 : _a2.call(onResizeRef, value);
+          setPosition(nextPosition);
+          (_a2 = onResizeRef.current) == null ? void 0 : _a2.call(onResizeRef, value);
         }
       });
       return () => {
@@ -11646,7 +11938,8 @@
       size,
       (preview == null ? void 0 : preview.anchor) || { x: 0, y: 0 },
       window.innerWidth,
-      window.innerHeight
+      window.innerHeight,
+      position
     );
     const targetPage = (_a = preview == null ? void 0 : preview.link) == null ? void 0 : _a.targetPage;
     const pageLabel = (pageLabels == null ? void 0 : pageLabels[targetPage - 1]) || targetPage;
@@ -11682,6 +11975,64 @@
           overflow: "hidden"
         },
         children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `#pdf-link-preview [data-pdf-preview-resize]:focus-visible {
+        outline: 2px solid #93c5fd; outline-offset: -2px;
+      }` }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              role: "separator",
+              tabIndex: 0,
+              "aria-orientation": "vertical",
+              "aria-label": tr("reader_link_preview_resize"),
+              title: tr("reader_link_preview_resize"),
+              "aria-valuemin": Math.min(280, width + left - 12),
+              "aria-valuemax": width + left - 12,
+              "aria-valuenow": width,
+              "data-pdf-preview-resize": "left",
+              style: {
+                position: "absolute",
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 8,
+                zIndex: 2,
+                cursor: "ew-resize",
+                touchAction: "none",
+                userSelect: "none"
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "aria-hidden": "true", style: {
+                  position: "absolute",
+                  left: 2,
+                  top: "50%",
+                  width: 2,
+                  height: 24,
+                  marginTop: -12,
+                  borderRadius: 2,
+                  background: "#999",
+                  pointerEvents: "none"
+                } }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "span",
+                  {
+                    "aria-hidden": "true",
+                    "data-pdf-preview-resize": "corner",
+                    style: {
+                      position: "absolute",
+                      left: 0,
+                      bottom: 0,
+                      width: 16,
+                      height: 16,
+                      cursor: "nesw-resize",
+                      background: "repeating-linear-gradient(45deg, transparent 0 3px, #aaa 3px 4px, transparent 4px 6px)",
+                      clipPath: "polygon(0 0, 0 100%, 100% 100%)"
+                    }
+                  }
+                )
+              ]
+            }
+          ),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", flexShrink: 0, alignItems: "center", gap: 12, padding: "8px 12px", fontSize: 13 }, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { style: { flex: 1 }, children: tr("reader_link_preview") }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: targetPage ? tr("reader_page_number", { page: pageLabel }) : "" }),
@@ -11735,7 +12086,7 @@
             flexWrap: "wrap",
             alignItems: "center",
             gap: 10,
-            padding: "7px 20px 12px 12px",
+            padding: "7px 20px 12px 20px",
             fontSize: 11,
             color: "#d4d4d8"
           }, children: [
@@ -11812,15 +12163,16 @@
     };
   }
   function createPdfPageLinks(send, changed) {
-    let current = null, serial = 0, links = [];
+    let current = null, serial = 0, links = [], writing = [];
     function refresh() {
       links = [];
+      writing = [];
       if (!current) {
-        changed({ links, loading: false, error: false });
+        changed({ links, writing, loading: false, error: false });
         return;
       }
       current = { ...current, request: ++serial };
-      changed({ ...current, links, loading: true, error: false });
+      changed({ ...current, links, writing, loading: true, error: false });
       send({ ...current, operation: "list" });
     }
     function command(operation, extra = {}) {
@@ -11835,7 +12187,11 @@
       receive(data) {
         if (!current || !data || !["request", "cardId", "page", "generation"].every((key) => data[key] === current[key])) return;
         links = Array.isArray(data.links) ? data.links.slice(0, 200).filter((row) => row && Number.isSafeInteger(row.id) && row.id > 0 && ["outgoing", "incoming"].includes(row.direction) && Number.isInteger(row.target_page) && row.target_page > 0 && typeof row.title === "string" && typeof row.available === "boolean") : [];
-        changed({ ...current, links, loading: false, error: !!data.error });
+        writing = Array.isArray(data.writing) ? data.writing.slice(0, 200).filter((row) => row && typeof row.anchor === "string" && /^[a-f0-9]{32}$/.test(row.anchor) && typeof row.title === "string" && typeof row.quote === "string") : [];
+        changed({ ...current, links, writing, loading: false, error: !!data.error });
+      },
+      openWriting(row) {
+        if (writing.includes(row)) command("writing", { anchor: row.anchor });
       },
       jump(row, mode = "jump") {
         if (links.includes(row) && row.available && ["jump", "beside"].includes(mode)) {
@@ -11860,17 +12216,24 @@
       close() {
         current = null;
         links = [];
+        writing = [];
       }
     };
   }
-  function usePdfPageLinks({ cardId, page, generation, enabled = true, onCommand }) {
-    const [view, setView] = reactExports.useState({ links: [], loading: false, error: false });
+  function usePdfPageLinks({ cardId, page, generation, enabled = true, onCommand, captureSource }) {
+    const [view, setView] = reactExports.useState({ links: [], writing: [], loading: false, error: false });
     const send = reactExports.useRef(onCommand);
     send.current = onCommand;
+    const capture = reactExports.useRef(captureSource), source = reactExports.useRef(null);
+    capture.current = captureSource;
     const model = reactExports.useRef(null);
-    if (!model.current) model.current = createPdfPageLinks((message) => send.current(message), setView);
+    if (!model.current) model.current = createPdfPageLinks((message) => send.current({
+      ...message,
+      ...["create", "manage"].includes(message.operation) && source.current ? { passage: source.current } : {}
+    }), setView);
     reactExports.useEffect(() => {
       model.current.start(enabled ? cardId : 0, page, generation);
+      source.current = null;
       return () => model.current.close();
     }, [cardId, page, generation, enabled]);
     reactExports.useEffect(() => {
@@ -11888,10 +12251,16 @@
       generation,
       enabled,
       links: current ? view.links : [],
+      writing: current ? view.writing : [],
+      openWriting: (row) => model.current.openWriting(row),
       loading: !current || view.loading,
       error: current && view.error,
       create: () => model.current.create(),
       manage: () => model.current.manage(),
+      rememberSelection: () => {
+        var _a;
+        source.current = ((_a = capture.current) == null ? void 0 : _a.call(capture)) || null;
+      },
       recordings: () => model.current.recordings(),
       linkRecording: () => model.current.linkRecording(),
       remove: (row) => model.current.remove(row),
@@ -11946,6 +12315,11 @@
           type: "button",
           disabled: !enabled,
           "aria-label": tr("reader_page_links"),
+          onMouseDown: (event) => {
+            var _a;
+            (_a = linksState.rememberSelection) == null ? void 0 : _a.call(linksState);
+            event.preventDefault();
+          },
           "aria-haspopup": "dialog",
           "aria-expanded": !!expanded,
           "aria-controls": expanded ? "pdf-page-links-panel" : void 0,
@@ -11964,6 +12338,9 @@
           "data-pdf-page-links": "true",
           role: "dialog",
           "aria-label": tr("reader_page_links"),
+          onMouseDown: (event) => {
+            if (event.target.closest("button")) event.preventDefault();
+          },
           style: {
             position: "fixed",
             bottom: "calc(var(--pdf-controls-height, 58px) + 6px)",
@@ -12049,6 +12426,64 @@
         }
       ), document.body)
     ] });
+  }
+  function PdfWritingMargin({ linksState, tr, textLayer, wrapper, renderInfo }) {
+    const { writing = [], openWriting } = linksState;
+    const [positions, setPositions] = reactExports.useState({});
+    reactExports.useEffect(() => {
+      if (!writing.length || !wrapper.current) return;
+      const top = wrapper.current.getBoundingClientRect().top;
+      const anchors = writing.map((row, index) => {
+        const range = (renderInfo == null ? void 0 : renderInfo.textReady) && pdfExcerptRange(textLayer.current, row.quote);
+        const rect = range && Array.from(range.getClientRects()).find((rect2) => rect2.width && rect2.height);
+        return { anchor: row.anchor, y: rect ? Math.max(2, rect.top - top) : 4 + index * 26 };
+      }).sort((a, b) => a.y - b.y);
+      let bottom = -26;
+      const next = {};
+      for (const { anchor, y } of anchors) {
+        next[anchor] = Math.max(y, bottom + 2);
+        bottom = next[anchor] + 24;
+      }
+      setPositions(next);
+    }, [writing, renderInfo, textLayer, wrapper]);
+    if (!writing.length) return null;
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "aside",
+      {
+        id: "pdf-writing-margin",
+        "aria-label": tr("writing_excerpt_backlinks"),
+        style: { flex: "0 0 32px", width: 32, alignSelf: "stretch", position: "relative" },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `#pdf-writing-margin button:focus-visible {outline: 3px solid #93c5fd; outline-offset: 1px;}` }),
+          writing.map((row, index) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: () => openWriting(row),
+              "aria-label": tr("writing_excerpt_backlinks") + ": " + row.title,
+              title: row.title + "\n" + row.quote.slice(0, 180),
+              style: {
+                position: "absolute",
+                left: 4,
+                top: positions[row.anchor] ?? 4 + index * 26,
+                width: 24,
+                height: 24,
+                padding: 0,
+                borderRadius: 4,
+                fontSize: 17,
+                lineHeight: "22px",
+                background: "#292b31",
+                color: "#c4d8ff",
+                border: "1px solid #687795",
+                cursor: "pointer"
+              },
+              children: "↗"
+            },
+            row.anchor
+          ))
+        ]
+      }
+    );
   }
   const clamp = (value) => Math.max(0, Math.min(value, 1));
   function capturePdfDestination(scroll, page, selection = null, clientY = null) {
@@ -12365,9 +12800,6 @@
     }
     return best || spans[0];
   }
-  function normalizeJumpText(value) {
-    return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
-  }
   function firstHighlightRect(highlight) {
     const rects = Array.isArray(highlight == null ? void 0 : highlight.rects) ? highlight.rects : [];
     const first = rects[0] || {};
@@ -12384,23 +12816,6 @@
     if (aRect.y !== bRect.y) return aRect.y - bRect.y;
     if (aRect.x !== bRect.x) return aRect.x - bRect.x;
     return String((a == null ? void 0 : a.id) || "").localeCompare(String((b == null ? void 0 : b.id) || ""));
-  }
-  function clearJumpHitStyles(textLayer) {
-    if (!textLayer) return;
-    textLayer.querySelectorAll('span[data-inc-jump-hit="1"]').forEach((span) => {
-      span.dataset.incJumpHit = "0";
-      span.style.background = "";
-      span.style.outline = "";
-      span.style.borderRadius = "";
-    });
-  }
-  function markJumpHit(spans) {
-    spans.forEach((span) => {
-      span.dataset.incJumpHit = "1";
-      span.style.background = "rgba(59, 130, 246, 0.24)";
-      span.style.outline = "1px solid rgba(96, 165, 250, 0.95)";
-      span.style.borderRadius = "3px";
-    });
   }
   function clearSearchHitStyles(textLayer) {
     if (!textLayer) return;
@@ -12473,32 +12888,6 @@
     }
     return firstHit;
   }
-  function findExcerptSpanMatch(textLayer, excerpt) {
-    const target = normalizeJumpText(excerpt);
-    if (!textLayer || !target) return null;
-    const spans = Array.from(textLayer.querySelectorAll("span")).map((span) => ({ span, text: normalizeJumpText(span.textContent) })).filter(({ text }) => text.length > 0);
-    if (!spans.length) return null;
-    const maxWindow = 48;
-    const maxCombinedLength = Math.max(target.length * 2, target.length + 120);
-    for (let start = 0; start < spans.length; start += 1) {
-      let combined = "";
-      const matched = [];
-      for (let end = start; end < spans.length && end < start + maxWindow; end += 1) {
-        const piece = spans[end].text;
-        combined = joinPdfTextParts(combined, piece);
-        matched.push(spans[end].span);
-        if (combined.includes(target)) {
-          return matched;
-        }
-        if (combined.length > maxCombinedLength) {
-          break;
-        }
-      }
-    }
-    const tokens = target.split(/\s+/).filter((token) => token.length >= 4).slice(0, 6);
-    if (!tokens.length) return null;
-    return spans.filter(({ text }) => tokens.some((token) => text.includes(token))).slice(0, Math.max(1, Math.min(tokens.length, 4))).map(({ span }) => span);
-  }
   function clampScrollRatio(value) {
     const ratio = Number(value);
     if (!Number.isFinite(ratio)) return 0;
@@ -12552,16 +12941,45 @@
       fitWidth,
       setReadProgress: rawSetReadProgress
     } = usePdfRender();
+    const sourceSelection = reactExports.useRef(null);
+    const sourceSelectionKey = `${pageLinksDocument.cardId}:${pageLinksDocument.generation}:${page}`;
+    const captureSourcePassage = () => {
+      var _a;
+      const passage = capturePdfPassage(containerRef.current, textLayerRef.current);
+      if (passage.quote) sourceSelection.current = { key: sourceSelectionKey, passage };
+      return ((_a = sourceSelection.current) == null ? void 0 : _a.key) === sourceSelectionKey ? sourceSelection.current.passage : passage;
+    };
+    reactExports.useEffect(() => {
+      const remember = () => {
+        const passage = capturePdfPassage(containerRef.current, textLayerRef.current);
+        if (passage.quote) sourceSelection.current = { key: sourceSelectionKey, passage };
+      };
+      const clear = (event) => {
+        var _a;
+        if ((_a = containerRef.current) == null ? void 0 : _a.contains(event.target)) sourceSelection.current = null;
+      };
+      document.addEventListener("selectionchange", remember);
+      document.addEventListener("pointerdown", clear, true);
+      return () => {
+        document.removeEventListener("selectionchange", remember);
+        document.removeEventListener("pointerdown", clear, true);
+      };
+    }, [sourceSelectionKey, containerRef, textLayerRef]);
     const pageLinksState = usePdfPageLinks({
       cardId: pageLinksDocument.cardId,
       page,
       generation: pageLinksDocument.generation,
+      captureSource: captureSourcePassage,
       enabled: !!pdfDocRef.current && !error && renderInfo.cardId === pageLinksDocument.cardId && renderInfo.page === page,
       onCommand: (message) => {
         var _a;
         const metrics = getPdfViewportMetrics(containerRef.current);
         const point = (metrics == null ? void 0 : metrics.pageHeight) > 0 ? clampScrollRatio((window.scrollY - metrics.pageTop) / metrics.pageHeight) : null;
-        (_a = window.pycmd) == null ? void 0 : _a.call(window, "incremento_pdf_page_links:" + JSON.stringify({ ...message, page_y: point }));
+        (_a = window.pycmd) == null ? void 0 : _a.call(window, "incremento_pdf_page_links:" + JSON.stringify({
+          ...message,
+          page_y: point,
+          passage: message.passage || captureSourcePassage()
+        }));
       }
     });
     const pageLocationText = pdfPageLocation(page, totalPages, pageLabels, tr);
@@ -12632,6 +13050,7 @@
     const [pageJumpValue, setPageJumpValue] = reactExports.useState("");
     const pendingHighlightScrollRef = reactExports.useRef(null);
     const pendingExcerptJumpRef = reactExports.useRef("");
+    const [excerptCue, setExcerptCue] = reactExports.useState(null);
     const pendingReadAnchorScrollRef = reactExports.useRef(false);
     const pendingPageTopScrollRef = reactExports.useRef(false);
     const pendingResumeScrollRef = reactExports.useRef(null);
@@ -12700,6 +13119,43 @@
       if (cardId > 0) window.pycmd("incremento_pdf_link_preview_zoom:" + JSON.stringify({ cardId, zoom: zoom2 }));
     }, [cardIdRef]);
     const [linkBackHistory, setLinkBackHistory] = reactExports.useState([]);
+    const [documentBackAvailable, setDocumentBackAvailable] = reactExports.useState(false);
+    const [coverage, setCoverage] = reactExports.useState(null);
+    const [passageUnavailable, setPassageUnavailable] = reactExports.useState(false);
+    reactExports.useEffect(() => {
+      window.incrementoReceiveCoverage = (value) => setCoverage(value);
+      return () => {
+        delete window.incrementoReceiveCoverage;
+      };
+    }, []);
+    reactExports.useEffect(() => {
+      const report = () => {
+        var _a, _b;
+        const bounds = (_a = containerRef.current) == null ? void 0 : _a.getBoundingClientRect();
+        if (document.hidden || !bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight || renderInfo.page !== page || renderInfo.cardId !== cardIdRef.current || !totalPages) return;
+        (_b = window.pycmd) == null ? void 0 : _b.call(window, "incremento_reader_coverage:" + JSON.stringify({
+          cardId: cardIdRef.current,
+          position: 0,
+          start: page - 1,
+          end: page,
+          totalPages
+        }));
+      };
+      report();
+      document.addEventListener("visibilitychange", report);
+      window.addEventListener("scroll", report, { passive: true });
+      return () => {
+        document.removeEventListener("visibilitychange", report);
+        window.removeEventListener("scroll", report);
+      };
+    }, [page, totalPages, renderInfo, cardIdRef, containerRef]);
+    reactExports.useEffect(() => {
+      window.incrementoSetDocumentBackAvailable = (value) => setDocumentBackAvailable(value === true);
+      setDocumentBackAvailable(window._incDocumentBackAvailable === true);
+      return () => {
+        delete window.incrementoSetDocumentBackAvailable;
+      };
+    }, []);
     const [linkBackScrollNonce, setLinkBackScrollNonce] = reactExports.useState(0);
     const [appearanceMode, setAppearanceMode] = reactExports.useState("original");
     const pageAppearance = pdfPageAppearance(appearanceMode);
@@ -12745,19 +13201,21 @@
       hoveredHighlightActionRef.current = null;
     }, []);
     const hoverHighlightAtClientPoint = reactExports.useCallback((event) => {
-      var _a, _b, _c;
+      var _a, _b, _c, _d;
       hoveredHighlightPointRef.current = { clientX: event.clientX, clientY: event.clientY, buttons: event.buttons || 0 };
       const wrapper = containerRef.current;
       if (!showHighlightControls || !wrapper || snapshotMode.getSnapshot()) {
         clearHoveredHighlight();
+        highlightTooltip.hide();
+        return;
+      }
+      if (event.buttons) {
+        clearHoveredHighlight();
+        highlightTooltip.hide();
         return;
       }
       const actions = (_b = (_a = event.target) == null ? void 0 : _a.closest) == null ? void 0 : _b.call(_a, ".incremento-pdf-highlight-actions");
       if (actions && actions === hoveredHighlightActionRef.current) return;
-      if (event.buttons) {
-        clearHoveredHighlight();
-        return;
-      }
       const highlight = pdfHighlightAtClientPoint(
         pdfDisplayHighlights(pageHighlights),
         renderInfo,
@@ -12766,23 +13224,37 @@
         event.clientY,
         { normalizedRects: true }
       );
+      if (hasAnnotationNote(highlight)) {
+        if (((_c = highlightTooltip.getSnapshot()) == null ? void 0 : _c.id) === String(highlight.id ?? "")) {
+          highlightTooltip.cancelHide();
+          highlightTooltip.move(event);
+        } else {
+          highlightTooltip.show(highlight, event);
+        }
+      } else if (highlightTooltip.getSnapshot()) {
+        highlightTooltip.scheduleHide();
+      }
       const id = highlight && highlight.color !== "snapshot" ? String(highlight.id ?? "") : null;
-      if (id !== null && ((_c = hoveredHighlightActionRef.current) == null ? void 0 : _c.dataset.highlightId) === id) return;
+      if (id !== null && ((_d = hoveredHighlightActionRef.current) == null ? void 0 : _d.dataset.highlightId) === id) return;
       clearHoveredHighlight();
       if (id === null) return;
       const target = Array.from(wrapper.querySelectorAll(".incremento-pdf-highlight-actions")).find((node) => node.dataset.highlightId === id);
       target == null ? void 0 : target.setAttribute("data-highlight-hovered", "true");
       hoveredHighlightActionRef.current = target || null;
-    }, [clearHoveredHighlight, containerRef, pageHighlights, renderInfo, showHighlightControls, snapshotMode]);
+    }, [clearHoveredHighlight, containerRef, highlightTooltip, pageHighlights, renderInfo, showHighlightControls, snapshotMode]);
     const leaveHighlightHover = reactExports.useCallback(() => {
       hoveredHighlightPointRef.current = null;
       clearHoveredHighlight();
-    }, [clearHoveredHighlight]);
+      highlightTooltip.scheduleHide();
+    }, [clearHoveredHighlight, highlightTooltip]);
     reactExports.useEffect(() => {
       clearHoveredHighlight();
       if (hoveredHighlightPointRef.current) hoverHighlightAtClientPoint(hoveredHighlightPointRef.current);
-      return clearHoveredHighlight;
-    }, [clearHoveredHighlight, hoverHighlightAtClientPoint]);
+      return () => {
+        clearHoveredHighlight();
+        highlightTooltip.hide();
+      };
+    }, [clearHoveredHighlight, highlightTooltip, hoverHighlightAtClientPoint]);
     const minViewerWidth = (renderInfo == null ? void 0 : renderInfo.pageWidth) ? Math.ceil(renderInfo.pageWidth) : 0;
     const showReadMarker = readAnchor && readPage > 0 && page === readPage && Number(readAnchor.page || 0) === page;
     const readMarkerRect = showReadMarker && Number.isFinite(Number(readAnchor.x)) && Number.isFinite(Number(readAnchor.y)) && Number.isFinite(Number(readAnchor.w)) && Number.isFinite(Number(readAnchor.h)) ? {
@@ -12836,10 +13308,7 @@
         id
       }));
     }, [cardIdRef]);
-    const showHighlightNote = highlightTooltip.show;
-    const moveHighlightNote = highlightTooltip.move;
     const hideHighlightNote = highlightTooltip.hide;
-    const scheduleHighlightNoteHide = highlightTooltip.scheduleHide;
     const describeLimitReached = reactExports.useCallback(() => {
       const prefix = limitTotal > 0 ? tr("reader_limit_reached_pages", { used: Math.max(limitUsed, limitTotal), total: limitTotal }) : tr("reader_limit_reached_pdf");
       if (limitMode === "hard_stop") {
@@ -12943,7 +13412,7 @@
       }
     }, [limitEnabled, limitNotice == null ? void 0 : limitNotice.kind, limitReached, overrideEnabled, tr]);
     reactExports.useEffect(() => {
-      var _a, _b, _c;
+      var _a, _b;
       const pendingId = pendingHighlightScrollRef.current;
       const wrapper = containerRef.current;
       if (!wrapper) return;
@@ -12980,49 +13449,10 @@
       }
       const jumpExcerpt = pendingExcerptJumpRef.current;
       if (jumpExcerpt) {
-        const normalizedExcerpt = normalizeJumpText(jumpExcerpt);
-        if (!normalizedExcerpt) {
-          pendingExcerptJumpRef.current = "";
-        } else {
-          const highlightTarget = highlights.find((highlight) => {
-            var _a2;
-            if (highlight.page !== page || !((_a2 = highlight.rects) == null ? void 0 : _a2.length)) return false;
-            const highlightText = normalizeJumpText(highlight.text);
-            return highlightText.includes(normalizedExcerpt) || normalizedExcerpt.includes(highlightText);
-          });
-          if (((_b = highlightTarget == null ? void 0 : highlightTarget.rects) == null ? void 0 : _b.length) && scrollToPdfRect(highlightTarget.rects[0])) {
-            clearPendingResumeScroll();
-            suppressScrollPersistence(900);
-            setActiveHighlightId(String(highlightTarget.id || ""));
-            setFocusedHighlightId(String(highlightTarget.id || ""));
-            window.setTimeout(() => setFocusedHighlightId(null), 1600);
-            pendingExcerptJumpRef.current = "";
-            pendingReadAnchorScrollRef.current = false;
-            return;
-          }
-          const tl = textLayerRef.current;
-          const spanCount = tl ? tl.querySelectorAll("span").length : 0;
-          if (tl && spanCount > 0) {
-            clearJumpHitStyles(tl);
-            const matchedSpans = findExcerptSpanMatch(tl, normalizedExcerpt);
-            if (matchedSpans == null ? void 0 : matchedSpans.length) {
-              markJumpHit(matchedSpans);
-              clearPendingResumeScroll();
-              suppressScrollPersistence(900);
-              try {
-                matchedSpans[0].scrollIntoView({ block: "center", inline: "center", behavior: "smooth" });
-              } catch (_) {
-              }
-              pendingExcerptJumpRef.current = "";
-              pendingReadAnchorScrollRef.current = false;
-              window.setTimeout(() => clearJumpHitStyles(tl), 2200);
-              return;
-            }
-            pendingExcerptJumpRef.current = "";
-          } else {
-            return;
-          }
-        }
+        if (!(renderInfo == null ? void 0 : renderInfo.textReady) || renderInfo.page !== pageRef.current || renderInfo.page !== page || renderInfo.cardId !== cardIdRef.current) return;
+        setExcerptCue({ quote: jumpExcerpt, page, cardId: cardIdRef.current, until: Date.now() + 4e3 });
+        pendingExcerptJumpRef.current = "";
+        pendingReadAnchorScrollRef.current = false;
       }
       if (pendingReadAnchorScrollRef.current && showReadMarker) {
         if (readMarkerRect) {
@@ -13038,7 +13468,7 @@
         clearPendingResumeScroll();
         suppressScrollPersistence(700);
         window.scrollTo({
-          top: Math.max(0, ((_c = getPdfViewportMetrics(wrapper)) == null ? void 0 : _c.pageTop) || 0),
+          top: Math.max(0, ((_b = getPdfViewportMetrics(wrapper)) == null ? void 0 : _b.pageTop) || 0),
           left: window.scrollX,
           behavior: "auto"
         });
@@ -13072,6 +13502,39 @@
       clearPendingResumeScroll,
       suppressScrollPersistence,
       linkBackScrollNonce
+    ]);
+    reactExports.useEffect(() => {
+      if (!excerptCue) return;
+      const remaining = excerptCue.until - Date.now();
+      if (remaining <= 0 || excerptCue.cardId !== cardIdRef.current || excerptCue.page !== pageRef.current) {
+        setExcerptCue(null);
+        return;
+      }
+      if (!(renderInfo == null ? void 0 : renderInfo.textReady) || renderInfo.page !== excerptCue.page || renderInfo.cardId !== excerptCue.cardId || !textLayerRef.current || !containerRef.current) return;
+      const clear = revealPdfExcerpt(
+        textLayerRef.current,
+        containerRef.current,
+        excerptCue.quote,
+        { duration: remaining, onDismiss: () => setExcerptCue((current) => current === excerptCue ? null : current) }
+      );
+      if (clear) {
+        setPassageUnavailable(false);
+        clearPendingResumeScroll();
+        suppressScrollPersistence(900);
+      } else {
+        setPassageUnavailable(true);
+      }
+      return () => clear == null ? void 0 : clear(false);
+    }, [
+      excerptCue,
+      page,
+      renderInfo,
+      cardIdRef,
+      pageRef,
+      textLayerRef,
+      containerRef,
+      clearPendingResumeScroll,
+      suppressScrollPersistence
     ]);
     reactExports.useEffect(() => {
       const tl = textLayerRef.current;
@@ -13649,16 +14112,27 @@
           visibleHeight: metrics == null ? void 0 : metrics.visibleHeight
         });
         if (scrollRatio === null) return null;
-        return { cardId, page: currentPage, pageLabel: (pageLabels == null ? void 0 : pageLabels[currentPage - 1]) || "", scrollRatio };
+        const passage = capturePdfPassage(wrapper, textLayerRef.current);
+        return {
+          cardId,
+          page: currentPage,
+          pageLabel: (pageLabels == null ? void 0 : pageLabels[currentPage - 1]) || "",
+          scrollRatio,
+          ...Object.keys(passage).length ? { passage } : {}
+        };
       };
       return () => {
         delete window.incrementoPdfAnchorAtPoint;
       };
     }, [cardIdRef, containerRef, pageLabels, pageRef]);
     const jumpBackFromPdfLink = reactExports.useCallback(() => {
+      var _a;
       const taken = takePdfLinkHistory(linkBackHistory);
       const target = taken.location;
-      if (!target) return;
+      if (!target) {
+        if (documentBackAvailable) (_a = window.pycmd) == null ? void 0 : _a.call(window, "incremento_pdf_passage_back:");
+        return;
+      }
       const delta = target.page - pageRef.current;
       if (delta !== 0 && !limitAwareNav(delta, { scrollToTop: false })) return;
       pendingHighlightScrollRef.current = null;
@@ -13671,7 +14145,7 @@
       suppressScrollPersistence(700);
       setLinkBackHistory(taken.history);
       if (delta === 0) setLinkBackScrollNonce((value) => value + 1);
-    }, [limitAwareNav, linkBackHistory, pageRef, suppressScrollPersistence]);
+    }, [limitAwareNav, linkBackHistory, documentBackAvailable, pageRef, suppressScrollPersistence]);
     const openContents = reactExports.useCallback(() => {
       if (!contentsReady || !cardIdRef.current) return;
       window.pycmd("incremento_pdf_contents:" + JSON.stringify({
@@ -13825,8 +14299,11 @@
       rawSetReadProgress(currentPage, anchor);
     }, [buildReadAnchor, canMarkReadAtPage, clearReadAnchor, pageRef, rawSetReadProgress]);
     reactExports.useEffect(() => {
-      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null, startLocale = "en", startCustomLanguage = null, startAppearanceMode = "original", startShowHighlightDeleteButtons = true, startLinkPreviewZoom = DEFAULT_PDF_LINK_PREVIEW_ZOOM, startPageY = null, startControlsCollapsed = null, startDefaultHighlightColor = "yellow", startLinkPreviewSize = null) => {
-        var _a, _b;
+      const startWithHighlights = (cardId, filename, startPage, startZoom, startScrollRatio = 0, startReadPage = 0, startReadAnchor = null, startSearchQuery = "", startSearchHits = [], startActiveSearchHitIndex = -1, startJumpExcerpt = "", startJumpHighlightId = "", startScrollToReadAnchor = false, startLimitStatus = null, startAutoHighlightOnExtract = void 0, startScrollToTopOnPageChange = true, startBookmarks = null, startLocale = "en", startCustomLanguage = null, startAppearanceMode = "original", startShowHighlightDeleteButtons = true, startLinkPreviewZoom = DEFAULT_PDF_LINK_PREVIEW_ZOOM, startPageY = null, startControlsCollapsed = null, startDefaultHighlightColor = "yellow", startLinkPreviewSize = null, startPassage = null) => {
+        var _a, _b, _c;
+        setExcerptCue(null);
+        setCoverage(null);
+        setPassageUnavailable(false);
         setPageLinksDocument((current) => ({ cardId: Number(cardId), generation: current.generation + 1 }));
         contentsGenerationRef.current += 1;
         snapshotMode.setActive(false);
@@ -13863,7 +14340,7 @@
         setSearchHits(Array.isArray(startSearchHits) ? startSearchHits : []);
         setActiveSearchHitIndex(Number.isInteger(startActiveSearchHitIndex) ? startActiveSearchHitIndex : -1);
         setReadAnchor(startReadAnchor && typeof startReadAnchor === "object" ? startReadAnchor : null);
-        pendingExcerptJumpRef.current = String(startJumpExcerpt || "").trim();
+        pendingExcerptJumpRef.current = (startPassage == null ? void 0 : startPassage.quote) || ((_a = startPassage == null ? void 0 : startPassage.rects) == null ? void 0 : _a.length) ? startPassage : String(startJumpExcerpt || "").trim();
         pendingHighlightScrollRef.current = String(startJumpHighlightId || "").trim();
         setActiveHighlightId(String(startJumpHighlightId || "").trim() || null);
         pendingReadAnchorScrollRef.current = !!startScrollToReadAnchor;
@@ -13882,10 +14359,10 @@
         const workspace = window._incWorkspaceActive;
         if ((workspace == null ? void 0 : workspace.card_id) === Number(cardId)) {
           window._incWorkspacePending = workspace;
-          (_a = window.incrementoPdfRestoreWorkspace) == null ? void 0 : _a.call(window, workspace);
+          (_b = window.incrementoPdfRestoreWorkspace) == null ? void 0 : _b.call(window, workspace);
         } else {
           window._incWorkspaceActive = null;
-          if (((_b = window._incWorkspacePending) == null ? void 0 : _b.card_id) !== Number(cardId)) window._incWorkspacePending = null;
+          if (((_c = window._incWorkspacePending) == null ? void 0 : _c.card_id) !== Number(cardId)) window._incWorkspacePending = null;
         }
       };
       window.incrementoPickPdfHighlightColor = finishHighlightColorPicker;
@@ -13894,6 +14371,22 @@
       window.incrementoSetPdfFocusState = setPdfFocusState;
       window.incrementoSetPdfLinkPreviewZoom = (value) => setLinkPreviewZoom(normalizePdfLinkPreviewZoom(value));
       window.incrementoPdfNav = limitAwareNav;
+      window.incrementoRevealPdfExcerpt = (value) => {
+        var _a;
+        if ((value == null ? void 0 : value.cardId) !== cardIdRef.current || !Number.isInteger(value.page) || value.page < 1 || value.page > (((_a = pdfDocRef.current) == null ? void 0 : _a.numPages) || 0)) return false;
+        const delta = value.page - pageRef.current;
+        if (delta !== 0 && !limitAwareNav(delta, { scrollToTop: false })) return false;
+        setExcerptCue(null);
+        pendingExcerptJumpRef.current = value.passage || String(value.excerpt || "").slice(0, 2e3);
+        pendingHighlightScrollRef.current = null;
+        pendingReadAnchorScrollRef.current = false;
+        pendingPageTopScrollRef.current = false;
+        pendingResumeScrollRef.current = clampScrollRatio(value.scrollRatio);
+        pendingResumePageRef.current = value.page;
+        pendingContentsFractionRef.current = Number.isFinite(value.pageY) ? value.pageY : null;
+        setHighlightJumpNonce((nonce) => nonce + 1);
+        return true;
+      };
       window.incrementoPdfZoom = adjustZoom;
       window.incrementoPdfMarkRead = limitAwareMarkRead;
       window.incrementoPdfOpenFind = openFind;
@@ -13975,7 +14468,8 @@
           pending.pageY,
           pending.controlsCollapsed,
           pending.defaultHighlightColor,
-          pending.linkPreviewSize
+          pending.linkPreviewSize,
+          pending.jumpPassage
         );
       }
       return () => {
@@ -13985,6 +14479,7 @@
         delete window.incrementoSetPdfFocusState;
         delete window.incrementoSetPdfLinkPreviewZoom;
         delete window.incrementoPdfNav;
+        delete window.incrementoRevealPdfExcerpt;
         delete window.incrementoPdfZoom;
         delete window.incrementoPdfMarkRead;
         delete window.incrementoPdfOpenFind;
@@ -14141,6 +14636,7 @@
       "div",
       {
         className: readingOnly ? "incremento-pdf-reading-only" : void 0,
+        onPointerDown: hideHighlightNote,
         style: {
           width: "100%",
           minHeight: "100vh",
@@ -14227,6 +14723,22 @@
                 boxShadow: "0 -3px 10px rgba(0,0,0,0.28)"
               },
               children: [
+                (coverage || passageUnavailable) && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "div",
+                  {
+                    role: "status",
+                    "aria-live": "polite",
+                    "data-reader-coverage": "true",
+                    style: { fontSize: 11, color: "#cbd5e1", width: "100%", flexBasis: "100%", padding: "2px 6px" },
+                    children: [
+                      coverage && (coverage.error ? tr("reader_coverage_unavailable") : tr("reader_coverage_summary", {
+                        viewed: Number(coverage.viewed_percent || 0).toFixed(1).replace(/\.0$/, ""),
+                        marked: Number(coverage.marked_percent || 0).toFixed(1).replace(/\.0$/, "")
+                      })),
+                      passageUnavailable && ` · ${tr("reader_passage_unavailable")}`
+                    ]
+                  }
+                ),
                 controlsCollapsed && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "reader-essential-controls", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "reader-control-row reader-navigation", children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -14394,7 +14906,7 @@
                         "button",
                         {
                           type: "button",
-                          disabled: !linkBackHistory.length,
+                          disabled: !linkBackHistory.length && !documentBackAvailable,
                           onClick: jumpBackFromPdfLink,
                           title: linkBackHistory.length ? tr("reader_jump_back_page", { page: linkBackHistory.at(-1).page }) : tr("reader_jump_back_hint"),
                           children: [
@@ -14406,7 +14918,7 @@
                       /* @__PURE__ */ jsxRuntimeExports.jsx(PdfPageLinks, { linksState: pageLinksState, tr })
                     ] }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "reader-progress", title: tr("reader_read_progress_pages", { read: readPage, total: totalPages }), children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr("reader_marked_read", { percent: progressPct }) }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr("reader_linear_progress", { percent: progressPct }) }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx(
                         "span",
                         {
@@ -14832,7 +15344,7 @@
                               "button",
                               {
                                 type: "button",
-                                disabled: linkBackHistory.length === 0,
+                                disabled: linkBackHistory.length === 0 && !documentBackAvailable,
                                 onClick: jumpBackFromPdfLink,
                                 title: linkBackHistory.length > 0 ? tr("reader_jump_back_page", { page: linkBackHistory.at(-1).page }) : tr("reader_jump_back_hint"),
                                 style: {
@@ -14840,8 +15352,8 @@
                                   border: "1px solid rgba(180,180,180,0.32)",
                                   borderRadius: 8,
                                   color: "inherit",
-                                  cursor: linkBackHistory.length > 0 ? "pointer" : "default",
-                                  opacity: linkBackHistory.length > 0 ? 1 : 0.48,
+                                  cursor: linkBackHistory.length > 0 || documentBackAvailable ? "pointer" : "default",
+                                  opacity: linkBackHistory.length > 0 || documentBackAvailable ? 1 : 0.48,
                                   padding: "4px 10px",
                                   fontSize: 12
                                 },
@@ -15879,217 +16391,228 @@
               onResize: applyLinkPreviewSize
             }
           ),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "div",
-            {
-              id: "pdf-canvas-wrapper",
-              ref: containerRef,
-              onClick: activateHighlightFromPageClick,
-              onMouseMove: hoverHighlightAtClientPoint,
-              onMouseLeave: leaveHighlightHover,
-              style: {
-                position: "relative",
-                display: "block",
-                textAlign: "center",
-                background: pageAppearance.background
-              },
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "canvas",
-                  {
-                    ref: canvasARef,
-                    id: "pdf-canvas-a",
-                    style: {
-                      display: "block",
-                      margin: "0 auto",
-                      pointerEvents: "none",
-                      filter: pageAppearance.filter
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "flex-start" }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                id: "pdf-canvas-wrapper",
+                ref: containerRef,
+                onClick: activateHighlightFromPageClick,
+                onMouseMove: hoverHighlightAtClientPoint,
+                onMouseLeave: leaveHighlightHover,
+                style: {
+                  position: "relative",
+                  display: "block",
+                  flex: 1,
+                  minWidth: minViewerWidth || 0,
+                  textAlign: "center",
+                  background: pageAppearance.background
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "canvas",
+                    {
+                      ref: canvasARef,
+                      id: "pdf-canvas-a",
+                      style: {
+                        display: "block",
+                        margin: "0 auto",
+                        pointerEvents: "none",
+                        filter: pageAppearance.filter
+                      }
                     }
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "canvas",
-                  {
-                    ref: canvasBRef,
-                    id: "pdf-canvas-b",
-                    style: {
-                      display: "none",
-                      position: "absolute",
-                      top: 0,
-                      left: "50%",
-                      transform: "translateX(-50%)",
-                      pointerEvents: "none",
-                      filter: pageAppearance.filter
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "canvas",
+                    {
+                      ref: canvasBRef,
+                      id: "pdf-canvas-b",
+                      style: {
+                        display: "none",
+                        position: "absolute",
+                        top: 0,
+                        left: "50%",
+                        transform: "translateX(-50%)",
+                        pointerEvents: "none",
+                        filter: pageAppearance.filter
+                      }
                     }
-                  }
-                ),
-                showReadMarker && readMarkerRect && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  "div",
-                  {
-                    style: {
-                      position: "absolute",
-                      top: Math.max(8, readMarkerRect.y * renderInfo.scale + readMarkerRect.h * renderInfo.scale / 2 - 18),
-                      left: Math.max(8, renderInfo.tlLeft + readMarkerRect.x * renderInfo.scale - 178),
-                      zIndex: 4,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "10px 12px 10px 10px",
-                      borderRadius: 14,
-                      background: "linear-gradient(135deg, rgba(8,145,178,0.96), rgba(14,116,144,0.96))",
-                      color: "#ecfeff",
-                      fontSize: 12,
-                      fontWeight: 800,
-                      letterSpacing: "0.05em",
-                      textTransform: "uppercase",
-                      border: "1px solid rgba(103,232,249,0.6)",
-                      boxShadow: "0 10px 24px rgba(0,0,0,0.28)",
-                      pointerEvents: "none"
-                    },
-                    title: (readAnchor == null ? void 0 : readAnchor.text) ? tr("reader_stopped_at", { text: readAnchor.text }) : tr("reader_stopping_page", { page: readPage }),
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 26, lineHeight: 1 }, children: "↦" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr("reader_read_marker") })
-                    ]
-                  }
-                ),
-                showReadMarker && !readMarkerRect && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  "div",
-                  {
-                    style: {
-                      position: "absolute",
-                      top: 18,
-                      left: Math.max(10, renderInfo.tlLeft - 6),
-                      zIndex: 4,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "10px 12px 10px 10px",
-                      borderRadius: 14,
-                      background: "linear-gradient(135deg, rgba(8,145,178,0.96), rgba(14,116,144,0.96))",
-                      color: "#ecfeff",
-                      fontSize: 12,
-                      fontWeight: 800,
-                      letterSpacing: "0.05em",
-                      textTransform: "uppercase",
-                      border: "1px solid rgba(103,232,249,0.6)",
-                      boxShadow: "0 10px 24px rgba(0,0,0,0.28)",
-                      pointerEvents: "none"
-                    },
-                    title: tr("reader_stopping_page", { page: readPage }),
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 26, lineHeight: 1 }, children: "↦" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr("reader_read_marker") })
-                    ]
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "div",
-                  {
-                    id: "pdf-link-layer",
-                    "aria-hidden": !clickableLinks,
-                    style: {
-                      position: "absolute",
-                      inset: 0,
-                      zIndex: 3,
-                      pointerEvents: "none"
-                    },
-                    children: linkAnnotations.map((link, index) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
-                      {
-                        type: "button",
-                        "data-pdf-link-index": index,
-                        tabIndex: clickableLinks ? 0 : -1,
-                        "aria-label": link.label || (link.kind === "external" ? tr("reader_open_external_link") : tr("reader_go_to_page", { page: link.targetPage })),
-                        title: link.label || (link.kind === "external" ? link.url : tr("reader_go_to_page", { page: link.targetPage })),
-                        onClick: (event) => activatePdfLink(event, link),
-                        style: {
-                          position: "absolute",
-                          left: renderInfo.tlLeft + link.left,
-                          top: link.top,
-                          width: link.width,
-                          height: link.height,
-                          minWidth: 0,
-                          minHeight: 0,
-                          margin: 0,
-                          padding: 0,
-                          borderRadius: 2,
-                          border: clickableLinks ? "1px solid rgba(59,130,246,0.42)" : "none",
-                          background: clickableLinks ? "rgba(59,130,246,0.07)" : "transparent",
-                          color: "transparent",
-                          cursor: clickableLinks ? "pointer" : "text",
-                          pointerEvents: clickableLinks ? "auto" : "none"
-                        }
+                  ),
+                  showReadMarker && readMarkerRect && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "div",
+                    {
+                      style: {
+                        position: "absolute",
+                        top: Math.max(8, readMarkerRect.y * renderInfo.scale + readMarkerRect.h * renderInfo.scale / 2 - 18),
+                        left: Math.max(8, renderInfo.tlLeft + readMarkerRect.x * renderInfo.scale - 178),
+                        zIndex: 4,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "10px 12px 10px 10px",
+                        borderRadius: 14,
+                        background: "linear-gradient(135deg, rgba(8,145,178,0.96), rgba(14,116,144,0.96))",
+                        color: "#ecfeff",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        letterSpacing: "0.05em",
+                        textTransform: "uppercase",
+                        border: "1px solid rgba(103,232,249,0.6)",
+                        boxShadow: "0 10px 24px rgba(0,0,0,0.28)",
+                        pointerEvents: "none"
                       },
-                      `${link.kind}-${link.url || link.targetPage || ""}-${index}`
-                    ))
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  PdfSelectionLayer,
-                  {
-                    language,
-                    textLayerRef,
-                    renderInfo,
-                    onTextClick: activateHighlightAtClientPoint
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  HighlightLayer,
-                  {
-                    nativeHighlightsVisible,
-                    showHighlightControls,
-                    showHighlightDeleteButtons,
-                    language,
-                    pageHighlights,
-                    renderInfo,
-                    deleteHighlight,
-                    editHighlightNote,
-                    editHighlightColor: openHighlightColorPicker,
-                    activateHighlightResize,
-                    resizingHighlightId,
-                    beginHighlightResize,
-                    moveHighlightResize,
-                    endHighlightResize,
-                    cancelHighlightResize,
-                    focusedHighlightId,
-                    showHighlightNote,
-                    moveHighlightNote,
-                    hideHighlightNote: scheduleHighlightNoteHide
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  PdfSnapshotLayer,
-                  {
-                    mode: snapshotMode,
-                    previewRef: snapPreviewRef,
-                    onStart: handleSnapStart,
-                    onMove: handleSnapMove,
-                    onEnd: handleSnapEnd
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "div",
-                  {
-                    ref: textLayerRef,
-                    id: "pdf-text-layer",
-                    style: {
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      overflow: "hidden",
-                      lineHeight: 1,
-                      zIndex: 2,
-                      pointerEvents: "auto",
-                      userSelect: "text",
-                      WebkitUserSelect: "text",
-                      cursor: "text"
+                      title: (readAnchor == null ? void 0 : readAnchor.text) ? tr("reader_stopped_at", { text: readAnchor.text }) : tr("reader_stopping_page", { page: readPage }),
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 26, lineHeight: 1 }, children: "↦" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr("reader_read_marker") })
+                      ]
                     }
-                  }
-                )
-              ]
-            }
-          )
+                  ),
+                  showReadMarker && !readMarkerRect && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "div",
+                    {
+                      style: {
+                        position: "absolute",
+                        top: 18,
+                        left: Math.max(10, renderInfo.tlLeft - 6),
+                        zIndex: 4,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "10px 12px 10px 10px",
+                        borderRadius: 14,
+                        background: "linear-gradient(135deg, rgba(8,145,178,0.96), rgba(14,116,144,0.96))",
+                        color: "#ecfeff",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        letterSpacing: "0.05em",
+                        textTransform: "uppercase",
+                        border: "1px solid rgba(103,232,249,0.6)",
+                        boxShadow: "0 10px 24px rgba(0,0,0,0.28)",
+                        pointerEvents: "none"
+                      },
+                      title: tr("reader_stopping_page", { page: readPage }),
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: 26, lineHeight: 1 }, children: "↦" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: tr("reader_read_marker") })
+                      ]
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "div",
+                    {
+                      id: "pdf-link-layer",
+                      "aria-hidden": !clickableLinks,
+                      style: {
+                        position: "absolute",
+                        inset: 0,
+                        zIndex: 3,
+                        pointerEvents: "none"
+                      },
+                      children: linkAnnotations.map((link, index) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "button",
+                        {
+                          type: "button",
+                          "data-pdf-link-index": index,
+                          tabIndex: clickableLinks ? 0 : -1,
+                          "aria-label": link.label || (link.kind === "external" ? tr("reader_open_external_link") : tr("reader_go_to_page", { page: link.targetPage })),
+                          title: link.label || (link.kind === "external" ? link.url : tr("reader_go_to_page", { page: link.targetPage })),
+                          onClick: (event) => activatePdfLink(event, link),
+                          style: {
+                            position: "absolute",
+                            left: renderInfo.tlLeft + link.left,
+                            top: link.top,
+                            width: link.width,
+                            height: link.height,
+                            minWidth: 0,
+                            minHeight: 0,
+                            margin: 0,
+                            padding: 0,
+                            borderRadius: 2,
+                            border: clickableLinks ? "1px solid rgba(59,130,246,0.42)" : "none",
+                            background: clickableLinks ? "rgba(59,130,246,0.07)" : "transparent",
+                            color: "transparent",
+                            cursor: clickableLinks ? "pointer" : "text",
+                            pointerEvents: clickableLinks ? "auto" : "none"
+                          }
+                        },
+                        `${link.kind}-${link.url || link.targetPage || ""}-${index}`
+                      ))
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    PdfSelectionLayer,
+                    {
+                      language,
+                      textLayerRef,
+                      renderInfo,
+                      onTextClick: activateHighlightAtClientPoint
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    HighlightLayer,
+                    {
+                      nativeHighlightsVisible,
+                      showHighlightControls,
+                      showHighlightDeleteButtons,
+                      language,
+                      pageHighlights,
+                      renderInfo,
+                      deleteHighlight,
+                      editHighlightNote,
+                      editHighlightColor: openHighlightColorPicker,
+                      activateHighlightResize,
+                      resizingHighlightId,
+                      beginHighlightResize,
+                      moveHighlightResize,
+                      endHighlightResize,
+                      cancelHighlightResize,
+                      focusedHighlightId
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    PdfSnapshotLayer,
+                    {
+                      mode: snapshotMode,
+                      previewRef: snapPreviewRef,
+                      onStart: handleSnapStart,
+                      onMove: handleSnapMove,
+                      onEnd: handleSnapEnd
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "div",
+                    {
+                      ref: textLayerRef,
+                      id: "pdf-text-layer",
+                      style: {
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        overflow: "hidden",
+                        lineHeight: 1,
+                        zIndex: 2,
+                        pointerEvents: "auto",
+                        userSelect: "text",
+                        WebkitUserSelect: "text",
+                        cursor: "text"
+                      }
+                    }
+                  )
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              PdfWritingMargin,
+              {
+                linksState: pageLinksState,
+                tr,
+                textLayer: textLayerRef,
+                wrapper: containerRef,
+                renderInfo
+              }
+            )
+          ] })
         ]
       }
     );
@@ -16135,13 +16658,13 @@
     return current.extent > 0 ? Math.max(0, Math.min(1, current.top / current.extent)) : 0;
   }
   function referenceExcerptItemIndex(items, excerpt) {
-    const normalize = (value) => String(value || "").normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase();
-    const needle = normalize(excerpt).slice(0, 320);
+    const normalize2 = (value) => String(value || "").normalize("NFKC").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+    const needle = normalize2(excerpt).slice(0, 320);
     if (!needle) return -1;
     let text = "";
     const ends = [];
     for (const item of items.slice(0, 2e4)) {
-      text += normalize(item.str) + " ";
+      text += normalize2(item.str) + " ";
       ends.push(text.length);
       if (text.length > 25e4) break;
     }
@@ -16470,12 +16993,16 @@
       };
     });
     const confirmDestination = () => {
-      var _a;
+      var _a, _b;
       const selection = window.getSelection();
       const point = capturePdfDestination(scroll.current, host.current, selection);
       if (!point) return;
       const selected = referenceSelectionText(selection, (_a = host.current) == null ? void 0 : _a.querySelector("#pdf-text-layer"));
-      send("pick", { ...point, page_y: selected ? point.page_y : (currentSpot == null ? void 0 : currentSpot.page_y) ?? point.page_y });
+      send("pick", {
+        ...point,
+        page_y: selected ? point.page_y : (currentSpot == null ? void 0 : currentSpot.page_y) ?? point.page_y,
+        passage: capturePdfPassage(host.current, (_b = host.current) == null ? void 0 : _b.querySelector("#pdf-text-layer"), selection)
+      });
     };
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { position: "fixed", inset: 0, overflow: "hidden", display: "flex", flexDirection: "column", color: "#eee", background: "#252525" }, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("nav", { "aria-label": tr("reader_reference_title"), style: { display: "flex", gap: 6, padding: 8, flexWrap: "wrap", alignItems: "center" }, children: [

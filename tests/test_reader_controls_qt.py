@@ -120,6 +120,9 @@ def test_epub_compact_drawers_and_saved_choice_survive_reopening(tmp_path, scale
         dock._show_controls_btn.click()
         assert len(writes) == 2, 'Retired-profile controls cannot save into another profile'
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
     ''')
     result = subprocess.run([sys.executable, '-c', script, str(tmp_path)],
         cwd=Path(__file__).resolve().parents[1], env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen', 'QT_SCALE_FACTOR': scale},

@@ -54,8 +54,9 @@ def resolve_epub_reference(addon_dir, profile, collection, card_id):
             if not path.is_relative_to(extracted) or not path.is_file():
                 raise ValueError('EPUB section unavailable')
             paths.append(str(path))
+        preserve_layout = ('Incremento_Source_Type' in note and note['Incremento_Source_Type'] == 'HTML')
         return dict(card_id=card_id, filename=filename, title=title or file.stem,
-                    root=str(extracted), paths=paths, sections=sections)
+                    root=str(extracted), paths=paths, sections=sections, preserve_layout=bool(preserve_layout))
     except (OSError, KeyError, TypeError, AttributeError, json.JSONDecodeError) as error:
         raise ValueError('EPUB reference unavailable') from error
 

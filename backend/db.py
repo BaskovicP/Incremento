@@ -877,6 +877,46 @@ def _migration_24_document_link_notes(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_25_writing_links(conn: sqlite3.Connection) -> None:
+    _begin_migration_script(conn, """
+        CREATE TABLE writing_links (
+            anchor TEXT PRIMARY KEY CHECK(length(anchor)=32),
+            source_card_id INTEGER NOT NULL CHECK(source_card_id>0),
+            source_content_id TEXT,
+            source_kind TEXT NOT NULL CHECK(source_kind IN ('card','pdf','epub')),
+            source_position INTEGER NOT NULL CHECK(source_position BETWEEN 0 AND 1000000),
+            source_json TEXT NOT NULL CHECK(length(source_json)<=16000),
+            source_title TEXT NOT NULL CHECK(length(source_title)<=240),
+            writing_card_id INTEGER NOT NULL CHECK(writing_card_id>0),
+            writing_content_id TEXT,
+            active INTEGER NOT NULL DEFAULT 0 CHECK(active IN (0,1))
+        );
+        CREATE INDEX writing_links_source ON writing_links(source_card_id,source_content_id,source_kind,source_position,active);
+        CREATE INDEX writing_links_source_content ON writing_links(source_content_id,source_kind,source_position,active);
+        CREATE INDEX writing_links_writing ON writing_links(writing_card_id,writing_content_id,active);
+        CREATE INDEX writing_links_writing_content ON writing_links(writing_content_id,active);
+    """)
+
+
+def _migration_26_passages_and_coverage(conn: sqlite3.Connection) -> None:
+    _begin_migration_script(conn, """
+        ALTER TABLE document_links ADD COLUMN source_passage TEXT NOT NULL DEFAULT '{}' CHECK(length(source_passage)<=16000);
+        ALTER TABLE document_links ADD COLUMN target_passage TEXT NOT NULL DEFAULT '{}' CHECK(length(target_passage)<=16000);
+        ALTER TABLE epub_connections ADD COLUMN source_passage TEXT NOT NULL DEFAULT '{}' CHECK(length(source_passage)<=16000);
+        ALTER TABLE epub_connections ADD COLUMN target_passage TEXT NOT NULL DEFAULT '{}' CHECK(length(target_passage)<=16000);
+        CREATE TABLE document_coverage (
+            document_key TEXT NOT NULL CHECK(length(document_key) BETWEEN 1 AND 240),
+            kind TEXT NOT NULL CHECK(kind IN ('pdf','epub')),
+            filename TEXT NOT NULL CHECK(length(filename) BETWEEN 1 AND 500),
+            position INTEGER NOT NULL CHECK(position BETWEEN 0 AND 1000000),
+            viewed_json TEXT NOT NULL DEFAULT '[]' CHECK(length(viewed_json)<=65536),
+            read_json TEXT NOT NULL DEFAULT '[]' CHECK(length(read_json)<=65536),
+            unread_json TEXT NOT NULL DEFAULT '[]' CHECK(length(unread_json)<=65536),
+            PRIMARY KEY(document_key,kind,filename,position)
+        );
+    """)
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
@@ -901,6 +941,8 @@ _SCHEMA_MIGRATIONS = (
     (22, "annotation_styles", _migration_22_annotation_styles),
     (23, "document_library", _migration_23_document_library),
     (24, "document_link_notes", _migration_24_document_link_notes),
+    (25, "writing_links", _migration_25_writing_links),
+    (26, "passages_and_coverage", _migration_26_passages_and_coverage),
 )
 
 

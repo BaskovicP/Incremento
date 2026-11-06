@@ -2317,3 +2317,143 @@ msgstr "Incremento MCP 文档导入"
 
 msgid "mcp_undo_creation_reverse"
 msgstr "Incremento MCP 创建撤销"
+
+#. Writing publishing workspace
+msgid "writing_draft_label"
+msgstr "草稿 · Markdown"
+
+#. Writing publishing workspace
+msgid "writing_style"
+msgstr "样式"
+
+#. Writing publishing workspace
+msgid "writing_paragraph"
+msgstr "正文"
+
+#. Writing publishing workspace
+msgid "writing_heading_one"
+msgstr "一级标题"
+
+#. Writing publishing workspace
+msgid "writing_heading_two"
+msgstr "二级标题"
+
+#. Writing publishing workspace
+msgid "writing_heading_three"
+msgstr "三级标题"
+
+#. Writing publishing workspace
+msgid "writing_undo"
+msgstr "撤销"
+
+#. Writing publishing workspace
+msgid "writing_redo"
+msgstr "重做"
+
+#. Writing publishing workspace
+msgid "writing_strike"
+msgstr "删除线"
+
+#. Writing publishing workspace
+msgid "writing_inline_code"
+msgstr "行内代码"
+
+#. Writing publishing workspace
+msgid "writing_table"
+msgstr "表格"
+
+#. Writing publishing workspace
+msgid "writing_insert"
+msgstr "插入"
+
+#. Writing publishing workspace
+msgid "writing_more"
+msgstr "更多"
+
+#. Writing publishing workspace
+msgid "writing_placeholder_text"
+msgstr "文本"
+
+#. Writing publishing workspace
+msgid "writing_insert_link"
+msgstr "链接"
+
+#. Writing publishing workspace
+msgid "writing_insert_image"
+msgstr "从网址插入图片…"
+
+#. Writing publishing workspace
+msgid "writing_url_prompt"
+msgstr "HTTP(S) 网址："
+
+#. Writing publishing workspace
+msgid "writing_reference_label"
+msgstr "链接文字／图片说明："
+
+#. Writing publishing workspace
+msgid "writing_invalid_url"
+msgstr "请输入有效的 HTTP(S) 网址，不含凭据、空白或尖括号。"
+
+#. Writing publishing workspace
+msgid "writing_export"
+msgstr "导出"
+
+#. Writing publishing workspace
+msgid "writing_export_markdown"
+msgstr "Markdown (.md)…"
+
+#. Writing publishing workspace
+msgid "writing_export_html"
+msgstr "网页 (.html)…"
+
+#. Writing publishing workspace
+msgid "writing_markdown_filter"
+msgstr "Markdown (*.md)"
+
+#. Writing publishing workspace
+msgid "writing_html_filter"
+msgstr "网页 (*.html)"
+
+#. Writing publishing workspace
+msgid "writing_export_failed"
+msgstr "无法导出此草稿。草稿仍然打开。"
+
+#. Writing publishing workspace
+msgid "writing_exported"
+msgstr "草稿已导出"
+
+#. Writing publishing workspace
+msgid "writing_translate"
+msgstr "翻译…"
+
+#. Writing publishing workspace
+msgid "writing_translate_passage"
+msgstr "待翻译文本"
+
+#. Writing publishing workspace
+msgid "writing_translate_open"
+msgstr "打开 Google 翻译"
+
+#. Writing publishing workspace
+msgid "writing_translate_hint"
+msgstr "查看或编辑以下文本（1–1,000 个字符）。点击“打开 Google 翻译”会在 Companion 浏览器中将此文本发送给 Google，需要联网。请在那里选择目标语言。草稿保持不变。"
+
+#. Writing publishing workspace
+msgid "writing_translate_failed"
+msgstr "无法在所选 Companion 浏览器中打开 Google 翻译。"
+
+#. Writing tabs
+msgid "writing_tabs"
+msgstr "写作草稿"
+
+#. Writing tabs
+msgid "writing_add_tab"
+msgstr "新建或打开写作标签页"
+
+#. Writing tabs
+msgid "writing_open_tab"
+msgstr "打开写作…"
+
+#. Writing tabs
+msgid "writing_tab_limit"
+msgstr "最多可同时打开 {count} 个写作标签页。请先关闭一个标签页再打开其他草稿。"

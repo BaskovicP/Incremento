@@ -1,4 +1,4 @@
-"""Automatic backups explain temporary Anki unavailability while they run."""
+"""Full backups and restores show progress until their background work finishes."""
 
 import ast
 import os
@@ -8,8 +8,10 @@ import types
 from pathlib import Path
 from textwrap import dedent
 
+import pytest
+
 from frontend import backup_progress
-from frontend.backup_progress import AutomaticBackupProgress
+from frontend.backup_progress import AutomaticBackupProgress, FullRestoreProgress, ManualBackupProgress
 
 
 class _Dialog:
@@ -36,11 +38,12 @@ class _Window:
         self.taskman = _Taskman()
 
 
-def test_automatic_backup_shows_dedicated_progress_and_worker_stage_on_main_thread(monkeypatch):
+@pytest.mark.parametrize("progress_type", [AutomaticBackupProgress, ManualBackupProgress, FullRestoreProgress])
+def test_backup_shows_dedicated_progress_and_worker_stage_on_main_thread(monkeypatch, progress_type):
     window = _Window()
     dialog = _Dialog()
-    monkeypatch.setattr(backup_progress, "_build_dialog", lambda: dialog)
-    indicator = AutomaticBackupProgress(window)
+    monkeypatch.setattr(backup_progress, "_build_dialog", lambda **_kwargs: dialog)
+    indicator = progress_type(window)
 
     indicator.start()
     assert indicator._dialog is dialog
@@ -53,11 +56,12 @@ def test_automatic_backup_shows_dedicated_progress_and_worker_stage_on_main_thre
     assert dialog.calls == [("stage", "Creating Anki package… exported media 200")]
 
 
-def test_automatic_backup_finishes_once_and_drops_queued_updates_after_completion(monkeypatch):
+@pytest.mark.parametrize("progress_type", [AutomaticBackupProgress, ManualBackupProgress, FullRestoreProgress])
+def test_backup_finishes_once_and_drops_queued_updates_after_completion(monkeypatch, progress_type):
     window = _Window()
     dialog = _Dialog()
-    monkeypatch.setattr(backup_progress, "_build_dialog", lambda: dialog)
-    indicator = AutomaticBackupProgress(window)
+    monkeypatch.setattr(backup_progress, "_build_dialog", lambda **_kwargs: dialog)
+    indicator = progress_type(window)
     indicator.start()
     indicator.update("Writing backup ZIP…")
 
@@ -68,7 +72,8 @@ def test_automatic_backup_finishes_once_and_drops_queued_updates_after_completio
     assert dialog.calls == [("finish",)]
 
 
-def test_automatic_backup_window_remains_visible_during_disabled_profile_close():
+@pytest.mark.parametrize("mode", ["automatic", "manual", "restore"])
+def test_backup_window_remains_visible_during_disabled_profile_close(mode):
     script = dedent("""
         from aqt.qt import QApplication, QLabel, QProgressBar, QWidget
         from frontend.backup_progress import _build_dialog
@@ -77,15 +82,22 @@ def test_automatic_backup_window_remains_visible_during_disabled_profile_close()
         main = QWidget()
         main.show()
         main.setEnabled(False)
-        dialog = _build_dialog()
+        mode = __MODE__
+        dialog = _build_dialog(restore=mode == "restore", manual=mode == "manual")
         app.processEvents()
 
         assert dialog.isVisible() and dialog.isEnabled()
-        assert "Automatic Backup" in dialog.windowTitle()
+        expected_title = {"restore": "Restore Full Backup", "manual": "Full Backup",
+                          "automatic": "Incremento Automatic Backup"}[mode]
+        assert dialog.windowTitle() == expected_title
+        assert app.activeModalWidget() is dialog
         labels = dialog.findChildren(QLabel)
-        assert any("Anki is temporarily unavailable" in label.text() for label in labels)
+        expected_text = {"restore": "Checking backup", "manual": "Preparing backup",
+                         "automatic": "Anki is temporarily unavailable"}[mode]
+        assert any(expected_text in label.text() for label in labels)
         bar = dialog.findChild(QProgressBar)
         assert bar.minimum() == 0 and bar.maximum() == 0
+        assert bar.accessibleName()
         dialog.close()
         dialog.reject()
         assert dialog.isVisible()
@@ -94,7 +106,8 @@ def test_automatic_backup_window_remains_visible_during_disabled_profile_close()
         dialog.finish()
         app.processEvents()
         assert not dialog.isVisible()
-    """)
+        assert app.activeModalWidget() is None
+    """).replace("__MODE__", repr(mode))
     result = subprocess.run(
         [sys.executable, "-c", script],
         cwd=Path(__file__).resolve().parents[1],
@@ -106,8 +119,10 @@ def test_automatic_backup_window_remains_visible_during_disabled_profile_close()
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_failed_close_backup_hides_progress_before_resuming_profile_close(
-    monkeypatch, tmp_path,
+@pytest.mark.parametrize("automatic", [False, True], ids=["manual", "automatic"])
+@pytest.mark.parametrize("outcome", ["success", "failure", "profile-changed", "start-failed"])
+def test_full_backup_keeps_progress_until_completion_and_hides_it_before_resuming_close(
+    monkeypatch, tmp_path, automatic, outcome,
 ):
     events = []
     activity = types.ModuleType("incremento.backend.activity_log")
@@ -148,6 +163,7 @@ def test_failed_close_backup_hides_progress_before_resuming_profile_close(
             events.append("hide")
 
     progress_module.AutomaticBackupProgress = _Indicator
+    progress_module.ManualBackupProgress = _Indicator
     monkeypatch.setitem(sys.modules, progress_module.__name__, progress_module)
 
     pending = []
@@ -155,10 +171,15 @@ def test_failed_close_backup_hides_progress_before_resuming_profile_close(
     destination.mkdir()
     profile_root = tmp_path / "addon" / "user_files" / "P"
     profile_root.mkdir(parents=True)
+    def run_in_background(task, done):
+        if outcome == "start-failed":
+            raise RuntimeError("executor stopped")
+        pending.append(done)
+
     window = types.SimpleNamespace(
         addonManager=object(), col=object(),
         taskman=types.SimpleNamespace(
-            run_in_background=lambda task, done: pending.append(done)
+            run_in_background=run_in_background
         ),
     )
     source = (Path(__file__).resolve().parents[1] / "__init__.py").read_text()
@@ -166,10 +187,11 @@ def test_failed_close_backup_hides_progress_before_resuming_profile_close(
         node for node in ast.parse(source).body
         if isinstance(node, ast.FunctionDef) and node.name == "_start_full_backup"
     )
+    active_profile = ["P"]
     namespace = {
         "__name__": "incremento", "__package__": "incremento",
         "_ADDON_DIR": str(tmp_path / "addon"),
-        "_active_profile": lambda: "P",
+        "_active_profile": lambda: active_profile[0],
         "_current_profile_name": lambda: "P",
         "_paths": types.SimpleNamespace(get_user_files_dir=lambda *_: profile_root),
         "_backup_schedule": types.SimpleNamespace(
@@ -190,17 +212,27 @@ def test_failed_close_backup_hides_progress_before_resuming_profile_close(
     exec(compile(ast.Module(body=[function], type_ignores=[]), "__init__.py", "exec"), namespace)
 
     started = namespace["_start_full_backup"](
-        str(destination / "backup.zip"), automatic_policy={"directory": str(destination)},
-        close_triggered=True,
+        str(destination / "backup.zip"),
+        automatic_policy={"directory": str(destination)} if automatic else None,
+        close_triggered=automatic,
     )
+    if outcome == "start-failed":
+        assert started is False
+        assert events == ["show", "hide"]
+        assert namespace["_full_backup_running"] is False
+        return
     assert started is True
     assert events == ["show"]
     namespace["_backup_idle_callbacks"].append(lambda: events.append("resume"))
 
-    class _Failure:
+    class _Result:
         def result(self):
-            raise RuntimeError("write failed")
+            if outcome == "failure":
+                raise RuntimeError("write failed")
+            return {"retention_error": None}
 
-    pending[0](_Failure())
+    if outcome == "profile-changed":
+        active_profile[0] = "Other"
+    pending[0](_Result())
     assert events == ["show", "hide", "resume"]
     assert namespace["_full_backup_running"] is False

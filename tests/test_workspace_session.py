@@ -49,6 +49,34 @@ def test_workspace_load_skips_deleted_cards_and_discards_stale_success(monkeypat
     assert opened == [1] and len(finished[0][0]) == 1 and finished[0][1] == 1
 
 
+@pytest.mark.parametrize('page,maximum,expected', [(17, 100, (17, .4)), (17, 3, (3, 0))])
+def test_closed_pdf_tab_resumes_its_own_position_and_obeys_current_reading_limit(
+        monkeypatch, module, page, maximum, expected):
+    created = []
+    dock = SimpleNamespace(setObjectName=Mock())
+    reader = SimpleNamespace(_windows=[], _pending_windows=set(), _MAX_WINDOWS=8,
+        ReferenceWindow=lambda snapshot, **kw: created.append(kw) or dock)
+    session = module.WorkspaceSession(SimpleNamespace(), lambda: 'A')
+    monkeypatch.setattr(session, '_module', lambda kind: reader)
+    monkeypatch.setattr(session, '_restore_pdf_controls', Mock())
+    session._open(dict(kind='pdf_reference', card_id=42, name='incremento_pdf_reference_saved_0',
+                       resume_position=True, page=page, scroll=.4, zoom=1.5),
+                  dict(snapshot={'filename': 'canonical.pdf'}, maximum=maximum, position={'page': 31, 'scroll': .8}))
+    assert (created[0]['page'], created[0]['scroll_ratio']) == expected
+    assert created[0]['zoom'] == 1.5
+
+
+def test_search_tab_recovery_uses_the_isolated_browser_without_collection_queries(monkeypatch, module):
+    dock = SimpleNamespace(setObjectName=Mock())
+    browser = SimpleNamespace(open_search_url=Mock(return_value=dock))
+    session = module.WorkspaceSession(SimpleNamespace(), lambda: 'A')
+    monkeypatch.setattr(session, '_module', lambda kind: browser)
+    entry = dict(kind='search', name='incremento_search_dock_saved_0', url='https://example.test/word')
+    result = session._resolve(None, 'A', entry)
+    assert session._open(entry, result) is dock
+    browser.open_search_url.assert_called_once_with(entry['url'], parent=session.main, new_tab=True, activate=False)
+
+
 @pytest.mark.parametrize('kind,model', [('pdf', 'Basic'), ('writing', 'Incremento PDF'), ('epub', 'Basic')])
 def test_workspace_rejects_a_saved_card_whose_note_type_changed(kind, model, module):
     class Note(dict):
@@ -111,6 +139,43 @@ def test_workspace_writing_resolution_rejects_missing_files_without_creating_the
     with pytest.raises(ValueError, match='unavailable'):
         session._resolve(col, 'A', {'kind': 'writing', 'card_id': 42})
     assert not list(tmp_path.rglob('*.md'))
+
+
+def test_workspace_restores_writing_tabs_in_order_and_returns_to_the_saved_active_draft(tmp_path, monkeypatch, module):
+    monkeypatch.setattr(module, '_ADDON_DIR', str(tmp_path))
+    class Note(dict):
+        def note_type(self): return {'name': 'Incremento Writing'}
+    notes = {cid: Note(Title=str(cid), Markdown_File=f'writing/{cid}.md') for cid in (11, 22, 33)}
+    root = tmp_path / 'user_files' / 'A' / 'writing'
+    root.mkdir(parents=True)
+    for cid in notes:
+        (root / f'{cid}.md').write_text('Existing writing')
+    col = SimpleNamespace(get_card=lambda cid: SimpleNamespace(nid=cid), get_note=lambda nid: notes[nid])
+    session = module.WorkspaceSession(SimpleNamespace(), lambda: 'A')
+    entry = {'kind': 'writing', 'card_id': 22, 'name': 'incremento_writing_dock', 'writing_tabs': [11, 22, 33]}
+    result = session._resolve(col, 'A', entry)
+    opened = []
+    reader = SimpleNamespace(show_writing_in_dock=lambda cid, *a, **kw: opened.append(cid),
+        _writing_dock=SimpleNamespace(setObjectName=Mock()), set_keep_open=Mock(), reorder_writing_tabs=Mock())
+    monkeypatch.setattr(session, '_module', lambda kind: reader)
+    session._open(entry, result)
+    assert opened == [11, 22, 33, 22]
+    reader.reorder_writing_tabs.assert_called_once_with([11, 22, 33])
+
+
+def test_workspace_skips_missing_inactive_writing_tabs_but_keeps_the_saved_active_draft(tmp_path, monkeypatch, module):
+    monkeypatch.setattr(module, '_ADDON_DIR', str(tmp_path))
+    class Note(dict):
+        def note_type(self): return {'name': 'Incremento Writing'}
+    root = tmp_path / 'user_files' / 'A' / 'writing'
+    root.mkdir(parents=True)
+    (root / '22.md').write_text('Existing writing')
+    notes = {22: Note(Title='22', Markdown_File='writing/22.md')}
+    col = SimpleNamespace(get_card=lambda cid: SimpleNamespace(nid=cid), get_note=lambda nid: notes[nid])
+    session = module.WorkspaceSession(SimpleNamespace(), lambda: 'A')
+    entry = {'kind': 'writing', 'card_id': 22, 'name': 'incremento_writing_dock', 'writing_tabs': [11, 22]}
+    result = session._resolve(col, 'A', entry)
+    assert result['writing_tabs'] == [(22, {'title': '22', 'relpath': 'writing/22.md'})]
 
 
 def test_workspace_pdf_capture_fails_if_its_document_changes_before_the_reply(monkeypatch, module):
@@ -241,7 +306,7 @@ def test_workspace_epub_resumes_latest_section_instead_of_the_old_workspace_loca
     main_reader = SimpleNamespace(show_epub_in_dock=Mock(), _epub_dock=SimpleNamespace(setObjectName=Mock()),
                                    current_epub_card_id=lambda: None)
     locations = []
-    reference_reader = SimpleNamespace(_windows=[], _load=lambda *args: (),
+    reference_reader = SimpleNamespace(_windows=[], _pending_windows=set(), _MAX_WINDOWS=8, _load=lambda *args: (),
         EpubReferenceWindow=lambda result, location, **kw:
             locations.append(location) or SimpleNamespace(setObjectName=Mock()))
     session = module.WorkspaceSession(SimpleNamespace(), lambda: 'A')
@@ -256,6 +321,19 @@ def test_workspace_epub_resumes_latest_section_instead_of_the_old_workspace_loca
         assert main_reader.show_epub_in_dock.call_args.kwargs['focus_offset'] == -1
     else:
         assert locations == [{'card_id': 42, 'section': 8, 'offset': -1, 'scroll': .7}]
+
+
+def test_workspace_does_not_open_a_ninth_epub_tab(monkeypatch, module):
+    windows = [SimpleNamespace(objectName=lambda i=i: 'incremento_epub_reference_open_'+str(i),
+        location={'card_id': i+1}, closed=False) for i in range(8)]
+    reader = SimpleNamespace(_windows=windows, _pending_windows=set(), _MAX_WINDOWS=8, EpubReferenceWindow=Mock())
+    session = module.WorkspaceSession(SimpleNamespace(), lambda: 'Synthetic')
+    monkeypatch.setattr(session, '_module', lambda kind: reader)
+    monkeypatch.setattr(session, '_epub_position', lambda *a: dict(card_id=42, section=0, offset=-1, scroll=0))
+    result = session._open(dict(kind='epub_reference', card_id=42, name='incremento_epub_reference_saved_0'),
+                           {'reference': ()})
+    assert result is None
+    reader.EpubReferenceWindow.assert_not_called()
 
 
 def test_new_workspace_captures_reader_layout_without_freezing_the_page(monkeypatch, module):

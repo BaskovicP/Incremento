@@ -9,6 +9,17 @@ def point(card, section=0, offset=0, scroll=0.25):
     return {'card_id': card, 'section': section, 'offset': offset, 'scroll': scroll}
 
 
+def test_epub_connection_preserves_both_selected_ranges(tmp_path):
+    from epub_connections import add_connection, list_connections
+    source = dict(card_id=7, section=0, offset=10, scroll=.1,
+                  passage=dict(quote='phrase', start=10, end=16))
+    target = dict(card_id=8, section=4, offset=200, scroll=.5,
+                  passage=dict(quote='explanation', start=200, end=211))
+    add_connection(str(tmp_path), 'A', source, target)
+    assert list_connections(str(tmp_path), 'A', 7, 0)[0]['target']['passage'] == target['passage']
+    assert list_connections(str(tmp_path), 'A', 8, 4)[0]['target']['passage'] == source['passage']
+
+
 def test_connections_return_exact_opposite_passage_and_remove_from_either_end(tmp_path):
     import epub_connections as links
     root = str(tmp_path)

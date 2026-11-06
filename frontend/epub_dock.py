@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+try:
+    from ..backend.document_passages import normalize_passage, parse_epub_reference
+except ImportError:
+    from backend.document_passages import normalize_passage, parse_epub_reference
 import os
 import re
 import secrets
@@ -243,6 +247,8 @@ _pending_restore_ratio = 0.0
 _pending_search_query = ""
 _pending_epub_link_fragment = ""
 _epub_link_back_history: list[dict[str, object]] = []
+_pending_epub_passage = None
+_epub_passage_visit = False
 _current_epub_search_query = ""
 _current_epub_search_hits: list[dict] = []
 _current_epub_search_hit_index = -1
@@ -818,6 +824,7 @@ def epub_anchor_link_html(
     focus_offset: int,
     scroll_ratio: float,
     label: str,
+    passage: dict | None = None,
 ) -> str:
     normalized_ratio = normalize_reader_anchor_scroll_ratio(scroll_ratio)
     try:
@@ -839,6 +846,14 @@ def epub_anchor_link_html(
         f"incremento_open_epub:{normalized_card_id}:{normalized_section_index}:"
         f"{normalized_offset}:{ratio_text}"
     )
+    if passage:
+        try:
+            passage = normalize_passage(passage, 'epub')
+        except ValueError:
+            return ''
+        cmd = 'incremento_open_epub:' + json.dumps(dict(card_id=normalized_card_id,
+            section_index=normalized_section_index, focus_offset=normalized_offset,
+            scroll_ratio=normalized_ratio, passage=passage), ensure_ascii=False)
     onclick = escape(f"pycmd({json.dumps(cmd)}); return false;", quote=True)
     return (
         f'<a onclick="{onclick}" '
@@ -847,40 +862,8 @@ def epub_anchor_link_html(
     )
 
 
-def parse_epub_anchor_command(message: object) -> dict[str, int | float | None] | None:
-    prefix = "incremento_open_epub:"
-    raw = str(message or "")
-    if not raw.startswith(prefix) or len(raw) > 256:
-        return None
-    parts = raw.split(":")
-    if len(parts) not in {4, 5}:
-        return None
-    try:
-        card_id = int(parts[1])
-        section_index = int(parts[2])
-        focus_offset = int(parts[3])
-    except (TypeError, ValueError, OverflowError):
-        return None
-    scroll_ratio = (
-        normalize_reader_anchor_scroll_ratio(parts[4])
-        if len(parts) == 5
-        else None
-    )
-    if (
-        card_id <= 0
-        or section_index < 0
-        or section_index > 1_000_000
-        or focus_offset < -1
-        or focus_offset > 50_000_000
-        or (len(parts) == 5 and scroll_ratio is None)
-    ):
-        return None
-    return {
-        "card_id": card_id,
-        "section_index": section_index,
-        "focus_offset": focus_offset,
-        "scroll_ratio": scroll_ratio,
-    }
+def parse_epub_anchor_command(message: object) -> dict | None:
+    return parse_epub_reference(message)
 
 
 def _normalize_epub_context_anchor(data: object) -> dict[str, int | float] | None:
@@ -923,7 +906,7 @@ def _copy_epub_context_anchor(data: object) -> bool:
     if anchor is None:
         return False
     section_title = _current_epub_section_title()
-    html = epub_anchor_link_html(**anchor, label=section_title)
+    html = epub_anchor_link_html(**anchor, label=section_title, passage=data.get("passage"))
     book_title = Path(str(_current_epub_filename or "EPUB")).stem.strip() or "EPUB"
     plain_text = f"{book_title} — {section_title}"
     if not html or not set_reader_anchor_clipboard(html, plain_text):
@@ -945,15 +928,32 @@ def _show_epub_reader_context_menu(view, position) -> bool:
     profile, card_id, page = _active_profile(), _current_epub_card_id, view.page()
     nonce = page.bridge_nonce()
     def current():
-        return (_active_profile() == profile and _current_epub_card_id == card_id
-                and page.bridge_nonce() == nonce)
+        try:
+            return (_active_profile() == profile and _current_epub_card_id == card_id
+                    and _epub_dock is not None and _epub_dock._view is view and _epub_reader_is_visible()
+                    and page.bridge_nonce() == nonce)
+        except RuntimeError:
+            return False
     def populate(menu, payload):
         anchor = _normalize_epub_context_anchor(payload)
         if anchor is not None and current():
             try:
                 from .recording_link_dialog import add_context_actions
+                from .writing_excerpt_ui import add_context_actions as writing_actions
             except ImportError:
                 from recording_link_dialog import add_context_actions
+                from frontend.writing_excerpt_ui import add_context_actions as writing_actions
+            try:
+                from .reader_coverage import add_coverage_actions
+            except ImportError:
+                from frontend.reader_coverage import add_coverage_actions
+            add_coverage_actions(menu, getattr(_epub_dock, '_coverage_tracker', None),
+                dict(section=anchor['section_index'], passage=payload.get('passage'),
+                     readRange=payload.get('readRange'), coverage=payload.get('coverage')),
+                owner=_epub_dock, current=current)
+            writing_actions(menu, dict(kind='epub', card_id=card_id, section=anchor['section_index'],
+                offset=anchor['focus_offset'], scroll=anchor['scroll_ratio'], quote=str(view.selectedText() or '')[:2001]),
+                owner=_epub_dock, is_current=current)
             add_context_actions(menu, dict(kind='epub', card_id=card_id, section=anchor['section_index'],
                 offset=anchor['focus_offset'], scroll=anchor['scroll_ratio'], quote=str(view.selectedText() or '')[:2000]),
                 owner=_epub_dock, is_current=current)
@@ -972,16 +972,21 @@ def _show_epub_reader_context_menu(view, position) -> bool:
     )
 
 
-def is_current_markdown_document() -> bool:
+def _current_study_source_type() -> str:
     if not _current_epub_card_id or not _current_epub_filename or not getattr(mw, 'col', None):
-        return False
+        return ""
     try:
         note = mw.col.get_card(_current_epub_card_id).note()
-        return ((note.note_type() or {}).get('name') == 'Incremento EPUB'
-                and note['Incremento_Source_Type'] == 'Markdown'
-                and note['EPUB_Filename'] == _current_epub_filename)
+        if ((note.note_type() or {}).get('name') == 'Incremento EPUB'
+                and note['EPUB_Filename'] == _current_epub_filename):
+            return str(note['Incremento_Source_Type'])
     except Exception:
-        return False
+        pass
+    return ""
+
+
+def is_current_markdown_document() -> bool:
+    return _current_study_source_type() == 'Markdown'
 
 
 def edit_current_markdown_document() -> None:
@@ -1006,6 +1011,22 @@ def edit_current_markdown_document() -> None:
     dialog = EditMarkdownDocumentDialog(_ADDON_DIR, profile, card_id, filename, title,
         is_current=current, on_saved=refresh, parent=mw)
     dialog.exec()
+
+
+def export_current_markdown_document() -> None:
+    if _current_study_source_type() not in {'Markdown', 'HTML'}:
+        showInfo(t('imports_markdown_edit_unavailable'), textFormat='plain')
+        return
+    try:
+        from .markdown_export import export_document
+    except ImportError:
+        from frontend.markdown_export import export_document
+    profile, cid, filename = _active_profile(), _current_epub_card_id, _current_epub_filename
+    note = mw.col.get_card(cid).note()
+    title = str(note['Incremento_Source_Title'] or Path(filename).stem)
+    export_document(_ADDON_DIR, profile, filename, title, parent=mw,
+        is_current=lambda: _active_profile() == profile and _current_epub_card_id == cid
+        and _current_epub_filename == filename)
 
 
 def epub_citation() -> str:
@@ -1697,6 +1718,23 @@ class _EpubDockPage(QWebEnginePage):
             except Exception as exc:
                 print(f"[Incremento] epub_dock highlight note failed: {exc}")
             return
+        if msg.startswith('incremento_reader_coverage:'):
+            try:
+                data = json.loads(msg.partition(':')[2])
+                tracker = getattr(_epub_dock, '_coverage_tracker', None)
+                if tracker and _epub_bridge_card_matches(data) and data.get('position') == _current_epub_section_index:
+                    tracker.receive(data)
+            except (ValueError, TypeError):
+                pass
+            return
+        if msg.startswith('incremento_epub_passage_status:'):
+            try:
+                data = json.loads(msg.partition(':')[2])
+                if _epub_bridge_card_matches(data):
+                    tooltip(t('reader_passage_unavailable'))
+            except (ValueError, TypeError):
+                pass
+            return
         if msg.startswith(_MSG_PROGRESS):
             try:
                 data = json.loads(msg[len(_MSG_PROGRESS) :])
@@ -1798,7 +1836,14 @@ def _build_page_script(
     annotation_style: str = "highlight",
     sections: list[dict] | None = None,
     appearance: str = "original",
+    passage: dict | None = None,
+    track_coverage: bool = True,
+    preserve_layout: bool = False,
 ) -> str:
+    try:
+        from .epub_passages import EPUB_PASSAGE_SCRIPT
+    except (ImportError, KeyError):
+        from frontend.epub_passages import EPUB_PASSAGE_SCRIPT
     sections = _current_sections() if sections is None else sections
     section_lengths = [max(1, len(str(section.get("text") or ""))) for section in sections]
     try:
@@ -1811,10 +1856,13 @@ def _build_page_script(
         default_highlight_color = 'yellow'
     state = {
         "cardId": int(card_id),
+        "passage": passage if isinstance(passage, dict) else {},
+        "trackCoverage": bool(track_coverage),
         "appearance": appearance if appearance in ("original", "dark", "night") else "original",
         "sectionIndex": int(section_index),
         "scrollRatio": max(0.0, min(float(scroll_ratio), 1.0)),
         "textScale": max(0.7, min(float(text_scale), 2.2)),
+        "preserveLayout": bool(preserve_layout),
         "readAnchor": read_anchor if isinstance(read_anchor, dict) else None,
         "autoHighlightOnExtract": configured_highlight_when_extracting(),
         "focusOffset": int(focus_offset),
@@ -2099,6 +2147,15 @@ def _build_page_script(
       window.incrementoSetEpubAppearance(STATE.appearance);
       function applyTextScale(scale) {{
         const clamped = Math.max(0.7, Math.min(Number(scale) || 1, 2.2));
+        if (STATE.preserveLayout) {{
+          document.documentElement.classList.remove('incremento-epub-scaled');
+          if (!STATE.snapshotBaseZoom) {{
+            STATE.snapshotBaseZoom = parseFloat(window.getComputedStyle(document.documentElement).zoom) || 1;
+          }}
+          document.documentElement.style.zoom = String(STATE.snapshotBaseZoom * clamped);
+          window._incrementoEpubTextScale = clamped;
+          return;
+        }}
         document.documentElement.classList.add('incremento-epub-scaled');
         document.documentElement.style.setProperty(
           '--incremento-epub-font-size',
@@ -2185,6 +2242,7 @@ def _build_page_script(
         }}
         return total;
       }}
+      {EPUB_PASSAGE_SCRIPT}
       function unwrapHighlightNode(node) {{
         if (!node || !node.parentNode) return;
         while (node.firstChild) {{
@@ -3280,7 +3338,7 @@ def _build_page_script(
         return {{
           cardId: STATE.cardId,
           sectionIndex: STATE.sectionIndex,
-          focusOffset,
+          focusOffset, passage: currentPassage(), readRange: selectionCoverage(), coverage: visibleCoverage(),
           scrollRatio,
         }};
       }};
@@ -3288,6 +3346,7 @@ def _build_page_script(
         const meta = selectionMeta();
         const anchor = bestVisibleTextAnchor();
         return {{cardId: STATE.cardId, sectionIndex: STATE.sectionIndex,
+          passage: currentPassage(), readRange: selectionCoverage(), coverage: visibleCoverage(),
           focusOffset: meta ? meta.startOffset : (anchor ? anchor.offset : -1),
           scrollRatio: maxScroll() > 0 ? window.scrollY / maxScroll() : 0}};
       }};
@@ -3402,7 +3461,13 @@ def _build_page_script(
           pageIndex: metrics.pageIndex,
           totalPages: metrics.totalPages,
         }}));
+        if (STATE.trackCoverage && !document.hidden) {{
+          const coverage = visibleCoverage();
+          if (coverage) send('incremento_reader_coverage:' + JSON.stringify({{cardId: STATE.cardId,
+            position: STATE.sectionIndex, ...coverage}}));
+        }}
       }}
+      document.addEventListener('visibilitychange', reportProgress);
       function clearSelection() {{
         const sel = window.getSelection ? window.getSelection() : null;
         if (sel) {{
@@ -3713,6 +3778,9 @@ def _build_page_script(
             window.find(STATE.searchQuery, false, false, true, false, false, false);
           }} catch (err) {{}}
         }}
+        if (STATE.passage && STATE.passage.quote && !revealPassage(STATE.passage)) {{
+          send('incremento_epub_passage_status:' + JSON.stringify({{cardId: STATE.cardId, matched: false}}));
+        }}
         renderReadMarker();
         reportProgress();
       }}, 60);
@@ -3839,7 +3907,7 @@ def _capture_epub_location(callback):
             return
         if isinstance(value, dict) and value.get('cardId') == card:
             callback({'card_id': card, 'section': section, 'offset': value.get('focusOffset', -1),
-                      'scroll': value.get('scrollRatio', _current_epub_scroll_ratio)})
+                      'scroll': value.get('scrollRatio', _current_epub_scroll_ratio), 'passage': value.get('passage')})
     _run_epub_javascript(page, 'window.incrementoEpubCurrentLocation && window.incrementoEpubCurrentLocation();', ready)
 
 
@@ -3924,6 +3992,8 @@ def reset_for_profile_switch():
     dock, _epub_dock = _epub_dock, None
     _current_epub_card_id = _current_epub_filename = None
     _epub_link_back_history = []
+    if _epub_dock is not None and hasattr(_epub_dock, '_passage_history'):
+        _epub_dock._passage_history.clear()
     if dock is not None:
         dock._view.page()._bridge_nonce = ''
         dock.hide()
@@ -4265,6 +4335,8 @@ def _sync_epub_link_back_buttons() -> None:
         and int(location["card_id"]) == int(_current_epub_card_id or 0)
         and str(location["filename"]) == str(_current_epub_filename or "")
     )
+    history = getattr(_epub_dock, '_passage_history', None)
+    cross_document = bool(history and history.available(_active_profile()))
     tooltip_text = (
         t("reader_jump_back_section", number=int(location['section_index']) + 1)
         if available and location is not None
@@ -4274,8 +4346,8 @@ def _sync_epub_link_back_buttons() -> None:
         button = getattr(_epub_dock, name, None)
         if button is None:
             continue
-        button.setEnabled(available)
-        button.setToolTip(tooltip_text)
+        button.setEnabled(available or cross_document)
+        button.setToolTip(t("reader_return_document") if cross_document and not available else tooltip_text)
         button.setAccessibleDescription(tooltip_text)
 
 
@@ -4808,7 +4880,7 @@ def _build_epub_dock() -> None:
     progress_column = QVBoxLayout(progress)
     progress_column.setContentsMargins(8, 0, 4, 0)
     progress_column.setSpacing(4)
-    dock._compact_progress_lbl = QLabel(t('reader_marked_read', percent=0), progress)
+    dock._compact_progress_lbl = QLabel(t('reader_linear_progress', percent=0), progress)
     dock._compact_progress_lbl.setStyleSheet('color: #c8c8cf; font-size: 12px;')
     dock._compact_progress = QProgressBar(progress)
     dock._compact_progress.setRange(0, 100)
@@ -4841,11 +4913,24 @@ def _build_epub_dock() -> None:
     dock._compact_options.setVisible(False)
     controls_layout.addWidget(controls_compact)
     controls_layout.addWidget(controls_expanded)
+    dock._coverage_label = QLabel('', controls_host)
+    dock._coverage_label.setWordWrap(True)
+    dock._coverage_label.setAccessibleName(t('reader_coverage_accessible'))
+    dock._coverage_label.hide()
+    controls_layout.addWidget(dock._coverage_label)
     dock._markdown_edit_btn = QPushButton(t('imports_markdown_edit_button'), controls_host)
     dock._markdown_edit_btn.setAccessibleName(t('imports_markdown_edit_button'))
     dock._markdown_edit_btn.clicked.connect(edit_current_markdown_document)
     dock._markdown_edit_btn.setVisible(False)
-    controls_layout.addWidget(dock._markdown_edit_btn, alignment=Qt.AlignmentFlag.AlignRight)
+    markdown_actions = QHBoxLayout()
+    markdown_actions.addStretch()
+    markdown_actions.addWidget(dock._markdown_edit_btn)
+    dock._markdown_export_btn = QPushButton(t('imports_export_document'), controls_host)
+    dock._markdown_export_btn.setAccessibleName(t('imports_export_document'))
+    dock._markdown_export_btn.clicked.connect(export_current_markdown_document)
+    dock._markdown_export_btn.setVisible(False)
+    markdown_actions.addWidget(dock._markdown_export_btn)
+    controls_layout.addLayout(markdown_actions)
     controls_compact.setVisible(False)
     dock._controls_host = controls_host
     dock._controls_expanded = controls_expanded
@@ -4952,7 +5037,8 @@ def _build_epub_dock() -> None:
 
     def _on_visibility_changed(visible: bool) -> None:
         global _epub_find_jobs
-        if visible:
+        if visible or not dock.isHidden():
+            # Qt emits False for an inactive tab; the document is still open.
             return
         if _epub_find_jobs is not None and not _epub_reader_is_visible():
             _epub_find_jobs.close()
@@ -5189,7 +5275,7 @@ def _open_epub_search_hit(index: int, *, offer_due_review_prompt: bool = False) 
         focus_offset=int(hit.get("focusOffset", -1) or -1),
         search_query=_current_epub_search_query,
         offer_due_review_prompt=offer_due_review_prompt,
-        preserve_link_history=True,
+        preserve_link_history=True, **({'preserve_resume': True} if _epub_passage_visit else {}),
     )
 
 
@@ -5231,7 +5317,7 @@ def open_current_epub_search_hit(hit: dict, index: int, query: str) -> bool:
         focus_offset=int(selected_hit.get("focusOffset", -1) or -1),
         search_query=str(query or ""),
         offer_due_review_prompt=False,
-        preserve_link_history=True,
+        preserve_link_history=True, **({'preserve_resume': True} if _epub_passage_visit else {}),
     )
     return True
 
@@ -5390,6 +5476,9 @@ def _set_epub_read_marker(card_id: int, section_index: int, anchor) -> None:
     _push_epub_read_anchor()
     _update_title_and_buttons()
     _refresh_epub_references(state='read_progress')
+    tracker = getattr(_epub_dock, '_coverage_tracker', None)
+    if tracker is not None:
+        tracker.refresh()
     tooltip(t("reader_epub_marker_updated" if _current_epub_read_anchor else "reader_epub_marker_cleared"))
 
 
@@ -5424,6 +5513,9 @@ def _mark_epub_read_to_here() -> None:
     _push_epub_read_anchor()
     _update_title_and_buttons()
     _refresh_epub_references(state='read_progress')
+    tracker = getattr(_epub_dock, '_coverage_tracker', None)
+    if tracker is not None:
+        tracker.refresh()
     tooltip(t("reader_epub_progress_updated"))
 
 
@@ -5500,7 +5592,7 @@ def _open_epub_bookmark_link(url: QUrl) -> None:
         section_index=int(location.get("section_index", 0) or 0),
         scroll_ratio=float(location.get("scroll_ratio", 0.0) or 0.0),
         offer_due_review_prompt=False,
-        preserve_link_history=True,
+        preserve_link_history=True, **({'preserve_resume': True} if _epub_passage_visit else {}),
     )
 
 
@@ -5951,7 +6043,7 @@ def _update_epub_progress_controls(section_count: int) -> None:
     percent = int(state["percent"])
     if hasattr(_epub_dock, '_compact_progress'):
         _epub_dock._compact_progress.setValue(percent)
-        _epub_dock._compact_progress_lbl.setText(t('reader_marked_read', percent=percent))
+        _epub_dock._compact_progress_lbl.setText(t('reader_linear_progress', percent=percent))
         _epub_dock._compact_read_btn.setChecked(
             bool(section_count > 0 and _current_epub_section_index <= _current_epub_read_section_index))
     filled = int(state["filled_segments"])
@@ -6017,8 +6109,13 @@ def _update_title_and_buttons(*, position_only: bool = False) -> None:
     if _epub_dock is None:
         return
     markdown_edit = getattr(_epub_dock, '_markdown_edit_btn', None)
-    if markdown_edit is not None:
-        markdown_edit.setVisible(is_current_markdown_document())
+    markdown_export = getattr(_epub_dock, '_markdown_export_btn', None)
+    if markdown_edit is not None or markdown_export is not None:
+        source_type = _current_study_source_type()
+        if markdown_edit is not None:
+            markdown_edit.setVisible(source_type == 'Markdown')
+        if markdown_export is not None:
+            markdown_export.setVisible(source_type in {'Markdown', 'HTML'})
     sections = _current_sections()
     count = len(sections)
     title_text = _EPUB_TOOLBAR_TEXT["page_location"].format(
@@ -6216,14 +6313,15 @@ def _record_progress(
     if section_pages is not None:
         _current_epub_section_pages = max(1, int(section_pages))
     try:
-        set_epub_progress(
-            _ADDON_DIR,
-            _active_profile(),
-            _current_epub_card_id,
-            section_index=_current_epub_section_index,
-            scroll_ratio=_current_epub_scroll_ratio,
-            is_finished=_current_epub_finished,
-        )
+        if not _epub_passage_visit:
+            set_epub_progress(
+                _ADDON_DIR,
+                _active_profile(),
+                _current_epub_card_id,
+                section_index=_current_epub_section_index,
+                scroll_ratio=_current_epub_scroll_ratio,
+                is_finished=_current_epub_finished,
+            )
         _current_epub_limit_state = get_epub_daily_limit_status(
             _ADDON_DIR,
             _active_profile(),
@@ -6319,16 +6417,6 @@ def _open_epub_reader_link(
         return True
 
     _record_progress(_current_epub_section_index, _current_epub_scroll_ratio)
-    if target_index > current_index:
-        try:
-            set_read_section_index(
-                _ADDON_DIR,
-                _active_profile(),
-                int(_current_epub_card_id),
-                target_index,
-            )
-        except Exception:
-            pass
     show_epub_in_dock(
         int(_current_epub_card_id),
         _current_epub_filename,
@@ -6336,7 +6424,7 @@ def _open_epub_reader_link(
         scroll_ratio=0.0,
         link_fragment=fragment,
         offer_due_review_prompt=False,
-        preserve_link_history=True,
+        preserve_link_history=True, **({'preserve_resume': True} if _epub_passage_visit else {}),
     )
     return True
 
@@ -6453,13 +6541,62 @@ def open_current_document_contents() -> bool:
     return True
 
 
+def _follow_epub_passage(snapshot, target):
+    try:
+        from .reader_navigation import ReaderReturnHistory
+    except ImportError:
+        from frontend.reader_navigation import ReaderReturnHistory
+    def open_target(source=None):
+        if source is not None:
+            if not hasattr(_epub_dock, '_passage_history'):
+                _epub_dock._passage_history = ReaderReturnHistory()
+            _epub_dock._passage_history.push(_active_profile(), {**source, 'filename': _current_epub_filename})
+        show_epub_in_dock(target['card_id'], snapshot['filename'], section_index=target['section'],
+            focus_offset=target['offset'], scroll_ratio=target['scroll'], passage=target.get('passage'),
+            offer_due_review_prompt=False, preserve_resume=True)
+    if _current_epub_card_id is not None and _epub_dock is not None:
+        _capture_epub_location(open_target)
+    else:
+        open_target()
+
+
+def _return_epub_passage():
+    history = getattr(_epub_dock, '_passage_history', None)
+    location = history.pop(_active_profile()) if history else None
+    if not location:
+        return False
+    from aqt.operations import QueryOp
+    profile, dock = _active_profile(), _epub_dock
+    collection = getattr(mw, 'col', None)
+    context = (_current_epub_card_id, _current_epub_filename, _current_epub_section_index)
+    def load(col):
+        try:
+            from ..backend.epub_reference import resolve_epub_reference
+        except ImportError:
+            from backend.epub_reference import resolve_epub_reference
+        snapshot = resolve_epub_reference(_ADDON_DIR, profile, col, location['card_id'])
+        if snapshot['filename'] != location['filename']:
+            raise ValueError('Return document changed')
+        return snapshot
+    def ready(snapshot):
+        if (profile == _active_profile() and dock is _epub_dock and collection is getattr(mw, 'col', None)
+                and context == (_current_epub_card_id, _current_epub_filename, _current_epub_section_index)):
+            show_epub_in_dock(location['card_id'], snapshot['filename'], section_index=location['section'],
+                focus_offset=location['offset'], scroll_ratio=location['scroll'], passage=location.get('passage'),
+                offer_due_review_prompt=False, preserve_resume=True)
+    QueryOp(parent=mw, op=load, success=ready).failure(
+        lambda error: tooltip(t('reader_epub_reference_unavailable')) if profile == _active_profile() else None).run_in_background()
+    return True
+
+
 def _jump_back_from_epub_link() -> bool:
     global _epub_link_back_history
     location, remaining = _take_epub_link_back_history(_epub_link_back_history)
     if location is None:
         _epub_link_back_history = []
+        returned = _return_epub_passage()
         _sync_epub_link_back_buttons()
-        return False
+        return returned
     if (
         int(location["card_id"]) != int(_current_epub_card_id or 0)
         or str(location["filename"]) != str(_current_epub_filename or "")
@@ -6474,7 +6611,7 @@ def _jump_back_from_epub_link() -> bool:
         section_index=int(location["section_index"]),
         scroll_ratio=float(location["scroll_ratio"]),
         offer_due_review_prompt=False,
-        preserve_link_history=True,
+        preserve_link_history=True, **({'preserve_resume': True} if _epub_passage_visit else {}),
     )
     _sync_epub_link_back_buttons()
     return True
@@ -6495,6 +6632,7 @@ def _on_view_url_changed(url: QUrl) -> None:
 
 
 def _on_load_finished(ok: bool) -> None:
+    global _pending_epub_passage
     global _pending_focus_offset, _pending_restore_ratio, _pending_search_query
     global _pending_epub_link_fragment
     if not ok or _epub_dock is None or _current_epub_card_id is None:
@@ -6517,7 +6655,19 @@ def _on_load_finished(ok: bool) -> None:
         annotation_style=_current_epub_annotation_style,
         default_highlight_color=default_color,
         appearance=_epub_appearance(),
+        preserve_layout=_current_study_source_type() == 'HTML',
+        passage=_pending_epub_passage,
     )
+    _pending_epub_passage = None
+    try:
+        from .reader_coverage import install_epub_tracker
+    except ImportError:
+        from frontend.reader_coverage import install_epub_tracker
+    profile, card_id, filename, dock = _active_profile(), _current_epub_card_id, _current_epub_filename, _epub_dock
+    install_epub_tracker(dock, _ADDON_DIR, profile, card_id, filename, mw=mw, view=dock._view,
+        current=lambda: profile == _active_profile() and dock is _epub_dock
+            and card_id == _current_epub_card_id and filename == _current_epub_filename,
+        lengths=[max(1, len(str(section.get('text') or ''))) for section in _current_sections()])
     _run_epub_javascript(_epub_dock._view.page(), js)
     refresh_default_highlight_color(_active_profile(), default_color)
     for name in ('_appearance_combo', '_compact_appearance_combo'):
@@ -6565,6 +6715,8 @@ def show_epub_in_dock(
     link_fragment: str = "",
     offer_due_review_prompt: bool = True,
     preserve_link_history: bool = False,
+    passage: dict | None = None,
+    preserve_resume: bool = False,
 ) -> None:
     global _epub_dock, _current_epub_card_id, _current_epub_filename, _current_epub_section_index
     global _current_epub_scroll_ratio, _current_epub_finished, _current_epub_font_scale, _current_epub_read_anchor, _pending_focus_offset, _pending_restore_ratio
@@ -6572,7 +6724,9 @@ def show_epub_in_dock(
     global _current_epub_read_section_index, _current_epub_limit_state
     global _pending_search_query, _pending_epub_link_fragment, _pending_explicit_navigation, _last_selection_meta
     global _current_epub_search_query
-    global _epub_link_back_history
+    global _epub_link_back_history, _pending_epub_passage, _epub_passage_visit
+    _pending_epub_passage = passage
+    _epub_passage_visit = preserve_resume
 
     if _epub_dock is None:
         _build_epub_dock()
@@ -6591,6 +6745,10 @@ def show_epub_in_dock(
     if not preserve_link_history or not same_document:
         _epub_link_back_history = []
 
+    if not same_document and hasattr(_epub_dock, '_coverage_label'):
+        _epub_dock._coverage_label.hide()
+    if not preserve_resume and hasattr(_epub_dock, '_passage_history'):
+        _epub_dock._passage_history.clear()
     _current_epub_card_id = int(card_id)
     _current_epub_filename = str(filename or "").strip()
     _current_epub_section_index = max(0, int(section_index))
@@ -6666,6 +6824,7 @@ def open_epub_location(
     focus_offset: int = -1,
     search_query: str = "",
     scroll_ratio_override: float | None = None,
+    passage: dict | None = None,
 ) -> None:
     card = mw.col.get_card(card_id)
     note = mw.col.get_note(card.nid)
@@ -6679,6 +6838,7 @@ def open_epub_location(
         scroll_ratio=requested_ratio if requested_ratio is not None else current_ratio,
         focus_offset=focus_offset,
         search_query=search_query,
+        **({'passage': passage} if passage else {}),
     )
 
 
@@ -6780,7 +6940,7 @@ def _jump_to_epub_page_location(
         section_index=max(0, int(section_index)),
         scroll_ratio=max(0.0, min(float(ratio), 1.0)),
         offer_due_review_prompt=False,
-        preserve_link_history=True,
+        preserve_link_history=True, **({'preserve_resume': True} if _epub_passage_visit else {}),
     )
 
 
@@ -6794,23 +6954,13 @@ def _jump_section_boundary(delta: int) -> None:
     if next_idx > _current_epub_section_index and not _check_epub_limit_before_navigation(_current_epub_page_index + 1):
         return
     _record_progress(_current_epub_section_index, _current_epub_scroll_ratio)
-    if next_idx > _current_epub_section_index:
-        try:
-            set_read_section_index(
-                _ADDON_DIR,
-                _active_profile(),
-                int(_current_epub_card_id),
-                int(next_idx),
-            )
-        except Exception:
-            pass
     show_epub_in_dock(
         _current_epub_card_id,
         _current_epub_filename,
         section_index=next_idx,
         scroll_ratio=0.0 if int(delta) > 0 else 1.0,
         offer_due_review_prompt=False,
-        preserve_link_history=True,
+        preserve_link_history=True, **({'preserve_resume': True} if _epub_passage_visit else {}),
     )
 
 

@@ -23,7 +23,8 @@ def load_writing_choices(col):
 
 
 class WritingPicker(QDialog):
-    def __init__(self, main, *, open_card, new_writing=None):
+    def __init__(self, main, *, open_card, new_writing=None, title=None, action_label=None,
+                 is_current=lambda: True):
         super().__init__(main)
         self.main = main
         self.profile, self.collection = active_profile(), main.col
@@ -31,7 +32,8 @@ class WritingPicker(QDialog):
         self._generation = 0
         self._entries = []
         self._open_card = open_card
-        self.setWindowTitle(t('workspace_write_beside'))
+        self._source_current = is_current
+        self.setWindowTitle(title or t('workspace_write_beside'))
         self.resize(460, 420)
         layout = QVBoxLayout(self)
         self.status = QLabel(t('workspace_loading'))
@@ -45,7 +47,7 @@ class WritingPicker(QDialog):
         self.choices.setAccessibleName(t('workspace_writing_cards'))
         layout.addWidget(self.choices)
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel, self)
-        self.open_button = buttons.addButton(t('workspace_open_beside'), QDialogButtonBox.ButtonRole.AcceptRole)
+        self.open_button = buttons.addButton(action_label or t('workspace_open_beside'), QDialogButtonBox.ButtonRole.AcceptRole)
         self.open_button.setEnabled(False)
         buttons.accepted.connect(self.open_selected)
         buttons.rejected.connect(self.reject)
@@ -66,7 +68,8 @@ class WritingPicker(QDialog):
         self.reload()
 
     def _current(self):
-        return not self._closed and self.profile == active_profile() and self.collection is self.main.col
+        return (not self._closed and self.profile == active_profile() and self.collection is self.main.col
+                and self._source_current())
 
     def _retire(self):
         self._closed = True

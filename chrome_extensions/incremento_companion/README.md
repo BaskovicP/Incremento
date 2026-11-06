@@ -77,9 +77,10 @@ Enable **Remember tags for this website** below Tags to reuse the popup's tag se
 
 Remembered website tags also prefill text and snapshot capture, including snapshot **Extract now**, replacing the capture form's older tag defaults. An explicitly saved empty set leaves Tags blank. Other capture choices, such as note type, deck, priority, and field mappings, keep their saved defaults. Triggering capture from the popup waits for pending website-tag saves before opening the form.
 
-The popup provides six import actions:
+The popup provides these import actions:
 
 - **Add as PDF** creates an Incremento PDF card. A direct PDF URL is downloaded when possible; a normal webpage is rendered to PDF by Incremento.
+- **Save for offline reading** uses **Save offline as** to choose **HTML snapshot — website appearance** (the default) or **Reading copy — reflowable Markdown**. HTML snapshots retain the entire page's captured HTML, styling, layout, and available resources. The content scope applies to reading copies and Markdown Writing imports. Both open locally in the EPUB reader. **Export Document… → HTML** exports a snapshot's saved HTML appearance; Markdown/TXT provide derived reading exports. Reading copies additionally offer **Edit Markdown…**. Scripts and remote reader resources stay disabled. This action uses existing gesture-scoped access and the authenticated bridge, with no additional website permissions.
 - **Capture opened page as PDF** sends the already-loaded page directly to Anki and creates the PDF automatically. Use this after completing a CAPTCHA or signing in: there is no Print dialog, saved file, or file picker. Content already added by JavaScript is included. It keeps your layout/link-appendix preferences while avoiding a reload in a different browser. Choose the title, deck, tags, and priority in this popup, or use the shortcut for the page title and standard import defaults.
 - **Add as Video** creates an Incremento Video card from the current YouTube or Vimeo URL. It is enabled only on supported video pages.
 - **Add as Webpage** creates a live Incremento Web card. If the page contains playing media, its detected position can be stored with the new card.
@@ -226,7 +227,7 @@ Default assignments:
 | Capture opened page as PDF | `Alt+Shift+P` (`Option+Shift+P` on macOS) |
 | Copy the latest video time | `Alt+Shift+V` |
 
-The extension also exposes commands for adding the current page as PDF, Video, or Webpage, adding the selection to Markdown, and adding the page to Markdown. These commands are unassigned by default; assign any of them from the browser shortcut page.
+The extension also exposes commands for adding the current page as PDF, Video, or Webpage, saving it for offline reading, adding the selection to Markdown, and adding the page to Markdown. These commands are unassigned by default; assign any of them from the browser shortcut page. The offline-reading command saves the complete HTML snapshot; use the popup to choose a reflowable reading copy.
 
 The popup displays the active Text capture, Snapshot capture, and opened-page PDF capture assignments. A shortcut may be unavailable if the browser or another extension already uses it.
 

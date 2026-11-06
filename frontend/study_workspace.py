@@ -17,7 +17,7 @@ try:
     from ..backend.i18n import t
     from ..backend.paths import get_active_profile
     from ..backend.recording_links import list_recording_links, normalize_source, remove_recording_link
-    from ..backend.study_resources import (load_card_resources, resolve_document, resolve_recording,
+    from ..backend.study_resources import (is_incremento_card, load_card_resources, resolve_document, resolve_recording,
                                           resolve_link_rows)
     from .study_visit import StudyVisit
     from .recording_player import RecordingPlayer, timestamp
@@ -33,7 +33,7 @@ except ImportError:
     from backend.i18n import t
     from backend.paths import get_active_profile
     from backend.recording_links import list_recording_links, normalize_source, remove_recording_link
-    from backend.study_resources import load_card_resources, resolve_document, resolve_recording, resolve_link_rows
+    from backend.study_resources import is_incremento_card, load_card_resources, resolve_document, resolve_recording, resolve_link_rows
     from frontend.study_visit import StudyVisit
     from frontend.recording_player import RecordingPlayer, timestamp
     from frontend.study_navigation import reviewer_navigation_script, reviewer_navigation_clear_script, set_stage_icon, style_stage_bar
@@ -267,6 +267,7 @@ class StudyWorkspace(QDialog):
         context_copy = QVBoxLayout()
         self.context_state = QLabel(t('study_answer_revealed' if self.visit.side == 'answer' else 'study_question_side'), self)
         self.context_state.setObjectName('study-context-state')
+        self.context_state.setWordWrap(True)
         self.context_title = ElidedLabel(t('study_review_card'), self)
         self.context_title.setTextFormat(Qt.TextFormat.PlainText)
         self.context_title.setObjectName('study-context-title')
@@ -499,6 +500,11 @@ class StudyWorkspace(QDialog):
             self._adapt_panels()
 
     def _adapt_panels(self):
+        margins = self.header_panel.layout().contentsMargins()
+        self.header_panel.setMinimumWidth(max(
+            self.stage_bar.minimumSizeHint().width(), self.tree_actions.minimumSizeHint().width(),
+            self.link_resources_button.sizeHint().width(), self.exit_focus.sizeHint().width(),
+        ) + margins.left() + margins.right())
         if self.focus_stage is not None:
             return
         orientation = Qt.Orientation.Vertical if self.width() < 880 else Qt.Orientation.Horizontal
@@ -983,7 +989,7 @@ class StudyWorkspace(QDialog):
                 from . import pdf_reference_workspace as pdf
                 self.reader = pdf.ReferenceWindow(result, profile=profile, page=source['page'],
                     scroll_ratio=source['scroll'], max_page=result['max_page'], beside=True, owner=self,
-                    excerpt=source['quote'], page_y=source.get('page_y'), embedded=True,
+                    excerpt=source['quote'], page_y=source.get('page_y'), passage=source.get('passage'), embedded=True,
                     zoom=self._document_zooms.get(anchor, 1))
                 pdf._windows.append(self.reader)
             else:
@@ -1348,7 +1354,12 @@ def reviewer_shown(*_):
     if not context[2]:
         reset()
         return
-    if not workspace_enabled():
+    try:
+        config = load_addon_config(getattr(mw, 'addonManager', None), _ADDON_PKG)
+    except Exception:
+        config = {}
+    if not workspace_enabled(config) or not is_incremento_card(
+            _ADDON_DIR, context[0], context[1], mw.reviewer.card, config=config):
         _disable_reviewer_workspace()
         return
     _review_context = context

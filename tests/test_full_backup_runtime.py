@@ -2,10 +2,12 @@
 
 import ast
 import datetime
+import errno
 import json
 import sqlite3
 import tempfile
 import zipfile
+from concurrent.futures import Future
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -30,7 +32,7 @@ class _StaleFTSConnection(sqlite3.Connection):
 
 @pytest.mark.parametrize("automatic", [False, True], ids=["manual", "automatic"])
 def test_full_backup_saves_healthy_database_despite_cached_connection_fts_error(
-    tmp_path, automatic,
+    tmp_path, monkeypatch, automatic,
 ):
     addon_dir = str(tmp_path / "addon")
     source = paths.get_db_path(addon_dir, "P")
@@ -48,11 +50,13 @@ def test_full_backup_saves_healthy_database_despite_cached_connection_fts_error(
 
         class _PackageExporter:
             count = 1
+            output_path = None
 
             def __init__(self, _collection):
                 pass
 
             def exportInto(self, path):
+                self.__class__.output_path = Path(path)
                 Path(path).write_bytes(b"Anki package boundary")
 
         entrypoint = (Path(__file__).resolve().parents[1] / "__init__.py").read_text()
@@ -66,6 +70,10 @@ def test_full_backup_saves_healthy_database_despite_cached_connection_fts_error(
         )
         target = tmp_path / "backup.zip"
         work_file = tmp_path / "work.zip"
+        system_temp = tmp_path / "system-temp"
+        system_temp.mkdir()
+        monkeypatch.setattr(tempfile, "tempdir", str(system_temp))
+        progress_stages = []
         namespace = {
             "_active_profile": lambda: "P",
             "profile": "P",
@@ -77,7 +85,7 @@ def test_full_backup_saves_healthy_database_despite_cached_connection_fts_error(
             "tempfile": tempfile,
             "Path": Path,
             "DB_NAME": db.DB_NAME,
-            "_progress": lambda *_: None,
+            "_progress": progress_stages.append,
             "_t": Translator("en").t,
             "FullBackupPackageExporter": _PackageExporter,
             "collection": object(),
@@ -87,6 +95,7 @@ def test_full_backup_saves_healthy_database_despite_cached_connection_fts_error(
             "user_files_dir": str(source.parent),
             "zipfile": zipfile,
             "archive_tmp_path": str(work_file),
+            "staging_directory": target.parent,
             "os": __import__("os"),
             "json": json,
             "config": {},
@@ -117,5 +126,91 @@ def test_full_backup_saves_healthy_database_despite_cached_connection_fts_error(
                 "SELECT card_id, page FROM pdf_text_fts WHERE pdf_text_fts MATCH 'searchable'"
             ).fetchall() == [(1, 1)]
         assert source.read_bytes() == before
+        assert progress_stages == [namespace["_t"](key) for key in (
+            "root_backup_activity_snapshotting", "root_backup_activity_creating_package",
+            "root_backup_activity_snapshotting", "root_backup_activity_writing_zip",
+            "admin_full_restore_checking_backup",
+        )]
+        assert _PackageExporter.output_path.parent.parent == target.parent
+        assert not _PackageExporter.output_path.parent.exists()
+        assert list(system_temp.iterdir()) == []
     finally:
         conn.close()
+
+
+@pytest.mark.parametrize("automatic", [False, True], ids=["manual", "automatic"])
+@pytest.mark.parametrize("failure", ["package", "zip"])
+def test_failed_full_backup_cleans_destination_staging_and_preserves_previous_backup(
+    tmp_path, monkeypatch, automatic, failure,
+):
+    source = paths.get_db_path(str(tmp_path / "addon"), "P")
+    source.parent.mkdir(parents=True)
+    system_temp = tmp_path / "system-temp"
+    system_temp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(system_temp))
+    target = tmp_path / "backup.zip"
+    target.write_bytes(b"previous verified backup")
+    work_file = tmp_path / ".incremento-backup-test.zip"
+    work_file.touch()
+    package_paths = []
+
+    class _PackageExporter:
+        def __init__(self, _collection):
+            pass
+
+        def exportInto(self, path):
+            package_paths.append(Path(path))
+            Path(path).write_bytes(b"partial package")
+            if failure == "package":
+                raise OSError(errno.ENOSPC, "No space left on device")
+
+    if failure == "zip":
+        def fail_zip_write(self, *args, **kwargs):
+            raise OSError(errno.ENOSPC, "No space left on device")
+
+        monkeypatch.setattr(zipfile.ZipFile, "write", fail_zip_write)
+
+    entrypoint = (Path(__file__).resolve().parents[1] / "__init__.py").read_text()
+    start = next(
+        node for node in ast.parse(entrypoint).body
+        if isinstance(node, ast.FunctionDef) and node.name == "_start_full_backup"
+    )
+    functions = [
+        node for node in start.body
+        if isinstance(node, ast.FunctionDef) and node.name in {"_task", "_on_done"}
+    ]
+    with sqlite3.connect(source) as conn:
+        db._initialize_database(conn)
+        namespace = {
+            "_active_profile": lambda: "P", "profile": "P",
+            "_ADDON_DIR": str(tmp_path / "addon"), "_paths": paths,
+            "get_connection": lambda *_: conn, "DB_NAME": db.DB_NAME,
+            "tempfile": tempfile, "Path": Path, "os": __import__("os"),
+            "_progress": lambda *_: None, "_t": Translator("en").t,
+            "FullBackupPackageExporter": _PackageExporter, "collection": object(),
+            "hooks": SimpleNamespace(media_files_did_export=[]),
+            "snapshot_database": export_bundle.snapshot_database,
+            "snapshot_tree": export_bundle.snapshot_tree,
+            "user_files_dir": str(source.parent), "zipfile": zipfile,
+            "staging_directory": target.parent, "archive_tmp_path": str(work_file),
+            "path": str(target), "automatic_policy": {"versions": 3} if automatic else None,
+            "close_triggered": False, "_full_backup_running": True,
+            "fail_activity": lambda *_: None, "activity_id": "backup",
+            "tooltip": lambda *_: None,
+        }
+        exec(compile(ast.Module(body=functions, type_ignores=[]), "__init__.py", "exec"), namespace)
+        future = Future()
+        with pytest.raises(OSError) as error:
+            namespace["_task"]()
+        assert error.value.errno == errno.ENOSPC
+        future.set_exception(error.value)
+        namespace["_on_done"](future)
+
+    assert target.read_bytes() == b"previous verified backup"
+    assert not work_file.exists()
+    assert namespace["_full_backup_running"] is False
+    assert namespace["hooks"].media_files_did_export == []
+    assert len(package_paths) == 1
+    assert package_paths[0].parent.parent == target.parent
+    assert not package_paths[0].parent.exists()
+    assert list(system_temp.iterdir()) == []

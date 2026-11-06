@@ -13,6 +13,22 @@ sys.modules.setdefault("db", db)
 import epub_manager
 
 
+def test_css_sanitizer_keeps_scroll_behavior_and_balanced_rules():
+    css = '@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}body{display:grid} .unsafe{behavior:url(https://example.com/x.htc);-moz-binding:url(x.xml);width:expression(1+1)}'
+    cleaned = epub_manager._sanitize_css_text(css)
+    assert '@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}body{display:grid}' in cleaned
+    assert 'behavior:' not in cleaned.replace('scroll-behavior:', '')
+    assert '-moz-binding:' not in cleaned and 'expression(' not in cleaned
+    assert cleaned.count('(') == cleaned.count(')')
+
+
+def test_css_url_sanitizer_keeps_rules_after_quoted_parentheses():
+    # Real Wikipedia CSS embeds SVG strings containing nested url(#fragment).
+    css = '.icon{background:url("data:image/svg+xml,%3Csvg%20style=\'fill:url(%23mark)\'%3E")}body{margin:0;font-family:sans-serif}'
+    cleaned = epub_manager._sanitize_css_text(css)
+    assert cleaned == ".icon{background:url('')}body{margin:0;font-family:sans-serif}"
+
+
 def test_metadata_identity_is_profile_scoped_and_tracks_atomic_replacement(tmp_path, monkeypatch):
     addon = str(tmp_path)
     missing = epub_manager.epub_metadata_identity(addon, "book.epub", profile="A")

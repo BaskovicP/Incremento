@@ -1,4 +1,5 @@
 import {pdfReaderGroups} from './sharedPdfReader.mjs';
+import {revealPdfExcerpt, capturePdfPassage} from './pdfExcerptReveal.mjs';
 import {observeSearchText} from './pdfSearchObserver.mjs';
 import {pageWindow} from './pagedRows.mjs';
 import { createPdfSnapshotMode, cropPdfSnapshot, encodePdfSnapshot, paintPdfSnapshotPreview } from './pdfSnapshot.mjs';
@@ -12,7 +13,7 @@ import HighlightLayer, { isResizableTextHighlight } from './HighlightLayer.jsx';
 import PdfSelectionLayer from './PdfSelectionLayer.jsx';
 import PdfSnapshotLayer, { PdfSnapshotButton } from './PdfSnapshotLayer.jsx';
 import PdfLinkPreview from './PdfLinkPreview.jsx';
-import PdfPageLinks, {usePdfPageLinks} from './PdfPageLinks.jsx';
+import PdfPageLinks, {usePdfPageLinks, PdfWritingMargin} from './PdfPageLinks.jsx';
 import {observePdfToolbarHeight, pdfPageLinksViewport} from './pdfPageLinks.mjs';
 import {pdfDestinationScrollRatio} from './pdfDestination.mjs';
 import {DEFAULT_PDF_LINK_PREVIEW_ZOOM, normalizePdfLinkPreviewZoom, normalizePdfLinkPreviewSize} from './pdfLinkPreview.mjs';
@@ -254,13 +255,6 @@ function findBestVisibleTextSpan(textLayer) {
   return best || spans[0];
 }
 
-function normalizeJumpText(value) {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function firstHighlightRect(highlight) {
   const rects = Array.isArray(highlight?.rects) ? highlight.rects : [];
   const first = rects[0] || {};
@@ -278,25 +272,6 @@ function compareHighlights(a, b) {
   if (aRect.y !== bRect.y) return aRect.y - bRect.y;
   if (aRect.x !== bRect.x) return aRect.x - bRect.x;
   return String(a?.id || '').localeCompare(String(b?.id || ''));
-}
-
-function clearJumpHitStyles(textLayer) {
-  if (!textLayer) return;
-  textLayer.querySelectorAll('span[data-inc-jump-hit="1"]').forEach((span) => {
-    span.dataset.incJumpHit = '0';
-    span.style.background = '';
-    span.style.outline = '';
-    span.style.borderRadius = '';
-  });
-}
-
-function markJumpHit(spans) {
-  spans.forEach((span) => {
-    span.dataset.incJumpHit = '1';
-    span.style.background = 'rgba(59, 130, 246, 0.24)';
-    span.style.outline = '1px solid rgba(96, 165, 250, 0.95)';
-    span.style.borderRadius = '3px';
-  });
 }
 
 function clearSearchHitStyles(textLayer) {
@@ -380,41 +355,6 @@ function applySearchHitStyles(textLayer, query) {
   return firstHit;
 }
 
-function findExcerptSpanMatch(textLayer, excerpt) {
-  const target = normalizeJumpText(excerpt);
-  if (!textLayer || !target) return null;
-
-  const spans = Array.from(textLayer.querySelectorAll('span'))
-    .map((span) => ({ span, text: normalizeJumpText(span.textContent) }))
-    .filter(({ text }) => text.length > 0);
-  if (!spans.length) return null;
-
-  const maxWindow = 48;
-  const maxCombinedLength = Math.max(target.length * 2, target.length + 120);
-  for (let start = 0; start < spans.length; start += 1) {
-    let combined = '';
-    const matched = [];
-    for (let end = start; end < spans.length && end < start + maxWindow; end += 1) {
-      const piece = spans[end].text;
-      combined = joinPdfTextParts(combined, piece);
-      matched.push(spans[end].span);
-      if (combined.includes(target)) {
-        return matched;
-      }
-      if (combined.length > maxCombinedLength) {
-        break;
-      }
-    }
-  }
-
-  const tokens = target.split(/\s+/).filter((token) => token.length >= 4).slice(0, 6);
-  if (!tokens.length) return null;
-  return spans
-    .filter(({ text }) => tokens.some((token) => text.includes(token)))
-    .slice(0, Math.max(1, Math.min(tokens.length, 4)))
-    .map(({ span }) => span);
-}
-
 function clampScrollRatio(value) {
   const ratio = Number(value);
   if (!Number.isFinite(ratio)) return 0;
@@ -447,13 +387,34 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     pdfDocRef, busyRef, activeCvsRef, cardIdRef, pageRef, lastScaleRef,
     startViewer, nav: rawNav, adjustZoom, fitWidth, setReadProgress: rawSetReadProgress,
   } = usePdfRender();
+  const sourceSelection = useRef(null);
+  const sourceSelectionKey = `${pageLinksDocument.cardId}:${pageLinksDocument.generation}:${page}`;
+  const captureSourcePassage = () => {
+    const passage = capturePdfPassage(containerRef.current, textLayerRef.current);
+    if (passage.quote) sourceSelection.current = {key: sourceSelectionKey, passage};
+    return sourceSelection.current?.key === sourceSelectionKey ? sourceSelection.current.passage : passage;
+  };
+  useEffect(() => {
+    const remember = () => {
+      const passage = capturePdfPassage(containerRef.current, textLayerRef.current);
+      if (passage.quote) sourceSelection.current = {key: sourceSelectionKey, passage};
+    };
+    const clear = event => {
+      if (containerRef.current?.contains(event.target)) sourceSelection.current = null;
+    };
+    document.addEventListener('selectionchange', remember);
+    document.addEventListener('pointerdown', clear, true);
+    return () => {document.removeEventListener('selectionchange', remember); document.removeEventListener('pointerdown', clear, true);};
+  }, [sourceSelectionKey, containerRef, textLayerRef]);
   const pageLinksState = usePdfPageLinks({cardId: pageLinksDocument.cardId, page,
     generation: pageLinksDocument.generation,
+    captureSource: captureSourcePassage,
     enabled: !!pdfDocRef.current && !error && renderInfo.cardId === pageLinksDocument.cardId && renderInfo.page === page,
     onCommand: message => {
       const metrics = getPdfViewportMetrics(containerRef.current);
       const point = metrics?.pageHeight > 0 ? clampScrollRatio((window.scrollY - metrics.pageTop) / metrics.pageHeight) : null;
-      window.pycmd?.('incremento_pdf_page_links:' + JSON.stringify({...message, page_y: point}));
+      window.pycmd?.('incremento_pdf_page_links:' + JSON.stringify({...message, page_y: point,
+        passage: message.passage || captureSourcePassage()}));
     }});
   const pageLocationText = pdfPageLocation(page, totalPages, pageLabels, tr);
   const pageLocationTitle = tr('reader_page_jump') + '\n' + tr(
@@ -528,6 +489,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
   const [pageJumpValue, setPageJumpValue] = useState('');
   const pendingHighlightScrollRef = useRef(null);
   const pendingExcerptJumpRef = useRef('');
+  const [excerptCue, setExcerptCue] = useState(null);
   const pendingReadAnchorScrollRef = useRef(false);
   const pendingPageTopScrollRef = useRef(false);
   const pendingResumeScrollRef = useRef(null);
@@ -597,6 +559,31 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     if (cardId > 0) window.pycmd('incremento_pdf_link_preview_zoom:' + JSON.stringify({cardId, zoom}));
   }, [cardIdRef]);
   const [linkBackHistory, setLinkBackHistory] = useState([]);
+  const [documentBackAvailable, setDocumentBackAvailable] = useState(false);
+  const [coverage, setCoverage] = useState(null);
+  const [passageUnavailable, setPassageUnavailable] = useState(false);
+  useEffect(() => {
+    window.incrementoReceiveCoverage = value => setCoverage(value);
+    return () => {delete window.incrementoReceiveCoverage;};
+  }, []);
+  useEffect(() => {
+    const report = () => {
+      const bounds = containerRef.current?.getBoundingClientRect();
+      if (document.hidden || !bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight
+          || renderInfo.page !== page || renderInfo.cardId !== cardIdRef.current || !totalPages) return;
+      window.pycmd?.('incremento_reader_coverage:' + JSON.stringify({cardId: cardIdRef.current,
+        position: 0, start: page - 1, end: page, totalPages}));
+    };
+    report();
+    document.addEventListener('visibilitychange', report);
+    window.addEventListener('scroll', report, {passive: true});
+    return () => {document.removeEventListener('visibilitychange', report); window.removeEventListener('scroll', report);};
+  }, [page, totalPages, renderInfo, cardIdRef, containerRef]);
+  useEffect(() => {
+    window.incrementoSetDocumentBackAvailable = value => setDocumentBackAvailable(value === true);
+    setDocumentBackAvailable(window._incDocumentBackAvailable === true);
+    return () => {delete window.incrementoSetDocumentBackAvailable;};
+  }, []);
   const [linkBackScrollNonce, setLinkBackScrollNonce] = useState(0);
   const [appearanceMode, setAppearanceMode] = useState('original');
   const pageAppearance = pdfPageAppearance(appearanceMode);
@@ -651,16 +638,28 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     const wrapper = containerRef.current;
     if (!showHighlightControls || !wrapper || snapshotMode.getSnapshot()) {
       clearHoveredHighlight();
+      highlightTooltip.hide();
+      return;
+    }
+    if (event.buttons) {
+      clearHoveredHighlight();
+      highlightTooltip.hide();
       return;
     }
     const actions = event.target?.closest?.('.incremento-pdf-highlight-actions');
     if (actions && actions === hoveredHighlightActionRef.current) return;
-    if (event.buttons) {
-      clearHoveredHighlight();
-      return;
-    }
     const highlight = pdfHighlightAtClientPoint(pdfDisplayHighlights(pageHighlights), renderInfo,
       wrapper.getBoundingClientRect(), event.clientX, event.clientY, {normalizedRects: true});
+    if (hasAnnotationNote(highlight)) {
+      if (highlightTooltip.getSnapshot()?.id === String(highlight.id ?? '')) {
+        highlightTooltip.cancelHide();
+        highlightTooltip.move(event);
+      } else {
+        highlightTooltip.show(highlight, event);
+      }
+    } else if (highlightTooltip.getSnapshot()) {
+      highlightTooltip.scheduleHide();
+    }
     const id = highlight && highlight.color !== 'snapshot' ? String(highlight.id ?? '') : null;
     if (id !== null && hoveredHighlightActionRef.current?.dataset.highlightId === id) return;
     clearHoveredHighlight();
@@ -670,16 +669,17 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     // Pointer movement updates only the action cluster, not the full reader.
     target?.setAttribute('data-highlight-hovered', 'true');
     hoveredHighlightActionRef.current = target || null;
-  }, [clearHoveredHighlight, containerRef, pageHighlights, renderInfo, showHighlightControls, snapshotMode]);
+  }, [clearHoveredHighlight, containerRef, highlightTooltip, pageHighlights, renderInfo, showHighlightControls, snapshotMode]);
   const leaveHighlightHover = useCallback(() => {
     hoveredHighlightPointRef.current = null;
     clearHoveredHighlight();
-  }, [clearHoveredHighlight]);
+    highlightTooltip.scheduleHide();
+  }, [clearHoveredHighlight, highlightTooltip]);
   useEffect(() => {
     clearHoveredHighlight();
     if (hoveredHighlightPointRef.current) hoverHighlightAtClientPoint(hoveredHighlightPointRef.current);
-    return clearHoveredHighlight;
-  }, [clearHoveredHighlight, hoverHighlightAtClientPoint]);
+    return () => {clearHoveredHighlight(); highlightTooltip.hide();};
+  }, [clearHoveredHighlight, highlightTooltip, hoverHighlightAtClientPoint]);
   const minViewerWidth = renderInfo?.pageWidth ? Math.ceil(renderInfo.pageWidth) : 0;
   const showReadMarker = (
     readAnchor
@@ -755,10 +755,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     }));
   }, [cardIdRef]);
 
-  const showHighlightNote = highlightTooltip.show;
-  const moveHighlightNote = highlightTooltip.move;
   const hideHighlightNote = highlightTooltip.hide;
-  const scheduleHighlightNoteHide = highlightTooltip.scheduleHide;
 
   const describeLimitReached = useCallback(() => {
     const prefix = limitTotal > 0
@@ -912,51 +909,11 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
 
     const jumpExcerpt = pendingExcerptJumpRef.current;
     if (jumpExcerpt) {
-      const normalizedExcerpt = normalizeJumpText(jumpExcerpt);
-      if (!normalizedExcerpt) {
-        pendingExcerptJumpRef.current = '';
-      } else {
-        const highlightTarget = highlights.find((highlight) => {
-          if (highlight.page !== page || !highlight.rects?.length) return false;
-          const highlightText = normalizeJumpText(highlight.text);
-          return (
-            highlightText.includes(normalizedExcerpt)
-            || normalizedExcerpt.includes(highlightText)
-          );
-        });
-        if (highlightTarget?.rects?.length && scrollToPdfRect(highlightTarget.rects[0])) {
-          clearPendingResumeScroll();
-          suppressScrollPersistence(900);
-          setActiveHighlightId(String(highlightTarget.id || ''));
-          setFocusedHighlightId(String(highlightTarget.id || ''));
-          window.setTimeout(() => setFocusedHighlightId(null), 1600);
-          pendingExcerptJumpRef.current = '';
-          pendingReadAnchorScrollRef.current = false;
-          return;
-        }
-
-        const tl = textLayerRef.current;
-        const spanCount = tl ? tl.querySelectorAll('span').length : 0;
-        if (tl && spanCount > 0) {
-          clearJumpHitStyles(tl);
-          const matchedSpans = findExcerptSpanMatch(tl, normalizedExcerpt);
-          if (matchedSpans?.length) {
-            markJumpHit(matchedSpans);
-            clearPendingResumeScroll();
-            suppressScrollPersistence(900);
-            try {
-              matchedSpans[0].scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
-            } catch (_) {}
-            pendingExcerptJumpRef.current = '';
-            pendingReadAnchorScrollRef.current = false;
-            window.setTimeout(() => clearJumpHitStyles(tl), 2200);
-            return;
-          }
-          pendingExcerptJumpRef.current = '';
-        } else {
-          return;
-        }
-      }
+      if (!renderInfo?.textReady || renderInfo.page !== pageRef.current
+          || renderInfo.page !== page || renderInfo.cardId !== cardIdRef.current) return;
+      setExcerptCue({quote: jumpExcerpt, page, cardId: cardIdRef.current, until: Date.now() + 4000});
+      pendingExcerptJumpRef.current = '';
+      pendingReadAnchorScrollRef.current = false;
     }
 
     if (pendingReadAnchorScrollRef.current && showReadMarker) {
@@ -1016,6 +973,29 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     suppressScrollPersistence,
     linkBackScrollNonce,
   ]);
+
+  useEffect(() => {
+    if (!excerptCue) return;
+    const remaining = excerptCue.until - Date.now();
+    if (remaining <= 0 || excerptCue.cardId !== cardIdRef.current || excerptCue.page !== pageRef.current) {
+      setExcerptCue(null);
+      return;
+    }
+    if (!renderInfo?.textReady || renderInfo.page !== excerptCue.page
+        || renderInfo.cardId !== excerptCue.cardId || !textLayerRef.current || !containerRef.current) return;
+    const clear = revealPdfExcerpt(textLayerRef.current, containerRef.current, excerptCue.quote,
+      {duration: remaining, onDismiss: () => setExcerptCue(current => current === excerptCue ? null : current)});
+    if (clear) {
+      setPassageUnavailable(false);
+      clearPendingResumeScroll();
+      suppressScrollPersistence(900);
+    } else {
+      setPassageUnavailable(true);
+    }
+    // Repaint after automatic page-width changes, keeping the original expiry.
+    return () => clear?.(false);
+  }, [excerptCue, page, renderInfo, cardIdRef, pageRef, textLayerRef, containerRef,
+    clearPendingResumeScroll, suppressScrollPersistence]);
 
   useEffect(() => {
     const tl = textLayerRef.current;
@@ -1639,7 +1619,9 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
         visibleHeight: metrics?.visibleHeight,
       });
       if (scrollRatio === null) return null;
-      return { cardId, page: currentPage, pageLabel: pageLabels?.[currentPage - 1] || '', scrollRatio };
+      const passage = capturePdfPassage(wrapper, textLayerRef.current);
+      return { cardId, page: currentPage, pageLabel: pageLabels?.[currentPage - 1] || '', scrollRatio,
+        ...(Object.keys(passage).length ? {passage} : {}) };
     };
     return () => {
       delete window.incrementoPdfAnchorAtPoint;
@@ -1649,7 +1631,10 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
   const jumpBackFromPdfLink = useCallback(() => {
     const taken = takePdfLinkHistory(linkBackHistory);
     const target = taken.location;
-    if (!target) return;
+    if (!target) {
+      if (documentBackAvailable) window.pycmd?.('incremento_pdf_passage_back:');
+      return;
+    }
 
     const delta = target.page - pageRef.current;
     if (delta !== 0 && !limitAwareNav(delta, { scrollToTop: false })) return;
@@ -1664,7 +1649,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     suppressScrollPersistence(700);
     setLinkBackHistory(taken.history);
     if (delta === 0) setLinkBackScrollNonce(value => value + 1);
-  }, [limitAwareNav, linkBackHistory, pageRef, suppressScrollPersistence]);
+  }, [limitAwareNav, linkBackHistory, documentBackAvailable, pageRef, suppressScrollPersistence]);
 
   const openContents = useCallback(() => {
     if (!contentsReady || !cardIdRef.current) return;
@@ -1859,7 +1844,11 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       startControlsCollapsed = null,
       startDefaultHighlightColor = 'yellow',
       startLinkPreviewSize = null,
+      startPassage = null,
     ) => {
+      setExcerptCue(null);
+      setCoverage(null);
+      setPassageUnavailable(false);
       setPageLinksDocument(current => ({cardId: Number(cardId), generation: current.generation + 1}));
       contentsGenerationRef.current += 1;
       snapshotMode.setActive(false);
@@ -1897,7 +1886,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       setSearchHits(Array.isArray(startSearchHits) ? startSearchHits : []);
       setActiveSearchHitIndex(Number.isInteger(startActiveSearchHitIndex) ? startActiveSearchHitIndex : -1);
       setReadAnchor(startReadAnchor && typeof startReadAnchor === 'object' ? startReadAnchor : null);
-      pendingExcerptJumpRef.current = String(startJumpExcerpt || '').trim();
+      pendingExcerptJumpRef.current = startPassage?.quote || startPassage?.rects?.length
+        ? startPassage : String(startJumpExcerpt || '').trim();
       pendingHighlightScrollRef.current = String(startJumpHighlightId || '').trim();
       setActiveHighlightId(String(startJumpHighlightId || '').trim() || null);
       pendingReadAnchorScrollRef.current = !!startScrollToReadAnchor;
@@ -1929,6 +1919,22 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
     window.incrementoSetPdfFocusState = setPdfFocusState;
     window.incrementoSetPdfLinkPreviewZoom = value => setLinkPreviewZoom(normalizePdfLinkPreviewZoom(value));
     window.incrementoPdfNav   = limitAwareNav;
+    window.incrementoRevealPdfExcerpt = value => {
+      if (value?.cardId !== cardIdRef.current || !Number.isInteger(value.page)
+          || value.page < 1 || value.page > (pdfDocRef.current?.numPages || 0)) return false;
+      const delta = value.page - pageRef.current;
+      if (delta !== 0 && !limitAwareNav(delta, {scrollToTop: false})) return false;
+      setExcerptCue(null);
+      pendingExcerptJumpRef.current = value.passage || String(value.excerpt || '').slice(0, 2000);
+      pendingHighlightScrollRef.current = null;
+      pendingReadAnchorScrollRef.current = false;
+      pendingPageTopScrollRef.current = false;
+      pendingResumeScrollRef.current = clampScrollRatio(value.scrollRatio);
+      pendingResumePageRef.current = value.page;
+      pendingContentsFractionRef.current = Number.isFinite(value.pageY) ? value.pageY : null;
+      setHighlightJumpNonce(nonce => nonce + 1);
+      return true;
+    };
     window.incrementoPdfZoom  = adjustZoom;
     window.incrementoPdfMarkRead = limitAwareMarkRead;
     window.incrementoPdfOpenFind = openFind;
@@ -2013,6 +2019,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
         pending.controlsCollapsed,
         pending.defaultHighlightColor,
         pending.linkPreviewSize,
+        pending.jumpPassage,
       );
     }
     return () => {
@@ -2022,6 +2029,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
       delete window.incrementoSetPdfFocusState;
       delete window.incrementoSetPdfLinkPreviewZoom;
       delete window.incrementoPdfNav;
+      delete window.incrementoRevealPdfExcerpt;
       delete window.incrementoPdfZoom;
       delete window.incrementoPdfMarkRead;
       delete window.incrementoPdfOpenFind;
@@ -2183,6 +2191,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
   return (
     <div
       className={readingOnly ? 'incremento-pdf-reading-only' : undefined}
+      onPointerDown={hideHighlightNote}
       style={{
         width: '100%',
         minHeight: '100vh',
@@ -2270,6 +2279,14 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
         }}
       >
 
+        {(coverage || passageUnavailable) && <div role="status" aria-live="polite" data-reader-coverage="true"
+          style={{fontSize: 11, color: '#cbd5e1', width: '100%', flexBasis: '100%', padding: '2px 6px'}}>
+          {coverage && (coverage.error ? tr('reader_coverage_unavailable') : tr('reader_coverage_summary', {
+            viewed: Number(coverage.viewed_percent || 0).toFixed(1).replace(/\.0$/, ''),
+            marked: Number(coverage.marked_percent || 0).toFixed(1).replace(/\.0$/, ''),
+          }))}
+          {passageUnavailable && ` · ${tr('reader_passage_unavailable')}`}
+        </div>}
         {controlsCollapsed && (
           <div className="reader-essential-controls">
             <div className="reader-control-row reader-navigation">
@@ -2324,14 +2341,14 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                   title={clickableLinks ? tr('reader_links_disable') : tr('reader_links_enable')}>
                   {tr('reader_links_state', {state: clickableLinks ? tr('reader_on') : tr('reader_off')})}
                 </button>
-                <button type="button" disabled={!linkBackHistory.length} onClick={jumpBackFromPdfLink}
+                <button type="button" disabled={!linkBackHistory.length && !documentBackAvailable} onClick={jumpBackFromPdfLink}
                   title={linkBackHistory.length ? tr('reader_jump_back_page', {page: linkBackHistory.at(-1).page}) : tr('reader_jump_back_hint')}>
                   ↩ {tr('reader_jump_back')}
                 </button>
                 <PdfPageLinks linksState={pageLinksState} tr={tr} />
               </span>
               <span className="reader-progress" title={tr('reader_read_progress_pages', {read: readPage, total: totalPages})}>
-                <span>{tr('reader_marked_read', {percent: progressPct})}</span>
+                <span>{tr('reader_linear_progress', {percent: progressPct})}</span>
                 <span className="reader-progress-track" role="progressbar" aria-label={tr('reader_read_progress')}
                   aria-valuemin="0" aria-valuemax="100" aria-valuenow={progressPct}><span style={{width: `${progressPct}%`}} /></span>
               </span>
@@ -2719,7 +2736,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                 </button>
                 <button
                   type="button"
-                  disabled={linkBackHistory.length === 0}
+                  disabled={linkBackHistory.length === 0 && !documentBackAvailable}
                   onClick={jumpBackFromPdfLink}
                   title={linkBackHistory.length > 0 ? tr("reader_jump_back_page", { page: linkBackHistory.at(-1).page }) : tr("reader_jump_back_hint")}
                   style={{
@@ -2727,8 +2744,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
                     border: '1px solid rgba(180,180,180,0.32)',
                     borderRadius: 8,
                     color: 'inherit',
-                    cursor: linkBackHistory.length > 0 ? 'pointer' : 'default',
-                    opacity: linkBackHistory.length > 0 ? 1 : 0.48,
+                    cursor: linkBackHistory.length > 0 || documentBackAvailable ? 'pointer' : 'default',
+                    opacity: linkBackHistory.length > 0 || documentBackAvailable ? 1 : 0.48,
                     padding: '4px 10px',
                     fontSize: 12,
                   }}
@@ -3594,6 +3611,7 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
         zoom={linkPreviewZoom} onZoom={applyLinkPreviewZoom}
         size={linkPreviewSize} onResize={applyLinkPreviewSize} />
 
+      <div style={{display: 'flex', alignItems: 'flex-start'}}>
       {/* Canvas wrapper */}
       <div
         id="pdf-canvas-wrapper"
@@ -3604,6 +3622,8 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
         style={{
           position: 'relative',
           display: 'block',
+          flex: 1,
+          minWidth: minViewerWidth || 0,
           textAlign: 'center',
           background: pageAppearance.background,
         }}
@@ -3742,9 +3762,6 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
           endHighlightResize={endHighlightResize}
           cancelHighlightResize={cancelHighlightResize}
           focusedHighlightId={focusedHighlightId}
-          showHighlightNote={showHighlightNote}
-          moveHighlightNote={moveHighlightNote}
-          hideHighlightNote={scheduleHighlightNoteHide}
         />
         <PdfSnapshotLayer mode={snapshotMode} previewRef={snapPreviewRef}
           onStart={handleSnapStart} onMove={handleSnapMove} onEnd={handleSnapEnd} />
@@ -3760,6 +3777,9 @@ export default function PdfViewer({readingOnly = false, referenceControls = null
             cursor: 'text',
           }}
         />
+      </div>
+      <PdfWritingMargin linksState={pageLinksState} tr={tr}
+        textLayer={textLayerRef} wrapper={containerRef} renderInfo={renderInfo} />
       </div>
 
     </div>

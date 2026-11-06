@@ -10,6 +10,10 @@ time so there is no practical issue.
 """
 
 import json
+try:
+    from ..backend.document_passages import normalize_passage
+except ImportError:
+    from backend.document_passages import normalize_passage
 import os
 import re
 import secrets
@@ -61,7 +65,6 @@ try:
     from .reader_links import (
         normalize_reader_anchor_scroll_ratio,
         open_external_reader_link,
-        pdf_context_card_html,
         pdf_snapshot_reference_html,
         pdf_text_context_reference_html,
         reader_anchor_command_from_html,
@@ -73,7 +76,6 @@ except ImportError:
     from reader_links import (  # type: ignore
         normalize_reader_anchor_scroll_ratio,
         open_external_reader_link,
-        pdf_context_card_html,
         pdf_snapshot_reference_html,
         pdf_text_context_reference_html,
         reader_anchor_command_from_html,
@@ -322,6 +324,8 @@ def reset_for_profile_switch() -> None:
         import document_link_ui
     pdf_reference_workspace.reset_for_profile_switch()
     document_link_ui.reset_for_profile_switch()
+    if _pdf_dock is not None and hasattr(_pdf_dock, '_passage_history'):
+        _pdf_dock._passage_history.clear()
     _annotation_queue.reset()
     _hide_pdf_dock_for_inactive_context()
     if _pdf_dock is not None:
@@ -1577,6 +1581,7 @@ def pdf_citation(
     page: int | None = None,
     page_label: str | None = None,
     scroll_ratio: float | None = None,
+    passage: dict | None = None,
 ) -> str:
     """Display a printed label while reopening the physical PDF page."""
     card_id = current_pdf_card_id()
@@ -1599,49 +1604,17 @@ def pdf_citation(
     normalized_scroll_ratio = normalize_reader_anchor_scroll_ratio(scroll_ratio)
     if normalized_scroll_ratio is not None:
         payload["scroll_ratio"] = normalized_scroll_ratio
+    if passage:
+        try:
+            payload['passage'] = normalize_passage(passage)
+        except ValueError:
+            return ''
     cmd = "incremento_open_pdf_ref:" + json.dumps(payload, ensure_ascii=False)
     onclick = escape(f"pycmd({json.dumps(cmd)}); return false;", quote=True)
     return (
         f"<a onclick=\"{onclick}\" "
         f'style="cursor:pointer; color:#4a90d9; text-decoration:none;">'
         f'{escape(t("reader_pdf_citation_label", page=display_page, title=name))}</a>'
-    )
-
-
-def pdf_context_html_for_citation(
-    citation_html: object,
-    *,
-    excerpt_text: object = "",
-) -> str:
-    """Build syncable card context from one validated local PDF citation."""
-    command = reader_anchor_command_from_html(citation_html)
-    prefix = "incremento_open_pdf_ref:"
-    if command is None or not command.startswith(prefix):
-        return ""
-    try:
-        payload = json.loads(command[len(prefix) :])
-        card_id = int(payload["card_id"])
-        page = int(payload["page"])
-    except (KeyError, TypeError, ValueError, OverflowError, json.JSONDecodeError):
-        return ""
-    try:
-        page_text = _pdf_page_text(
-            _ADDON_DIR,
-            _active_profile(),
-            card_id,
-            page,
-            max_chars=250_000,
-        )
-    except Exception:
-        return ""
-    excerpt = str(payload.get("excerpt") or "").strip()
-    if not excerpt:
-        excerpt = _normalize_pdf_reference_excerpt(str(excerpt_text or ""))
-    return pdf_context_card_html(
-        page_text,
-        excerpt=excerpt,
-        scroll_ratio=payload.get("scroll_ratio"),
-        context_rows=configured_pdf_context_rows(),
     )
 
 
@@ -1755,7 +1728,7 @@ def _copy_pdf_context_anchor(data: object) -> bool:
     html = pdf_citation(
         page=page,
         page_label=page_label,
-        scroll_ratio=float(anchor["scroll_ratio"]),
+        scroll_ratio=float(anchor["scroll_ratio"]), passage=data.get("passage"),
     )
     label = _current_pdf_display_label()
     display_page = _pdf_citation_display_page(page, page_label)
@@ -1790,9 +1763,7 @@ def _handle_pdf_page_links(payload):
                     and filename == _current_pdf_filename and dock is _pdf_dock
                     and generation == _pdf_annotation_generation)
         def jump(snapshot, link):
-            show_pdf_in_dock(snapshot['card_id'], snapshot['filename'], link['target_page'],
-                             via_link=True, preserve_history=True, offer_due_review_prompt=False,
-                             scroll_ratio_override=link['target_scroll'], page_y_override=link.get('target_y'))
+            _follow_pdf_passage(snapshot, link)
         bridge = PdfPageLinksBridge(profile=profile, card_id=card_id, filename=filename,
             owner=dock, is_current=current, open_pdf=jump,
             reply=lambda data: viewer.runJavaScript('window.incrementoReceivePdfPageLinks?.(' + json.dumps(data) + ');'),
@@ -1818,6 +1789,8 @@ def _open_pdf_document_links(payload, *, create):
                 and generation == _pdf_annotation_generation)
     source = {"card_id": card_id, "kind": "pdf", "page": payload["page"],
               "quote": str(payload.get("quote") or "")[:2000]}
+    if payload.get("passage"):
+        source["passage"] = payload["passage"]
     action = document_link_ui.link_pdf if create else document_link_ui.show_links
     action(source, owner=dock, is_current=current)
     return True
@@ -1834,7 +1807,8 @@ def _show_pdf_reader_context_menu(view, position) -> bool:
     filename = _current_pdf_filename
     viewer_page = view.page()
     nonce = viewer_page._bridge_nonce
-    selected_text = str(view.selectedText() or "")[:2000] if callable(getattr(view, "selectedText", None)) else ""
+    writing_selection = str(view.selectedText() or "")[:2001] if callable(getattr(view, "selectedText", None)) else ""
+    selected_text = writing_selection[:2000]
     request = object()
     view._incremento_image_menu_request = request
 
@@ -1857,15 +1831,27 @@ def _show_pdf_reader_context_menu(view, position) -> bool:
         if anchor is not None:
             try:
                 from .recording_link_dialog import add_context_actions
+                from .writing_excerpt_ui import add_context_actions as writing_actions
             except ImportError:
                 from recording_link_dialog import add_context_actions
+                from frontend.writing_excerpt_ui import add_context_actions as writing_actions
+            writing_actions(menu, dict(kind='pdf', card_id=card_id, page=anchor['page'],
+                scroll=anchor.get('scroll_ratio', 0), quote=writing_selection), owner=_pdf_dock,
+                is_current=lambda: is_current(menu, menu_visible=False))
             add_context_actions(menu, dict(kind='pdf', card_id=card_id, page=anchor['page'],
                 scroll=anchor.get('scroll_ratio', 0), quote=selected_text), owner=_pdf_dock,
                 is_current=lambda: is_current(menu, menu_visible=False))
             for key, create in (("reader_reference_add", True), ("reader_reference_links", False)):
                 action = menu.addAction(t(key))
                 action.triggered.connect(lambda checked=False, new=create: _open_pdf_document_links(
-                    {"cardId": card_id, "page": anchor["page"], "quote": selected_text}, create=new) if is_current(menu) else None)
+                    {"cardId": card_id, "page": anchor["page"], "quote": selected_text, "passage": payload.get("passage")}, create=new) if is_current(menu) else None)
+        if anchor is not None:
+            try:
+                from .reader_coverage import add_coverage_actions
+            except ImportError:
+                from frontend.reader_coverage import add_coverage_actions
+            add_coverage_actions(menu, getattr(_pdf_dock, '_coverage_tracker', None), anchor,
+                owner=_pdf_dock, current=lambda: is_current(menu, menu_visible=False))
         point = payload.get("imagePoint")
         if anchor is None or not isinstance(point, dict) or not filename:
             return
@@ -3059,6 +3045,49 @@ def _pdf_extract_html(payload: dict) -> str:
     return "".join(parts)
 
 
+def _follow_pdf_passage(snapshot, link):
+    try:
+        from .reader_navigation import ReaderReturnHistory
+    except ImportError:
+        from frontend.reader_navigation import ReaderReturnHistory
+    if not hasattr(_pdf_dock, '_passage_history'):
+        _pdf_dock._passage_history = ReaderReturnHistory()
+    source = _live_pdf_location(_current_pdf_card_id)
+    if source:
+        _pdf_dock._passage_history.push(_active_profile(), source)
+    show_pdf_in_dock(snapshot['card_id'], snapshot['filename'], link['target_page'],
+        via_link=True, preserve_history=True, offer_due_review_prompt=False,
+        scroll_ratio_override=link['target_scroll'], page_y_override=link.get('target_y'),
+        jump_passage=link.get('target_passage'))
+
+
+def _return_pdf_passage():
+    history = getattr(_pdf_dock, '_passage_history', None)
+    location = history.pop(_active_profile()) if history else None
+    if not location:
+        return
+    from aqt.operations import QueryOp
+    profile, dock, generation = _active_profile(), _pdf_dock, _pdf_annotation_generation
+    collection = getattr(mw, 'col', None)
+    def load(col):
+        try:
+            from ..backend.pdf_reference import resolve_pdf_reference
+        except ImportError:
+            from backend.pdf_reference import resolve_pdf_reference
+        snapshot = resolve_pdf_reference(_ADDON_DIR, profile, col, location['card_id'])
+        if snapshot['filename'] != location['filename']:
+            raise ValueError('Return document changed')
+        return snapshot
+    def ready(snapshot):
+        if (profile == _active_profile() and dock is _pdf_dock and generation == _pdf_annotation_generation
+                and collection is getattr(mw, 'col', None)):
+            show_pdf_in_dock(snapshot['card_id'], snapshot['filename'], location['page'], location['zoom'],
+                via_link=True, preserve_history=True, offer_due_review_prompt=False,
+                scroll_ratio_override=location['scroll_ratio'])
+    QueryOp(parent=mw, op=load, success=ready).failure(
+        lambda error: tooltip(t('reader_reference_unavailable')) if profile == _active_profile() else None).run_in_background()
+
+
 def _handle_pdf_js_message(msg: str) -> None:
     if msg.startswith('incremento_pdf_controls:'):
         if len(msg) > 512:
@@ -3114,6 +3143,15 @@ def _handle_pdf_js_message(msg: str) -> None:
                 _receive_pdf_page_labels(json.loads(msg[len(_MSG_PAGE_LABELS):]))
             except (TypeError, ValueError):
                 pass
+    elif msg.startswith('incremento_reader_coverage:'):
+        try:
+            tracker = getattr(_pdf_dock, '_coverage_tracker', None)
+            if tracker is not None:
+                tracker.receive(json.loads(msg.partition(':')[2]))
+        except (ValueError, TypeError):
+            pass
+    elif msg == 'incremento_pdf_passage_back:':
+        _return_pdf_passage()
     elif msg.startswith(_MSG_NAV):
         parts = msg.split(":")
         if len(parts) == 3:
@@ -3287,7 +3325,7 @@ def _handle_pdf_js_message(msg: str) -> None:
                 if is_blocking:
                     _push_pdf_limit_status(status)
                     return
-                if not _pdf_preserve_history:
+                if not _pdf_preserve_history or _pdf_via_link:
                     set_read_page(
                         _ADDON_DIR,
                         _active_profile(),
@@ -3296,6 +3334,9 @@ def _handle_pdf_js_message(msg: str) -> None:
                         read_anchor if isinstance(read_anchor, dict) else None,
                     )
                     _refresh_reference_pdf_state(cid, 'reading')
+                    tracker = getattr(_pdf_dock, '_coverage_tracker', None)
+                    if tracker is not None:
+                        tracker.refresh()
                 _push_pdf_limit_status(status)
         except ValueError:
             pass
@@ -3961,7 +4002,8 @@ def _build_pdf_dock():
 
     def _on_visibility_changed(visible: bool) -> None:
         global _pdf_find_jobs
-        if visible:
+        if visible or not dock.isHidden():
+            # Qt emits False for an inactive tab; the document is still open.
             return
         if _pdf_find_jobs is not None and not _pdf_reader_is_visible():
             _pdf_find_jobs.close()
@@ -4146,11 +4188,14 @@ def show_pdf_in_dock(
     scroll_ratio_override: float | None = None,
     _annotation_result: dict | None = None,
     page_y_override: float | None = None,
+    jump_passage: dict | None = None,
 ) -> None:
     global _pdf_dock, _current_pdf_card_id, _current_pdf_filename, _pdf_via_link, _pdf_preserve_history
     global _pdf_showing_missing_screen
     global _pdf_annotation_generation
     global _current_pdf_page_labels
+    if not via_link and _pdf_dock is not None and hasattr(_pdf_dock, '_passage_history'):
+        _pdf_dock._passage_history.clear()
     if _annotation_result is None:
         _pdf_annotation_generation += 1
         if _pdf_dock is not None:
@@ -4218,7 +4263,7 @@ def show_pdf_in_dock(
             card_id, resolved_filename, page, zoom, via_link, read_page,
             search_query, jump_excerpt, jump_highlight_id, search_hits,
             active_search_hit_index, preserve_history, offer_due_review_prompt,
-            scroll_ratio_override, _annotation_result=initial_result, page_y_override=page_y_override,
+            scroll_ratio_override, _annotation_result=initial_result, page_y_override=page_y_override, jump_passage=jump_passage,
         )
         def prepared(result, error):
             if not _pdf_annotation_context_matches(profile, normalized_card_id, resolved_filename, dock, generation):
@@ -4296,6 +4341,22 @@ def show_pdf_in_dock(
     _pdf_dock._reader_location = {'profile': _active_profile(), 'card_id': normalized_card_id,
         'filename': resolved_filename, 'page': page, 'zoom': zoom,
         'scroll_ratio': scroll_ratio, 'page_y': requested_page_y}
+    try:
+        normalized_passage = normalize_passage(jump_passage)
+    except ValueError:
+        normalized_passage = {}
+    try:
+        from .reader_coverage import install_pdf_tracker
+    except ImportError:
+        from frontend.reader_coverage import install_pdf_tracker
+    if normalized_card_id > 0:
+        profile, dock, generation = _active_profile(), _pdf_dock, _pdf_annotation_generation
+        collection = getattr(mw, 'col', None)
+        install_pdf_tracker(dock, _ADDON_DIR, profile, normalized_card_id, resolved_filename,
+            mw=mw, view=dock._view, current=lambda: profile == _active_profile()
+                and dock is _pdf_dock and _current_pdf_card_id == normalized_card_id
+                and _current_pdf_filename == resolved_filename and generation == _pdf_annotation_generation
+                and collection is getattr(mw, 'col', None))
     normalized_jump_excerpt = _normalize_pdf_reference_excerpt(jump_excerpt)
     reader_locale = get_locale()
     custom_reader_language = get_custom_reader_payload()
@@ -4328,10 +4389,12 @@ def show_pdf_in_dock(
         f"window._incPdfHighlights = {json.dumps(hls)};"
         f"window._pdfNativeHighlightsVisible = {json.dumps(bool((_annotation_result or {}).get('native_highlights_visible')))};"
         f"window._incPdfBookmarks = {json.dumps(bookmarks)};"
-        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)}, locale: {json.dumps(reader_locale)}, customLanguage: {json.dumps(custom_reader_language)}, appearanceMode: {json.dumps(appearance_mode)}, showHighlightDeleteButtons: {json.dumps(configured_pdf_show_highlight_delete_buttons())}, linkPreviewZoom: {json.dumps(configured_pdf_link_preview_zoom())}, pageY: {json.dumps(requested_page_y)}, controlsCollapsed: {json.dumps(controls_collapsed)}, defaultHighlightColor: {json.dumps(configured_reader_default_highlight_color(_config(), _active_profile()))}, linkPreviewSize: {json.dumps(configured_pdf_link_preview_size())} }};"
+        f"window._incDocumentBackAvailable = {json.dumps(bool(getattr(_pdf_dock, '_passage_history', None) and _pdf_dock._passage_history.available(_active_profile())))};"
+        f"window.incrementoSetDocumentBackAvailable?.(window._incDocumentBackAvailable);"
+        f"window._incPdfPending   = {{cardId: {card_id}, filename: {json.dumps(resolved_filename)}, page: {page}, zoom: {zoom}, scrollRatio: {scroll_ratio}, readPage: {resolved_read_page}, readAnchor: {json.dumps(read_anchor)}, searchQuery: {json.dumps(search_query or '')}, searchHits: {json.dumps(search_hits or [])}, activeSearchHitIndex: {int(resolved_search_index)}, jumpPassage: {json.dumps(normalized_passage)}, jumpExcerpt: {json.dumps(normalized_jump_excerpt)}, jumpHighlightId: {json.dumps(str(jump_highlight_id or ''))}, scrollToReadAnchor: {json.dumps(bool(via_link and requested_scroll_ratio is None))}, limitStatus: {json.dumps(limit_status)}, autoHighlightOnExtract: {json.dumps(configured_highlight_when_extracting())}, scrollToTopOnPageChange: {json.dumps(configured_scroll_to_top_on_page_change())}, bookmarks: {json.dumps(bookmarks)}, locale: {json.dumps(reader_locale)}, customLanguage: {json.dumps(custom_reader_language)}, appearanceMode: {json.dumps(appearance_mode)}, showHighlightDeleteButtons: {json.dumps(configured_pdf_show_highlight_delete_buttons())}, linkPreviewZoom: {json.dumps(configured_pdf_link_preview_zoom())}, pageY: {json.dumps(requested_page_y)}, controlsCollapsed: {json.dumps(controls_collapsed)}, defaultHighlightColor: {json.dumps(configured_reader_default_highlight_color(_config(), _active_profile()))}, linkPreviewSize: {json.dumps(configured_pdf_link_preview_size())} }};"
         f"typeof incrementoPdfStart === 'function' && "
         f"(window._incPdfPending = null,"
-        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}, {json.dumps(reader_locale)}, {json.dumps(custom_reader_language)}, {json.dumps(appearance_mode)}, {json.dumps(configured_pdf_show_highlight_delete_buttons())}, {json.dumps(configured_pdf_link_preview_zoom())}, {json.dumps(requested_page_y)}, {json.dumps(controls_collapsed)}, {json.dumps(configured_reader_default_highlight_color(_config(), _active_profile()))}, {json.dumps(configured_pdf_link_preview_size())}));"
+        f" incrementoPdfStart({card_id}, {json.dumps(resolved_filename)}, {page}, {zoom}, {scroll_ratio}, {resolved_read_page}, {json.dumps(read_anchor)}, {json.dumps(search_query or '')}, {json.dumps(search_hits or [])}, {int(resolved_search_index)}, {json.dumps(normalized_jump_excerpt)}, {json.dumps(str(jump_highlight_id or ''))}, {json.dumps(bool(via_link and requested_scroll_ratio is None))}, {json.dumps(limit_status)}, {json.dumps(configured_highlight_when_extracting())}, {json.dumps(configured_scroll_to_top_on_page_change())}, {json.dumps(bookmarks)}, {json.dumps(reader_locale)}, {json.dumps(custom_reader_language)}, {json.dumps(appearance_mode)}, {json.dumps(configured_pdf_show_highlight_delete_buttons())}, {json.dumps(configured_pdf_link_preview_zoom())}, {json.dumps(requested_page_y)}, {json.dumps(controls_collapsed)}, {json.dumps(configured_reader_default_highlight_color(_config(), _active_profile()))}, {json.dumps(configured_pdf_link_preview_size())}, {json.dumps(normalized_passage)}));"
     )
 
     current = _pdf_dock._view.url().toString()

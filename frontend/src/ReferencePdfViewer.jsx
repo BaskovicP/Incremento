@@ -4,6 +4,7 @@ import {referenceRenderPlan, referenceActionLocation, referenceSelectionText} fr
 import {createReaderLanguage} from './i18n.mjs';
 import PdfPageLinks, {usePdfPageLinks} from './PdfPageLinks.jsx';
 import {capturePdfDestination, pdfDestinationScrollRatio} from './pdfDestination.mjs';
+import {capturePdfPassage} from './pdfExcerptReveal.mjs';
 
 /** Each Qt view mounts its own app; pinning reparents the view without reloading. */
 export default function ReferencePdfViewer() {
@@ -164,7 +165,8 @@ export default function ReferencePdfViewer() {
     const point = capturePdfDestination(scroll.current, host.current, selection);
     if (!point) return;
     const selected = referenceSelectionText(selection, host.current?.querySelector('#pdf-text-layer'));
-    send('pick', {...point, page_y: selected ? point.page_y : currentSpot?.page_y ?? point.page_y});
+    send('pick', {...point, page_y: selected ? point.page_y : currentSpot?.page_y ?? point.page_y,
+      passage: capturePdfPassage(host.current, host.current?.querySelector('#pdf-text-layer'), selection)});
   };
 
   return <div style={{position: 'fixed', inset: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', color: '#eee', background: '#252525'}}>

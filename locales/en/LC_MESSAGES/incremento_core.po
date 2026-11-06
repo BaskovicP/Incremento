@@ -851,3 +851,45 @@ msgstr "Use study workspace during review"
 
 msgid "settings_study_workspace_hint"
 msgstr "Show Card, Documents, and Videos views during review. Turn off to use Anki's normal card layout. Saved links remain available from the card's Study resources menu. Applies when you save Settings."
+
+msgid "shortcut_workspace_switch_tabs"
+msgstr "Find Workspace Tab"
+
+msgid "shortcut_workspace_next_tab"
+msgstr "Next Workspace Tab"
+
+msgid "shortcut_workspace_previous_tab"
+msgstr "Previous Workspace Tab"
+
+msgid "shortcut_workspace_close_tab"
+msgstr "Close Workspace Tab"
+
+msgid "shortcut_workspace_reopen_tab"
+msgstr "Reopen Closed Workspace Tab"
+
+msgid "shortcut_workspace_tab_1"
+msgstr "Workspace Tab 1"
+
+msgid "shortcut_workspace_tab_2"
+msgstr "Workspace Tab 2"
+
+msgid "shortcut_workspace_tab_3"
+msgstr "Workspace Tab 3"
+
+msgid "shortcut_workspace_tab_4"
+msgstr "Workspace Tab 4"
+
+msgid "shortcut_workspace_tab_5"
+msgstr "Workspace Tab 5"
+
+msgid "shortcut_workspace_tab_6"
+msgstr "Workspace Tab 6"
+
+msgid "shortcut_workspace_tab_7"
+msgstr "Workspace Tab 7"
+
+msgid "shortcut_workspace_tab_8"
+msgstr "Workspace Tab 8"
+
+msgid "shortcut_workspace_tab_9"
+msgstr "Workspace Tab 9"

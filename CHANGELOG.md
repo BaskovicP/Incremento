@@ -2,6 +2,39 @@
 
 Changes after **16 September 2026, 09:44 (Europe/Zagreb)**.
 
+## 4 November 2026 — 2026.11.04
+
+Changes since tag **v2026.11.03**.
+
+- Link PDF and EPUB passages to the exact explanation in another document. Connections retain the source and destination text, briefly reveal the matching passage, and support returning with **Jump Back**. Older page and section links remain usable.
+- Track non-linear reading with separate **Viewed** and **Marked read** figures in readers and the Document Bookshelf. Mark or unmark individual PDF pages, page ranges, EPUB passages, or sections. Repeated visits count once, and explicit reading marks combine with the existing **Read to here** marker in Statistics.
+- Send selected PDF, EPUB, or reviewer text to Writing with a link back to its source. Source-side indicators reopen the corresponding writing excerpt, and temporary passage reveals make both directions easier to follow. Writing insertion retains native Undo/Redo.
+- Save webpages for offline reading from Anki or Companion. Choose a previewable **HTML snapshot — website appearance** or an editable **Reading copy — reflowable Markdown**. Read these documents with the existing EPUB tools and export them as standalone HTML, Markdown, or TXT. Capturing a later version creates a separate document.
+- Keep grouped workspace tabs active when opening more readers, references, writing, and searches. Rename, close, resize, and color tabs; save their appearance with workspaces. Grouped web searches retain separate results tabs and share their own profile-scoped browsing session.
+- Preview internal PDF links and footnotes on hover with a resizable preview, including while link navigation is disabled. Text inside noted highlights stays selectable. Overlay-only annotation edits update without reloading the main or beside reader, while changes requiring new PDF appearances still refresh the display copy.
+- Preserve passage references through resource inspection and unlink/restore flows, retain reader positions across reference navigation, and keep the new state isolated by Anki profile. Refresh English, Croatian, and Simplified Chinese interface catalogs and rebuild the shipped reader and Companion assets.
+
+Restart Anki after updating. Reload or reinstall Companion from the updated add-on and refresh pages using its capture features. Viewed coverage begins with this update; existing read-to-here markers are retained. Reading coverage, document associations, writing backlinks, and offline documents are profile-local and travel through Incremento backups rather than Anki Sync alone. Offline snapshots preserve captured content and available resources; scripts and interactive website behavior are disabled. The minimum supported Anki version remains 24.11.
+
+[Full comparison](https://github.com/BaskovicP/Incremento/compare/v2026.11.03...v2026.11.04)
+
+## 3 November 2026 — 2026.11.03
+
+Changes since tag **v2026.11.01.1**.
+
+- Keep up to 32 writing drafts in one tabbed pane beside PDF/EPUB readers. Reorder and close tabs, create or open drafts from the tab menu, and restore their order and selected draft with saved workspaces. Each tab retains its text, Undo/Redo history, reading position, appearance, bookmarks, and word-progress state; failed saves keep the draft open.
+- Use a compact, theme-aware writing toolbar with paragraph and heading styles, formatting, links, images, tables, and keyboard shortcuts. Preview adapts to narrow panes, and Markdown or standalone HTML export includes the current draft even before autosave completes. An explicit translation action opens a reviewed passage in Google Translate through the selected Companion browser.
+- Open the current review card's original parent in a read-only sidebar using the compact Parent icon. Parent context follows the saved extraction origin or Knowledge Tree parent while preserving the current card and question/answer side; stale commands and profile changes clear the preview.
+- Limit automatic study navigation and the floating priority badge to cards using Incremento, preserving ordinary Anki card layouts. Explicit resource linking remains available from the card menu.
+- Add **Last added** sorting to the Document Bookshelf, with newest or oldest documents first.
+- Prevent duplicate PDF text-mark rendering after annotation synchronization and note edits. Saved highlights, underlines, squiggles, dashed/dotted underlines, and strikeouts remain editable, and small PDF coordinate differences no longer create spurious annotation conflicts.
+- Stage full-backup profile copies, Anki packages, database snapshots, and ZIPs on the selected destination's filesystem, including external drives and MCP exports. Keep previous backups intact on failure and document temporary-space requirements and interrupted-export cleanup.
+- Share PDF/EPUB import controls, remove obsolete helper paths, refresh English, Croatian, and Simplified Chinese UI catalogs, and rebuild shipped browser assets. Correct the parent-context test import for the full-suite import mode.
+
+Restart Anki after updating. Writing tabs are cleared on profile changes; save a workspace to reopen them later. Translation sends only the passage explicitly opened in Google Translate and requires an internet connection.
+
+[Full comparison](https://github.com/BaskovicP/Incremento/compare/v2026.11.01.1...v2026.11.03)
+
 ## 23 October 2026 — PDF references and side-by-side reading
 
 Changes since the 23 October overnight rebuild requested as **00:05 (Europe/Zagreb)**. The retained package is stamped **00:02:37** (`2026.10.23.000237`); all 239 packaged source files match commit `c81c996`.

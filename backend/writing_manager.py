@@ -247,8 +247,8 @@ def ensure_writing_file(
     return path
 
 
-def read_writing_text(addon_dir: str, relpath: str) -> str:
-    path = writing_file_abspath(addon_dir, relpath)
+def read_writing_text(addon_dir: str, relpath: str, *, profile: str | None = None) -> str:
+    path = writing_file_abspath(addon_dir, relpath, profile=profile)
     try:
         with open(path, "r", encoding="utf-8") as f:
             return f.read()

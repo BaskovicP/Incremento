@@ -12,6 +12,74 @@ import aqt
 import epub_dock
 
 
+def test_malformed_passage_cannot_create_a_rich_epub_citation():
+    assert epub_dock.epub_anchor_link_html(card_id=7,section_index=0,focus_offset=0,scroll_ratio=0,
+        label='Book',passage=dict(start=0,end=-1,quote='Bad range')) == ''
+
+
+@pytest.mark.parametrize('navigation', ['link', 'next-section'])
+def test_non_linear_epub_navigation_never_marks_skipped_sections_read(monkeypatch, navigation):
+    opened = []
+    marker = MagicMock()
+    monkeypatch.setattr(epub_dock,'_epub_dock',types.SimpleNamespace())
+    monkeypatch.setattr(epub_dock,'_current_epub_card_id',7)
+    monkeypatch.setattr(epub_dock,'_current_epub_filename','book.epub')
+    monkeypatch.setattr(epub_dock,'_current_epub_section_index',1)
+    monkeypatch.setattr(epub_dock,'_current_sections',lambda:[{}]*10)
+    monkeypatch.setattr(epub_dock,'_current_section_paths',lambda:tuple(str(i)+'.xhtml' for i in range(10)))
+    monkeypatch.setattr(epub_dock,'get_epub_extract_dir',lambda *args,**kw:'/synthetic/book')
+    monkeypatch.setattr(epub_dock,'_resolve_epub_reader_link',lambda *args,**kw:
+        dict(kind='internal',section_index=5,fragment='passage'))
+    monkeypatch.setattr(epub_dock,'_check_epub_limit_before_navigation',lambda *args:True)
+    monkeypatch.setattr(epub_dock,'_sync_epub_link_back_buttons',lambda:None)
+    monkeypatch.setattr(epub_dock,'_record_progress',lambda *args:None)
+    monkeypatch.setattr(epub_dock,'set_read_section_index',marker)
+    monkeypatch.setattr(epub_dock,'show_epub_in_dock',lambda *args,**kw:opened.append(kw))
+    if navigation == 'link':
+        assert epub_dock._open_epub_reader_link('5.xhtml#passage')
+    else:
+        epub_dock._jump_section_boundary(1)
+    assert opened[-1]['section_index'] == (5 if navigation == 'link' else 2)
+    marker.assert_not_called()
+
+
+@pytest.mark.parametrize('stale', [False, True], ids=['return', 'newer-document'])
+def test_cross_book_passage_return_preserves_exact_offset_and_drops_stale_callbacks(monkeypatch, stale):
+    from backend import epub_reference
+    source = dict(card_id=7,section=2,offset=123,scroll=.37,passage=dict(start=123,end=129,quote='source'))
+    calls, queries = [], []
+    dock = types.SimpleNamespace()
+    monkeypatch.setattr(epub_dock, '_epub_dock', dock)
+    monkeypatch.setattr(epub_dock, '_active_profile', lambda: 'A')
+    monkeypatch.setattr(epub_dock, '_current_epub_card_id', 7)
+    monkeypatch.setattr(epub_dock, '_current_epub_filename', 'source.epub')
+    monkeypatch.setattr(epub_dock, '_capture_epub_location', lambda callback: callback(source))
+    monkeypatch.setattr(epub_dock, 'show_epub_in_dock', lambda *args, **kw: calls.append((args, kw)))
+    target = dict(card_id=8,section=4,offset=456,scroll=.6,passage=dict(start=456,end=460,quote='dest'))
+    epub_dock._follow_epub_passage(dict(filename='target.epub'),target)
+    assert calls[-1][1]['passage'] == target['passage']
+    assert calls[-1][1]['preserve_resume']
+    class Query:
+        def __init__(self, **options):
+            self.options = options
+            queries.append(self)
+        def failure(self, callback): return self
+        def run_in_background(self): pass
+    monkeypatch.setitem(sys.modules, 'aqt.operations', types.SimpleNamespace(QueryOp=Query))
+    monkeypatch.setattr(epub_reference,'resolve_epub_reference',lambda *args:dict(card_id=7,filename='source.epub'))
+    assert epub_dock._return_epub_passage()
+    result=queries[-1].options['op'](object())
+    if stale:
+        monkeypatch.setattr(epub_dock,'_current_epub_card_id',99)
+    queries[-1].options['success'](result)
+    if stale:
+        assert len(calls)==1
+    else:
+        assert calls[-1][0]==(7,'source.epub')
+        assert calls[-1][1]['focus_offset']==123 and calls[-1][1]['scroll_ratio']==.37
+        assert calls[-1][1]['passage']==source['passage']
+
+
 def test_active_epub_reuses_metadata_and_reverse_paths_until_identity_changes(tmp_path, monkeypatch):
     state = {"revision": 0, "profile": "A", "escape": False}
     sections = [{"href": f"chapter-{index}.xhtml"} for index in range(200)]

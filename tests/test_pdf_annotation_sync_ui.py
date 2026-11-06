@@ -100,6 +100,23 @@ def test_annotation_edits_during_sync_are_coalesced_and_finish_after_the_latest_
     assert len(results) == 1 and results[0][1] is None
 
 
+@pytest.mark.parametrize('flag', ['reader_changed', 'appearance_changed'])
+def test_coalesced_sync_preserves_an_earlier_display_change_for_open_panes(flag):
+    runner = Runner()
+    passes = iter([{flag: True}, {flag: False}])
+    results = []
+    queue = ui.PdfAnnotationSyncQueue(runner.submit, lambda *args, **kw: next(passes))
+    queue.request('/addon', 'Profile', 42, 'book.pdf', callback=lambda result, error: results.append(result))
+    queue.request('/addon', 'Profile', 42, 'book.pdf')
+
+    runner.complete()
+    assert results == []
+    runner.complete()
+
+    assert len(results) == 1
+    assert results[0][flag] is True, 'every pane must reopen bytes replaced in an earlier pass'
+
+
 def test_repeated_auto_sync_requests_deliver_only_the_latest_reader_refresh():
     runner = Runner()
     results = []

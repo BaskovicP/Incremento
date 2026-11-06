@@ -52,6 +52,7 @@ from .backend.pdf_manager import (
     get_page,
     get_zoom,
     get_read_page,
+    get_scroll_ratio,
     extract_pdf_pages_text,
     pdf_storage_abspath,
     regenerate_pdf_card_cover,
@@ -74,7 +75,10 @@ from .backend.video_manager import (
     import_local_video_file,
 )
 from .backend.audio_manager import add_audio_card
-from .backend.study_resources import load_card_hierarchy as _load_card_hierarchy
+from .backend.study_resources import (
+    is_incremento_card as _is_incremento_card,
+    load_card_hierarchy as _load_card_hierarchy,
+)
 from .backend.writing_manager import (
     WRITING_FILE_FIELD,
     WRITING_NOTE_TYPE,
@@ -188,11 +192,14 @@ from .frontend import pdf_dock as _pdf_dock_mod
 from .frontend import epub_dock as _epub_dock_mod
 from .frontend import reader_links as _reader_links_mod
 from .frontend import selection_search as _selection_search_mod
+from .frontend import writing_excerpt_ui as _writing_excerpt_ui_mod
 from .frontend import document_link_ui as _document_link_ui_mod
 from .frontend import study_workspace as _study_workspace_mod
+from .frontend import reviewer_parent_context as _reviewer_parent_context_mod
 from .frontend import recording_link_dialog as _recording_link_dialog_mod
 from .frontend import card_resource_dialog as _card_resource_dialog_mod
 from .frontend import pdf_reference_workspace as _pdf_reference_workspace_mod
+from .frontend import epub_reference_workspace as _epub_reference_workspace_mod
 from .frontend import video_dock as _video_dock_mod
 from .frontend import web_dock as _web_dock_mod
 from .frontend import writing_dock as _writing_dock_mod
@@ -347,6 +354,7 @@ def show_database_entries_dialog(*args, **kwargs):
 _activate_pymupdf()
 
 _workspace_layouts = WorkspaceLayouts(mw)
+gui_hooks.profile_will_close.append(_workspace_layouts.close_profile)
 _writing_workspace_picker = None
 
 _learning_leech_tracker = LearningLeechTracker()
@@ -2581,6 +2589,7 @@ def _on_js_message(handled, message, context) -> tuple:
                 int(data.get("page") or 1),
                 scroll_ratio=data.get("scroll_ratio", 0),
                 owner=_pdf_dock_mod._pdf_dock,
+                passage=data.get("passage"),
                 excerpt=str(data.get("excerpt") or "") if data.get("scroll_ratio") is None else "",
             )
         except Exception:
@@ -2616,6 +2625,7 @@ def _on_js_message(handled, message, context) -> tuple:
                     int(anchor["section_index"]),
                     focus_offset=int(anchor["focus_offset"]),
                     scroll_ratio_override=anchor.get("scroll_ratio"),
+                    **({"passage": anchor["passage"]} if anchor.get("passage") else {}),
                 )
         except Exception:
             pass
@@ -2700,9 +2710,11 @@ def _add_document_link_context_actions(view, menu):
     profile, card_id = _active_profile(), int(card.id)
     def current():
         active = getattr(getattr(mw, "reviewer", None), "card", None)
-        return _active_profile() == profile and active is not None and int(active.id) == card_id
+        return (_active_profile() == profile and mw.state == 'review'
+                and active is not None and int(active.id) == card_id)
     source = {"card_id": card_id, "kind": "card", "quote": str(view.selectedText() or "")[:2000]}
     _recording_link_dialog_mod.add_context_actions(menu, source, is_current=current)
+    _writing_excerpt_ui_mod.add_context_actions(menu, dict(source, quote=str(view.selectedText() or '')[:2001]), is_current=current)
     for key, callback in (("reader_reference_add", _document_link_ui_mod.link_pdf),
                            ("reader_reference_links", _document_link_ui_mod.show_links)):
         action = menu.addAction(_t(key))
@@ -2716,8 +2728,19 @@ gui_hooks.reviewer_did_show_answer.append(_study_workspace_mod.reviewer_shown)
 gui_hooks.reviewer_will_end.append(_study_workspace_mod.reset)
 gui_hooks.profile_will_close.append(_study_workspace_mod.reset)
 gui_hooks.profile_will_close.append(_recording_link_dialog_mod.reset)
+gui_hooks.profile_will_close.append(_writing_excerpt_ui_mod.reset)
 gui_hooks.profile_will_close.append(_card_resource_dialog_mod.reset)
 gui_hooks.webview_did_receive_js_message.append(_study_workspace_mod.on_js_message)
+
+for _hook, _callback in (
+    (gui_hooks.reviewer_did_show_question, _reviewer_parent_context_mod.reviewer_shown),
+    (gui_hooks.reviewer_did_show_answer, _reviewer_parent_context_mod.reviewer_shown),
+    (gui_hooks.reviewer_will_end, _reviewer_parent_context_mod.reset),
+    (gui_hooks.profile_will_close, _reviewer_parent_context_mod.reset),
+    (gui_hooks.webview_did_receive_js_message, _reviewer_parent_context_mod.on_js_message),
+):
+    _hook.remove(_callback)
+    _hook.append(_callback)
 
 
 def _close_website_browsers() -> None:
@@ -3172,6 +3195,8 @@ def _on_profile_did_open() -> None:
             _create_topics_deck()
     except Exception:
         pass
+    QTimer.singleShot(0, lambda: _workspace_layouts.start_profile()
+        if mw.col is collection and _current_profile_name() == profile else None)
 
 
 _anki_hooks.notes_will_be_deleted.append(_pdf_notes_will_be_deleted)
@@ -3380,7 +3405,7 @@ _mcp_controller = McpController(
     lambda: _load_addon_config(mw.addonManager, __name__),
     lambda config: _save_mcp_settings(config),
     actions=lambda: _describe_mcp_native_actions(),
-    open_writing_cards=lambda: [_writing_dock_mod.current_writing_card_id()] if _writing_dock_mod.current_writing_card_id() is not None else [],
+    open_writing_cards=lambda: _writing_dock_mod.open_writing_card_ids(),
 )
 gui_hooks.profile_did_open.append(_mcp_controller.configure)
 gui_hooks.profile_will_close.append(_mcp_controller.close_profile)
@@ -3467,7 +3492,9 @@ def _sync_reviewer_priority_badge(_card=None) -> None:
     except Exception:
         badge_config = {}
     is_topic = _is_topic_card(card, classifier=_resolve_topic_card_classifier(badge_config)) if card is not None else False
-    if card is not None and should_show_reviewer_priority_badge(
+    if _is_incremento_card(
+        _ADDON_DIR, _active_profile(), getattr(mw, 'col', None), card, config=badge_config,
+    ) and should_show_reviewer_priority_badge(
         is_topic=is_topic,
         config=badge_config,
     ):
@@ -3874,7 +3901,7 @@ def _open_document_bookshelf(*, new_window: bool = False) -> None:
         failed(exc)
 
 
-def _open_writing_beside() -> None:
+def _open_writing_beside(*, arrange: bool = True) -> None:
     global _writing_workspace_picker
     from .frontend.writing_workspace import WritingPicker
 
@@ -3882,15 +3909,20 @@ def _open_writing_beside() -> None:
         _writing_workspace_picker.close()
         _writing_workspace_picker.deleteLater()
 
-    def open_card(card_id):
-        try:
-            if _open_writing_card(card_id, keep_open=True):
-                _workspace_layouts.beside(_writing_dock_mod._writing_dock)
-        except Exception as exc:
-            showInfo(_t("root_document_open_failed", error=exc))
-
-    _writing_workspace_picker = WritingPicker(mw, open_card=open_card, new_writing=addWritingFunction)
+    _writing_workspace_picker = WritingPicker(mw,
+        open_card=lambda cid: _open_writing_beside_card(cid, arrange=arrange), new_writing=addWritingFunction)
     _writing_workspace_picker.show()
+
+
+def _open_writing_beside_card(card_id, *, arrange=True):
+    try:
+        opened = _open_writing_card(card_id, keep_open=True)
+        if opened and arrange:
+            _workspace_layouts.beside(_writing_dock_mod._writing_dock)
+        return opened
+    except Exception as exc:
+        showInfo(_t("root_document_open_failed", error=exc))
+        return False
 
 
 def _open_writing_card(card_id: int, *, relpath: str = "", keep_open: bool = False) -> bool:
@@ -3908,7 +3940,8 @@ def _open_writing_card(card_id: int, *, relpath: str = "", keep_open: bool = Fal
             mw.col.update_note(note)
         except Exception:
             pass
-    _writing_dock_mod.show_writing_in_dock(card.id, title, stored_relpath, keep_open=keep_open)
+    if _writing_dock_mod.show_writing_in_dock(card.id, title, stored_relpath, keep_open=keep_open) is False:
+        return False
     _last_opened_writing_cid = int(card.id)
     return True
 
@@ -3929,6 +3962,11 @@ def _open_pdf_card(
     read_page = get_read_page(_ADDON_DIR, _active_profile(), card_id)
     _last_opened_pdf_cid = card_id
     _last_opened_document_cid = card_id
+    if _workspace_layouts.tabbed:
+        _pdf_reference_workspace_mod.open_reference(card_id, open_page, new_window=True,
+            owner=_pdf_dock_mod._pdf_dock, excerpt=jump_excerpt or search_query, zoom=zoom,
+            scroll_ratio=get_scroll_ratio(_ADDON_DIR, _active_profile(), card_id) if page is None else 0)
+        return
     _pdf_dock_mod.show_pdf_in_dock(
         card_id,
         filename,
@@ -3953,6 +3991,13 @@ def _open_epub_card(
     note = mw.col.get_note(card.nid)
     filename = note[EPUB_FILE_FIELD]
     current_section, current_ratio, _is_finished = get_epub_progress(_ADDON_DIR, _active_profile(), card_id)
+    if _workspace_layouts.tabbed:
+        _epub_reference_workspace_mod.open_reference(dict(card_id=card_id,
+            section=current_section if section_index is None else int(section_index),
+            offset=focus_offset, scroll=current_ratio), owner=_epub_dock_mod._epub_dock,
+            search_query=search_query)
+        _last_opened_document_cid = card_id
+        return
     _epub_dock_mod.show_epub_in_dock(
         card_id,
         filename,
@@ -4847,7 +4892,7 @@ def _start_full_backup(
         export_stats_json,
     )
     from .backend.export_bundle import snapshot_database, snapshot_tree
-    from .frontend.backup_progress import AutomaticBackupProgress
+    from .frontend.backup_progress import AutomaticBackupProgress, ManualBackupProgress
     from .backend.activity_log import (
         start_activity, update_activity, finish_activity, fail_activity,
     )
@@ -4891,14 +4936,13 @@ def _start_full_backup(
     activity_id = start_activity(
         _t("root_backup_activity_title"), category=_t("root_backup_activity_category"), detail=_t("root_backup_activity_preparing"),
     )
-    progress = AutomaticBackupProgress(mw) if automatic_policy is not None else None
-    if progress is not None:
-        try:
-            progress.start()
-        except Exception as exc:
-            fail_activity(activity_id, _t("root_backup_progress_failed", error=exc))
-            os.remove(archive_tmp_path)
-            return False
+    progress = AutomaticBackupProgress(mw) if automatic_policy is not None else ManualBackupProgress(mw)
+    try:
+        progress.start()
+    except Exception as exc:
+        fail_activity(activity_id, _t("root_backup_progress_failed", error=exc))
+        os.remove(archive_tmp_path)
+        return False
     _full_backup_running = True
 
     def _restore_instructions() -> str:
@@ -4935,8 +4979,7 @@ def _start_full_backup(
 
     def _progress(label: str) -> None:
         update_activity(activity_id, detail=label)
-        if progress is not None:
-            progress.update(label)
+        progress.update(label)
 
     try:
         # This touches Qt/WebEngine-owned dock state and must stay on the main
@@ -4956,7 +4999,11 @@ def _start_full_backup(
         pdf_progress_count = conn.execute("SELECT COUNT(*) FROM pdf_progress").fetchone()[0]
         stats_count = conn.execute("SELECT COUNT(*) FROM stats").fetchone()[0]
 
-        with tempfile.TemporaryDirectory(prefix="incremento_export_") as tmp_dir:
+        # Keep the package and full profile copy on the ZIP's filesystem too;
+        # the system temp folder may be on a nearly full internal drive.
+        with tempfile.TemporaryDirectory(
+            prefix="incremento_export_", dir=staging_directory,
+        ) as tmp_dir:
             tmp_root = Path(tmp_dir)
             apkg_path = tmp_root / "all_decks.apkg"
             db_snapshot_path = tmp_root / DB_NAME
@@ -4990,6 +5037,7 @@ def _start_full_backup(
             profile_stage = user_files_stage / profile
             profile_stage.mkdir(parents=True, exist_ok=True)
 
+            _progress(_t("root_backup_activity_snapshotting"))
             user_files_stats = snapshot_tree(
                 user_files_dir,
                 str(profile_stage),
@@ -5058,6 +5106,7 @@ def _start_full_backup(
                     "manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2)
                 )
 
+            _progress(_t("admin_full_restore_checking_backup"))
             with zipfile.ZipFile(archive_tmp_path, "r") as check_zip:
                 corrupt_member = check_zip.testzip()
             if corrupt_member:
@@ -5140,8 +5189,7 @@ def _start_full_backup(
             _on_done(fut)
         finally:
             try:
-                if progress is not None:
-                    progress.finish()
+                progress.finish()
             finally:
                 callbacks = _backup_idle_callbacks
                 _backup_idle_callbacks = []
@@ -5153,8 +5201,7 @@ def _start_full_backup(
     except Exception as exc:
         _full_backup_running = False
         fail_activity(activity_id, _t("root_backup_start_failed", error=exc))
-        if progress is not None:
-            progress.finish()
+        progress.finish()
         try:
             os.remove(archive_tmp_path)
         except OSError:
@@ -5713,7 +5760,7 @@ def addVideoFunction() -> None:
     mw.taskman.run_in_background(_task, _on_done, uses_collection=False)
 
 
-def addWritingFunction() -> None:
+def addWritingFunction() -> int | None:
     """Incremento -> Add Content -> Add Markdown Writing"""
     from .frontend.add_writing_dialog import AddWritingDialog
 
@@ -5735,7 +5782,7 @@ def addWritingFunction() -> None:
                 source_title=title,
                 source_link=dlg.source_url,
             )
-        add_writing_card(
+        card_id = add_writing_card(
             _ADDON_DIR,
             mw.col,
             title=title,
@@ -5747,8 +5794,21 @@ def addWritingFunction() -> None:
         )
         mw.col.reset()
         tooltip(_t("root_writing_card_added", title=title, deck=dlg.deck_name))
+        return card_id
     except Exception as e:
         showInfo(_t("root_writing_add_failed", error=e))
+
+
+def _new_writing_tab() -> None:
+    card_id = addWritingFunction()
+    if card_id is not None:
+        _open_writing_card(card_id, keep_open=True)
+
+
+_writing_dock_mod.configure_writing_tab_actions(
+    open_existing=lambda: _open_writing_beside(arrange=False), new_writing=_new_writing_tab,
+    open_card=_open_writing_beside_card,
+)
 
 
 def addLocalFileFunction() -> None:
@@ -5786,6 +5846,13 @@ def addLocalFileFunction() -> None:
         tooltip(_t("root_local_file_added", title=title, deck=dlg.deck_name))
     except Exception as e:
         showInfo(_t("root_local_file_add_failed", error=e))
+
+
+def addWebpageDocumentFunction() -> None:
+    from .frontend.webpage_document_dialog import WebpageDocumentDialog
+    dialog = WebpageDocumentDialog(_ADDON_DIR, [d.name for d in mw.col.decks.all_names_and_ids()],
+                                   parent=mw, on_open=_open_epub_card)
+    dialog.show()
 
 
 def addWebpageFunction() -> None:
@@ -7008,267 +7075,6 @@ def cleanupNonActiveProfileDataFunction() -> None:
     )
 
 
-def cleanupStaleProgressFunction() -> None:
-    """Delete stale progress, search-index, and OCR rows for removed cards/notes."""
-    try:
-        counts = _prune_stale_progress_rows()
-        text_index_counts = _prune_stale_document_text_index_rows()
-        ocr_counts = _prune_stale_ocr_rows()
-    except Exception as e:
-        showInfo(_t("root_cleanup_stale_failed", error=e))
-        return
-
-    summary = _format_pruned_progress_summary(counts)
-    text_index_summary = _format_pruned_document_text_index_summary(text_index_counts)
-    ocr_summary = _format_pruned_ocr_summary(ocr_counts)
-    chunks = [chunk for chunk in (summary, text_index_summary, ocr_summary) if chunk]
-    if chunks:
-        showInfo("\n\n".join(chunks))
-        return
-    showInfo(_t("root_cleanup_stale_none"))
-
-
-def cleanupOrphanPdfsFunction() -> None:
-    """Delete PDF files in user_files/<profile>/pdfs/ that no card references."""
-    from .backend.pdf_manager import get_pdf_dir
-
-    _backfill_pdf_source_filenames()
-    pdf_dir = get_pdf_dir()
-
-    # All files currently on disk
-    try:
-        disk_files = {
-            f for f in os.listdir(pdf_dir)
-            if f.lower().endswith(".pdf")
-        }
-    except OSError as e:
-        showInfo(_t("root_cleanup_pdf_read_failed", error=e))
-        return
-
-    if not disk_files:
-        showInfo(_t("root_cleanup_pdf_none", path=pdf_dir))
-        return
-
-    # All filenames referenced by an Incremento PDF note
-    try:
-        note_ids = mw.col.find_notes(f'note:"{PDF_NOTE_TYPE}"')
-        referenced = set()
-        for nid in note_ids:
-            note = mw.col.get_note(nid)
-            fname = note["PDF_Filename"].strip()
-            if fname:
-                referenced.add(fname)
-        referenced.update(get_pdf_referenced_filenames(_ADDON_DIR, _active_profile()))
-    except Exception as e:
-        showInfo(_t("root_cleanup_pdf_query_failed", error=e))
-        return
-
-    orphans = sorted(disk_files - referenced)
-    deletable, protected, refs_map = _partition_any_profile_ties(orphans, "pdf")
-
-    try:
-        pruned_counts = _prune_stale_progress_rows()
-    except Exception:
-        pruned_counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
-    pruned_summary = _format_pruned_progress_summary(pruned_counts)
-    try:
-        pruned_text_index_counts = _prune_stale_document_text_index_rows()
-    except Exception:
-        pruned_text_index_counts = {
-            "pdf_text_index": 0,
-            "epub_text_index": 0,
-            "document_text_index_total": 0,
-        }
-    pruned_text_index_summary = _format_pruned_document_text_index_summary(pruned_text_index_counts)
-    cleanup_summaries = [chunk for chunk in (pruned_summary, pruned_text_index_summary) if chunk]
-
-    if not deletable:
-        msg = _t("root_cleanup_pdf_no_deletable", count=len(disk_files))
-        if protected:
-            msg += "\n\n" + _t("root_cleanup_other_profile_skip", count=len(protected))
-        if cleanup_summaries:
-            msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
-        showInfo(msg)
-        return
-
-    def _fmt_size(path: str) -> str:
-        try:
-            b = os.path.getsize(path)
-            return f"{b / 1_048_576:.1f} MB" if b >= 1_048_576 else f"{b // 1024} KB"
-        except OSError:
-            return "?"
-
-    lines = [_t("root_cleanup_pdf_found", count=len(deletable)) + "\n"]
-    total_bytes = 0
-    for fname in deletable:
-        fpath = os.path.join(pdf_dir, fname)
-        try:
-            total_bytes += os.path.getsize(fpath)
-        except OSError:
-            pass
-        lines.append(f"• {fname}  ({_fmt_size(fpath)})")
-    if protected:
-        lines.append("\n" + _t("root_cleanup_other_profile_tied", count=len(protected)))
-        preview = protected[:8]
-        for fname in preview:
-            profs = ", ".join(refs_map.get(fname, []))
-            lines.append(_t("root_cleanup_file_profiles", filename=fname, profiles=profs))
-        if len(protected) > len(preview):
-            lines.append("  " + _t("root_more_failures", count=len(protected) - len(preview)))
-    total_str = f"{total_bytes / 1_048_576:.1f} MB" if total_bytes >= 1_048_576 else f"{total_bytes // 1024} KB"
-    lines.append("\n" + _t("root_cleanup_total", size=total_str))
-    lines.append("\n" + _t("root_cleanup_delete_files"))
-
-    from aqt.utils import askUser
-    if not askUser("\n".join(lines), title=_t("root_menu_cleanup_orphan_pdfs")):
-        return
-
-    deleted = 0
-    errors: list[str] = []
-    for fname in deletable:
-        fpath = os.path.join(pdf_dir, fname)
-        try:
-            os.remove(fpath)
-            deleted += 1
-        except OSError as e:
-            errors.append(f"• {fname}: {e}")
-
-    if not errors:
-        msg = _t("root_cleanup_pdf_deleted", count=deleted, size=total_str)
-        if protected:
-            msg += "\n" + _t("root_cleanup_other_profile_tied", count=len(protected))
-        if cleanup_summaries:
-            msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
-        showInfo(msg)
-    else:
-        showInfo(_t("root_cleanup_partial_deleted", deleted=deleted, total=len(deletable), errors="\n".join(errors)))
-
-
-def cleanupOrphanVideosFunction() -> None:
-    """Delete local videos in user_files/<profile>/videos/ that no video card references."""
-    videos_dir = str(_paths.get_videos_dir(_ADDON_DIR, _active_profile()))
-    if not os.path.isdir(videos_dir):
-        showInfo(_t("root_cleanup_videos_none", path=videos_dir))
-        return
-
-    try:
-        disk_files = [
-            f
-            for f in os.listdir(videos_dir)
-            if f.lower().endswith((".mp4", ".mkv", ".webm", ".mov", ".m4v"))
-            and os.path.isfile(os.path.join(videos_dir, f))
-        ]
-    except OSError as e:
-        showInfo(_t("root_cleanup_videos_read_failed", error=e))
-        return
-
-    if not disk_files:
-        showInfo(_t("root_cleanup_videos_none", path=videos_dir))
-        return
-    disk_map = {f.lower(): f for f in disk_files}
-
-    try:
-        card_ids = mw.col.find_cards(f'note:"{VIDEO_NOTE_TYPE}"')
-        referenced: set[str] = set()
-        for cid in card_ids:
-            note = mw.col.get_card(cid).note()
-            try:
-                rel = (note[LOCAL_VIDEO_FIELD] or "").strip()
-            except Exception:
-                rel = ""
-            if not rel:
-                continue
-            basename = os.path.basename(rel.replace("\\", "/")).strip()
-            if basename:
-                referenced.add(basename.lower())
-    except Exception as e:
-        showInfo(_t("root_cleanup_videos_query_failed", error=e))
-        return
-
-    try:
-        pruned_counts = _prune_stale_progress_rows()
-    except Exception:
-        pruned_counts = {"pdf_progress": 0, "video_progress": 0, "web_progress": 0}
-    pruned_summary = _format_pruned_progress_summary(pruned_counts)
-    try:
-        pruned_text_index_counts = _prune_stale_document_text_index_rows()
-    except Exception:
-        pruned_text_index_counts = {
-            "pdf_text_index": 0,
-            "epub_text_index": 0,
-            "document_text_index_total": 0,
-        }
-    pruned_text_index_summary = _format_pruned_document_text_index_summary(pruned_text_index_counts)
-    cleanup_summaries = [chunk for chunk in (pruned_summary, pruned_text_index_summary) if chunk]
-
-    orphans = [disk_map[k] for k in sorted(set(disk_map.keys()) - referenced)]
-    deletable, protected, refs_map = _partition_any_profile_ties(orphans, "video")
-    if not deletable:
-        msg = _t("root_cleanup_videos_no_deletable", count=len(disk_files))
-        if protected:
-            msg += "\n\n" + _t("root_cleanup_other_profile_skip", count=len(protected))
-        if cleanup_summaries:
-            msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
-        showInfo(msg)
-        return
-
-    def _fmt_size(path: str) -> str:
-        try:
-            b = os.path.getsize(path)
-            return f"{b / 1_048_576:.1f} MB" if b >= 1_048_576 else f"{b // 1024} KB"
-        except OSError:
-            return "?"
-
-    total_bytes = 0
-    lines = [_t("root_cleanup_videos_found", count=len(deletable)) + "\n"]
-    for fname in deletable:
-        fpath = os.path.join(videos_dir, fname)
-        try:
-            total_bytes += os.path.getsize(fpath)
-        except OSError:
-            pass
-        lines.append(f"• {fname}  ({_fmt_size(fpath)})")
-    if protected:
-        lines.append("\n" + _t("root_cleanup_other_profile_tied", count=len(protected)))
-        preview = protected[:8]
-        for fname in preview:
-            profs = ", ".join(refs_map.get(fname, []))
-            lines.append(_t("root_cleanup_file_profiles", filename=fname, profiles=profs))
-        if len(protected) > len(preview):
-            lines.append("  " + _t("root_more_failures", count=len(protected) - len(preview)))
-    total_str = (
-        f"{total_bytes / 1_048_576:.1f} MB"
-        if total_bytes >= 1_048_576
-        else f"{total_bytes // 1024} KB"
-    )
-    lines.append("\n" + _t("root_cleanup_total", size=total_str))
-    lines.append("\n" + _t("root_cleanup_delete_files"))
-
-    from aqt.utils import askUser
-    if not askUser("\n".join(lines), title=_t("root_menu_cleanup_orphan_videos")):
-        return
-
-    deleted = 0
-    errors: list[str] = []
-    for fname in deletable:
-        fpath = os.path.join(videos_dir, fname)
-        try:
-            os.remove(fpath)
-            deleted += 1
-        except OSError as e:
-            errors.append(f"• {fname}: {e}")
-
-    if not errors:
-        msg = _t("root_cleanup_videos_deleted", count=deleted, size=total_str)
-        if protected:
-            msg += "\n" + _t("root_cleanup_other_profile_tied", count=len(protected))
-        if cleanup_summaries:
-            msg += f"\n\n{'\n\n'.join(cleanup_summaries)}"
-        showInfo(msg)
-    else:
-        showInfo(_t("root_cleanup_partial_deleted", deleted=deleted, total=len(deletable), errors="\n".join(errors)))
-
-
 def _save_settings_with_language_pack(cfg: dict, pending_pack: dict | None, profile: str) -> None:
     """Restore a staged language pack if the settings write fails."""
     previous = None
@@ -7317,6 +7123,7 @@ def openSettingsFunction() -> None:
         current_reviewer_button_visibility=configured_reviewer_button_visibility(cfg),
         current_reviewer_button_group_visible=configured_reviewer_button_group_visible(cfg),
         current_study_workspace_enabled=cfg['study_workspace_enabled'],
+        current_workspace_restore_last_session=cfg['workspace_restore_last_session'],
         current_bookshelf_caption_fields=cfg['bookshelf_caption_fields'],
         current_show_incremento_fields=configured_show_incremento_fields(cfg),
         current_day_end_time=cfg.get("day_end_time", "04:00"),
@@ -7385,7 +7192,7 @@ def openSettingsFunction() -> None:
     # Reader controls and study layouts are saved directly, independently of Settings.
     latest_reader_config = _load_addon_config(mw.addonManager, __name__)
     for reader_preference in ('pdf_controls_collapsed_by_profile', 'epub_controls_collapsed_by_profile',
-                              'study_layout_by_profile', 'workspace_layouts',
+                              'study_layout_by_profile', 'workspace_layouts', 'workspace_last_sessions',
                               'reader_default_highlight_color_by_profile', 'pdf_link_preview_size_by_profile'):
         cfg[reader_preference] = copy.deepcopy(latest_reader_config.get(reader_preference, {}))
     if dlg.reader_default_highlight_color_changed:
@@ -7419,6 +7226,7 @@ def openSettingsFunction() -> None:
     cfg["reviewer_button_visibility"] = visibility
     cfg["reviewer_button_group_visible"] = dlg.reviewer_button_group_visible
     cfg['study_workspace_enabled'] = dlg.study_workspace_enabled
+    cfg['workspace_restore_last_session'] = dlg.workspace_restore_last_session
     cfg["show_incremento_fields"] = dlg.show_incremento_fields
     cfg["day_end_time"] = dlg.day_end_time
     cfg["remember_browser_card_scroll"] = dlg.remember_browser_card_scroll
@@ -7713,7 +7521,8 @@ def _build_incremento_menu() -> None:
     _activityCenterAction.setProperty("incremento_translation_key", "root_menu_activity_center")
     qconnect(_activityCenterAction.triggered, _open_activity_center)
     _menu.addAction(_activityCenterAction)
-    add_workspace_menu(_menu, _workspace_layouts, _open_writing_beside, open_pdf=_open_pdf_workspace_window)
+    add_workspace_menu(_menu, _workspace_layouts, _open_writing_beside, open_pdf=_open_pdf_workspace_window,
+                       register_action=_register_shortcut_action)
     _register_shortcut_action("activity_center", _activityCenterAction)
 
     _settingsAction = QAction(_t("root_menu_settings"), mw)
@@ -7768,6 +7577,16 @@ def _build_incremento_menu() -> None:
     qconnect(_editMarkdownDocumentAction.triggered, _epub_dock_mod.edit_current_markdown_document)
     _menu.addAction(_editMarkdownDocumentAction)
     _register_shortcut_action("edit_markdown_document", _editMarkdownDocumentAction)
+
+    _addWebpageDocumentAction = QAction(_t("imports_webpage_document"), mw)
+    _addWebpageDocumentAction.setProperty("incremento_translation_key", "imports_webpage_document")
+    qconnect(_addWebpageDocumentAction.triggered, addWebpageDocumentFunction)
+    _addContentMenu.addAction(_addWebpageDocumentAction)
+
+    _exportMarkdownDocumentAction = QAction(_t("imports_export_document"), mw)
+    _exportMarkdownDocumentAction.setProperty("incremento_translation_key", "imports_export_document")
+    qconnect(_exportMarkdownDocumentAction.triggered, _epub_dock_mod.export_current_markdown_document)
+    _menu.addAction(_exportMarkdownDocumentAction)
 
     _addWebpageAction = QAction(_t("root_menu_webpage_to_pdf"), mw)
     _addWebpageAction.setProperty("incremento_translation_key", "root_menu_webpage_to_pdf")

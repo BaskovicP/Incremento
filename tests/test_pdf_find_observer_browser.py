@@ -14,7 +14,7 @@ def test_find_updates_external_text_without_observing_its_own_marks():
         pytest.skip("Optional webpage browser component has not been explicitly installed")
     root = Path(__file__).resolve().parents[1]
     source = (root / "frontend/src/PdfViewer.jsx").read_text()
-    styles = source[source.index("function clearSearchHitStyles(") : source.index("function findExcerptSpanMatch(")]
+    styles = source[source.index("function clearSearchHitStyles(") : source.index("function clampScrollRatio(")]
     observer = (root / "frontend/src/pdfSearchObserver.mjs").read_text().replace("export function", "function")
     script = dedent('''
         import json, sys

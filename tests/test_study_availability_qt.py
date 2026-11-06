@@ -52,7 +52,7 @@ def test_empty_and_missing_resources_offer_navigation_and_explicit_link_or_manag
 def test_late_check_cannot_update_another_card_and_answer_reveal_reuses_the_current_result():
     run_scene(CAPTURE + dedent('''
         old=pending.pop(0)
-        mw.reviewer.card=types.SimpleNamespace(id=42); ui.reviewer_shown()
+        mw.reviewer.card=types.SimpleNamespace(id=42, note=mw.reviewer.card.note); ui.reviewer_shown()
         ui.load_card_resources=lambda *a: dict(documents=[],recordings=[])
         drain()
         count=len(rendered)

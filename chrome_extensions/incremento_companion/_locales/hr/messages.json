@@ -114,7 +114,7 @@
     "message": "Prioritet"
   },
   "markdown_scope": {
-    "message": "Opseg Markdowna mrežne stranice"
+    "message": "Opseg sadržaja web-stranice"
   },
   "main_content": {
     "message": "Glavni sadržaj"
@@ -1537,5 +1537,31 @@
   },
   "bridge_error_webpage_verification_required": {
     "message": "Ova stranica zahtijeva sigurnosnu provjeru ili prijavu. Dovršite je u izvornoj kartici preglednika, a zatim odaberite Snimi otvorenu stranicu kao PDF."
+  },
+  "save_offline_document": {
+    "message": "Spremi za izvanmrežno čitanje"
+  },
+  "document_kind": {
+    "message": "dokument"
+  },
+  "offline_images_omitted": {
+    "message": "Spremljeno izvanmrežno. Nedostupne ili nepodržane slike: $COUNT$.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "offline_save_as": {
+    "message": "Spremi izvanmrežno kao"
+  },
+  "offline_html_snapshot": {
+    "message": "HTML snimka — izgled web-stranice"
+  },
+  "offline_reading_copy": {
+    "message": "Kopija za čitanje — prilagodljivi Markdown"
+  },
+  "offline_snapshot_help": {
+    "message": "HTML snimke spremaju cijelu stranicu sa snimljenim izgledom. Opseg sadržaja vrijedi za kopije za čitanje i Markdown."
   }
 }

@@ -12,9 +12,10 @@ Use this file for work in `frontend/`.
 ## Frontend Module Map
 
 - Document readers: `pdf_dock.py`, `pdf_dialog.py`, `pdf_quick_jump.py`, `pdf_bookshelf.py`, `epub_dock.py`, `epub_dialog.py`, `current_document_search_dialog.py`, `reader_links.py`, `bookmark_comment_dialog.py`, and `highlight_note_dialog.py`.
+- `document_import_controls.py` shares PDF/EPUB import-table actions, progress, and priority styling; each dialog retains its format-specific import lifecycle.
 - Highlight/citation flows: `pdf_highlight_bulk_dialog.py` and `notebook_citation_import_dialog.py`.
 - Other content docks and import dialogs: `local_file_dock.py`, `video_dock.py`, `web_dock.py`, `writing_dock.py`, `add_local_file_dialog.py`, `add_video_dialog.py`, `add_web_dialog.py`, `add_writing_dialog.py`, and `webpage_dialog.py`.
-- Add/edit/reviewer integrations: `add_card_dock.py`, `extract_card_dialog.py`, `extract_batch_dialog.py`, `reviewer_extract_button.py`, `reviewer_button_visibility.py`, `reviewer_focus.py`, `reviewer_shortcuts.py`, `reviewer_source_cover.py`, `reviewer_priority_badge.py`, and `reviewer_tag_dialog.py`.
+- Add/edit/reviewer integrations: `add_card_dock.py`, `extract_batch_dialog.py`, `reviewer_extract_button.py`, `reviewer_button_visibility.py`, `reviewer_focus.py`, `reviewer_shortcuts.py`, `reviewer_source_cover.py`, `reviewer_priority_badge.py`, and `reviewer_tag_dialog.py`.
 - Browser/editor tools: `browser_priority_toolbar.py`, `browser_quick_tags.py`, `priority_dialog.py`, `quick_tag_shortcuts.py`, `tag_colors.py`, `tag_edit.py`, and `image_rotation.py`.
 - Learning and scheduling dialogs: `learn_dialog.py`, `session_setup_model.py`, `session_launcher.py`, `custom_schedule_dialog.py`, `media_review_dialog.py`, and the four `knowledge_tree*_dialog.py` modules.
 - Navigation and guidance: `command_palette.py`, `onboarding_dialog.py`, `reader_shell.py`, and `shortcut_conflicts.py`.
@@ -92,7 +93,7 @@ npm --prefix frontend test
 - Edit-note toggles must refresh the visible tag widget immediately and may need a scheduled `editor.loadNote()` so the tag row visibly updates.
 - Relevant config keys: `add_card_topic_tags`, `add_card_item_tags`, `extract_default_type` (`item` by default, `topic`, or `none`), `extract_notetype`, `extract_source_links`. Preserve explicit T/I choices and automatic-tag ownership across source refreshes.
 - Generic note editors and field pickers should hide dedicated Incremento provenance fields. Reuse backend `visible_field_names()` behavior rather than duplicating a separate blocklist.
-- `extract_card_dialog.py` owns single-card extraction choices; `extract_batch_dialog.py` owns multi-row Q/A creation. Keep duplicate handling, tag ownership, source metadata, field visibility, and note-type changes consistent with the persistent dock and reviewer extraction path.
+- `add_card_dock.py` owns single-card extraction; `extract_batch_dialog.py` owns multi-row Q/A creation. Keep duplicate handling, tag ownership, source metadata, field visibility, and note-type changes consistent with the persistent dock and reviewer extraction path.
 - `reviewer_extract_button.py` and `reviewer_shortcuts.py` are thin UI adapters. Shared extraction behavior belongs in backend/frontend extraction helpers so toolbar and keyboard entry points cannot drift.
 
 ## Browser and Editor Utilities
@@ -123,6 +124,7 @@ npm --prefix frontend test
 ## Writing Dock
 
 - Main file: `frontend/writing_dock.py`.
+- Validate Writing with Anki's stylesheet and native widget style, not just plain offscreen Qt. Its controls use a dock-owned Fusion style and explicit typography so native arrows and inherited fonts cannot change the design; never change the application's style. Normal panes (720 logical pixels and wider) keep the draft and preview side by side; only narrower panes stack them.
 - The dock remembers per-card cursor, scroll, zoom, wrap mode, focus mode, current-line highlight, and marker line.
 - The bottom bar also shows per-card writing progress. Scope options are `Today`, `Session`, and `All-time`.
 - `Session` means the current open session for that writing card, not the whole Anki run.

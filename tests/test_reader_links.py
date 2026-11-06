@@ -16,6 +16,23 @@ def test_independent_reader_anchor_is_accepted_by_the_existing_trusted_paste_con
 import reader_links
 
 
+@pytest.mark.parametrize('kind', ['pdf', 'epub'])
+def test_passage_clipboard_roundtrip_keeps_quote_data_in_a_validated_command(kind):
+    passage = dict(quote='A "quoted" <passage>; alert(1)',prefix='Before ',suffix=' after')
+    if kind == 'pdf':
+        payload = dict(card_id=7,filename='book.pdf',page=3,passage=passage)
+        prefix = 'incremento_open_pdf_ref:'
+    else:
+        passage.update(start=10,end=40)
+        payload = dict(card_id=7,section_index=2,focus_offset=10,scroll_ratio=.3,passage=passage)
+        prefix = 'incremento_open_epub:'
+    command = prefix + json.dumps(payload)
+    html = reader_links.make_reader_anchor_html(command, 'Source')
+    assert reader_links.reader_anchor_command_from_html(html) == command
+    payload['passage']['script'] = 'alert(1)'
+    assert reader_links.make_reader_anchor_html(prefix + json.dumps(payload), 'Source') == ''
+
+
 def _anchor_html(command, label="Page 3"):
     onclick = escape(f"pycmd({json.dumps(command)}); return false;", quote=True)
     return (
@@ -374,61 +391,6 @@ def test_pdf_hover_preview_uses_card_text_for_legacy_link_without_excerpt():
     )[1].split("</span>", 1)[0]
     assert "student authors remember this" in blue
     assert "Which book would people treasure?" not in blue
-
-
-def test_rebuild_pdf_reference_card_contexts_adds_mobile_context():
-    extracted = "The exact extracted sentence."
-    link = _anchor_html(
-        'incremento_open_pdf_ref:{"card_id":7,"filename":"document.pdf",'
-        '"page":3,"excerpt":"The exact extracted sentence."}'
-    )
-    page_text = "Before one.\nThe exact extracted sentence.\nAfter one."
-
-    rebuilt, updated, skipped = reader_links.rebuild_pdf_reference_card_contexts(
-        extracted + "<br>" + link,
-        lambda card_id, page: page_text if (card_id, page) == (7, 3) else "",
-        context_rows=1,
-    )
-
-    assert updated == 1
-    assert skipped == 0
-    assert rebuilt.count('data-incremento-pdf-context="1"') == 1
-    assert "Before one." in rebuilt and "After one." in rebuilt
-    assert ">The exact extracted sentence.</span>" in rebuilt
-
-
-def test_rebuild_pdf_reference_card_contexts_replaces_existing_context_once():
-    link = _anchor_html(
-        'incremento_open_pdf_ref:{"card_id":7,"filename":"document.pdf",'
-        '"page":3,"excerpt":"Correct excerpt"}'
-    )
-    old_context = (
-        '<div data-incremento-pdf-context="1" role="note">'
-        '<span class="incremento-pdf-context-excerpt">Wrong text</span></div>'
-    )
-
-    rebuilt, updated, skipped = reader_links.rebuild_pdf_reference_card_contexts(
-        "Correct excerpt<br>" + link + "<br>" + old_context,
-        lambda _card_id, _page: "Before\nCorrect excerpt\nAfter",
-        context_rows=1,
-    )
-
-    assert updated == 1
-    assert skipped == 0
-    assert rebuilt.count('data-incremento-pdf-context="1"') == 1
-    assert "Wrong text" not in rebuilt
-    assert ">Correct excerpt</span>" in rebuilt
-
-    repeated, repeated_updates, repeated_skips = (
-        reader_links.rebuild_pdf_reference_card_contexts(
-            rebuilt,
-            lambda _card_id, _page: "Before\nCorrect excerpt\nAfter",
-            context_rows=1,
-        )
-    )
-    assert repeated == rebuilt
-    assert repeated_updates == 0
-    assert repeated_skips == 0
 
 
 def test_pdf_snapshot_reference_html_shows_button_and_hides_image_until_opened():
