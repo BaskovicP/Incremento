@@ -85,6 +85,9 @@ def test_new_and_reopened_panes_join_the_group_until_a_split_or_profile_reset():
         assert after_reload.isFloating(), 'A superseded layout controller cannot adopt new panes'
         assert all(d.widget().toPlainText().startswith('Unsaved ') for d in opened)
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
     ''')
     result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=25)
@@ -132,6 +135,9 @@ def test_saved_single_pane_tabbed_workspace_restores_the_opening_policy():
         assert main.tabifiedDockWidgets(second) == [first]
         assert first.widget().toPlainText() == 'Unsaved'
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
     ''')
     result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=25)

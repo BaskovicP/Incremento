@@ -68,10 +68,11 @@ def test_tab_rename_reset_save_and_close_respect_identity_and_unsaved_work(tmp_p
         app.processEvents()
         def tab_bar():
             return next(bar for bar in main.findChildren(QtWidgets.QTabBar)
-                        if not any('Other addon' in bar.tabText(i) for i in range(bar.count())))
+                        if bar.count() and manager._tabs.dock_for(bar, 0) in panes)
         bar = tab_bar()
         assert bar.tabsClosable(), 'Workspace tabs must expose close buttons'
-        unrelated = next(b for b in main.findChildren(QtWidgets.QTabBar) if b is not bar)
+        unrelated = next(b for b in main.findChildren(QtWidgets.QTabBar)
+                         if any('Other addon' in b.tabText(i) for i in range(b.count())))
         assert not unrelated.tabsClosable(), 'Other addon tabs must remain untouched'
         # Duplicate titles and native tab reordering must not confuse the target.
         bar.moveTab(0, 1)
@@ -143,6 +144,9 @@ def test_tab_rename_reset_save_and_close_respect_identity_and_unsaved_work(tmp_p
         assert all(not getattr(d, '_workspace_tab_name', '') for d in panes)
         for d in panes: d.allow_close = True
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
     ''')
     result = subprocess.run([sys.executable, '-c', script, str(tmp_path)],
         cwd=Path(__file__).resolve().parents[1], env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'},

@@ -147,6 +147,9 @@ def test_right_click_resizes_group_and_colors_individual_tabs_with_saved_workspa
         assert [d.widget().toPlainText() for d in panes] == ['Unsaved document 0', 'Unsaved document 1']
         bar().grab().save(sys.argv[2])
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
     ''')
     result = subprocess.run([sys.executable, '-c', script, theme, str(tmp_path / 'tabs.png')],
         cwd=Path(__file__).resolve().parents[1], env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'},
