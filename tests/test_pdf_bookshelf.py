@@ -5,7 +5,7 @@ import sys
 import threading
 from pathlib import Path
 from textwrap import dedent
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -73,8 +73,11 @@ if _qt_module is not None:
 # Restore the Qt boundary immediately so other dialog tests keep their own setup.
 with pytest.MonkeyPatch.context() as _imports:
     if _qt_module is not None:
+        _import_qt = ModuleType("aqt.qt")
+        _import_qt.__getattr__ = lambda name: getattr(_qt_module, name)
         for _name in ("QDialog", "QCompleter", "QStyledItemDelegate"):
-            _imports.setattr(_qt_module, _name, type(_name, (), {}))
+            setattr(_import_qt, _name, type(_name, (), {}))
+        _imports.setitem(sys.modules, "aqt.qt", _import_qt)
     import pdf_bookshelf
 
 

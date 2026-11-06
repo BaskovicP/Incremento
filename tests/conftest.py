@@ -22,6 +22,8 @@ sys.modules.setdefault("incremento", types.ModuleType("incremento"))
 # Add backend/ and frontend/ to path so direct imports resolve.
 # Insert in reverse priority order so backend/ ends up first (highest priority).
 addon_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+# Pytest names the root package after the checkout directory ("Incremento" in CI).
+sys.modules.setdefault(os.path.basename(addon_root), sys.modules["incremento"])
 for subdir in ("frontend", "backend"):
     path = os.path.join(addon_root, subdir)
     if path not in sys.path:
