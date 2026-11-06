@@ -681,7 +681,8 @@ def save_markdown_document(
                     shutil.copyfile(prepared.path, replacement)
                     os.chmod(replacement, 0o600)
                     for output in (previous, replacement):
-                        with output.open("rb") as handle:
+                        # Windows refuses fsync on a read-only handle (EBADF).
+                        with output.open("r+b") as handle:
                             os.fsync(handle.fileno())
                     backup.parent.mkdir(parents=True, exist_ok=True)
                     old_backup = stage / "old-backup.epub"
