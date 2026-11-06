@@ -376,6 +376,13 @@ def _scenario(mode, locale, outcome):
                 user.timeout.connect(answer_confirmation)
                 user.start()
                 replace = full_restore.swap_staged_backup
+                precheck = full_restore.precheck_backup
+                allow_precheck = Event()
+
+                def precheck_after_progress(*args, **kwargs):
+                    if not allow_precheck.wait(timeout=10):
+                        raise AssertionError("Progress was not checked before releasing the pre-check")
+                    return precheck(*args, **kwargs)
 
                 def swap_with_failure(stage, *args):
                     if outcome in {"swap-failed", "swap-and-rollback-failed"}:
@@ -395,17 +402,21 @@ def _scenario(mode, locale, outcome):
                      patch("aqt.utils.showInfo", side_effect=lambda message: messages.append(("info", message))), \
                      patch("aqt.utils.showWarning", side_effect=lambda message: messages.append(("warning", message))), \
                      patch("aqt.utils.tooltip", side_effect=lambda message: messages.append(("tooltip", message))), \
+                     patch.object(full_restore, "precheck_backup", precheck_after_progress), \
                      patch.object(full_restore, "swap_staged_backup", swap_with_failure):
                     request = {
                         "addon_dir": str(addon), "profile_key": profile, "profile_name": profile_name,
                         "current_config": copy.deepcopy(stored_config), "save_config": save_config,
                         "backup_running": lambda: namespace["_full_backup_running"], "reset_close_gate": lambda: None,
                     }
-                    full_restore.restore_full_backup(window, **request)
-                    assert visible_dialogs(), "restore pre-check must show progress immediately"
-                    dialog_count = len(dialogs)
-                    full_restore.restore_full_backup(window, **request)
-                    assert len(dialogs) == dialog_count
+                    try:
+                        full_restore.restore_full_backup(window, **request)
+                        assert visible_dialogs(), "restore pre-check must show progress immediately"
+                        dialog_count = len(dialogs)
+                        full_restore.restore_full_backup(window, **request)
+                        assert len(dialogs) == dialog_count
+                    finally:
+                        allow_precheck.set()
                     spin_until(lambda: not full_restore._restore_running)
                 release.set()
                 user.stop()

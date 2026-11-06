@@ -267,6 +267,7 @@ class StudyWorkspace(QDialog):
         context_copy = QVBoxLayout()
         self.context_state = QLabel(t('study_answer_revealed' if self.visit.side == 'answer' else 'study_question_side'), self)
         self.context_state.setObjectName('study-context-state')
+        self.context_state.setWordWrap(True)
         self.context_title = ElidedLabel(t('study_review_card'), self)
         self.context_title.setTextFormat(Qt.TextFormat.PlainText)
         self.context_title.setObjectName('study-context-title')
@@ -499,6 +500,11 @@ class StudyWorkspace(QDialog):
             self._adapt_panels()
 
     def _adapt_panels(self):
+        margins = self.header_panel.layout().contentsMargins()
+        self.header_panel.setMinimumWidth(max(
+            self.stage_bar.minimumSizeHint().width(), self.tree_actions.minimumSizeHint().width(),
+            self.link_resources_button.sizeHint().width(), self.exit_focus.sizeHint().width(),
+        ) + margins.left() + margins.right())
         if self.focus_stage is not None:
             return
         orientation = Qt.Orientation.Vertical if self.width() < 880 else Qt.Orientation.Horizontal

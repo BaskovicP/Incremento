@@ -432,12 +432,13 @@ def test_multiple_recordings_offer_a_choice_and_textbook_only_visits_explain_mis
     ''')
 
 
-def test_native_stage_bar_fits_large_text_and_translated_labels(tmp_path):
-    run_scene(f"preview_dir={str(tmp_path)!r}\n" + dedent('''
+@pytest.mark.parametrize('point_size', [18, 24])
+def test_native_stage_bar_fits_large_text_and_translated_labels(tmp_path, point_size):
+    run_scene(f"preview_dir={str(tmp_path)!r}\nfont_points={point_size}\n" + dedent('''
         from backend.i18n import initialize_language
         from pathlib import Path
         app.setStyle('Fusion')
-        font=app.font(); font.setPointSize(18); app.setFont(font)
+        font=app.font(); font.setPointSize(font_points); app.setFont(font)
         for dark in (False,True):
             palette=QtGui.QPalette()
             for role,color in ((QtGui.QPalette.ColorRole.Window,'#2b2b2b' if dark else '#fafafa'),
