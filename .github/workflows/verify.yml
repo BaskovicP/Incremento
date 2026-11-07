@@ -38,6 +38,8 @@ jobs:
       - run: python -m ruff check .
       - run: python -m mypy
       - run: python scripts/llm_repair_eval.py tests/repair_cases --deterministic-only --json
+      - name: Verify webpage import layout
+        run: python -m pytest -o addopts= tests/test_webpage_dialog.py::test_browser_fallback_guidance_fits_in_all_bundled_languages -q
       - run: python -m pytest tests/ -q -x
       - run: python scripts/mutation_smoke.py
 

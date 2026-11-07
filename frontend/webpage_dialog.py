@@ -615,6 +615,11 @@ class WebpageToPdfDialog(QDialog):
         self._import_btn.clicked.connect(self._on_import)
         self._cancel_btn.clicked.connect(self._cancel_or_close)
 
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        # Qt's default top-level minimum ignores the height needed at this width.
+        self.setMinimumHeight(self.layout().totalHeightForWidth(self.width()))
+
     # ── Slots ─────────────────────────────────────────────────────────────────
 
     def _set_busy(self, busy: bool) -> None:
