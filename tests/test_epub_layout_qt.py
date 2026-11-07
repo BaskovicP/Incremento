@@ -279,11 +279,14 @@ def test_real_epub_dock_can_be_narrowed_with_expanded_or_hidden_controls(scale, 
                 dock._show_controls_btn.click()
             wait_for(lambda: dock._controls_expanded.isVisible() and dock.minimumSizeHint().width() <= 350)
             assert all(group.isVisible() for group in dock._control_groups.values())
+            # A wide row must fit the controls' actual platform font metrics.
+            chrome_width = dock.width() - dock._controls_scroll.viewport().width()
+            wide_width = max(1400, dock._controls_host.sizeHint().width() + chrome_width)
             if floating:
-                dock.resize(1400, dock.height())
+                dock.resize(wide_width, dock.height())
             else:
-                main.resizeDocks([dock], [1400], Qt.Orientation.Horizontal)
-            wait_for(lambda: dock.width() == 1400)
+                main.resizeDocks([dock], [wide_width], Qt.Orientation.Horizontal)
+            wait_for(lambda: dock.width() == wide_width)
             if action in ('expanded', 'find'):
                 for group in dock._control_groups.values():
                     # The section heading has its own gutter; inspect the

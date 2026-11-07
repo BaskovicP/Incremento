@@ -294,6 +294,7 @@ def _scenario(mode, locale, outcome):
             }
             exec(compile(ast.Module(body=[function], type_ignores=[]), str(repo / "__init__.py"), "exec"), namespace)
             heartbeat_counts = {"backup": 0, "restore": 0}
+            responsive = {phase: Event() for phase in heartbeat_counts}
             heartbeat = QTimer()
             heartbeat.setInterval(10)
 
@@ -302,13 +303,25 @@ def _scenario(mode, locale, outcome):
                     heartbeat_counts["backup"] += 1
                 if full_restore._restore_running:
                     heartbeat_counts["restore"] += 1
+                for phase, count in heartbeat_counts.items():
+                    if count >= 10:
+                        responsive[phase].set()
 
             heartbeat.timeout.connect(heartbeat_tick)
             heartbeat.start()
             backup = destination / "manual.zip" if mode == "manual" else backup_schedule.next_backup_path(destination, profile, 3)
             with patch.object(backup_progress, "_build_dialog", observed_dialog):
+                write = zipfile.ZipFile.write
+
+                def write_after_heartbeat(*args, **kwargs):
+                    # Fast disks must still exercise Qt while the worker is active.
+                    assert responsive["backup"].wait(10), "backup blocked Qt's event loop"
+                    return write(*args, **kwargs)
+
                 write_failure = (patch.object(zipfile.ZipFile, "write", side_effect=OSError("synthetic disk full"))
-                                 if outcome == "disk-full" else nullcontext())
+                                 if outcome == "disk-full" else
+                                 patch.object(zipfile.ZipFile, "write", write_after_heartbeat)
+                                 if outcome == "large" else nullcontext())
                 with write_failure:
                     if outcome == "disk-full":
                         backup.write_bytes(b"previous verified archive")
@@ -382,6 +395,8 @@ def _scenario(mode, locale, outcome):
                 def precheck_after_progress(*args, **kwargs):
                     if not allow_precheck.wait(timeout=10):
                         raise AssertionError("Progress was not checked before releasing the pre-check")
+                    if outcome == "large":
+                        assert responsive["restore"].wait(10), "restore blocked Qt's event loop"
                     return precheck(*args, **kwargs)
 
                 def swap_with_failure(stage, *args):
