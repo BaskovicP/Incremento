@@ -600,6 +600,7 @@ def test_browser_fallback_guidance_fits_in_all_bundled_languages(tmp_path):
                     app.processEvents()
                 for label in dialog.findChildren(QLabel):
                     if label.isVisible() and label.wordWrap() and label.text():
+                        assert label.hasHeightForWidth(), 'Wrapped guidance must expose its required height to the layout'
                         required = label.heightForWidth(label.width())
                         if label.height() < required:
                             failures.append((language, font_size, label.text(), label.height(), required))
