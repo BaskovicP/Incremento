@@ -91,6 +91,9 @@ def test_tabs_switch_split_save_and_restore_without_retiring_readers():
         assert panes[0].isHidden(), 'Restore must leave explicitly closed tabs closed'
         assert [dock.widget() for dock in panes] == contents
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
     ''')
     result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=25)
@@ -153,6 +156,9 @@ def test_drop_in_pane_centre_creates_tabs_and_edges_still_split():
         target.hide()
         assert not manager.dock_at(moving, 'tab', target=target)
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
     ''')
     result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=25)

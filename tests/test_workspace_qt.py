@@ -101,6 +101,9 @@ def test_workspace_arranges_live_panes_and_restores_focus_without_close_signals(
         else:
             raise AssertionError('Unknown layouts must fail without moving windows')
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
     ''')
     result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=25)
@@ -162,7 +165,11 @@ def test_named_workspace_restores_saved_documents_controls_and_window_geometry(t
         pending.pop()()
         if transition in ('profile-switch', 'save-failure'):
             assert not path.exists(), 'Failed and stale saves cannot create a saved workspace'
-            main.close(); sys.exit(0)
+            main.close()
+            from PyQt6 import sip
+            if not sip.isdeleted(main):
+                sip.delete(main)
+            sys.exit(0)
         assert results == [True]
         assert main.addonManager.getConfig('incremento')['future_setting'] == 7
         writing.close(); writing.setParent(None); writing.deleteLater(); app.processEvents()
@@ -184,6 +191,9 @@ def test_named_workspace_restores_saved_documents_controls_and_window_geometry(t
             assert manager.delete_named('My desk')
             assert manager.saved_names() == []
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
     ''')
     result = subprocess.run([sys.executable, '-c', script, str(tmp_path), transition],
         cwd=Path(__file__).resolve().parents[1], env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'},
@@ -225,6 +235,9 @@ def test_saved_reference_slot_remains_attached_to_its_open_window():
         assert dock._workspace_saved_name == entry['name']
         assert dock.objectName() == 'incremento_pdf_reference_nonce'
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
     ''')
     result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=20)

@@ -452,13 +452,13 @@ class WebpagePdfResultDialog(QDialog):
         layout = QVBoxLayout(self)
         message = QLabel(_t("root_webpage_pdf_added", title=title))
         message.setTextFormat(Qt.TextFormat.PlainText)
-        message.setWordWrap(True)
         message.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        message.setWordWrap(True)
         layout.addWidget(message)
         self._status_lbl = QLabel("")
         self._status_lbl.setTextFormat(Qt.TextFormat.PlainText)
-        self._status_lbl.setWordWrap(True)
         self._status_lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        self._status_lbl.setWordWrap(True)
         layout.addWidget(self._status_lbl)
 
         buttons = QHBoxLayout()
@@ -579,13 +579,13 @@ class WebpageToPdfDialog(QDialog):
         # Status / progress
         self._status_lbl = QLabel("")
         self._status_lbl.setTextFormat(Qt.TextFormat.PlainText)
-        self._status_lbl.setWordWrap(True)
         self._status_lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        self._status_lbl.setWordWrap(True)
         layout.addWidget(self._status_lbl)
 
         browser_help = QLabel(_t("imports_webpage_browser_help"))
-        browser_help.setWordWrap(True)
         browser_help.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        browser_help.setWordWrap(True)
         layout.addWidget(browser_help)
         browser_row = QHBoxLayout()
         self._open_browser_btn = QPushButton(_t("imports_webpage_open_browser"))
@@ -614,6 +614,11 @@ class WebpageToPdfDialog(QDialog):
 
         self._import_btn.clicked.connect(self._on_import)
         self._cancel_btn.clicked.connect(self._cancel_or_close)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        # Qt's default top-level minimum ignores the height needed at this width.
+        self.setMinimumHeight(self.layout().totalHeightForWidth(self.width()))
 
     # ── Slots ─────────────────────────────────────────────────────────────────
 
