@@ -53,7 +53,8 @@ def should_skip_user_file(rel_path: str) -> bool:
         return False
 
     parts = [part for part in Path(rel).parts if part not in ("", ".")]
-    if "__pycache__" in parts or (parts and parts[0] == "bookshelf_cover_cache"):
+    # The sync blob store only holds copies of files the backup already contains.
+    if "__pycache__" in parts or (parts and parts[0] in ("bookshelf_cover_cache", "sync")):
         return True
 
     name = parts[-1] if parts else ""
