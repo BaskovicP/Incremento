@@ -1386,3 +1386,15 @@ msgstr "Moved {count} PDF screenshots ({size}) to Anki's media trash."
 
 msgid "root_pdf_snapshot_cleanup_failed"
 msgstr "Could not clean up PDF screenshots:\n{error}"
+
+#. menu sync
+msgid "root_menu_sync"
+msgstr "Sync Incremento Data…"
+
+#. sync failed
+msgid "root_sync_failed"
+msgstr "Incremento sync failed: {error}"
+
+#. sync conflicts
+msgid "root_sync_conflicts"
+msgstr "Incremento sync: {count} conflicts need a decision (Incremento → Sync Incremento Data…)."

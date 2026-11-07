@@ -2030,6 +2030,294 @@
     },
     {
       "component": "addon",
+      "key": "admin_sync_choose",
+      "form": "",
+      "source": "Choose…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_choose_folder",
+      "form": "",
+      "source": "Choose the sync folder",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_conflict_row",
+      "form": "",
+      "source": "{what}: this computer {mine} · other computer {theirs}",
+      "tokens": [
+        "{mine}",
+        "{theirs}",
+        "{what}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_conflicts_heading",
+      "form": "",
+      "source": "Both computers changed these; choose which version to keep:",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_deleted",
+      "form": "",
+      "source": "deleted",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_discard",
+      "form": "",
+      "source": "Discard them",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_discard_confirm",
+      "form": "",
+      "source": "Discard {count} changes that have waited over 30 days for a card or file? They were never applied on this computer, so nothing here changes.",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_explanation",
+      "form": "",
+      "source": "Choose a folder that Dropbox, Google Drive, OneDrive, iCloud Drive or a similar service keeps in step on each computer. Incremento keeps priorities, bookmarks, reading positions, highlights and documents in step through it. Anki's cards and scheduling still sync through AnkiWeb.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_family_document",
+      "form": "",
+      "source": "Document of card {card}",
+      "tokens": [
+        "{card}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_family_epub_highlight",
+      "form": "",
+      "source": "EPUB highlight on card {card}",
+      "tokens": [
+        "{card}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_family_pdf_highlight",
+      "form": "",
+      "source": "PDF highlight on card {card}",
+      "tokens": [
+        "{card}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_family_priority",
+      "form": "",
+      "source": "Priority of card {card}",
+      "tokens": [
+        "{card}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_family_reader_bookmark",
+      "form": "",
+      "source": "Bookmark on card {card}",
+      "tokens": [
+        "{card}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_family_reading_position",
+      "form": "",
+      "source": "Reading position on card {card}",
+      "tokens": [
+        "{card}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_folder",
+      "form": "",
+      "source": "Sync folder",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_keep_mine",
+      "form": "",
+      "source": "Keep this computer's version",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_last_synced",
+      "form": "",
+      "source": "Last synced {time}.",
+      "tokens": [
+        "{time}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_local_only",
+      "form": "",
+      "source": "Topic schedules, the knowledge tree, writing, presets and statistics stay on each computer for now.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_never_synced",
+      "form": "",
+      "source": "Not synced yet.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_no_conflicts",
+      "form": "",
+      "source": "No conflicts.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_not_set_up",
+      "form": "",
+      "source": "Not set up",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_now",
+      "form": "",
+      "source": "Sync now",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_problems",
+      "form": "",
+      "source": "Files in the sync folder that were not accepted: {count}",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_running",
+      "form": "",
+      "source": "Syncing…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_setup_failed",
+      "form": "",
+      "source": "This folder can't be used: {error}",
+      "tokens": [
+        "{error}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_stale",
+      "form": "",
+      "source": "Changes waiting over 30 days: {count}",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_stop",
+      "form": "",
+      "source": "Stop syncing",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_stop_confirm",
+      "form": "",
+      "source": "Stop syncing this profile? Nothing is deleted, and choosing the folder again later continues where it left off.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_title",
+      "form": "",
+      "source": "Sync Incremento Data — {profile}",
+      "tokens": [
+        "{profile}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_use_theirs",
+      "form": "",
+      "source": "Use the other computer's version",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_waiting_for_anki",
+      "form": "",
+      "source": "Waiting for cards from AnkiWeb: {count}",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_waiting_for_files",
+      "form": "",
+      "source": "Waiting for files from the folder: {count}",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "admin_tag_add",
       "form": "",
       "source": "add tags",
@@ -26942,6 +27230,14 @@
     },
     {
       "component": "addon",
+      "key": "root_menu_sync",
+      "form": "",
+      "source": "Sync Incremento Data…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "root_menu_utils",
       "form": "",
       "source": "Utils",
@@ -27746,6 +28042,26 @@
       "form": "",
       "source": "Creating privacy-safe support bundle…",
       "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_sync_conflicts",
+      "form": "",
+      "source": "Incremento sync: {count} conflicts need a decision (Incremento → Sync Incremento Data…).",
+      "tokens": [
+        "{count}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_sync_failed",
+      "form": "",
+      "source": "Incremento sync failed: {error}",
+      "tokens": [
+        "{error}"
+      ],
       "markup": []
     },
     {

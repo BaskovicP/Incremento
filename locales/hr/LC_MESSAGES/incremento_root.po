@@ -1403,3 +1403,15 @@ msgstr "Premješteno je {count} PDF snimki ({size}) u Ankijev koš za medije."
 
 msgid "root_pdf_snapshot_cleanup_failed"
 msgstr "Nije moguće očistiti PDF snimke:\n{error}"
+
+#. menu sync
+msgid "root_menu_sync"
+msgstr "Sinkroniziraj podatke Incrementa…"
+
+#. sync failed
+msgid "root_sync_failed"
+msgstr "Sinkronizacija Incrementa nije uspjela: {error}"
+
+#. sync conflicts
+msgid "root_sync_conflicts"
+msgstr "Sinkronizacija Incrementa: {count} sukoba čeka odluku (Incremento → Sinkroniziraj podatke Incrementa…)."

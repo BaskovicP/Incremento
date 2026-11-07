@@ -14,6 +14,7 @@ Use this file for work in `scripts/`. These utilities are developer/release tool
 - `mutation_smoke.py`: deterministic targeted mutation gate that copies config normalization and its regressions into a temporary directory and fails if a high-risk mutant survives; it never edits the checkout.
 - `prepare_firefox_companion.py`: is the developer CLI wrapper around `backend/companion_install.py`, which creates a new unsigned local Firefox companion folder or XPI from shipped assets and rejects overwrite/symlink inputs. It never installs or publishes.
 - `generate_icons.py`: deterministic Pillow-based source for the companion extension PNG icon set.
+- `sync_e2e.py`: opt-in end-to-end check of shared-folder sync with two Anki collections and a disposable AnkiWeb account. It needs explicit `--overwrite-ankiweb`, reads credentials only from `INC_E2E_USER`/`INC_E2E_PASS`, keeps its work directory outside the repository, clears only directories it created, and can run device B in another Python (`--wsl` for Linux under Windows). Its guards are covered by `tests/test_sync_e2e_script.py`; the run itself is never part of CI.
 
 ## Release Packaging
 

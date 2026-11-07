@@ -318,6 +318,10 @@ Browser text capture uses `backend/browser_capture.py` for bounded semantic HTML
 
 **Export Support Bundle** is a separate privacy-safe diagnostic artifact. Its event schema is allowlisted and excludes card/note content, raw IDs, profile/deck/tag names, URLs, paths, user filenames, database rows, exception text, and precise activity timestamps.
 
+## Shared-folder sync
+
+`backend/sync_*.py` implement the design in `docs/architecture/shared-folder-sync.md`. Local sync state lives in Incremento SQLite (migration 25: `sync_meta`, `sync_revisions`, `sync_baseline`, `sync_outbox`, `sync_inbox`, `sync_receipts`, `sync_peers`, `sync_seen_packs`, `sync_conflicts`), so capture and apply commit with the data they describe; copies of synced document versions live under `paths.get_sync_blob_dir()` and are excluded from full backups. `sync_records.TABLE_CLASSIFICATION` names every table as synced, local or later, and a test fails on an unclassified table or column. Anki stays authoritative for everything AnkiWeb syncs: revisions carry the card's note GUID and AnkiWeb usn, wait for cards that have not arrived, and never carry scheduling, tags or custom data. `sync_snapshot` writes per-device snapshots, retires a device's packs only when every device's latest snapshot covers them, and lets a device that lacks retired history catch up from a covering snapshot. `sync_service` is the boundary the root calls; sync reads the collection only, inside a `QueryOp`, and stops when its profile is no longer current.
+
 ## Release gates
 
 Supported packaged baseline is Anki 24.11 or newer. Optional private-API features fail closed when a newer Anki changes the reviewer contract.
