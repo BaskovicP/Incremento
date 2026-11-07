@@ -109,9 +109,11 @@ A resolution is a new revision whose parents are both heads, so competing histor
 | `sync_baseline(family, key, revision_id, value_hash)` | "this value has been captured locally" |
 | `sync_revisions` | known revisions and their parents |
 | `sync_outbox` | captured, not yet published |
-| `sync_inbox(revision_id, status, reason)` | `pending_parent`, `pending_blob`, `pending_anki`, `applied`, `conflict`, `obsolete`, `rejected` |
+| `sync_inbox(revision_id, status, reason)` | `received` (validated, not yet applied), `pending_parent`, `pending_blob`, `pending_anki`, `applied`, `conflict`, `obsolete`, `rejected` |
 | `sync_receipts(peer, epoch, max_seq)` | confirmed application of another device's revisions |
 | `sync_conflicts` | open conflicts shown to the user |
+| `sync_peers` | each peer's announced AnkiWeb state (usn, scm) |
+| `sync_seen_packs` | packs already accepted or rejected, so each is read once |
 
 They live in `incremento.db`, so capture and apply commit together with the data they describe.
 
@@ -124,6 +126,8 @@ They live in `incremento.db`, so capture and apply commit together with the data
 | `reader_bookmark` | Adds never conflict; edits to the same `id` conflict; edit vs delete keeps the edit and flags it |
 | `annotation` | Reuse `pdf_annotations._merge` semantics: concurrent notes on the same passage are joined, and other divergence keeps both rows (`conflict-…` ids) |
 | `document` | Concurrent content versions are both kept. No PDF merging |
+
+**Equal values merge deterministically.** When concurrent heads hold the same value, every device computes the same merge revision from them: it uses the reserved device `~merge`, its id is a content hash, and it is never published. This is why a merge can't set off another round of merges between devices. Different values open a conflict that keeps the local value; its resolution is an ordinary published revision whose parents are all the heads.
 
 Records of cards deleted in Anki are not tombstoned. Each device's own reconciliation removes them after AnkiWeb deletes the card. Removing a pack from the folder never deletes user content.
 
@@ -178,6 +182,12 @@ The two channels deliver independently. Findings from Anki's sync code (`rslib/s
 - If both sides changed a card, the copy with the newer modification time wins (`add_or_update_card_if_newer`). Revlog rows from both sides are kept.
 - A full upload or download fires `collection_will_temporarily_close` and reopens the collection with `after_full_sync=True` (`qt/aqt/sync.py`).
 
+Verified against AnkiWeb with two collections (Anki 25.09):
+- A card added locally has usn −1.
+- After a normal sync it carries the server usn, and the collection's usn is that value + 1.
+- Later full uploads continued the numbering (7 → 8) rather than restarting it. Only the first upload to a fresh account started at 0.
+- Schema changes and full syncs change the collection's `scm`, so the rules below compare usns only within one `scm`.
+
 Rules:
 1. **One owner per fact.** The exchange never carries due dates, intervals, tags, suspension, `customData` (`incrv`), filtered-deck membership or revlog.
 2. **Card refs:**
@@ -187,6 +197,7 @@ Rules:
    - Each revision records the card's `uploaded_usn`, or `null` if the card had not been uploaded yet.
    - Each device publishes the server usn of its last completed AnkiWeb sync.
    - If the receiver's collection usn is greater than `uploaded_usn` and the card is still absent, the card was deleted: the revision becomes `obsolete` and is neither applied nor tombstoned.
+   - Usns are compared only when the revision's collection `scm` equals the receiver's (and the sender's announced one). Across a schema change or full sync the revision keeps waiting instead, so a numbering that does not line up can never declare a card deleted.
    - If `uploaded_usn` is `null`, the receiver waits until the sender's published usn shows the upload happened.
 4. **Full sync:**
    - After a reopen with `after_full_sync=True`, an idempotent re-anchor pass re-checks every card ref.
@@ -219,14 +230,23 @@ Rules:
 - **The lease** only warns; it can't enforce exclusive ownership between offline devices.
 - **Setup:**
   - The first device creates the library and a snapshot made through the same allowlist as §2. It is not a clone of the runtime database.
-  - A joining device checks collection identity (§3), then captures its existing data as parentless revisions. Identical values merge silently; different values become conflicts. Its work is never discarded.
-- **Restore** (Full Backup/Automatic Backups):
-  - Raises the epoch.
-  - Restored values that match a known revision adopt it as their baseline. Newer revisions descend from it and fast-forward, so a restore can't rewind shared history or let old packs overwrite newer work.
-- **Retention:**
-  - A device deletes its own packs only when every listed device's receipts cover them and a newer snapshot exists.
+  - A joining device checks collection identity (§3): it samples up to 50 card references from the library's verified packs. A card present with another note GUID means another collection; no sampled card present means the collection hasn't synced with AnkiWeb yet. Either refuses the join with an explanation. It then captures its existing data as parentless revisions. Identical values merge silently; different values become conflicts. Its work is never discarded.
+- **Restore and copied profiles** (Full Backup, Automatic Backups, or a database copied to another computer):
+  - A small binding file in `user_files/<profile>/sync/`, which backups leave out, records which device identity this installation owns. A database that doesn't match it came from a backup or another computer, so the profile adopts a new device identity in the same library. Old sequence numbers are never reused, and two computers never share an identity.
+  - Revisions captured under the old identity but never published are re-issued under the new one, with their children, baseline and conflicts following.
+  - The old identity becomes an ordinary peer. Its later published work is received back and fast-forwards from the restored baseline, so a restore can't rewind shared history or let old packs overwrite newer work.
+- **Progress announcement.** `device.json` is written after the packs. It states what the device has published (`published: {epoch, last_seq}`) and which of its packs it has deleted (`retired: {epoch, through}`).
+- **Snapshots** (`devices/<id>/snapshots/`). Now and then each device writes its view of the whole library:
+  - the current head revisions of every record (its baseline plus open conflict heads);
+  - its receipts (the highest sequence it has integrated from each device, its own included).
+
+  A snapshot is split into hash-named parts, and its manifest is written last, so a partly uploaded snapshot is never used. A device keeps only its latest snapshot.
+- **Retention.** A device deletes its own packs only up to the lowest sequence that every listed device's *latest snapshot* records for it. Any one complete latest snapshot, plus the packs still present, therefore holds the full current state.
+  - A device without a snapshot blocks retention.
   - Unseen devices become "inactive" after 90 days and stop blocking retention only after the user confirms.
-  - Blobs are swept by reachability after a grace period.
+- **Catching up after retention.** A device that lacks history some peer has retired (its receipt for that peer is below the peer's `retired.through`) loads a complete latest snapshot that covers the retired ranges, then reads the remaining packs.
+- **Truncated parents.** A waiting revision may name a parent that only existed in a retired pack. When every peer's packs are present without gaps from `retired.through` to `published.last_seq`, a parent that is still unknown can no longer arrive. The revision is released, and ancestry treats it as concurrent with the current heads, which is what it is.
+- **Blobs.** Blobs named by no remaining pack and no latest snapshot are swept by any device after a 30-day grace period. Sweeping is idempotent and deletes only content-addressed copies, never a user's file.
 
 ## 9. Demonstrations before automatic apply
 
@@ -252,6 +272,14 @@ Two disposable profiles syncing to one disposable AnkiWeb account and one local 
 | 16 | Same PDF annotated on both devices; crash between the PDF write and the SQLite commit | both annotations kept; no duplicates |
 | 17 | Old backup restored on one device | newer work elsewhere survives |
 | 18 | Second computer joins with existing work | nothing discarded; differences become conflicts |
+
+A developer script, `scripts/sync_e2e.py`, which comes with the code PRs, runs these scenarios against real AnkiWeb, with two Anki collections and a shared folder. Device B can run in the same process or in a second Python, for example Linux under WSL. It needs a disposable account, because the first sync replaces the account's collection:
+
+```bash
+INC_E2E_USER=... INC_E2E_PASS=... python scripts/sync_e2e.py two-devices --workdir /tmp/inc-e2e --overwrite-ankiweb
+```
+
+On 2026-11-06 (Anki 25.09.2): 15/15 checks with two collections on Windows, and 9/9 with device B on Linux under WSL. The runs cover a card's data arriving before the card, a card deleted before the other device synced, a conflict and its resolution, an annotated PDF, a reading position with a bookmark, and full syncs.
 
 ## 10. Staged PRs
 
