@@ -159,6 +159,9 @@ def test_switch_search_pin_groups_bulk_close_recovery_navigation_and_session_res
         assert manager.save_last_session()
         assert 'A' not in config['workspace_last_sessions']
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
     ''')
     result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=30)
