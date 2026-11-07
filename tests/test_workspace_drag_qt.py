@@ -85,6 +85,9 @@ def test_drag_preview_drop_escape_and_profile_reset_preserve_live_content():
         manager.reset()
         assert not drag.outline.isVisible() and drag.active_dock is None
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
     ''')
     result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=25)
@@ -142,6 +145,9 @@ def test_drops_on_all_four_pane_edges_preserve_other_windows_and_can_restore():
         assert not manager.snap(moving, 'left')
         assert moving.geometry() == original
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
     ''')
     result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=25)

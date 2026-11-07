@@ -194,6 +194,9 @@ def test_border_resize_teardown_releases_the_gesture_without_stranding_the_reade
             assert manager._drag.active_dock is None
             assert not manager._drag.outline.isVisible()
             main.close()
+            from PyQt6 import sip
+            if not sip.isdeleted(main):
+                sip.delete(main)
             sys.exit(0)
         else:
             dock.close()
