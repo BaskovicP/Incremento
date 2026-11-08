@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from textwrap import dedent
+from tests.test_writing_tabs_qt import writing_qt_script
 
 
 def run_qt(body):
@@ -25,7 +25,7 @@ writing._active_profile = lambda: 'Synthetic'
 writing._current_writing_card_id = 7
 writing._current_writing_relpath = 'writing/draft.md'
 '''
-    result = subprocess.run([sys.executable, '-c', setup + dedent(body)],
+    result = subprocess.run([sys.executable, '-c', writing_qt_script(setup, body)],
         cwd=Path(__file__).resolve().parents[1], env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'},
         capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stdout + result.stderr

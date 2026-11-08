@@ -53,6 +53,10 @@ def test_writing_picker_rejects_stale_results_and_opens_only_selected_existing_c
         assert opened == [22]
         stale.close()
         main.close()
+        from PyQt6 import sip
+        if not sip.isdeleted(main):
+            sip.delete(main)
+        QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
     ''')
     result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=20)
@@ -95,6 +99,11 @@ def test_writing_tools_fit_narrow_panes_and_only_explicit_close_unpins():
                 writing.mw.removeDockWidget(dock)
                 dock.deleteLater()
         writing.mw.close()
+        from PyQt6 import sip
+        from PyQt6.QtCore import QCoreApplication, QEvent
+        if not sip.isdeleted(writing.mw):
+            sip.delete(writing.mw)
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     ''')
     result = subprocess.run([sys.executable, '-c', script], cwd=Path(__file__).resolve().parents[1],
         env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'}, capture_output=True, text=True, timeout=20)
