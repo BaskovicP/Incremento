@@ -131,6 +131,10 @@ def test_writing_layout_keeps_the_document_large_and_controls_reachable(tmp_path
         dock.deleteLater()
         app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         app.processEvents()
+        from PyQt6 import sip
+        if not sip.isdeleted(writing.mw):
+            sip.delete(writing.mw)
+        app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     ''')
     result = subprocess.run(
         [sys.executable, '-c', script, str(tmp_path), theme, locale, widget_style],

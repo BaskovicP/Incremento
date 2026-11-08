@@ -3,7 +3,21 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from textwrap import dedent
+from textwrap import dedent, indent
+
+
+def writing_qt_script(setup, body):
+    cleanup = '''
+    from PyQt6 import sip
+    from PyQt6.QtCore import QCoreApplication, QEvent
+    writing.reset_for_profile_switch()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    if not sip.isdeleted(writing.mw):
+        sip.delete(writing.mw)
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    temporary.cleanup()
+'''
+    return setup + '\ntry:\n' + indent(dedent(body), '    ') + '\nfinally:\n' + indent(dedent(cleanup), '    ')
 
 
 def run_tabs(body):
@@ -26,10 +40,24 @@ def open_draft(cid, title):
     writing.show_writing_in_dock(cid, title, f'writing/{cid}.md', keep_open=True)
     return writing._writing_dock
 '''
-    result = subprocess.run([sys.executable, '-c', setup + dedent(body)],
+    script = writing_qt_script(setup, body)
+    result = subprocess.run([sys.executable, '-c', script],
         cwd=Path(__file__).resolve().parents[1], env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen'},
         capture_output=True, text=True, timeout=25)
     assert result.returncode == 0, result.stdout + result.stderr
+    return result
+
+
+def test_native_writing_windows_are_destroyed_before_python_finalization():
+    result = run_tabs('''
+        import atexit
+        atexit.register(lambda: print('python-finalizing', flush=True))
+        writing.mw.destroyed.connect(lambda: print('window-destroyed', flush=True))
+        dock = open_draft(11, 'Draft')
+        dock.destroyed.connect(lambda: print('dock-destroyed', flush=True))
+        writing.reset_for_profile_switch()
+    ''')
+    assert result.stdout.splitlines() == ['dock-destroyed', 'window-destroyed', 'python-finalizing']
 
 
 def test_tabs_preserve_live_documents_undo_cursor_and_per_card_session_and_progress():
