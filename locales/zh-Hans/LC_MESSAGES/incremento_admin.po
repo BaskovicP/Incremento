@@ -818,3 +818,131 @@ msgstr "准备阶段"
 
 msgid "admin_startup_elapsed"
 msgstr "已用时：{seconds} 秒"
+
+#. sync title
+msgid "admin_sync_title"
+msgstr "同步 Incremento 数据 — {profile}"
+
+#. sync explanation
+msgid "admin_sync_explanation"
+msgstr "选择一个由 Dropbox、Google Drive、OneDrive、iCloud Drive 或类似服务在每台电脑上保持同步的文件夹。Incremento 通过它同步优先级、书签、阅读位置、高亮和文档。Anki 的卡片和排程仍通过 AnkiWeb 同步。"
+
+#. sync local only
+msgid "admin_sync_local_only"
+msgstr "主题排程、知识树、写作、预设和统计数据目前仍保留在各自的电脑上。"
+
+#. sync folder
+msgid "admin_sync_folder"
+msgstr "同步文件夹"
+
+#. sync not set up
+msgid "admin_sync_not_set_up"
+msgstr "尚未设置"
+
+#. sync choose
+msgid "admin_sync_choose"
+msgstr "选择…"
+
+#. sync choose folder
+msgid "admin_sync_choose_folder"
+msgstr "选择同步文件夹"
+
+#. sync never synced
+msgid "admin_sync_never_synced"
+msgstr "尚未同步。"
+
+#. sync last synced
+msgid "admin_sync_last_synced"
+msgstr "上次同步：{time}。"
+
+#. sync waiting for anki
+msgid "admin_sync_waiting_for_anki"
+msgstr "等待来自 AnkiWeb 的卡片：{count}"
+
+#. sync waiting for files
+msgid "admin_sync_waiting_for_files"
+msgstr "等待文件夹中的文件：{count}"
+
+#. sync conflicts heading
+msgid "admin_sync_conflicts_heading"
+msgstr "两台电脑都修改了以下内容；请选择保留哪个版本："
+
+#. sync no conflicts
+msgid "admin_sync_no_conflicts"
+msgstr "没有冲突。"
+
+#. sync conflict row
+msgid "admin_sync_conflict_row"
+msgstr "{what}：本机 {mine} · 另一台电脑 {theirs}"
+
+#. sync family priority
+msgid "admin_sync_family_priority"
+msgstr "卡片 {card} 的优先级"
+
+#. sync family reader bookmark
+msgid "admin_sync_family_reader_bookmark"
+msgstr "卡片 {card} 上的书签"
+
+#. sync family reading position
+msgid "admin_sync_family_reading_position"
+msgstr "卡片 {card} 的阅读位置"
+
+#. sync family pdf highlight
+msgid "admin_sync_family_pdf_highlight"
+msgstr "卡片 {card} 上的 PDF 高亮"
+
+#. sync family epub highlight
+msgid "admin_sync_family_epub_highlight"
+msgstr "卡片 {card} 上的 EPUB 高亮"
+
+#. sync family document
+msgid "admin_sync_family_document"
+msgstr "卡片 {card} 的文档"
+
+#. sync deleted
+msgid "admin_sync_deleted"
+msgstr "已删除"
+
+#. sync keep mine
+msgid "admin_sync_keep_mine"
+msgstr "保留本机的版本"
+
+#. sync use theirs
+msgid "admin_sync_use_theirs"
+msgstr "使用另一台电脑的版本"
+
+#. sync now
+msgid "admin_sync_now"
+msgstr "立即同步"
+
+#. sync running
+msgid "admin_sync_running"
+msgstr "正在同步…"
+
+#. sync stop
+msgid "admin_sync_stop"
+msgstr "停止同步"
+
+#. sync stop confirm
+msgid "admin_sync_stop_confirm"
+msgstr "停止同步此配置文件吗？不会删除任何内容，之后再次选择该文件夹即可从中断处继续。"
+
+#. sync setup failed
+msgid "admin_sync_setup_failed"
+msgstr "无法使用此文件夹：{error}"
+
+#. sync problems
+msgid "admin_sync_problems"
+msgstr "同步文件夹中未被接受的文件：{count}"
+
+#. sync stale
+msgid "admin_sync_stale"
+msgstr "等待超过 30 天的更改：{count}"
+
+#. sync discard
+msgid "admin_sync_discard"
+msgstr "放弃这些更改"
+
+#. sync discard confirm
+msgid "admin_sync_discard_confirm"
+msgstr "放弃 {count} 个已等待卡片或文件超过 30 天的更改吗？它们从未在本机上应用，因此这里不会有任何变化。"

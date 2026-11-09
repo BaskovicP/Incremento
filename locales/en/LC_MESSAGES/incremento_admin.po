@@ -825,3 +825,131 @@ msgstr "Preparation stage"
 
 msgid "admin_startup_elapsed"
 msgstr "Elapsed: {seconds} seconds"
+
+#. sync title
+msgid "admin_sync_title"
+msgstr "Sync Incremento Data — {profile}"
+
+#. sync explanation
+msgid "admin_sync_explanation"
+msgstr "Choose a folder that Dropbox, Google Drive, OneDrive, iCloud Drive or a similar service keeps in step on each computer. Incremento keeps priorities, bookmarks, reading positions, highlights and documents in step through it. Anki's cards and scheduling still sync through AnkiWeb."
+
+#. sync local only
+msgid "admin_sync_local_only"
+msgstr "Topic schedules, the knowledge tree, writing, presets and statistics stay on each computer for now."
+
+#. sync folder
+msgid "admin_sync_folder"
+msgstr "Sync folder"
+
+#. sync not set up
+msgid "admin_sync_not_set_up"
+msgstr "Not set up"
+
+#. sync choose
+msgid "admin_sync_choose"
+msgstr "Choose…"
+
+#. sync choose folder
+msgid "admin_sync_choose_folder"
+msgstr "Choose the sync folder"
+
+#. sync never synced
+msgid "admin_sync_never_synced"
+msgstr "Not synced yet."
+
+#. sync last synced
+msgid "admin_sync_last_synced"
+msgstr "Last synced {time}."
+
+#. sync waiting for anki
+msgid "admin_sync_waiting_for_anki"
+msgstr "Waiting for cards from AnkiWeb: {count}"
+
+#. sync waiting for files
+msgid "admin_sync_waiting_for_files"
+msgstr "Waiting for files from the folder: {count}"
+
+#. sync conflicts heading
+msgid "admin_sync_conflicts_heading"
+msgstr "Both computers changed these; choose which version to keep:"
+
+#. sync no conflicts
+msgid "admin_sync_no_conflicts"
+msgstr "No conflicts."
+
+#. sync conflict row
+msgid "admin_sync_conflict_row"
+msgstr "{what}: this computer {mine} · other computer {theirs}"
+
+#. sync family priority
+msgid "admin_sync_family_priority"
+msgstr "Priority of card {card}"
+
+#. sync family reader bookmark
+msgid "admin_sync_family_reader_bookmark"
+msgstr "Bookmark on card {card}"
+
+#. sync family reading position
+msgid "admin_sync_family_reading_position"
+msgstr "Reading position on card {card}"
+
+#. sync family pdf highlight
+msgid "admin_sync_family_pdf_highlight"
+msgstr "PDF highlight on card {card}"
+
+#. sync family epub highlight
+msgid "admin_sync_family_epub_highlight"
+msgstr "EPUB highlight on card {card}"
+
+#. sync family document
+msgid "admin_sync_family_document"
+msgstr "Document of card {card}"
+
+#. sync deleted
+msgid "admin_sync_deleted"
+msgstr "deleted"
+
+#. sync keep mine
+msgid "admin_sync_keep_mine"
+msgstr "Keep this computer's version"
+
+#. sync use theirs
+msgid "admin_sync_use_theirs"
+msgstr "Use the other computer's version"
+
+#. sync now
+msgid "admin_sync_now"
+msgstr "Sync now"
+
+#. sync running
+msgid "admin_sync_running"
+msgstr "Syncing…"
+
+#. sync stop
+msgid "admin_sync_stop"
+msgstr "Stop syncing"
+
+#. sync stop confirm
+msgid "admin_sync_stop_confirm"
+msgstr "Stop syncing this profile? Nothing is deleted, and choosing the folder again later continues where it left off."
+
+#. sync setup failed
+msgid "admin_sync_setup_failed"
+msgstr "This folder can't be used: {error}"
+
+#. sync problems
+msgid "admin_sync_problems"
+msgstr "Files in the sync folder that were not accepted: {count}"
+
+#. sync stale
+msgid "admin_sync_stale"
+msgstr "Changes waiting over 30 days: {count}"
+
+#. sync discard
+msgid "admin_sync_discard"
+msgstr "Discard them"
+
+#. sync discard confirm
+msgid "admin_sync_discard_confirm"
+msgstr "Discard {count} changes that have waited over 30 days for a card or file? They were never applied on this computer, so nothing here changes."

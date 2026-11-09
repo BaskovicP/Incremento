@@ -1369,3 +1369,15 @@ msgstr "已将 {count} 张 PDF 截图（{size}）移至 Anki 媒体回收站。"
 
 msgid "root_pdf_snapshot_cleanup_failed"
 msgstr "无法清理 PDF 截图：\n{error}"
+
+#. menu sync
+msgid "root_menu_sync"
+msgstr "同步 Incremento 数据…"
+
+#. sync failed
+msgid "root_sync_failed"
+msgstr "Incremento 同步失败：{error}"
+
+#. sync conflicts
+msgid "root_sync_conflicts"
+msgstr "Incremento 同步：有 {count} 个冲突需要决定（Incremento → 同步 Incremento 数据…）。"
