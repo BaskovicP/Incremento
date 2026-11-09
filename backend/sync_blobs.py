@@ -13,6 +13,8 @@ import os
 import re
 import shutil
 import tempfile
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 try:
@@ -22,6 +24,25 @@ except ImportError:
 
 MAX_BLOB_BYTES = 512 * 1024 * 1024
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+class Budget:
+    """A time allowance for the file transfer in one sync call; ``seconds`` of None means no limit.
+
+    Whoever transfers files asks ``exceeded()`` before each further unit of work, after finishing at least one, so
+    every call makes progress. ``more`` says that work was left for a later call.
+    """
+
+    def __init__(self, seconds: float | None, clock: Callable[[], float] = time.monotonic):
+        self._clock = clock
+        self._deadline = None if seconds is None else clock() + seconds
+        self.more = False
+
+    def exceeded(self) -> bool:
+        if self._deadline is not None and self._clock() >= self._deadline:
+            self.more = True
+            return True
+        return False
 
 
 def blob_path(store: Path, sha: str) -> Path:
@@ -80,6 +101,14 @@ def exchange_blob_rel(library_rel: str, sha: str) -> str:
     if not _HEX64.match(sha):
         raise ValueError(f"not a blob name: {sha!r}")
     return f"{library_rel}/blobs/{sha[:2]}/{sha}"
+
+
+def exchange_blob_present(store: Store, library_rel: str, local_store: Path, sha: str) -> bool:
+    """Whether the exchange already holds this blob (as complete as its local copy: named by its hash, written whole)."""
+    if not has_blob(local_store, sha):
+        return False
+    existing = store.stat(exchange_blob_rel(library_rel, sha))
+    return existing is not None and not existing.is_dir and existing.size == blob_path(local_store, sha).stat().st_size
 
 
 def put_exchange_blob(store: Store, library_rel: str, local_store: Path, sha: str) -> bool:

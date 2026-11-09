@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .sync_blobs import put_exchange_blob
+    from .sync_blobs import Budget, exchange_blob_present, put_exchange_blob
     from .sync_capture import sync_identity
     from .sync_exchange import (
         MAX_PACK_BYTES, MAX_PACK_REVISIONS, PackError, _parse, decode_snapshot_part, library_rel, sha256_bytes,
@@ -28,7 +28,7 @@ try:
     from .sync_records import SYNC_FORMAT, Family, canonical_json
     from .sync_store import Store, StoreError, as_store
 except ImportError:
-    from sync_blobs import put_exchange_blob  # type: ignore[no-redef]
+    from sync_blobs import Budget, exchange_blob_present, put_exchange_blob  # type: ignore[no-redef]
     from sync_capture import sync_identity  # type: ignore[no-redef]
     from sync_exchange import (  # type: ignore[no-redef]
         MAX_PACK_BYTES, MAX_PACK_REVISIONS, PackError, _parse, decode_snapshot_part, library_rel, sha256_bytes,
@@ -94,7 +94,7 @@ def _progress(conn: sqlite3.Connection) -> int:
 # --- Writing ---------------------------------------------------------------------
 
 def write_snapshot_if_due(conn: sqlite3.Connection, root: Path | Store, *, every: int, max_age: float,
-                          now: float, blob_store: Path | None = None) -> str | None:
+                          now: float, blob_store: Path | None = None, budget: Budget | None = None) -> str | None:
     """Write a snapshot when enough has happened since the last one (or it is old). Returns its id.
 
     A device that has data but no snapshot in this store writes one at once, whatever it wrote before: the store is
@@ -111,11 +111,12 @@ def write_snapshot_if_due(conn: sqlite3.Connection, root: Path | Store, *, every
                 and _latest_manifest(store, identity.library_id, identity.device_id) is None)
     if not stranded and (changed <= 0 or (changed < every and now - written_at < max_age)):
         return None
-    return write_snapshot(conn, store, now=now, blob_store=blob_store)
+    return write_snapshot(conn, store, now=now, blob_store=blob_store, budget=budget)
 
 
 def write_snapshot(conn: sqlite3.Connection, root: Path | Store, *, now: float,
-                   blob_store: Path | None = None) -> str:
+                   blob_store: Path | None = None, budget: Budget | None = None) -> str | None:
+    """Write a snapshot of this device's view, or None while its documents are still being placed (see budget)."""
     store = as_store(root)
     identity = sync_identity(conn)
     if identity is None:
@@ -133,9 +134,16 @@ def write_snapshot(conn: sqlite3.Connection, root: Path | Store, *, now: float,
                           "device": row[4], "epoch": row[5], "seq": row[6], "deleted": bool(row[7]),
                           "value": None if row[8] is None else json.loads(row[8]), "deps": json.loads(row[9])})
     if blob_store is not None:  # the documents the snapshot names must be in this store before it is
+        library = library_rel(identity.library_id)
+        placed = 0
         for revision in revisions:
             for sha in revision["deps"].get("blobs", []):
-                put_exchange_blob(store, library_rel(identity.library_id), blob_store, sha)
+                if exchange_blob_present(store, library, blob_store, sha):
+                    continue
+                if budget is not None and placed and budget.exceeded():
+                    return None  # a later call continues; nothing was written
+                put_exchange_blob(store, library, blob_store, sha)
+                placed += 1
     receipts = _receipts(conn)
     snapshot_id = f"{int(_meta(conn, 'snapshot_seq')) + 1:012d}"
     folder = f"{library_rel(identity.library_id)}/devices/{identity.device_id}/snapshots"

@@ -31,12 +31,12 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .sync_blobs import fetch_exchange_blob, has_blob, put_exchange_blob
+    from .sync_blobs import Budget, fetch_exchange_blob, has_blob, put_exchange_blob
     from .sync_capture import revision_id, sync_identity
     from .sync_store import Entry, Store, StoreError, as_store
     from .sync_records import SYNC_FORMAT, Family, canonical_json, record_blobs, validate_card_deps
 except ImportError:
-    from sync_blobs import fetch_exchange_blob, has_blob, put_exchange_blob  # type: ignore[no-redef]
+    from sync_blobs import Budget, fetch_exchange_blob, has_blob, put_exchange_blob  # type: ignore[no-redef]
     from sync_store import Entry, Store, StoreError, as_store  # type: ignore[no-redef]
     from sync_capture import revision_id, sync_identity  # type: ignore[no-redef]
     from sync_records import (  # type: ignore[no-redef]
@@ -138,8 +138,12 @@ def _mark_published(conn: sqlite3.Connection, revision_ids: list[str], now: int)
 
 
 def publish(conn: sqlite3.Connection, root: Path | Store, *, anki_usn: int | None = None, anki_scm: int | None = None,
-            blob_store: Path | None = None, now: Callable[[], float] = time.time) -> PublishResult:
+            blob_store: Path | None = None, now: Callable[[], float] = time.time,
+            budget: Budget | None = None) -> PublishResult:
     """Write every unpublished revision into packs below this device's folder.
+
+    With a ``budget``, publishing stops before the next document once the time is up (always after at least one
+    revision), so a large first upload happens over several calls; what was published is whole and in order.
 
     ``anki_usn`` is the collection's usn after its last AnkiWeb sync; other
     devices use it to tell a card still on its way from a deleted one.
@@ -165,12 +169,21 @@ def publish(conn: sqlite3.Connection, root: Path | Store, *, anki_usn: int | Non
         if not batches or batches[-1][0] != epoch or len(batches[-1][1]) >= MAX_PACK_REVISIONS:
             batches.append((epoch, []))
         batches[-1][1].append(row[:8])
-    for epoch, batch in batches:
+    stopped = False
+    for epoch, whole in batches:
         # Files first: a pack never names a blob that has not been placed.
-        for row in batch:
-            for sha in json.loads(row[7]).get("blobs", []):
+        batch: list[tuple] = []
+        for row in whole:
+            blobs = json.loads(row[7]).get("blobs", [])
+            if blobs and budget is not None and (batch or result.revisions_published) and budget.exceeded():
+                stopped = True
+                break
+            for sha in blobs:
                 if blob_store is None or not put_exchange_blob(store, library, blob_store, sha):
                     raise RuntimeError(f"blob {sha} of revision {row[0]} is not in the local blob store")
+            batch.append(row)
+        if not batch:
+            break
         data = _pack_bytes(identity.library_id, identity.device_id, epoch, batch)
         digest = sha256_bytes(data)
         rel = f"{device}/packs/{epoch:06d}-{batch[0][4]:012d}-{digest}.pack"
@@ -183,6 +196,8 @@ def publish(conn: sqlite3.Connection, root: Path | Store, *, anki_usn: int | Non
             result.packs_written += 1
         _mark_published(conn, [row[0] for row in batch], int(now()))
         result.revisions_published += len(batch)
+        if stopped:
+            break
     announce(conn, store, anki_usn=anki_usn, anki_scm=anki_scm)
     return result
 
@@ -446,8 +461,13 @@ def sample_card_refs(root: Path | Store, library_id: str, limit: int = 50) -> di
 
 
 def receive(conn: sqlite3.Connection, root: Path | Store, families: Mapping[str, Family], *,
-            blob_store: Path | None = None, now: Callable[[], float] = time.time) -> ReceiveResult:
-    """Validate and record other devices' packs. Applies nothing."""
+            blob_store: Path | None = None, now: Callable[[], float] = time.time,
+            budget: Budget | None = None) -> ReceiveResult:
+    """Validate and record other devices' packs. Applies nothing.
+
+    With a ``budget``, files are fetched until the time is up (always at least one); the revisions that wait for the
+    rest stay waiting and are released by a later call.
+    """
     store = as_store(root)
     identity = sync_identity(conn)
     if identity is None:
@@ -515,7 +535,16 @@ def receive(conn: sqlite3.Connection, root: Path | Store, families: Mapping[str,
                 result.problems.append(f"{label}: {exc}")
                 result.rejected += 1
                 _remember(conn, device.name, entry.name, "rejected", timestamp)
-    fetch = None if blob_store is None else (lambda sha: fetch_exchange_blob(store, library, sha, blob_store))
+    fetched = 0
+
+    def fetch_within_budget(sha: str) -> bool:
+        nonlocal fetched
+        if budget is not None and fetched and budget.exceeded():
+            return False
+        fetched += 1
+        return fetch_exchange_blob(store, library, sha, blob_store)  # type: ignore[arg-type]
+
+    fetch = None if blob_store is None else fetch_within_budget
     release_waiting(conn, timestamp, blob_store=blob_store, fetch=fetch)
     result.received = conn.execute("SELECT count(*) FROM sync_inbox").fetchone()[0] - received_before
     return result

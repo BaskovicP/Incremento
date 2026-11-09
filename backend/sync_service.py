@@ -29,6 +29,7 @@ try:
     from .sync_apply import _update_receipt, apply, resolve_conflict
     from .sync_capture import adopt_new_device_identity, capture, enable_sync, sync_identity
     from .sync_documents import DocumentFamily
+    from .sync_blobs import Budget
     from .sync_exchange import EXCHANGE_DIR, announce, publish, receive, release_waiting, sample_card_refs
     from .sync_snapshot import catch_up, history_complete, retire_packs, sweep_blobs, write_snapshot_if_due
     from .sync_http import HttpStore, Pairing
@@ -44,6 +45,7 @@ except ImportError:
         adopt_new_device_identity, capture, enable_sync, sync_identity,
     )
     from sync_documents import DocumentFamily  # type: ignore[no-redef]
+    from sync_blobs import Budget  # type: ignore[no-redef]
     from sync_exchange import (  # type: ignore[no-redef]
         EXCHANGE_DIR, announce, publish, receive, release_waiting, sample_card_refs,
     )
@@ -91,6 +93,8 @@ class SyncReport:
     applied: int = 0
     conflicts: int = 0
     problems: list[str] = field(default_factory=list)
+    #: File transfer was cut short by the time budget: call again to continue.
+    more: bool = False
 
 
 @dataclass(frozen=True)
@@ -266,7 +270,7 @@ def _lock(addon_dir: str, profile: str) -> threading.Lock:
 
 
 def _run(addon_dir: str, profile: str, folder: Store, query: Query, is_current: Callable[[], bool],
-         now: Callable[[], float], *, publish_only: bool = False) -> SyncReport:
+         now: Callable[[], float], *, publish_only: bool = False, budget: Budget | None = None) -> SyncReport:
     conn = get_connection(addon_dir, profile)
     families = families_for(addon_dir, profile)
     store = sync_paths.get_sync_blob_dir(addon_dir, profile)
@@ -280,9 +284,9 @@ def _run(addon_dir: str, profile: str, folder: Store, query: Query, is_current: 
     steps: list[Callable[[], None]] = [
         lambda: setattr(report, "captured", report.captured + capture(conn, families, resolver, now=now, collection_state=state).captured),
         lambda: setattr(report, "published", report.published + publish(
-            conn, folder, anki_usn=usn, anki_scm=scm, blob_store=store, now=now).revisions_published),
+            conn, folder, anki_usn=usn, anki_scm=scm, blob_store=store, now=now, budget=budget).revisions_published),
         lambda: _catch_up(conn, folder, families, now),
-        lambda: _receive(report, receive(conn, folder, families, blob_store=store, now=now)),
+        lambda: _receive(report, receive(conn, folder, families, blob_store=store, now=now, budget=budget)),
         lambda: _apply(report, apply(conn, families, resolver, collection_usn=usn, collection_scm=scm, blob_store=store,
                                     now=now)),
         # Parents that lived only in retired packs can no longer arrive: judge their children now.
@@ -291,9 +295,9 @@ def _run(addon_dir: str, profile: str, folder: Store, query: Query, is_current: 
         # Local edits protected during apply are published in the same run.
         lambda: setattr(report, "captured", report.captured + capture(conn, families, resolver, now=now, collection_state=state).captured),
         lambda: setattr(report, "published", report.published + publish(
-            conn, folder, anki_usn=usn, anki_scm=scm, blob_store=store, now=now).revisions_published),
+            conn, folder, anki_usn=usn, anki_scm=scm, blob_store=store, now=now, budget=budget).revisions_published),
     ]
-    steps.append(lambda: _maintain(conn, folder, usn, scm, now, store))
+    steps.append(lambda: _maintain(conn, folder, usn, scm, now, store, budget))
     if publish_only:
         steps = steps[:2]
     for step in steps:
@@ -301,7 +305,9 @@ def _run(addon_dir: str, profile: str, folder: Store, query: Query, is_current: 
             report.skipped = "profile changed"
             return report
         step()
-    if not publish_only:
+    if budget is not None and budget.more:
+        report.more = True
+    if not publish_only and not report.more:
         _set_meta(conn, "last_sync", str(int(now())))
     return report
 
@@ -318,13 +324,13 @@ def _release_retired(report: SyncReport, conn: Any, folder: Store, store: Path, 
 
 
 def _maintain(conn: Any, folder: Store, usn: int, scm: int, now: Callable[[], float],
-              blob_store: Path | None = None) -> None:
+              blob_store: Path | None = None, budget: Budget | None = None) -> None:
     """Snapshot when due, retire covered packs, announce progress, and now and then sweep blobs."""
     identity = sync_identity(conn)
     assert identity is not None
     timestamp = now()
     write_snapshot_if_due(conn, folder, every=SNAPSHOT_EVERY_REVISIONS, max_age=SNAPSHOT_MAX_AGE_SECONDS,
-                          now=timestamp, blob_store=blob_store)
+                          now=timestamp, blob_store=blob_store, budget=budget)
     retire_packs(conn, folder)
     announce(conn, folder, anki_usn=usn, anki_scm=scm)
     swept_at = float(_meta(conn, "swept_at") or 0)
@@ -402,7 +408,7 @@ def _apply(report: SyncReport, result: Any) -> None:
 
 def sync_now(addon_dir: str, profile: str, query: Query, *, is_current: Callable[[], bool] = lambda: True,
              now: Callable[[], float] = time.time, publish_only: bool = False,
-             store: Store | None = None) -> SyncReport:
+             store: Store | None = None, budget_seconds: float | None = None) -> SyncReport:
     """Capture, publish, receive and apply. Safe to call from a background worker."""
     conn = get_connection(addon_dir, profile)
     folder = _meta(conn, "folder") if sync_identity(conn) is not None else None
@@ -416,7 +422,8 @@ def sync_now(addon_dir: str, profile: str, query: Query, *, is_current: Callable
         owned = store is None
         target = store if store is not None else store_for(addon_dir, profile, folder)
         try:
-            return _run(addon_dir, profile, target, query, is_current, now, publish_only=publish_only)
+            return _run(addon_dir, profile, target, query, is_current, now, publish_only=publish_only,
+                        budget=Budget(budget_seconds))
         finally:
             if owned and hasattr(target, "close"):
                 target.close()
