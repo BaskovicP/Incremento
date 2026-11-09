@@ -187,3 +187,63 @@ def test_a_hostile_pack_in_a_store_is_rejected_like_one_in_a_folder(tmp_path):
 
     assert report.problems and "format" in report.problems[0]
     assert b.get(7) is None
+
+
+# --- A device whose store changed or lost its data ----------------------------------------------------------------
+# Pointing a device at another store (a new hub, a folder that was emptied, a restored backup) must not leave the
+# data it already published stranded in the old one.
+
+def _document(device, name="book.pdf"):
+    pdf = paths.get_pdf_dir(device.addon, "P") / name
+    pdf.parent.mkdir(parents=True, exist_ok=True)
+    pdf.write_bytes(b"%PDF-1.7\n" + name.encode() * 4000)
+    with db.get_connection(device.addon, "P") as conn:
+        conn.execute("INSERT INTO content_items(content_id, kind, card_id, note_id, storage_key, created_at, "
+                     "updated_at) VALUES (?, 'pdf', 1, 10, ?, 1, 1)", ("d" * 32, f"pdfs/{name}"))
+    return pdf
+
+
+def test_a_device_pointed_at_an_empty_store_gives_it_everything_it_has(tmp_path):
+    old = MemoryStore()
+    a, waiting = Device(tmp_path, "a", old), Device(tmp_path, "waiting", old)  # never syncs: old packs cannot retire
+    for card in range(1, 4):
+        a.set(card, card * 10.0)
+    pdf = _document(a)
+    a.sync()
+    a.sync()
+    assert any(path.endswith(".pack") for path in _paths(old)), "this scenario needs packs that were not retired"
+    assert waiting is not None
+
+    new = MemoryStore()
+    sync_service.configure(a.addon, "P", "store:a-new", query=CARDS, store=new)
+    a.store = new
+    a.sync()
+    late = Device(tmp_path, "late", new)
+    late.sync()
+
+    assert [late.get(card) for card in range(1, 4)] == [10.0, 20.0, 30.0]
+    assert (paths.get_pdf_dir(late.addon, "P") / "book.pdf").read_bytes() == pdf.read_bytes()
+
+
+def test_a_store_that_was_emptied_is_filled_again_by_the_next_sync(tmp_path):
+    store = MemoryStore()
+    a = Device(tmp_path, "a", store)
+    a.set(7, 70.0)
+    a.sync()
+    store._files.clear()
+    store._mtimes.clear()
+
+    a.sync()
+    late = Device(tmp_path, "late", store)
+    late.sync()
+
+    assert late.get(7) == 70.0
+
+
+def test_a_device_with_nothing_to_share_writes_no_snapshot_to_a_new_store(tmp_path):
+    store = MemoryStore()
+    a = Device(tmp_path, "a", store)
+
+    a.sync()
+
+    assert not any(path.endswith("-manifest.json") for path in _paths(store))

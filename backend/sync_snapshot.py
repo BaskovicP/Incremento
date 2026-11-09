@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from .sync_blobs import put_exchange_blob
     from .sync_capture import sync_identity
     from .sync_exchange import (
         MAX_PACK_BYTES, MAX_PACK_REVISIONS, PackError, _parse, decode_snapshot_part, library_rel, sha256_bytes,
@@ -27,6 +28,7 @@ try:
     from .sync_records import SYNC_FORMAT, Family, canonical_json
     from .sync_store import Store, StoreError, as_store
 except ImportError:
+    from sync_blobs import put_exchange_blob  # type: ignore[no-redef]
     from sync_capture import sync_identity  # type: ignore[no-redef]
     from sync_exchange import (  # type: ignore[no-redef]
         MAX_PACK_BYTES, MAX_PACK_REVISIONS, PackError, _parse, decode_snapshot_part, library_rel, sha256_bytes,
@@ -92,18 +94,28 @@ def _progress(conn: sqlite3.Connection) -> int:
 # --- Writing ---------------------------------------------------------------------
 
 def write_snapshot_if_due(conn: sqlite3.Connection, root: Path | Store, *, every: int, max_age: float,
-                          now: float) -> str | None:
-    """Write a snapshot when enough has happened since the last one (or it is old). Returns its id."""
+                          now: float, blob_store: Path | None = None) -> str | None:
+    """Write a snapshot when enough has happened since the last one (or it is old). Returns its id.
+
+    A device that has data but no snapshot in this store writes one at once, whatever it wrote before: the store is
+    new to it (another hub, a folder that was emptied or restored), and what the device published elsewhere would
+    otherwise never reach the devices that use this one.
+    """
+    store = as_store(root)
+    identity = sync_identity(conn)
     progress = _progress(conn)
     previous = int(_meta(conn, "snapshot_progress"))
     written_at = float(_meta(conn, "snapshot_at"))
     changed = progress - previous
-    if changed <= 0 or (changed < every and now - written_at < max_age):
+    stranded = (identity is not None and progress > 0
+                and _latest_manifest(store, identity.library_id, identity.device_id) is None)
+    if not stranded and (changed <= 0 or (changed < every and now - written_at < max_age)):
         return None
-    return write_snapshot(conn, root, now=now)
+    return write_snapshot(conn, store, now=now, blob_store=blob_store)
 
 
-def write_snapshot(conn: sqlite3.Connection, root: Path | Store, *, now: float) -> str:
+def write_snapshot(conn: sqlite3.Connection, root: Path | Store, *, now: float,
+                   blob_store: Path | None = None) -> str:
     store = as_store(root)
     identity = sync_identity(conn)
     if identity is None:
@@ -120,6 +132,10 @@ def write_snapshot(conn: sqlite3.Connection, root: Path | Store, *, now: float) 
         revisions.append({"id": row[0], "family": row[1], "key": row[2], "parents": json.loads(row[3]),
                           "device": row[4], "epoch": row[5], "seq": row[6], "deleted": bool(row[7]),
                           "value": None if row[8] is None else json.loads(row[8]), "deps": json.loads(row[9])})
+    if blob_store is not None:  # the documents the snapshot names must be in this store before it is
+        for revision in revisions:
+            for sha in revision["deps"].get("blobs", []):
+                put_exchange_blob(store, library_rel(identity.library_id), blob_store, sha)
     receipts = _receipts(conn)
     snapshot_id = f"{int(_meta(conn, 'snapshot_seq')) + 1:012d}"
     folder = f"{library_rel(identity.library_id)}/devices/{identity.device_id}/snapshots"
@@ -391,7 +407,11 @@ def retire_packs(conn: sqlite3.Connection, root: Path | Store) -> int:
             store.delete(f"{packs_rel}/{name}")
             removed += 1
             retired = max(retired, last_seq)
-    if removed:
+    if not packs:
+        # Nothing of ours is in this store, yet every device's snapshot here covers what we published (it is new to
+        # us, or was emptied): say that history is in the snapshots, so nobody waits for packs that are not coming.
+        retired = max(retired, min(limit, last_published))
+    if retired != retired_through(conn):
         _set_meta(conn, "retired_through", str(retired))
     return removed
 

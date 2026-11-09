@@ -285,7 +285,7 @@ def _run(addon_dir: str, profile: str, folder: Store, query: Query, is_current: 
         lambda: setattr(report, "published", report.published + publish(
             conn, folder, anki_usn=usn, anki_scm=scm, blob_store=store, now=now).revisions_published),
     ]
-    steps.append(lambda: _maintain(conn, folder, usn, scm, now))
+    steps.append(lambda: _maintain(conn, folder, usn, scm, now, store))
     if publish_only:
         steps = steps[:2]
     for step in steps:
@@ -309,13 +309,14 @@ def _release_retired(report: SyncReport, conn: Any, folder: Store, store: Path, 
         _apply(report, apply_again())
 
 
-def _maintain(conn: Any, folder: Store, usn: int, scm: int, now: Callable[[], float]) -> None:
+def _maintain(conn: Any, folder: Store, usn: int, scm: int, now: Callable[[], float],
+              blob_store: Path | None = None) -> None:
     """Snapshot when due, retire covered packs, announce progress, and now and then sweep blobs."""
     identity = sync_identity(conn)
     assert identity is not None
     timestamp = now()
     write_snapshot_if_due(conn, folder, every=SNAPSHOT_EVERY_REVISIONS, max_age=SNAPSHOT_MAX_AGE_SECONDS,
-                          now=timestamp)
+                          now=timestamp, blob_store=blob_store)
     retire_packs(conn, folder)
     announce(conn, folder, anki_usn=usn, anki_scm=scm)
     swept_at = float(_meta(conn, "swept_at") or 0)
