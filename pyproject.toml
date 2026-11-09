@@ -45,6 +45,7 @@ files = [
     "backend/sync_documents.py",
     "backend/sync_exchange.py",
     "backend/sync_records.py",
+    "backend/sync_schema.py",
     "backend/sync_service.py",
     "backend/sync_snapshot.py",
     "backend/sync_store.py",

@@ -21,7 +21,8 @@ from typing import Any
 
 try:
     from . import paths
-    from .db import get_connection
+    from .db import get_connection as _host_connection
+    from .sync_schema import ensure_schema
     from .sync_anki import Query, card_refs, collection_scm, collection_usn
     from .sync_apply import _update_receipt, apply, resolve_conflict
     from .sync_capture import adopt_new_device_identity, capture, enable_sync, sync_identity
@@ -32,7 +33,8 @@ try:
     from .sync_records import FAMILIES, Family
 except ImportError:
     import paths  # type: ignore[no-redef]
-    from db import get_connection  # type: ignore[no-redef]
+    from db import get_connection as _host_connection  # type: ignore[no-redef]
+    from sync_schema import ensure_schema  # type: ignore[no-redef]
     from sync_anki import Query, card_refs, collection_scm, collection_usn  # type: ignore[no-redef]
     from sync_apply import _update_receipt, apply, resolve_conflict  # type: ignore[no-redef]
     from sync_capture import (  # type: ignore[no-redef]
@@ -129,6 +131,13 @@ def _set_meta(conn: Any, key: str, value: str | None) -> None:
             conn.execute("DELETE FROM sync_meta WHERE key=?", (key,))
         else:
             conn.execute("INSERT OR REPLACE INTO sync_meta(key, value) VALUES (?, ?)", (key, value))
+
+
+def get_connection(addon_dir: str, profile: str) -> Any:
+    """The profile's database with the sync tables in place, whether or not the host's migrations made them."""
+    conn = _host_connection(addon_dir, profile)
+    ensure_schema(conn)
+    return conn
 
 
 def libraries_in(root: Path | str | Store) -> list[str]:
