@@ -353,3 +353,91 @@ def test_the_hub_serves_at_most_a_fixed_number_of_connections_at_once(tmp_path):
         for store in held:
             store.close()
         server.stop()
+
+
+# --- Finding the hub again when its address changed ------------------------------------------------------------------
+# The pairing code names an address, but a home network may hand the hub another one. A device asks the network for
+# its hub; only a hub holding the device key can answer in a way the device accepts.
+
+@pytest.fixture
+def findable_hub(tmp_path):
+    root = tmp_path / "HubFolder"
+    root.mkdir()
+    server = Hub(root, {"phone": KEY, "laptop": OTHER_KEY}, host="127.0.0.1", port=0, discovery_port=0)
+    server.start()
+    yield server
+    server.stop()
+
+
+def _find(hub, identity="phone", key=KEY, timeout=1.5):
+    return sync_http.discover(identity, key, port=hub.discovery_port, targets=("127.0.0.1",), timeout=timeout)
+
+
+def test_a_device_finds_its_hub_by_asking_the_network(findable_hub):
+    assert _find(findable_hub) == ("127.0.0.1", findable_hub.port)
+
+
+def test_a_hub_does_not_answer_a_device_it_does_not_know(findable_hub):
+    assert _find(findable_hub, identity="stranger", timeout=0.5) is None
+
+
+def test_a_device_with_the_wrong_key_does_not_accept_the_answer(findable_hub):
+    assert _find(findable_hub, key=bytes(32), timeout=0.5) is None
+
+
+def test_an_answer_that_is_not_signed_with_the_key_is_ignored(tmp_path):
+    fake = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    fake.bind(("127.0.0.1", 0))
+    fake.settimeout(2)
+
+    def impostor():
+        try:
+            data, address = fake.recvfrom(512)
+            fake.sendto(b"IHUB1R 9999 " + b"0" * 64, address)  # a port and a proof it cannot compute
+        except OSError:
+            pass
+
+    import threading
+
+    thread = threading.Thread(target=impostor, daemon=True)
+    thread.start()
+    found = sync_http.discover("phone", KEY, port=fake.getsockname()[1], targets=("127.0.0.1",), timeout=1.0)
+    thread.join(3)
+    fake.close()
+
+    assert found is None
+
+
+def test_junk_sent_to_the_discovery_port_does_not_stop_the_hub_answering(findable_hub):
+    junk = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    for payload in (b"", b"x" * 2000, b"IHUB1 ", b"IHUB1 phone", b"IHUB1 phone zz", b"IHUB1 " + b"\xff" * 40):
+        junk.sendto(payload, ("127.0.0.1", findable_hub.discovery_port))
+    junk.close()
+
+    assert _find(findable_hub) == ("127.0.0.1", findable_hub.port)
+
+
+def test_a_store_with_a_stale_address_finds_the_hub_and_carries_on(findable_hub):
+    store = HttpStore("127.0.0.1", 9, "phone", KEY, timeout=2, discovery_port=findable_hub.discovery_port,
+                      discovery_targets=("127.0.0.1",))
+
+    store.write("moved", b"found you")
+
+    assert store.read("moved", 20) == b"found you"
+    assert store.address == ("127.0.0.1", findable_hub.port)
+
+
+def test_without_discovery_a_stale_address_is_just_an_error(findable_hub):
+    store = HttpStore("127.0.0.1", 9, "phone", KEY, timeout=2, discovery_port=None)
+
+    with pytest.raises(StoreError):
+        store.read("x", 10)
+
+
+def test_a_wrong_key_is_not_mistaken_for_a_moved_hub(findable_hub):
+    store = HttpStore("127.0.0.1", findable_hub.port, "phone", bytes(32), timeout=2,
+                      discovery_port=findable_hub.discovery_port, discovery_targets=("127.0.0.1",))
+
+    with pytest.raises(StoreError):
+        store.read("x", 10)
+    assert store.address == ("127.0.0.1", findable_hub.port)

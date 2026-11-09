@@ -9,7 +9,8 @@ while you study.
 
 ``pair`` prints a pairing code for the device (copy it into the device's sync settings). Devices can be paired
 while the hub runs. Each device can change only its own device folder; who owns which is kept in a file beside
-the keys file. ``devices`` lists the paired devices and ``revoke`` removes one, which takes effect at once. Keep
+the keys file. The hub also answers paired devices that ask the local network where it is (UDP, port 8766;
+``--no-discovery`` turns that off), so a device finds it again when its address changes. ``devices`` lists the paired devices and ``revoke`` removes one, which takes effect at once. Keep
 the keys file out of the served folder and out of any cloud folder: whoever has a key can read and change the data.
 """
 
@@ -41,6 +42,9 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("folder", type=Path)
     serve.add_argument("--host", default="0.0.0.0")
     serve.add_argument("--port", type=int, default=DEFAULT_PORT)
+    serve.add_argument("--discovery-port", type=int, default=sync_http.DISCOVERY_PORT,
+                       help="UDP port on which paired devices can ask where the hub is.")
+    serve.add_argument("--no-discovery", action="store_true", help="Do not answer devices that look for the hub.")
     options = parser.parse_args(argv)
     book = sync_http.KeyBook(options.keys)
 
@@ -69,7 +73,8 @@ def main(argv: list[str] | None = None) -> int:
         sync_http.require_psk()
         owners = options.keys.with_name(options.keys.stem + "-owners.json")  # who owns which device folder
         hub = sync_http.Hub(options.folder, book.as_mapping(), host=options.host, port=options.port,
-                            state_path=owners)
+                            state_path=owners,
+                            discovery_port=None if options.no_discovery else options.discovery_port)
         hub.start()
     except (sync_http.StoreError, OSError) as error:
         print(error, file=sys.stderr)

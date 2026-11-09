@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import http.client
 import http.server
 import json
@@ -38,6 +39,7 @@ import socket
 import ssl
 import tempfile
 import threading
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -59,6 +61,10 @@ _IDENTITY = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 # Below a device folder only the device that first wrote there may write or delete.
 _DEVICE_FOLDER = re.compile(r"^[^/]+/v[0-9]+/[^/]+/devices/([^/]+)/")
 DEFAULT_MAX_CONNECTIONS = 64
+DISCOVERY_PORT = 8766
+_DISCOVERY_REQUEST = b"IHUB1 "
+_DISCOVERY_REPLY = b"IHUB1R "
+_HEX = re.compile(rb"^[0-9a-f]{16,64}$")
 _handshake_identity = threading.local()
 _CHUNK = 256 * 1024
 
@@ -108,6 +114,53 @@ class Pairing:
         except (ValueError, TypeError, UnicodeError):
             raise ValueError("This is not a valid hub pairing code.") from None
         return cls(host, port, identity, raw)
+
+
+# --- Finding the hub on the network -----------------------------------------------------------------------------
+# The pairing code names the hub's address, but a home network may give the hub another one. A device broadcasts a
+# question naming itself; a hub that holds that device's key answers with its port and a proof computed from the key
+# and the device's one-time nonce. The question reveals nothing, a hub does not answer devices it does not know, and
+# an answer that is not provably from a holder of the key is ignored.
+
+def _proof(key: bytes, nonce: bytes, port: bytes) -> bytes:
+    return hmac.new(key, b"ihub-discovery|" + nonce + b"|" + port, hashlib.sha256).hexdigest().encode("ascii")
+
+
+def discover(identity: str, key: bytes, *, port: int = DISCOVERY_PORT,
+             targets: tuple[str, ...] = ("255.255.255.255",), timeout: float = 1.5) -> tuple[str, int] | None:
+    """The (address, port) of the hub that holds ``key`` for ``identity``, or None if none answers in time."""
+    nonce = secrets.token_hex(16).encode("ascii")
+    question = _DISCOVERY_REQUEST + identity.encode("ascii", "replace") + b" " + nonce
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        sock.settimeout(0.1)
+        deadline = time.monotonic() + timeout
+        next_question = 0.0
+        while time.monotonic() < deadline:
+            if time.monotonic() >= next_question:
+                for target in targets:
+                    try:
+                        sock.sendto(question, (target, port))
+                    except OSError:
+                        pass
+                next_question = time.monotonic() + 0.5
+            try:
+                data, address = sock.recvfrom(512)
+            except socket.timeout:
+                continue
+            except OSError:
+                continue
+            if not data.startswith(_DISCOVERY_REPLY):
+                continue
+            fields = data[len(_DISCOVERY_REPLY):].split(b" ")
+            if len(fields) != 2 or not fields[0].isdigit() or not 0 < int(fields[0]) < 65536:
+                continue
+            if hmac.compare_digest(fields[1], _proof(key, nonce, fields[0])):
+                return str(address[0]), int(fields[0])
+    finally:
+        sock.close()
+    return None
 
 
 # --- The paired devices ----------------------------------------------------------------------------------------
@@ -447,7 +500,8 @@ class Hub:
     """Serve ``root`` to the paired devices in ``keys`` (identity to key)."""
 
     def __init__(self, root: Path | str, keys: Mapping[str, bytes], *, host: str = "0.0.0.0", port: int = 0,
-                 state_path: Path | str | None = None, max_connections: int = DEFAULT_MAX_CONNECTIONS):
+                 state_path: Path | str | None = None, max_connections: int = DEFAULT_MAX_CONNECTIONS,
+                 discovery_port: int | None = None):
         if isinstance(keys, dict):
             for identity, key in keys.items():
                 if not _IDENTITY.match(identity) or len(key) < 16:
@@ -458,6 +512,10 @@ class Hub:
         self._host, self._port = host, port
         self._state_path = None if state_path is None else Path(state_path)
         self._max_connections = max_connections
+        self._discovery_wanted = discovery_port
+        self._discovery: socket.socket | None = None
+        self._discovery_thread: threading.Thread | None = None
+        self._stopping = threading.Event()
         self._server: _Server | None = None
         self._thread: threading.Thread | None = None
 
@@ -466,6 +524,41 @@ class Hub:
         if self._server is None:
             return self._port
         return int(self._server.server_address[1])
+
+    @property
+    def discovery_port(self) -> int | None:
+        return None if self._discovery is None else int(self._discovery.getsockname()[1])
+
+    def _answer_questions(self, sock: socket.socket) -> None:
+        keys = self._keys
+        while not self._stopping.is_set():
+            try:
+                data, address = sock.recvfrom(512)
+            except socket.timeout:
+                continue
+            except OSError:
+                # An oversized packet or an unreachable sender (Windows reports those as errors): skip it. Only
+                # stopping the hub ends this thread.
+                if self._stopping.is_set():
+                    return
+                continue
+            if len(data) > 200 or not data.startswith(_DISCOVERY_REQUEST):
+                continue
+            fields = data[len(_DISCOVERY_REQUEST):].split(b" ")
+            if len(fields) != 2 or not _HEX.match(fields[1]):
+                continue
+            try:
+                identity = fields[0].decode("ascii")
+            except UnicodeDecodeError:
+                continue
+            key = keys.get(identity, b"") if _IDENTITY.match(identity) else b""
+            if len(key) < 16 or self._server is None:
+                continue  # an unknown device gets no answer at all
+            port = str(self._server.server_address[1]).encode("ascii")
+            try:
+                sock.sendto(_DISCOVERY_REPLY + port + b" " + _proof(key, fields[1], port), address)
+            except OSError:
+                pass
 
     def _context(self) -> ssl.SSLContext:
         require_psk()
@@ -489,8 +582,26 @@ class Hub:
                                state_path=self._state_path, max_connections=self._max_connections)
         self._thread = threading.Thread(target=self._server.serve_forever, name="incremento-hub", daemon=True)
         self._thread.start()
+        if self._discovery_wanted is not None:
+            self._stopping.clear()
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((self._host, self._discovery_wanted))
+            sock.settimeout(0.3)
+            self._discovery = sock
+            self._discovery_thread = threading.Thread(target=self._answer_questions, args=(sock,),
+                                                      name="incremento-hub-discovery", daemon=True)
+            self._discovery_thread.start()
 
     def stop(self) -> None:
+        self._stopping.set()
+        if self._discovery is not None:
+            self._discovery_wanted = self._discovery.getsockname()[1]
+            self._discovery.close()
+            self._discovery = None
+        if self._discovery_thread is not None:
+            self._discovery_thread.join(timeout=2)
+            self._discovery_thread = None
         server, self._server = self._server, None
         if server is not None:
             self._port = int(server.server_address[1])
@@ -506,8 +617,10 @@ class Hub:
 class HttpStore:
     """The engine's Store over a hub. Keeps one connection open and reconnects when the hub restarted."""
 
-    def __init__(self, host: str, port: int, identity: str, key: bytes, *, timeout: float = 30.0):
+    def __init__(self, host: str, port: int, identity: str, key: bytes, *, timeout: float = 30.0,
+                 discovery_port: int | None = DISCOVERY_PORT, discovery_targets: tuple[str, ...] = ("255.255.255.255",)):
         self._host, self._port, self._timeout = host, port, timeout
+        self._discovery_port, self._discovery_targets = discovery_port, discovery_targets
         self._identity, self._key = identity, key
         self._connection: http.client.HTTPSConnection | None = None
         self._lock = threading.RLock()
@@ -541,10 +654,20 @@ class HttpStore:
                                                            timeout=self._timeout)
         return self._connection
 
+    @property
+    def address(self) -> tuple[str, int]:
+        """Where the hub is now: the paired address, or where the network says it moved to."""
+        return self._host, self._port
+
     def _exchange(self, method: str, target: str, body: Any = None, length: int | None = None) -> http.client.HTTPResponse:
-        """Send one request and return its response, retrying once on a connection that went stale."""
+        """Send one request and return its response.
+
+        A connection that went stale is retried once, and a hub that cannot be reached at the paired address is looked
+        for on the network once (not when it refused this device: a wrong key is not a moved hub).
+        """
         headers = {} if length is None else {"Content-Length": str(length)}
-        for attempt in (0, 1):
+        retried = searched = False
+        while True:
             reused = self._connection is not None
             try:
                 connection = self._connect()
@@ -554,10 +677,20 @@ class HttpStore:
                 return connection.getresponse()
             except (OSError, http.client.HTTPException) as error:
                 self._drop()
-                if attempt == 0 and reused:
+                failure = StoreError(f"{method} {target.split('?')[0]}: {error}")
+                if isinstance(error, ssl.SSLError):
+                    raise failure from error
+                if reused and not retried:
+                    retried = True
                     continue
-                raise StoreError(f"{method} {target.split('?')[0]}: {error}") from error
-        raise AssertionError("unreachable")
+                if not searched and self._discovery_port is not None and not isinstance(error, http.client.HTTPException):
+                    searched = True
+                    found = discover(self._identity, self._key, port=self._discovery_port,
+                                     targets=self._discovery_targets)
+                    if found is not None and found != (self._host, self._port):
+                        self._host, self._port = found
+                        continue
+                raise failure from error
 
     @staticmethod
     def _target(route: str, rel: str) -> str:
@@ -700,4 +833,5 @@ class HttpStore:
             self._drop()
 
 
-__all__ = ["CIPHERS", "HttpStore", "Hub", "KeyBook", "Pairing", "as_store", "new_key", "require_psk"]
+__all__ = ["CIPHERS", "DISCOVERY_PORT", "HttpStore", "Hub", "KeyBook", "Pairing", "as_store", "discover", "new_key",
+           "require_psk"]

@@ -141,3 +141,40 @@ def test_pairing_the_same_name_twice_fails_clearly(tmp_path):
     again = _run("--keys", keys, "pair", "phone", "--host", "10.0.0.2")
 
     assert again.returncode != 0 and "already" in again.stderr
+
+
+def test_the_running_command_answers_discovery_questions_unless_told_not_to(tmp_path):
+    keys, folder = tmp_path / "keys.json", tmp_path / "Hub"
+    folder.mkdir()
+    code = next(line for line in _run("--keys", keys, "pair", "phone", "--host", "127.0.0.1", "--port", "48767")
+                .stdout.splitlines() if line.startswith("ihub1-"))
+    pairing = Pairing.from_code(code)
+    server = subprocess.Popen([sys.executable, "-S", str(SCRIPT), "--keys", str(keys), "serve", str(folder),
+                               "--host", "127.0.0.1", "--port", "48767", "--discovery-port", "48768"],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        found = None
+        for _ in range(50):
+            found = sync_http.discover(pairing.identity, pairing.key, port=48768, targets=("127.0.0.1",), timeout=0.4)
+            if found:
+                break
+        assert found == ("127.0.0.1", 48767)
+    finally:
+        server.terminate()
+        server.communicate(timeout=10)
+
+
+def test_discovery_can_be_switched_off(tmp_path):
+    keys, folder = tmp_path / "keys.json", tmp_path / "Hub"
+    folder.mkdir()
+    _run("--keys", keys, "pair", "phone", "--host", "127.0.0.1", "--port", "48769")
+    book_key = sync_http.KeyBook(keys).devices()["phone"]
+    server = subprocess.Popen([sys.executable, "-S", str(SCRIPT), "--keys", str(keys), "serve", str(folder),
+                               "--host", "127.0.0.1", "--port", "48769", "--discovery-port", "48770", "--no-discovery"],
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        time.sleep(1.5)
+        assert sync_http.discover("phone", book_key, port=48770, targets=("127.0.0.1",), timeout=0.8) is None
+    finally:
+        server.terminate()
+        server.communicate(timeout=10)

@@ -43,6 +43,10 @@ empty hub makes it publish everything it has, with the documents.
 - **The devices' checks**: unchanged from a cloud folder. Packs, snapshots and blobs are validated and hashed before
   anything is applied.
 
+- **Discovery**: a device that cannot reach its hub broadcasts `IHUB1 <device> <nonce>`; a hub answers only a device it
+  has a key for, with its port and an HMAC of the nonce and port under that key. The question reveals nothing, and an
+  answer without a valid proof is ignored. `serve --no-discovery` turns the answers off.
+
 ## Protocol (version 1)
 
 All under `/v1`, the path in the `path` query parameter (`/`-separated, relative):
@@ -62,7 +66,10 @@ check. It contains the key, so treat it like a password.
 
 - **A paired device is still trusted not to fill the disk or delete shared blobs** (a blob nobody names is cleared
   by any device's cleanup, by design). Revoke a device that misbehaves.
-- **No discovery**: the pairing code names the hub's address. A hub whose address changes needs a new code.
+- **Finding the hub again is best effort**: the pairing code names the hub's address; if it cannot be reached there, a
+  device asks the local network (UDP broadcast, port 8766) and a hub holding its key answers with a proof only that key
+  can make, so a device never follows an impostor. It works on one network segment; across routers or Wi-Fi client
+  isolation, pair again with the new address.
 - **At most 64 simultaneous connections** (`max_connections`); more are turned away and retry on the next sync.
 - The key is stored in the profile's `sync/hub.json` (desktop) or the app's private preferences (Ankrimento), not in
   an OS keystore. Exports and support bundles skip the `sync` folder.
