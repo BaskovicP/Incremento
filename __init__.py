@@ -4898,6 +4898,9 @@ class _SyncController:
     def configure(self, folder: str) -> None:
         _sync_service.configure(_ADDON_DIR, self.profile, folder, query=mw.col.db.all)
 
+    def configure_hub(self, code: str) -> None:
+        _sync_service.configure_hub(_ADDON_DIR, self.profile, code, query=mw.col.db.all)
+
     def disable(self) -> None:
         _sync_service.disable(_ADDON_DIR, self.profile)
 

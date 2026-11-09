@@ -15,8 +15,8 @@ except ImportError:
     from backend.i18n import t
 
 from aqt.qt import (
-    QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QPushButton, Qt, QVBoxLayout,
+    QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QListWidget,
+    QListWidgetItem, QPushButton, Qt, QVBoxLayout,
 )
 from aqt.utils import askUser, showInfo
 
@@ -84,6 +84,9 @@ class SyncDialog(QDialog):
         self._choose = QPushButton(t("admin_sync_choose"))
         self._choose.clicked.connect(self._choose_folder)
         folder_row.addWidget(self._choose)
+        self._hub = QPushButton(t("admin_sync_hub"))
+        self._hub.clicked.connect(self._ask_for_hub)
+        folder_row.addWidget(self._hub)
         layout.addLayout(folder_row)
 
         self._status = QLabel()
@@ -130,7 +133,7 @@ class SyncDialog(QDialog):
     def refresh(self) -> None:
         status = self._controller.status()
         self._configured = bool(status.configured)
-        self._folder.setText(status.folder if status.configured and status.folder else t("admin_sync_not_set_up"))
+        self._folder.setText(self._where(status) if status.configured and status.folder else t("admin_sync_not_set_up"))
         lines = [t("admin_sync_last_synced", time=time.strftime("%Y-%m-%d %H:%M", time.localtime(status.last_sync)))
                  if status.last_sync else t("admin_sync_never_synced")]
         if status.waiting_for_anki:
@@ -166,6 +169,7 @@ class SyncDialog(QDialog):
         self._sync.setText(t("admin_sync_running") if self._running else t("admin_sync_now"))
         self._stop.setEnabled(self._configured and not self._running)
         self._choose.setEnabled(not self._running)
+        self._hub.setEnabled(not self._running)
 
     # --- actions -----------------------------------------------------------------
 
@@ -173,6 +177,25 @@ class SyncDialog(QDialog):
         folder = QFileDialog.getExistingDirectory(self, t("admin_sync_choose_folder"), self._folder.text())
         if folder:
             self.use_folder(folder)
+
+    @staticmethod
+    def _where(status) -> str:
+        """A folder as chosen; a hub by the device it was paired as, never by anything that could be a key."""
+        if status.folder.startswith("hub:"):
+            return t("admin_sync_hub_label", device=status.folder.split(":")[1])
+        return status.folder
+
+    def _ask_for_hub(self) -> None:
+        code, accepted = QInputDialog.getText(self, t("admin_sync_hub"), t("admin_sync_hub_prompt"))
+        if accepted and code.strip():
+            self.use_hub(code)
+
+    def use_hub(self, code: str) -> None:
+        try:
+            self._controller.configure_hub(code.strip())
+        except Exception as exc:  # the service explains why a hub cannot be used
+            showInfo(t("admin_sync_setup_failed", error=exc), parent=self)
+        self.refresh()
 
     def use_folder(self, folder: str) -> None:
         try:

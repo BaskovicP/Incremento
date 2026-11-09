@@ -960,3 +960,15 @@ msgstr "Odbaci ih"
 #. sync discard confirm
 msgid "admin_sync_discard_confirm"
 msgstr "Odbaciti {count} promjena koje već više od 30 dana čekaju karticu ili datoteku? Na ovom računalu nikad nisu primijenjene, pa se ovdje ništa ne mijenja."
+
+#. sync use a hub button
+msgid "admin_sync_hub"
+msgstr "Koristi središte…"
+
+#. sync hub pairing code prompt
+msgid "admin_sync_hub_prompt"
+msgstr "Zalijepite kod za uparivanje koji ispisuje scripts/sync_hub.py na računalu na kojem radi središte."
+
+#. how a hub is shown in the sync dialog
+msgid "admin_sync_hub_label"
+msgstr "Središte (upareno kao {device})"

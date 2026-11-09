@@ -23,7 +23,8 @@ SCRIPT_HEAD = dedent(r"""
             self.last_sync, self.waiting_for_anki, self.stale = last_sync, waiting_for_anki, stale
             self.calls, self.done = [], None
         def status(self):
-            return SyncStatus(self.configured, "C:/Cloud" if self.configured else None,
+            where = getattr(self, "hub_label", None) or "C:/Cloud"
+            return SyncStatus(self.configured, where if self.configured else None,
                               self.last_sync if self.configured else None, len(self._conflicts),
                               self.waiting_for_anki, 0, 0, self.stale)
         def conflicts(self):
@@ -33,6 +34,11 @@ SCRIPT_HEAD = dedent(r"""
             if folder == "bad":
                 raise RuntimeError("holds several libraries")
             self.configured = True
+        def configure_hub(self, code):
+            self.calls.append(("configure_hub", code))
+            if code == "bad":
+                raise RuntimeError("The hub cannot be used: refused")
+            self.configured, self.hub_label = True, "hub:desktop:0a1b2c3d"
         def disable(self):
             self.calls.append(("disable",))
             self.configured = False
@@ -165,4 +171,31 @@ def test_the_discard_button_is_hidden_when_nothing_waited_too_long():
     _run(r"""
         dialog = sync_dialog.SyncDialog("Main", Controller(waiting_for_anki=2, stale=0))
         assert dialog._discard.isHidden()
+    """)
+
+
+def test_a_hub_is_paired_with_a_code_and_shown_by_the_device_it_was_paired_as():
+    _run(r"""
+        shown = []
+        sync_dialog.showInfo = lambda text, **kwargs: shown.append(text)
+        controller = Controller(configured=False)
+        dialog = sync_dialog.SyncDialog("Main", controller)
+
+        dialog.use_hub("bad")
+
+        assert shown == ["This folder can't be used: The hub cannot be used: refused"] and not dialog._sync.isEnabled()
+        dialog.use_hub("  ihub1-code  ")
+        assert controller.calls[-1] == ("configure_hub", "ihub1-code")
+        assert dialog._sync.isEnabled()
+        assert "desktop" in dialog._folder.text() and "0a1b2c3d" not in dialog._folder.text()
+    """)
+
+
+def test_the_hub_button_is_there_and_disabled_while_syncing():
+    _run(r"""
+        controller = Controller()
+        dialog = sync_dialog.SyncDialog("Main", controller)
+        assert dialog._hub.isEnabled()
+        dialog._sync.click()
+        assert not dialog._hub.isEnabled()
     """)

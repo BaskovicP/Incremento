@@ -2168,6 +2168,32 @@
     },
     {
       "component": "addon",
+      "key": "admin_sync_hub",
+      "form": "",
+      "source": "Use a hub…",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_hub_label",
+      "form": "",
+      "source": "Hub (paired as {device})",
+      "tokens": [
+        "{device}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "admin_sync_hub_prompt",
+      "form": "",
+      "source": "Paste the pairing code printed by scripts/sync_hub.py on the machine that runs the hub.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "admin_sync_keep_mine",
       "form": "",
       "source": "Keep this computer's version",

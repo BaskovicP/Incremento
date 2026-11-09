@@ -946,3 +946,15 @@ msgstr "放弃这些更改"
 #. sync discard confirm
 msgid "admin_sync_discard_confirm"
 msgstr "放弃 {count} 个已等待卡片或文件超过 30 天的更改吗？它们从未在本机上应用，因此这里不会有任何变化。"
+
+#. sync use a hub button
+msgid "admin_sync_hub"
+msgstr "使用同步中心…"
+
+#. sync hub pairing code prompt
+msgid "admin_sync_hub_prompt"
+msgstr "粘贴运行同步中心的电脑上 scripts/sync_hub.py 输出的配对码。"
+
+#. how a hub is shown in the sync dialog
+msgid "admin_sync_hub_label"
+msgstr "同步中心（以 {device} 配对）"

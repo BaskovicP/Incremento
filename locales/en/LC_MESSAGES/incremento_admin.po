@@ -953,3 +953,15 @@ msgstr "Discard them"
 #. sync discard confirm
 msgid "admin_sync_discard_confirm"
 msgstr "Discard {count} changes that have waited over 30 days for a card or file? They were never applied on this computer, so nothing here changes."
+
+#. sync use a hub button
+msgid "admin_sync_hub"
+msgstr "Use a hub…"
+
+#. sync hub pairing code prompt
+msgid "admin_sync_hub_prompt"
+msgstr "Paste the pairing code printed by scripts/sync_hub.py on the machine that runs the hub."
+
+#. how a hub is shown in the sync dialog
+msgid "admin_sync_hub_label"
+msgstr "Hub (paired as {device})"
