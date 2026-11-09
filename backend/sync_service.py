@@ -11,7 +11,9 @@ still the current one and stops otherwise. ``query`` has the shape of Anki's
 
 from __future__ import annotations
 
+import hashlib
 import json
+import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -29,6 +31,7 @@ try:
     from .sync_documents import DocumentFamily
     from .sync_exchange import EXCHANGE_DIR, announce, publish, receive, release_waiting, sample_card_refs
     from .sync_snapshot import catch_up, history_complete, retire_packs, sweep_blobs, write_snapshot_if_due
+    from .sync_http import HttpStore, Pairing
     from .sync_store import LocalStore, Store, StoreError, as_store
     from .sync_records import FAMILIES, Family
 except ImportError:
@@ -47,6 +50,7 @@ except ImportError:
     from sync_snapshot import (  # type: ignore[no-redef]
         catch_up, history_complete, retire_packs, sweep_blobs, write_snapshot_if_due,
     )
+    from sync_http import HttpStore, Pairing  # type: ignore[no-redef]
     from sync_store import LocalStore, Store, StoreError, as_store  # type: ignore[no-redef]
     from sync_records import FAMILIES, Family  # type: ignore[no-redef]
 
@@ -65,6 +69,10 @@ _WAITING = ("pending_anki", "pending_blob", "pending_parent")
 
 class SyncSetupError(RuntimeError):
     """The chosen folder cannot be used; the message says why."""
+
+
+class SyncLocationError(SyncSetupError):
+    """The folder or hub could not be read at all (unreachable, or it refused this device)."""
 
 
 @dataclass(frozen=True)
@@ -144,10 +152,7 @@ def libraries_in(root: Path | str | Store) -> list[str]:
     """Library ids found in an exchange folder (each with a matching library.json)."""
     store = as_store(root)
     found: list[str] = []
-    try:
-        entries = sorted(store.listdir("/".join(EXCHANGE_DIR)), key=lambda entry: entry.name)
-    except StoreError:
-        return found
+    entries = sorted(store.listdir("/".join(EXCHANGE_DIR)), key=lambda entry: entry.name)  # StoreError: not empty, unreadable
     for entry in entries:
         if entry.is_symlink or not entry.is_dir:
             continue
@@ -192,7 +197,10 @@ def configure(addon_dir: str, profile: str, folder: str, *, query: Query | None 
             raise SyncSetupError(f"The folder {folder} does not exist.")
         store = LocalStore(path)
     conn = get_connection(addon_dir, profile)
-    libraries = libraries_in(store)
+    try:
+        libraries = libraries_in(store)
+    except (StoreError, OSError) as error:  # unreachable is not empty: no library is invented for it
+        raise SyncLocationError(f"The sync location cannot be read: {error}") from error
     identity = sync_identity(conn)
     created = False
     if identity is not None:
@@ -325,6 +333,59 @@ def _maintain(conn: Any, folder: Store, usn: int, scm: int, now: Callable[[], fl
         _set_meta(conn, "swept_at", str(timestamp))
 
 
+HUB_FILE = "hub.json"
+
+
+def hub_label(pairing: Pairing) -> str:
+    """How a hub is named in the profile: its device and a hash of the key, never the key."""
+    return f"hub:{pairing.identity}:{hashlib.sha256(pairing.key).hexdigest()[:8]}"
+
+
+def _hub_path(addon_dir: str, profile: str) -> Path:
+    return sync_paths.get_sync_dir(addon_dir, profile) / HUB_FILE
+
+
+def store_for(addon_dir: str, profile: str, label: str) -> Store:
+    """The store a profile was configured with: a hub paired earlier, or a folder."""
+    if not label.startswith("hub:"):
+        return LocalStore(Path(label))
+    try:
+        pairing = Pairing.from_code(json.loads(_hub_path(addon_dir, profile).read_text(encoding="utf-8"))["code"])
+        if hub_label(pairing) != label:
+            raise ValueError("another hub")
+    except (OSError, ValueError, KeyError, TypeError):
+        raise SyncSetupError("This profile syncs through a hub, but its pairing is missing. "
+                             "Pair with the hub again.") from None
+    return HttpStore.from_pairing(pairing)
+
+
+def configure_hub(addon_dir: str, profile: str, code: str, *, query: Query | None = None) -> SetupResult:
+    """Sync this profile through the hub a pairing code names (printed by scripts/sync_hub.py)."""
+    try:
+        pairing = Pairing.from_code(code)
+    except ValueError as error:
+        raise SyncSetupError(str(error)) from None
+    store = HttpStore.from_pairing(pairing)
+    try:
+        result = configure(addon_dir, profile, hub_label(pairing), query=query, store=store)
+    except SyncLocationError as error:
+        raise SyncSetupError(f"The hub cannot be used: {error.__cause__}") from error
+    except (StoreError, OSError) as error:
+        raise SyncSetupError(f"The hub cannot be used: {error}") from error
+    finally:
+        store.close()
+    path = _hub_path(addon_dir, profile)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle, name = tempfile.mkstemp(dir=path.parent, prefix=".hub-", suffix=".tmp")  # private to the owner
+    try:
+        with open(handle, "w", encoding="utf-8") as out:
+            json.dump({"code": code.strip()}, out)
+        Path(name).replace(path)
+    finally:
+        Path(name).unlink(missing_ok=True)
+    return result
+
+
 def sweep_blobs_now(folder: Path | Store, library_id: str, *, now: float) -> int:
     return sweep_blobs(folder, library_id, now=now, grace_seconds=BLOB_GRACE_SECONDS)
 
@@ -352,7 +413,13 @@ def sync_now(addon_dir: str, profile: str, query: Query, *, is_current: Callable
         return SyncReport(skipped="already running")
     try:
         ensure_device_binding(addon_dir, profile)
-        return _run(addon_dir, profile, store or LocalStore(Path(folder)), query, is_current, now, publish_only=publish_only)
+        owned = store is None
+        target = store if store is not None else store_for(addon_dir, profile, folder)
+        try:
+            return _run(addon_dir, profile, target, query, is_current, now, publish_only=publish_only)
+        finally:
+            if owned and hasattr(target, "close"):
+                target.close()
     finally:
         lock.release()
 
