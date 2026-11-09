@@ -26,6 +26,7 @@ Snapshots and everyday records use the same explicit allowlist. A setup snapshot
 | Reader bookmark | One bookmark ID, including its label, comment and location. Independent additions survive. Preserve IDs and existing normalization rules. |
 | Reading position | One position per device and document version. Preserve each device's position and offer continuation from the other device. Never infer progress by taking the maximum page number or jump an active reader automatically. |
 | Managed PDF or EPUB state | One coherent document record containing document identity, managed file hash, associated annotation state and required portable metadata. Bookmarks and reading positions remain separate records. |
+| Managed local file | One record per local file card whose file is a managed copy: note identity, profile-relative path and file hash. The note itself travels through Anki; sync carries the file and places it where the note says. A card that only references a path on one computer is not shared, since the path means nothing elsewhere. A missing file is unavailable, never a deletion, and a tombstone never deletes the file. |
 
 For this release, record-level synchronization does not mean merging individual annotations inside one document. Concurrent annotation edits to the same document preserve two document revisions. Different documents, bookmarks and priorities continue synchronizing independently.
 
