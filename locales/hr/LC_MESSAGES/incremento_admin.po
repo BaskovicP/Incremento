@@ -832,3 +832,143 @@ msgstr "Faza pripreme"
 
 msgid "admin_startup_elapsed"
 msgstr "Proteklo: {seconds} s"
+
+#. sync title
+msgid "admin_sync_title"
+msgstr "Sinkronizacija podataka Incrementa — {profile}"
+
+#. sync explanation
+msgid "admin_sync_explanation"
+msgstr "Odaberite mapu koju Dropbox, Google Drive, OneDrive, iCloud Drive ili slična usluga usklađuje na svakom računalu. Incremento kroz nju usklađuje prioritete, oznake, mjesta čitanja, isticanja i dokumente. Ankijeve kartice i raspored i dalje se sinkroniziraju putem AnkiWeba."
+
+#. sync local only
+msgid "admin_sync_local_only"
+msgstr "Raspored tema, stablo znanja, pisanje, predlošci i statistika zasad ostaju na svakom računalu."
+
+#. sync folder
+msgid "admin_sync_folder"
+msgstr "Mapa za sinkronizaciju"
+
+#. sync not set up
+msgid "admin_sync_not_set_up"
+msgstr "Nije postavljeno"
+
+#. sync choose
+msgid "admin_sync_choose"
+msgstr "Odaberi…"
+
+#. sync choose folder
+msgid "admin_sync_choose_folder"
+msgstr "Odaberite mapu za sinkronizaciju"
+
+#. sync never synced
+msgid "admin_sync_never_synced"
+msgstr "Još nije sinkronizirano."
+
+#. sync last synced
+msgid "admin_sync_last_synced"
+msgstr "Zadnja sinkronizacija: {time}."
+
+#. sync waiting for anki
+msgid "admin_sync_waiting_for_anki"
+msgstr "Čeka kartice s AnkiWeba: {count}"
+
+#. sync waiting for files
+msgid "admin_sync_waiting_for_files"
+msgstr "Čeka datoteke iz mape: {count}"
+
+#. sync conflicts heading
+msgid "admin_sync_conflicts_heading"
+msgstr "Oba računala promijenila su ovo; odaberite koju verziju zadržati:"
+
+#. sync no conflicts
+msgid "admin_sync_no_conflicts"
+msgstr "Nema sukoba."
+
+#. sync conflict row
+msgid "admin_sync_conflict_row"
+msgstr "{what}: ovo računalo {mine} · drugo računalo {theirs}"
+
+#. sync family priority
+msgid "admin_sync_family_priority"
+msgstr "Prioritet kartice {card}"
+
+#. sync family reader bookmark
+msgid "admin_sync_family_reader_bookmark"
+msgstr "Oznaka na kartici {card}"
+
+#. sync family reading position
+msgid "admin_sync_family_reading_position"
+msgstr "Mjesto čitanja na kartici {card}"
+
+#. sync family pdf highlight
+msgid "admin_sync_family_pdf_highlight"
+msgstr "PDF isticanje na kartici {card}"
+
+#. sync family epub highlight
+msgid "admin_sync_family_epub_highlight"
+msgstr "EPUB isticanje na kartici {card}"
+
+#. sync family document
+msgid "admin_sync_family_document"
+msgstr "Dokument kartice {card}"
+
+#. sync deleted
+msgid "admin_sync_deleted"
+msgstr "obrisano"
+
+#. sync keep mine
+msgid "admin_sync_keep_mine"
+msgstr "Zadrži verziju s ovog računala"
+
+#. sync use theirs
+msgid "admin_sync_use_theirs"
+msgstr "Uzmi verziju s drugog računala"
+
+#. sync now
+msgid "admin_sync_now"
+msgstr "Sinkroniziraj sada"
+
+#. sync running
+msgid "admin_sync_running"
+msgstr "Sinkronizacija…"
+
+#. sync stop
+msgid "admin_sync_stop"
+msgstr "Prekini sinkronizaciju"
+
+#. sync stop confirm
+msgid "admin_sync_stop_confirm"
+msgstr "Prekinuti sinkronizaciju ovog profila? Ništa se ne briše, a ako kasnije ponovno odaberete mapu, nastavlja se gdje je stalo."
+
+#. sync setup failed
+msgid "admin_sync_setup_failed"
+msgstr "Ova se mapa ne može koristiti: {error}"
+
+#. sync problems
+msgid "admin_sync_problems"
+msgstr "Datoteke u mapi za sinkronizaciju koje nisu prihvaćene: {count}"
+
+#. sync stale
+msgid "admin_sync_stale"
+msgstr "Promjene koje čekaju dulje od 30 dana: {count}"
+
+#. sync discard
+msgid "admin_sync_discard"
+msgstr "Odbaci ih"
+
+#. sync discard confirm
+msgid "admin_sync_discard_confirm"
+msgstr "Odbaciti {count} promjena koje već više od 30 dana čekaju karticu ili datoteku? Na ovom računalu nikad nisu primijenjene, pa se ovdje ništa ne mijenja."
+
+#. sync use a hub button
+msgid "admin_sync_hub"
+msgstr "Koristi središte…"
+
+#. sync hub pairing code prompt
+msgid "admin_sync_hub_prompt"
+msgstr "Zalijepite kod za uparivanje koji ispisuje scripts/sync_hub.py na računalu na kojem radi središte."
+
+#. how a hub is shown in the sync dialog
+msgid "admin_sync_hub_label"
+msgstr "Središte (upareno kao {device})"

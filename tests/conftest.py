@@ -43,3 +43,21 @@ for subdir in ("frontend", "backend"):
 
 import paths as _paths
 _paths.set_active_profile("TestProfile")
+
+
+import ssl  # noqa: E402
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _real_ssl_context():
+    """Some developer environments (pip-system-certs) replace ssl.SSLContext with a wrapper that drops TLS
+    pre-shared-key callbacks, which the sync hub relies on. Anki's and the phone's Python are not patched."""
+    if ssl.SSLContext.__module__ != "ssl":
+        try:
+            from pip._vendor import truststore
+
+            truststore.extract_from_ssl()
+        except Exception:
+            pass
