@@ -38,6 +38,13 @@ files = [
     "backend/network_safety.py",
     "backend/scheduler_config.py",
     "backend/search_indexer.py",
+    "backend/sync_anki.py",
+    "backend/sync_apply.py",
+    "backend/sync_blobs.py",
+    "backend/sync_capture.py",
+    "backend/sync_documents.py",
+    "backend/sync_exchange.py",
+    "backend/sync_records.py",
     "frontend/quick_tag_shortcuts.py",
     "frontend/tag_colors.py",
 ]
