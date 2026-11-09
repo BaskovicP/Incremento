@@ -8,13 +8,24 @@ import sync_store
 from sync_store import LocalStore, MemoryStore, StoreError
 
 
-@pytest.fixture(params=["local", "memory"])
+@pytest.fixture(params=["local", "memory", "hub"])
 def store(request, tmp_path):
     if request.param == "local":
         root = tmp_path / "Cloud"
         root.mkdir()
-        return LocalStore(root)
-    return MemoryStore()
+        yield LocalStore(root)
+    elif request.param == "memory":
+        yield MemoryStore()
+    else:  # the same contract, over the network
+        from sync_http import HttpStore, Hub
+
+        root = tmp_path / "Hub"
+        root.mkdir()
+        key = bytes(range(32))
+        hub = Hub(root, {"device": key}, host="127.0.0.1", port=0)
+        hub.start()
+        yield HttpStore("127.0.0.1", hub.port, "device", key)
+        hub.stop()
 
 
 def test_a_written_file_reads_back_and_its_parent_folders_appear(store):
