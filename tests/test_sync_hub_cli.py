@@ -111,6 +111,9 @@ def test_the_command_pairs_a_device_and_the_code_opens_a_running_hub(tmp_path):
                 time.sleep(0.2)
         assert store.read("proof", 100) == b"it works"
         assert (folder / "proof").read_bytes() == b"it works"
+        mine = "IncrementoSync/v1/" + "1" * 32 + "/devices/" + "d" * 32 + "/device.json"
+        store.write(mine, b"{}")
+        assert json.loads((tmp_path / "keys-owners.json").read_text(encoding="utf-8"))["owners"] == {"d" * 32: "phone"}
     finally:
         server.terminate()
         server.communicate(timeout=10)

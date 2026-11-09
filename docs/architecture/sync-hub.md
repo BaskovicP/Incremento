@@ -33,6 +33,10 @@ empty hub makes it publish everything it has, with the documents.
   and the hub knows the device is paired. There is no certificate to create, trust or renew. It needs Python 3.13's
   `ssl`, which Anki 25 and Ankrimento have; an older Python says so.
 - **One key per device**: 256 random bits each. A lost device is revoked by deleting its key.
+- **Each device changes only its own folder**: the first device to write below `devices/<id>/` owns it, and another
+  paired device cannot write or delete there (everyone can read everything, and blobs and `library.json` are shared).
+  A device that is revoked and paired again should keep its name, or it cannot write to the folder it owned. The owners
+  are kept in a file beside the keys file; if it is lost, the next writers claim the folders again.
 - **The hub's own checks**: it refuses unsafe paths (`..`, absolute, backslash, empty parts), uploads over 512 MB or
   without a length, and uploads that stop part-way (nothing is written). It never shows or follows a symbolic link.
   A client that stalls or sends garbage cannot hold up the others.
@@ -56,9 +60,9 @@ check. It contains the key, so treat it like a password.
 
 ## Not covered
 
-- **A paired device can write anywhere in the folder**, as in a cloud folder. A device cannot make another accept bad
-  data, but it can delete or overwrite another device's packs. Per-device write confinement would close this.
+- **A paired device is still trusted not to fill the disk or delete shared blobs** (a blob nobody names is cleared
+  by any device's cleanup, by design). Revoke a device that misbehaves.
 - **No discovery**: the pairing code names the hub's address. A hub whose address changes needs a new code.
-- **No limit on simultaneous connections** beyond the operating system's.
+- **At most 64 simultaneous connections** (`max_connections`); more are turned away and retry on the next sync.
 - The key is stored in the profile's `sync/hub.json` (desktop) or the app's private preferences (Ankrimento), not in
   an OS keystore. Exports and support bundles skip the `sync` folder.

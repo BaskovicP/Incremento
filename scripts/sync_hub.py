@@ -8,7 +8,8 @@ while you study.
     python scripts/sync_hub.py --keys hub-keys.json serve ~/IncrementoHub
 
 ``pair`` prints a pairing code for the device (copy it into the device's sync settings). Devices can be paired
-while the hub runs. ``devices`` lists the paired devices and ``revoke`` removes one, which takes effect at once. Keep
+while the hub runs. Each device can change only its own device folder; who owns which is kept in a file beside
+the keys file. ``devices`` lists the paired devices and ``revoke`` removes one, which takes effect at once. Keep
 the keys file out of the served folder and out of any cloud folder: whoever has a key can read and change the data.
 """
 
@@ -66,7 +67,9 @@ def main(argv: list[str] | None = None) -> int:
     options.folder.mkdir(parents=True, exist_ok=True)
     try:
         sync_http.require_psk()
-        hub = sync_http.Hub(options.folder, book.as_mapping(), host=options.host, port=options.port)
+        owners = options.keys.with_name(options.keys.stem + "-owners.json")  # who owns which device folder
+        hub = sync_http.Hub(options.folder, book.as_mapping(), host=options.host, port=options.port,
+                            state_path=owners)
         hub.start()
     except (sync_http.StoreError, OSError) as error:
         print(error, file=sys.stderr)

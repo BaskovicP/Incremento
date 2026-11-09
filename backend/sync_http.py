@@ -56,6 +56,10 @@ MAX_LISTING_BYTES = 16 * 1024 * 1024
 HANDSHAKE_SECONDS = 10.0
 IDLE_SECONDS = 60.0
 _IDENTITY = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+# Below a device folder only the device that first wrote there may write or delete.
+_DEVICE_FOLDER = re.compile(r"^[^/]+/v[0-9]+/[^/]+/devices/([^/]+)/")
+DEFAULT_MAX_CONNECTIONS = 64
+_handshake_identity = threading.local()
 _CHUNK = 256 * 1024
 
 
@@ -217,6 +221,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         except (ssl.SSLError, OSError) as error:
             raise _HandshakeFailed from error
         sock.settimeout(IDLE_SECONDS)
+        # The key lookup ran in this thread during the handshake and noted who is connecting.
+        self.identity: str | None = getattr(_handshake_identity, "value", None)
+        _handshake_identity.value = None
         super().setup()
 
     # -- helpers --
@@ -243,6 +250,12 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self._refuse(400, "unsafe path")
             return None
         return parts.path, rel
+
+    def _may_change(self, rel: str) -> bool:
+        if self.server.may_write(self.identity, rel):
+            return True
+        self._refuse(403, "this device may not change another device's folder")
+        return False
 
     @staticmethod
     def _entry(entry: Entry) -> dict[str, Any]:
@@ -303,6 +316,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         if route != "/v1/file" or not rel:
             self._refuse(400 if route == "/v1/file" else 404, "a file path is required")
             return
+        if not self._may_change(rel):
+            return
         length = self.headers.get("Content-Length")
         if length is None:
             self._refuse(411, "Content-Length required")
@@ -346,6 +361,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         if route != "/v1/file" or not rel:
             self._refuse(400 if route == "/v1/file" else 404, "a file path is required")
             return
+        if not self._may_change(rel):
+            return
         try:
             self.server.store.delete(rel)
         except StoreError as error:
@@ -362,14 +379,65 @@ class _Server(http.server.ThreadingHTTPServer):
     allow_reuse_address = True
     request_queue_size = 32
 
-    def __init__(self, address: tuple[str, int], store: Store, context: ssl.SSLContext):
+    def __init__(self, address: tuple[str, int], store: Store, context: ssl.SSLContext, *,
+                 state_path: Path | None = None, max_connections: int = DEFAULT_MAX_CONNECTIONS):
         self.store = store
         self.context = context
+        self._state_path = state_path
+        self._owners_lock = threading.Lock()
+        self._owners: dict[str, str] = self._load_owners()
+        self._slots = threading.BoundedSemaphore(max_connections)
         super().__init__(address, _Handler)
+
+    def _load_owners(self) -> dict[str, str]:
+        if self._state_path is None:
+            return {}
+        try:
+            data = json.loads(self._state_path.read_text(encoding="utf-8"))
+            return {str(device): str(identity) for device, identity in data["owners"].items()}
+        except (OSError, ValueError, KeyError, AttributeError):
+            return {}
+
+    def may_write(self, identity: str | None, rel: str) -> bool:
+        """Device folders belong to the device that first wrote in them; everything else is shared."""
+        found = _DEVICE_FOLDER.match(rel)
+        if found is None:
+            return True
+        if identity is None:
+            return False
+        with self._owners_lock:
+            owner = self._owners.setdefault(found[1], identity)
+            if owner == identity and self._state_path is not None:
+                self._save_owners()
+            return owner == identity
+
+    def _save_owners(self) -> None:
+        assert self._state_path is not None
+        self._state_path.parent.mkdir(parents=True, exist_ok=True)
+        handle, name = tempfile.mkstemp(dir=self._state_path.parent, prefix=".owners-", suffix=".tmp")
+        try:
+            with open(handle, "w", encoding="utf-8") as out:
+                json.dump({"version": 1, "owners": self._owners}, out, indent=2)
+            Path(name).replace(self._state_path)
+        finally:
+            Path(name).unlink(missing_ok=True)
 
     def get_request(self) -> tuple[socket.socket, Any]:
         sock, address = super().get_request()
-        return self.context.wrap_socket(sock, server_side=True, do_handshake_on_connect=False), address
+        if not self._slots.acquire(blocking=False):  # too many devices at once: turn this one away
+            sock.close()
+            raise OSError("too many connections")
+        try:
+            return self.context.wrap_socket(sock, server_side=True, do_handshake_on_connect=False), address
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def shutdown_request(self, request: Any) -> None:
+        try:
+            super().shutdown_request(request)
+        finally:
+            self._slots.release()
 
     def handle_error(self, request: Any, client_address: Any) -> None:
         pass  # a failed handshake or a dropped connection is not the hub's problem
@@ -378,7 +446,8 @@ class _Server(http.server.ThreadingHTTPServer):
 class Hub:
     """Serve ``root`` to the paired devices in ``keys`` (identity to key)."""
 
-    def __init__(self, root: Path | str, keys: Mapping[str, bytes], *, host: str = "0.0.0.0", port: int = 0):
+    def __init__(self, root: Path | str, keys: Mapping[str, bytes], *, host: str = "0.0.0.0", port: int = 0,
+                 state_path: Path | str | None = None, max_connections: int = DEFAULT_MAX_CONNECTIONS):
         if isinstance(keys, dict):
             for identity, key in keys.items():
                 if not _IDENTITY.match(identity) or len(key) < 16:
@@ -387,6 +456,8 @@ class Hub:
         self._store = LocalStore(self.root)
         self._keys = keys  # not copied: a live view of the key book sees devices paired later
         self._host, self._port = host, port
+        self._state_path = None if state_path is None else Path(state_path)
+        self._max_connections = max_connections
         self._server: _Server | None = None
         self._thread: threading.Thread | None = None
 
@@ -404,6 +475,7 @@ class Hub:
         keys = self._keys
 
         def lookup(identity: str | None) -> bytes:
+            _handshake_identity.value = identity
             key = keys.get(identity or "", b"")
             return key if len(key) >= 16 else b""  # empty: unknown identity, the handshake fails
 
@@ -413,7 +485,8 @@ class Hub:
     def start(self) -> None:
         if self._server is not None:
             return
-        self._server = _Server((self._host, self._port), self._store, self._context())
+        self._server = _Server((self._host, self._port), self._store, self._context(),
+                               state_path=self._state_path, max_connections=self._max_connections)
         self._thread = threading.Thread(target=self._server.serve_forever, name="incremento-hub", daemon=True)
         self._thread.start()
 
