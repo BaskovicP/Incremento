@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 import paths
+import sync_paths
 import sync_apply
 import sync_capture
 import sync_documents
@@ -44,7 +45,7 @@ class Device:
         self.folder = folder
         self.families = {**sync_records.FAMILIES,
                          "document": sync_documents.DocumentFamily(str(self.addon), self.profile)}
-        self.store = paths.get_sync_blob_dir(str(self.addon), self.profile)
+        self.store = sync_paths.get_sync_blob_dir(str(self.addon), self.profile)
 
     @property
     def pdf_dir(self):

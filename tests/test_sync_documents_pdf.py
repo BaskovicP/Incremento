@@ -30,6 +30,7 @@ finally:
 
 import db  # noqa: E402
 import paths  # noqa: E402
+import sync_paths  # noqa: E402
 import pdf_annotations  # noqa: E402
 import sync_apply  # noqa: E402
 import sync_capture  # noqa: E402
@@ -74,7 +75,7 @@ class Device:
             return [annot.info.get("name") or annot.info.get("id") for page in document for annot in page.annots()]
 
     def sync(self):
-        store = paths.get_sync_blob_dir(self.addon, PROFILE)
+        store = sync_paths.get_sync_blob_dir(self.addon, PROFILE)
         sync_capture.capture(self.conn, self.families, _anki, now=lambda: 1)
         sync_exchange.publish(self.conn, self.folder, blob_store=store, now=lambda: 2)
         sync_exchange.receive(self.conn, self.folder, self.families, blob_store=store, now=lambda: 3)

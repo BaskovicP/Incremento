@@ -150,16 +150,6 @@ def get_pdf_annotation_backup_path(addon_dir: str, profile: str, card_id: int, *
     return get_pdf_annotation_dir(addon_dir, profile, card_id) / ('source-backup.pdf' if source else 'managed-backup.pdf')
 
 
-def get_sync_dir(addon_dir: str, profile: str) -> Path:
-    """Local state of shared-folder sync that is not in SQLite."""
-    return get_user_files_dir(addon_dir, profile) / "sync"
-
-
-def get_sync_blob_dir(addon_dir: str, profile: str) -> Path:
-    """Content-addressed copies of document versions captured or received by sync."""
-    return get_sync_dir(addon_dir, profile) / "blobs"
-
-
 def get_epub_dir(addon_dir: str, profile: str) -> Path:
     return get_user_files_dir(addon_dir, profile) / "epubs"
 

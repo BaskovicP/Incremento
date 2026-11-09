@@ -207,6 +207,7 @@ import shutil  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 import paths  # noqa: E402
+import sync_paths  # noqa: E402
 
 
 def _snapshot(addon, destination):
@@ -224,7 +225,7 @@ def _restore(addon, snapshot):
     for suffix in ("-wal", "-shm"):
         Path(str(database) + suffix).unlink(missing_ok=True)
     shutil.copyfile(snapshot, database)
-    shutil.rmtree(paths.get_sync_dir(addon, "P"), ignore_errors=True)
+    shutil.rmtree(sync_paths.get_sync_dir(addon, "P"), ignore_errors=True)
 
 
 def _device_id(addon):

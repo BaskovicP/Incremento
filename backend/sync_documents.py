@@ -31,11 +31,12 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from . import paths
+    from . import paths, sync_paths
     from .sync_blobs import blob_path, has_blob, materialize, store_file
     from .sync_records import card_key, split_card_key, value_hash
 except ImportError:
     import paths  # type: ignore[no-redef]
+    import sync_paths  # type: ignore[no-redef]
     from sync_blobs import blob_path, has_blob, materialize, store_file  # type: ignore[no-redef]
     from sync_records import card_key, split_card_key, value_hash  # type: ignore[no-redef]
 
@@ -62,7 +63,7 @@ class DocumentFamily:
     def __init__(self, addon_dir: str, profile: str):
         self.addon_dir = addon_dir
         self.profile = profile
-        self.blob_store = paths.get_sync_blob_dir(addon_dir, profile)
+        self.blob_store = sync_paths.get_sync_blob_dir(addon_dir, profile)
         self._hashes: dict[str, tuple[int, int, str]] = {}
 
     # --- keys, paths and versions -------------------------------------------------

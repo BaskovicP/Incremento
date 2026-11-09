@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from . import paths
+    from . import sync_paths
     from .db import get_connection as _host_connection
     from .sync_schema import ensure_schema
     from .sync_anki import Query, card_refs, collection_scm, collection_usn
@@ -32,7 +32,7 @@ try:
     from .sync_store import LocalStore, Store, StoreError, as_store
     from .sync_records import FAMILIES, Family
 except ImportError:
-    import paths  # type: ignore[no-redef]
+    import sync_paths  # type: ignore[no-redef]
     from db import get_connection as _host_connection  # type: ignore[no-redef]
     from sync_schema import ensure_schema  # type: ignore[no-redef]
     from sync_anki import Query, card_refs, collection_scm, collection_usn  # type: ignore[no-redef]
@@ -216,7 +216,7 @@ def configure(addon_dir: str, profile: str, folder: str, *, query: Query | None 
 
 def _binding_path(addon_dir: str, profile: str) -> Path:
     """Which device identity this installation owns. Lives beside the blob store, outside backups."""
-    return paths.get_sync_dir(addon_dir, profile) / "device-binding.json"
+    return sync_paths.get_sync_dir(addon_dir, profile) / "device-binding.json"
 
 
 def _bind(addon_dir: str, profile: str, device_id: str) -> None:
@@ -261,7 +261,7 @@ def _run(addon_dir: str, profile: str, folder: Store, query: Query, is_current: 
          now: Callable[[], float], *, publish_only: bool = False) -> SyncReport:
     conn = get_connection(addon_dir, profile)
     families = families_for(addon_dir, profile)
-    store = paths.get_sync_blob_dir(addon_dir, profile)
+    store = sync_paths.get_sync_blob_dir(addon_dir, profile)
     usn, scm = collection_usn(query), collection_scm(query)
     state = f"{scm}:{query('SELECT mod FROM col')[0][0]}"
 
