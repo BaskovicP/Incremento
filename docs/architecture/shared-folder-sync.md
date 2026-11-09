@@ -208,12 +208,25 @@ Rules:
    - **During an AnkiWeb sync:** applying is paused.
    - **After every AnkiWeb sync:** publish the usn and retry pending revisions.
    - **Profile close:** capture and publish, then Anki's closing sync.
-6. **For the later scheduling experiment.** Topic answers already store the answer revlog id. A schedule revision could name that revlog row *and* the card's resulting due date and interval:
-   - The receiver holds it until the row arrives.
-   - It applies only the revision whose resulting state matches the card that Anki actually kept. That isn't always the latest review, because a later flag change can make the earlier review's card win.
-   - If nothing matches, Incremento knows its state is behind Anki for that card.
+6. **For the later scheduling work: the revlog anchor.** A topic answer already stores its answer's revlog id. A revision of the topic state (A-factor and intervals) names that row as its *anchor*: `{revlog_id, ease, revlog_ivl}`. It uses none of the `customData` budget. I checked it against Anki 25.09, with single collections and with two collections synced through AnkiWeb (the single-collection facts will be pinned by a regression test, so a future Anki that changes them fails loudly):
 
-   This uses none of the `customData` budget. It still has to be checked against Undo/Redo, manual rescheduling and reviews from clients without Incremento.
+   | Situation | What Anki does | What the anchor rules do |
+   |---|---|---|
+   | Undo | removes the answer's revlog row and reverts the card; Redo restores the **same** row id | the state's anchor is gone, so the state is an *orphan*; upstream's reconcile-on-Undo already reverts it locally |
+   | Undo after an AnkiWeb sync | impossible: the undo stack is cleared by the sync | an anchored answer can only vanish *before* it syncs; a revision published in between waits on the receiver for a row that never comes |
+   | Manual reschedule (Set Due Date) | adds its own row with `ease 0`, `type 4`; changes the card's due date (and interval with `!`) | no effect: only `ease > 0` rows are answers, exactly as on a single device |
+   | A review from another client (AnkiDroid, plain Anki) | adds a later answer row | the local state is *stale* (Anki has a later answer), so the next topic answer must not trust it |
+   | Both devices answer offline | AnkiWeb keeps both rows and the card with the newer modification, which is the later answer | the revision anchored at the latest answer that has arrived wins, on both devices, deterministically |
+   | The topic's interval override | the revlog row keeps Anki's own interval; only the card holds the override | the card's interval cannot be used to verify the anchor; the anchor deliberately does not depend on it |
+
+   The receiving rules:
+   - **Applying.** A revision whose anchor row is absent waits (`pending_anki`). A row with that id but a different ease or interval is a mismatch (not the sender's answer) and is rejected.
+   - **Using.** Before a topic answer, the local state is *fresh* if its anchor is the card's latest answer, *stale* if Anki has a later answer, and an *orphan* if its own answer is gone. A stale state falls back to Anki's interval for that answer, as designed earlier, and the new answer's revision supersedes it.
+   - **Concurrent revisions** for one card resolve to the one anchored at the latest answer, without asking the user. The other stays in history.
+
+   Corrections to what I wrote earlier: the rule does not need the card's own interval or due date, and a flag change did not bump the card's modification time in my run, so a flag change does not make an earlier answer win. A manual reschedule does bump it (it is what Anki kept in my concurrent test), but it never changes which *answer* is current.
+
+   The rules are small pure functions with tests; they come with the topic-scheduling stage, which is not part of the reader-sync PRs. Not yet verified: wiring them into the engine's apply step, in particular that a revision made after an Undo supersedes the stuck one it descends from (by ancestry, as for any revision whose ancestor is still pending).
 
 ## 8. Exchange folder, setup, restore, retention
 
