@@ -18,6 +18,7 @@ Contract for every store:
 
 from __future__ import annotations
 
+import ntpath
 import os
 import shutil
 import tempfile
@@ -78,12 +79,34 @@ def as_store(root: object) -> Store:
 
 # --- A directory ---------------------------------------------------------------------------------
 
+_BACKSLASH = chr(92)
+_EXTENDED = _BACKSLASH * 2 + "?" + _BACKSLASH
+
+
+def extended_windows_path(path: str) -> str:
+    """A Windows path in its extended-length form, which is not limited to 260 characters.
+
+    The engine's file names are about 190 characters below the user's folder, and cloud folders are often deep, so
+    ordinary paths would fail on a Windows that has not enabled long paths (the default, and Anki's own Python).
+    """
+    if path.startswith(_EXTENDED):
+        return path
+    normalized = ntpath.normpath(path)
+    if normalized.startswith(_BACKSLASH * 2):  # a network share
+        return _EXTENDED + "UNC" + _BACKSLASH + normalized[2:]
+    if not ntpath.isabs(normalized):
+        normalized = ntpath.abspath(normalized)
+    return _EXTENDED + normalized
+
+
+
 class LocalStore:
     def __init__(self, root: Path | str):
         self.root = Path(root)
+        self._base = Path(extended_windows_path(str(self.root))) if os.name == "nt" else self.root
 
     def _path(self, rel: str) -> Path:
-        current = self.root
+        current = self._base
         for part in clean(rel):
             current = current / part
             if current.is_symlink():

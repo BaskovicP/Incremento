@@ -145,3 +145,48 @@ def test_as_store_accepts_a_folder_or_a_store(tmp_path):
     assert isinstance(sync_store.as_store(tmp_path), LocalStore)
     assert isinstance(sync_store.as_store(str(tmp_path)), LocalStore)
     assert sync_store.as_store(memory) is memory
+
+
+# --- Windows long paths ---------------------------------------------------------------------------------------------
+# The engine's file names are about 190 characters below the user's folder, and a cloud folder is often 70 or more:
+# past Windows' 260-character limit unless the path is written in its extended form.
+
+BS = chr(92)
+PREFIX = BS * 2 + "?" + BS
+
+
+def _win(*parts):
+    return BS.join(parts)
+
+
+@pytest.mark.parametrize("given, expected", [
+    (_win("C:", "Users", "me", "Cloud"), PREFIX + _win("C:", "Users", "me", "Cloud")),
+    ("C:/Users/me/Cloud", PREFIX + _win("C:", "Users", "me", "Cloud")),
+    (_win("C:", "Users", "other", "..", "me", "Cloud"), PREFIX + _win("C:", "Users", "me", "Cloud")),
+    (BS * 2 + _win("server", "share", "Cloud"), PREFIX + _win("UNC", "server", "share", "Cloud")),
+    (PREFIX + _win("C:", "Already", "Extended"), PREFIX + _win("C:", "Already", "Extended")),
+    (PREFIX + _win("UNC", "server", "share"), PREFIX + _win("UNC", "server", "share")),
+])
+def test_a_windows_path_is_written_in_its_extended_form(given, expected):
+    from sync_store import extended_windows_path
+
+    assert extended_windows_path(given) == expected
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows only")
+def test_a_local_store_on_windows_reaches_files_below_the_260_character_limit(tmp_path):
+    root = tmp_path / ("cloud" * 20)
+    root.mkdir()
+    store = LocalStore(root)
+    name = "c" * 12 + "-part0000-" + "d" * 64 + ".snap"
+    folder = "IncrementoSync/v1/" + "a" * 32 + "/devices/" + "b" * 32 + "/snapshots"
+    rel = folder + "/" + name
+
+    store.write(rel, b"data")
+
+    assert len(str(root)) + len(rel) > 260
+    assert store.read(rel, 100) == b"data"
+    assert [entry.name for entry in store.listdir(folder)] == [name]
+    assert str(store._path(rel)).startswith(PREFIX)
+    store.delete(rel)
+    assert store.read(rel, 100) is None
