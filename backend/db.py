@@ -917,6 +917,93 @@ def _migration_26_passages_and_coverage(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_27_sync_foundations(conn: sqlite3.Connection) -> None:
+    """Local state of shared-folder sync (docs/architecture/shared-folder-sync.md §4).
+
+    Revisions, baseline, outbox and inbox live beside the data they describe so
+    capture and apply commit together with it. Nothing here is exported as-is.
+    """
+    _begin_migration_script(conn, """
+        CREATE TABLE sync_meta (
+            key TEXT PRIMARY KEY CHECK(length(key) BETWEEN 1 AND 64),
+            value TEXT NOT NULL CHECK(length(value) <= 4096)
+        );
+        CREATE TABLE sync_revisions (
+            id TEXT PRIMARY KEY CHECK(length(id) = 64),
+            family TEXT NOT NULL CHECK(length(family) BETWEEN 1 AND 64),
+            key TEXT NOT NULL CHECK(length(key) BETWEEN 1 AND 512),
+            parents TEXT NOT NULL DEFAULT '[]',
+            device TEXT NOT NULL CHECK(length(device) BETWEEN 1 AND 64),
+            epoch INTEGER NOT NULL CHECK(epoch >= 1),
+            seq INTEGER NOT NULL CHECK(seq >= 0),
+            deleted INTEGER NOT NULL CHECK(deleted IN (0, 1)),
+            value TEXT,
+            deps TEXT NOT NULL DEFAULT '{}',
+            format INTEGER NOT NULL CHECK(format >= 1),
+            created_at INTEGER NOT NULL,
+            CHECK((deleted = 1) = (value IS NULL)),
+            -- Deterministic merges of equal values (device '~merge', seq 0) are
+            -- computed identically on every device and never published.
+            CHECK((device = '~merge') = (seq = 0))
+        );
+        CREATE UNIQUE INDEX sync_revisions_by_device_seq ON sync_revisions(device, epoch, seq)
+            WHERE device <> '~merge';
+        CREATE INDEX sync_revisions_by_record ON sync_revisions(family, key);
+        -- The unique index above is partial, so plain lookups by position cannot use it.
+        CREATE INDEX sync_revisions_by_position ON sync_revisions(device, epoch, seq);
+        CREATE TABLE sync_baseline (
+            family TEXT NOT NULL,
+            key TEXT NOT NULL,
+            revision_id TEXT NOT NULL REFERENCES sync_revisions(id),
+            value_hash TEXT NOT NULL,
+            PRIMARY KEY(family, key)
+        );
+        CREATE TABLE sync_outbox (
+            revision_id TEXT PRIMARY KEY REFERENCES sync_revisions(id),
+            enqueued_at INTEGER NOT NULL,
+            published_at INTEGER
+        );
+        CREATE TABLE sync_inbox (
+            revision_id TEXT PRIMARY KEY CHECK(length(revision_id) BETWEEN 1 AND 64),
+            status TEXT NOT NULL CHECK(status IN ('received', 'pending_parent', 'pending_blob', 'pending_anki', 'applied',
+                                                  'conflict', 'obsolete', 'rejected')),
+            reason TEXT NOT NULL DEFAULT '' CHECK(length(reason) <= 500),
+            received_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        -- Waiting revisions are found by status among everything ever received.
+        CREATE INDEX sync_inbox_by_status ON sync_inbox(status);
+        CREATE TABLE sync_receipts (
+            peer TEXT NOT NULL CHECK(length(peer) BETWEEN 1 AND 64),
+            epoch INTEGER NOT NULL CHECK(epoch >= 1),
+            max_seq INTEGER NOT NULL CHECK(max_seq >= 0),
+            PRIMARY KEY(peer, epoch)
+        );
+        CREATE TABLE sync_peers (
+            device TEXT PRIMARY KEY CHECK(length(device) BETWEEN 1 AND 64),
+            anki_usn INTEGER CHECK(anki_usn >= 0),
+            anki_scm INTEGER CHECK(anki_scm >= 0),
+            seen_at INTEGER NOT NULL
+        );
+        CREATE TABLE sync_seen_packs (
+            device TEXT NOT NULL CHECK(length(device) BETWEEN 1 AND 64),
+            name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 128),
+            outcome TEXT NOT NULL CHECK(outcome IN ('accepted', 'rejected')),
+            format INTEGER NOT NULL,
+            seen_at INTEGER NOT NULL,
+            PRIMARY KEY(device, name)
+        );
+        CREATE TABLE sync_conflicts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            family TEXT NOT NULL,
+            key TEXT NOT NULL,
+            heads TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            resolved_revision TEXT REFERENCES sync_revisions(id)
+        );
+    """)
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
@@ -943,6 +1030,7 @@ _SCHEMA_MIGRATIONS = (
     (24, "document_link_notes", _migration_24_document_link_notes),
     (25, "writing_links", _migration_25_writing_links),
     (26, "passages_and_coverage", _migration_26_passages_and_coverage),
+    (27, "sync_foundations", _migration_27_sync_foundations),
 )
 
 

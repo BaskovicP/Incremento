@@ -91,10 +91,12 @@ def test_invalid_coverage_cannot_write(tmp_path, change):
 
 def test_new_reader_schema_rolls_back_every_change_with_its_ledger():
     conn = sqlite3.connect(':memory:')
-    previous = db._SCHEMA_MIGRATIONS[:-1]
+    # Located by name: later migrations may follow it.
+    position = next(i for i, m in enumerate(db._SCHEMA_MIGRATIONS) if m[1] == 'passages_and_coverage')
+    previous = db._SCHEMA_MIGRATIONS[:position]
     initialize_schema(conn, bootstrap=db._create_tables, migrations=previous)
     version = conn.execute('PRAGMA user_version').fetchone()[0]
-    migration = db._SCHEMA_MIGRATIONS[-1]
+    migration = db._SCHEMA_MIGRATIONS[position]
     def interrupted(c):
         migration[2](c)
         raise RuntimeError('interrupted')
