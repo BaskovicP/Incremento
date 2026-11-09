@@ -28,6 +28,7 @@ try:
     from .sync_documents import DocumentFamily
     from .sync_exchange import EXCHANGE_DIR, announce, publish, receive, release_waiting, sample_card_refs
     from .sync_snapshot import catch_up, history_complete, retire_packs, sweep_blobs, write_snapshot_if_due
+    from .sync_store import LocalStore, Store, StoreError, as_store
     from .sync_records import FAMILIES, Family
 except ImportError:
     import paths  # type: ignore[no-redef]
@@ -44,6 +45,7 @@ except ImportError:
     from sync_snapshot import (  # type: ignore[no-redef]
         catch_up, history_complete, retire_packs, sweep_blobs, write_snapshot_if_due,
     )
+    from sync_store import LocalStore, Store, StoreError, as_store  # type: ignore[no-redef]
     from sync_records import FAMILIES, Family  # type: ignore[no-redef]
 
 
@@ -129,24 +131,31 @@ def _set_meta(conn: Any, key: str, value: str | None) -> None:
             conn.execute("INSERT OR REPLACE INTO sync_meta(key, value) VALUES (?, ?)", (key, value))
 
 
-def libraries_in(folder: Path) -> list[str]:
+def libraries_in(root: Path | str | Store) -> list[str]:
     """Library ids found in an exchange folder (each with a matching library.json)."""
-    root = Path(folder).joinpath(*EXCHANGE_DIR)
-    found = []
-    if root.is_dir():
-        for entry in sorted(root.iterdir()):
-            descriptor = entry / "library.json"
-            if entry.is_symlink() or not descriptor.is_file() or descriptor.stat().st_size > 4096:
-                continue
-            try:
-                if json.loads(descriptor.read_text("utf-8")).get("library_id") == entry.name:
-                    found.append(entry.name)
-            except (ValueError, OSError):
-                continue
+    store = as_store(root)
+    found: list[str] = []
+    try:
+        entries = sorted(store.listdir("/".join(EXCHANGE_DIR)), key=lambda entry: entry.name)
+    except StoreError:
+        return found
+    for entry in entries:
+        if entry.is_symlink or not entry.is_dir:
+            continue
+        rel = "/".join((*EXCHANGE_DIR, entry.name, "library.json"))
+        descriptor = store.stat(rel)
+        if descriptor is None or descriptor.is_dir or descriptor.size > 4096:
+            continue
+        try:
+            data = store.read(rel, 4096)
+            if data is not None and json.loads(data.decode("utf-8")).get("library_id") == entry.name:
+                found.append(entry.name)
+        except (ValueError, OSError):
+            continue
     return found
 
 
-def _check_same_collection(folder: Path, library_id: str, query: Query) -> None:
+def _check_same_collection(folder: Path | Store, library_id: str, query: Query) -> None:
     """Refuse to join a library whose cards belong to another Anki collection."""
     sample = sample_card_refs(folder, library_id)
     if not sample:
@@ -159,17 +168,22 @@ def _check_same_collection(folder: Path, library_id: str, query: Query) -> None:
                              "Sync with AnkiWeb first, then choose the folder again.")
 
 
-def configure(addon_dir: str, profile: str, folder: str, *, query: Query | None = None) -> SetupResult:
+def configure(addon_dir: str, profile: str, folder: str, *, query: Query | None = None,
+              store: Store | None = None) -> SetupResult:
     """Use ``folder`` for this profile: join the library in it, or start one.
 
     With ``query`` (the collection's ``col.db.all``), joining an existing
-    library first checks that its cards are this collection's.
+    library first checks that its cards are this collection's. ``folder`` is a
+    directory, or, when a ``store`` is given (Android's document provider, a
+    LAN hub), only the label under which that store is remembered.
     """
-    path = Path(folder)
-    if not path.is_dir():
-        raise SyncSetupError(f"The folder {folder} does not exist.")
+    if store is None:
+        path = Path(folder)
+        if not path.is_dir():
+            raise SyncSetupError(f"The folder {folder} does not exist.")
+        store = LocalStore(path)
     conn = get_connection(addon_dir, profile)
-    libraries = libraries_in(path)
+    libraries = libraries_in(store)
     identity = sync_identity(conn)
     created = False
     if identity is not None:
@@ -182,12 +196,12 @@ def configure(addon_dir: str, profile: str, folder: str, *, query: Query | None 
         raise SyncSetupError("This folder holds several Incremento libraries; choose a folder with one.")
     else:
         if libraries and query is not None:
-            _check_same_collection(path, libraries[0], query)
+            _check_same_collection(store, libraries[0], query)
         identity = enable_sync(conn, library_id=libraries[0] if libraries else None)
         created = not libraries
     _bind(addon_dir, profile, identity.device_id)
-    _set_meta(conn, "folder", str(path))
-    publish(conn, path)  # announces the library and this device
+    _set_meta(conn, "folder", str(folder))
+    publish(conn, store)  # announces the library and this device
     return SetupResult(identity.library_id, identity.device_id, created)
 
 
@@ -234,7 +248,7 @@ def _lock(addon_dir: str, profile: str) -> threading.Lock:
         return _locks.setdefault((addon_dir, profile), threading.Lock())
 
 
-def _run(addon_dir: str, profile: str, folder: Path, query: Query, is_current: Callable[[], bool],
+def _run(addon_dir: str, profile: str, folder: Store, query: Query, is_current: Callable[[], bool],
          now: Callable[[], float], *, publish_only: bool = False) -> SyncReport:
     conn = get_connection(addon_dir, profile)
     families = families_for(addon_dir, profile)
@@ -275,18 +289,18 @@ def _run(addon_dir: str, profile: str, folder: Path, query: Query, is_current: C
     return report
 
 
-def _catch_up(conn: Any, folder: Path, families: dict[str, Family], now: Callable[[], float]) -> None:
+def _catch_up(conn: Any, folder: Store, families: dict[str, Family], now: Callable[[], float]) -> None:
     catch_up(conn, folder, families, now=now())
 
 
-def _release_retired(report: SyncReport, conn: Any, folder: Path, store: Path, apply_again: Callable[[], Any],
+def _release_retired(report: SyncReport, conn: Any, folder: Store, store: Path, apply_again: Callable[[], Any],
                      now: Callable[[], float]) -> None:
     if history_complete(conn, folder) and release_waiting(conn, int(now()), blob_store=store,
                                                           parents_may_be_retired=True):
         _apply(report, apply_again())
 
 
-def _maintain(conn: Any, folder: Path, usn: int, scm: int, now: Callable[[], float]) -> None:
+def _maintain(conn: Any, folder: Store, usn: int, scm: int, now: Callable[[], float]) -> None:
     """Snapshot when due, retire covered packs, announce progress, and now and then sweep blobs."""
     identity = sync_identity(conn)
     assert identity is not None
@@ -301,7 +315,7 @@ def _maintain(conn: Any, folder: Path, usn: int, scm: int, now: Callable[[], flo
         _set_meta(conn, "swept_at", str(timestamp))
 
 
-def sweep_blobs_now(folder: Path, library_id: str, *, now: float) -> int:
+def sweep_blobs_now(folder: Path | Store, library_id: str, *, now: float) -> int:
     return sweep_blobs(folder, library_id, now=now, grace_seconds=BLOB_GRACE_SECONDS)
 
 
@@ -316,7 +330,8 @@ def _apply(report: SyncReport, result: Any) -> None:
 
 
 def sync_now(addon_dir: str, profile: str, query: Query, *, is_current: Callable[[], bool] = lambda: True,
-             now: Callable[[], float] = time.time, publish_only: bool = False) -> SyncReport:
+             now: Callable[[], float] = time.time, publish_only: bool = False,
+             store: Store | None = None) -> SyncReport:
     """Capture, publish, receive and apply. Safe to call from a background worker."""
     conn = get_connection(addon_dir, profile)
     folder = _meta(conn, "folder") if sync_identity(conn) is not None else None
@@ -327,15 +342,15 @@ def sync_now(addon_dir: str, profile: str, query: Query, *, is_current: Callable
         return SyncReport(skipped="already running")
     try:
         ensure_device_binding(addon_dir, profile)
-        return _run(addon_dir, profile, Path(folder), query, is_current, now, publish_only=publish_only)
+        return _run(addon_dir, profile, store or LocalStore(Path(folder)), query, is_current, now, publish_only=publish_only)
     finally:
         lock.release()
 
 
 def publish_now(addon_dir: str, profile: str, query: Query, *,
-                now: Callable[[], float] = time.time) -> SyncReport:
+                now: Callable[[], float] = time.time, store: Store | None = None) -> SyncReport:
     """Capture and publish only: quick, for a closing profile. Nothing received is applied."""
-    return sync_now(addon_dir, profile, query, now=now, publish_only=True)
+    return sync_now(addon_dir, profile, query, now=now, publish_only=True, store=store)
 
 
 def status(addon_dir: str, profile: str, *, now: float | None = None) -> SyncStatus:

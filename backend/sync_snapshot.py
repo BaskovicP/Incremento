@@ -21,16 +21,18 @@ from typing import Any
 try:
     from .sync_capture import sync_identity
     from .sync_exchange import (
-        MAX_PACK_BYTES, MAX_PACK_REVISIONS, PackError, _parse, _write_atomic, decode_snapshot_part, library_dir,
-        sha256_bytes, validate_revision,
+        MAX_PACK_BYTES, MAX_PACK_REVISIONS, PackError, _parse, decode_snapshot_part, library_rel, sha256_bytes,
+        validate_revision,
     )
     from .sync_records import SYNC_FORMAT, Family, canonical_json
+    from .sync_store import Store, StoreError, as_store
 except ImportError:
     from sync_capture import sync_identity  # type: ignore[no-redef]
     from sync_exchange import (  # type: ignore[no-redef]
-        MAX_PACK_BYTES, MAX_PACK_REVISIONS, PackError, _parse, _write_atomic, decode_snapshot_part, library_dir,
-        sha256_bytes, validate_revision,
+        MAX_PACK_BYTES, MAX_PACK_REVISIONS, PackError, _parse, decode_snapshot_part, library_rel, sha256_bytes,
+        validate_revision,
     )
+    from sync_store import Store, StoreError, as_store  # type: ignore[no-redef]
     from sync_records import SYNC_FORMAT, Family, canonical_json  # type: ignore[no-redef]
 
 MERGE_DEVICE = "~merge"
@@ -89,7 +91,7 @@ def _progress(conn: sqlite3.Connection) -> int:
 
 # --- Writing ---------------------------------------------------------------------
 
-def write_snapshot_if_due(conn: sqlite3.Connection, root: Path, *, every: int, max_age: float,
+def write_snapshot_if_due(conn: sqlite3.Connection, root: Path | Store, *, every: int, max_age: float,
                           now: float) -> str | None:
     """Write a snapshot when enough has happened since the last one (or it is old). Returns its id."""
     progress = _progress(conn)
@@ -101,7 +103,8 @@ def write_snapshot_if_due(conn: sqlite3.Connection, root: Path, *, every: int, m
     return write_snapshot(conn, root, now=now)
 
 
-def write_snapshot(conn: sqlite3.Connection, root: Path, *, now: float) -> str:
+def write_snapshot(conn: sqlite3.Connection, root: Path | Store, *, now: float) -> str:
+    store = as_store(root)
     identity = sync_identity(conn)
     if identity is None:
         raise RuntimeError("sync is not enabled for this profile")
@@ -119,7 +122,7 @@ def write_snapshot(conn: sqlite3.Connection, root: Path, *, now: float) -> str:
                           "value": None if row[8] is None else json.loads(row[8]), "deps": json.loads(row[9])})
     receipts = _receipts(conn)
     snapshot_id = f"{int(_meta(conn, 'snapshot_seq')) + 1:012d}"
-    folder = library_dir(root, identity.library_id) / "devices" / identity.device_id / "snapshots"
+    folder = f"{library_rel(identity.library_id)}/devices/{identity.device_id}/snapshots"
     parts = []
     for index, start in enumerate(range(0, len(revisions), MAX_PACK_REVISIONS) or [0]):
         chunk = revisions[start:start + MAX_PACK_REVISIONS]
@@ -129,17 +132,17 @@ def write_snapshot(conn: sqlite3.Connection, root: Path, *, now: float) -> str:
             "snapshot": snapshot_id, "revisions": chunk}).encode("utf-8"), mtime=0)
         digest = sha256_bytes(data)
         name = f"{snapshot_id}-part{index:04d}-{digest}.snap"
-        _write_atomic(folder / name, data)
+        store.write(f"{folder}/{name}", data)
         parts.append({"name": name, "sha256": digest})
     manifest = {"format": SYNC_FORMAT, "library": identity.library_id, "device": identity.device_id,
                 "snapshot": snapshot_id, "created_at": int(now), "parts": parts,
                 "receipts": {device: {str(epoch): seq for epoch, seq in epochs.items()}
                              for device, epochs in receipts.items()}}
-    _write_atomic(folder / f"{snapshot_id}-manifest.json", canonical_json(manifest).encode("utf-8"))
+    store.write(f"{folder}/{snapshot_id}-manifest.json", canonical_json(manifest).encode("utf-8"))
     keep = {f"{snapshot_id}-manifest.json", *(part["name"] for part in parts)}
-    stale = [path for path in folder.iterdir() if path.name not in keep]
-    for path in sorted(stale, key=lambda p: not p.name.endswith("-manifest.json")):  # manifests first
-        path.unlink(missing_ok=True)
+    stale = [entry.name for entry in store.listdir(folder) if entry.name not in keep and not entry.is_dir]
+    for name in sorted(stale, key=lambda n: not n.endswith("-manifest.json")):  # manifests first
+        store.delete(f"{folder}/{name}")
     _set_meta(conn, "snapshot_seq", str(int(snapshot_id)))
     _set_meta(conn, "snapshot_progress", str(sum(seq for epochs in receipts.values() for seq in epochs.values())))
     _set_meta(conn, "snapshot_at", str(now))
@@ -148,29 +151,41 @@ def write_snapshot(conn: sqlite3.Connection, root: Path, *, now: float) -> str:
 
 # --- Reading ---------------------------------------------------------------------
 
-def _device_dirs(root: Path, library_id: str) -> list[Path]:
-    devices = library_dir(root, library_id) / "devices"
-    if not devices.is_dir():
-        return []
-    return [path for path in sorted(devices.iterdir(), key=lambda p: p.name)
-            if not path.is_symlink() and path.is_dir() and _IDENTIFIER.match(path.name)
-            and (path / "device.json").is_file()]
-
-
-def _latest_manifest(device_dir: Path) -> tuple[Path, dict[str, Any]] | None:
-    folder = device_dir / "snapshots"
-    if folder.is_symlink() or not folder.is_dir():
+def _read(store: Store, rel: str, limit: int) -> bytes | None:
+    try:
+        return store.read(rel, limit)
+    except StoreError:
         return None
-    names = sorted((path for path in folder.iterdir() if _MANIFEST_NAME.match(path.name)), key=lambda p: p.name)
-    for path in reversed(names):
-        if path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_MANIFEST_BYTES:
+
+
+def _device_dirs(store: Store, library_id: str) -> list[str]:
+    """Names of the library's device folders that have announced themselves (a device.json)."""
+    devices = f"{library_rel(library_id)}/devices"
+    names = []
+    for entry in sorted(store.listdir(devices), key=lambda e: e.name):
+        if entry.is_symlink or not entry.is_dir or not _IDENTIFIER.match(entry.name):
+            continue
+        announced = store.stat(f"{devices}/{entry.name}/device.json")
+        if announced is not None and not announced.is_dir:
+            names.append(entry.name)
+    return names
+
+
+def _latest_manifest(store: Store, library_id: str, device: str) -> tuple[str, dict[str, Any]] | None:
+    folder = f"{library_rel(library_id)}/devices/{device}/snapshots"
+    names = sorted((entry for entry in store.listdir(folder)
+                    if _MANIFEST_NAME.match(entry.name) and not entry.is_symlink and not entry.is_dir
+                    and entry.size <= MAX_MANIFEST_BYTES), key=lambda entry: entry.name)
+    for entry in reversed(names):
+        data = _read(store, f"{folder}/{entry.name}", MAX_MANIFEST_BYTES)
+        if data is None:
             continue
         try:
-            manifest = _parse(path.read_bytes())
+            manifest = _parse(data)
         except PackError:
             continue
-        if manifest.get("device") == device_dir.name and manifest.get("snapshot") == path.name[:12]:
-            return path, manifest
+        if manifest.get("device") == device and manifest.get("snapshot") == entry.name[:12]:
+            return entry.name, manifest
     return None
 
 
@@ -188,18 +203,20 @@ def manifest_receipts(manifest: dict[str, Any]) -> Receipts:
     return receipts
 
 
-def latest_snapshot_receipts(root: Path, library_id: str) -> dict[str, Receipts | None]:
+def latest_snapshot_receipts(root: Path | Store, library_id: str) -> dict[str, Receipts | None]:
     """For every device in the library: the receipts of its latest snapshot, or None without one."""
+    store = as_store(root)
     result: dict[str, Receipts | None] = {}
-    for device_dir in _device_dirs(root, library_id):
-        found = _latest_manifest(device_dir)
-        result[device_dir.name] = manifest_receipts(found[1]) if found else None
+    for device in _device_dirs(store, library_id):
+        found = _latest_manifest(store, library_id, device)
+        result[device] = manifest_receipts(found[1]) if found else None
     return result
 
 
-def load_snapshot(device_dir: Path, library_id: str, families: Mapping[str, Family]) -> Snapshot | None:
+def load_snapshot(root: Path | Store, library_id: str, device: str, families: Mapping[str, Family]) -> Snapshot | None:
     """A device's latest snapshot if it is complete and valid; None otherwise (perhaps still arriving)."""
-    found = _latest_manifest(device_dir)
+    store = as_store(root)
+    found = _latest_manifest(store, library_id, device)
     if found is None:
         return None
     _, manifest = found
@@ -208,51 +225,54 @@ def load_snapshot(device_dir: Path, library_id: str, families: Mapping[str, Fami
     parts = manifest.get("parts")
     if not isinstance(parts, list) or not 0 < len(parts) <= MAX_SNAPSHOT_PARTS:
         return None
+    folder = f"{library_rel(library_id)}/devices/{device}/snapshots"
     revisions: list[dict[str, Any]] = []
     for part in parts:
         if not isinstance(part, dict) or not isinstance(part.get("name"), str):
             return None
         match = _PART_NAME.match(part["name"])
-        path = device_dir / "snapshots" / part["name"]
-        if (not match or match[1] != manifest["snapshot"] or match[3] != part.get("sha256") or path.is_symlink()
-                or not path.is_file() or path.stat().st_size > MAX_PACK_BYTES):
+        if not match or match[1] != manifest["snapshot"] or match[3] != part.get("sha256"):
             return None
-        data = path.read_bytes()
-        if sha256_bytes(data) != match[3]:
+        data = _read(store, f"{folder}/{part['name']}", MAX_PACK_BYTES)
+        if data is None or sha256_bytes(data) != match[3]:
             return None
         try:
             payload = decode_snapshot_part(data)
             chunk = payload.get("revisions")
-            if payload.get("device") != device_dir.name or not isinstance(chunk, list):
+            if payload.get("device") != device or not isinstance(chunk, list):
                 return None
             for revision in chunk:
                 if not isinstance(revision, dict) or set(revision) != {
                         "id", "family", "key", "parents", "device", "epoch", "seq", "deleted", "value", "deps"}:
                     return None
-                device, epoch = revision["device"], revision["epoch"]
-                if device == MERGE_DEVICE:
+                rev_device, epoch = revision["device"], revision["epoch"]
+                if rev_device == MERGE_DEVICE:
                     if (epoch, revision["seq"]) != (1, 0):
                         return None
-                elif not (isinstance(device, str) and _IDENTIFIER.match(device) and isinstance(epoch, int)
+                elif not (isinstance(rev_device, str) and _IDENTIFIER.match(rev_device) and isinstance(epoch, int)
                           and not isinstance(epoch, bool) and epoch >= 1):
                     return None
                 body = {key: value for key, value in revision.items() if key not in ("device", "epoch")}
-                validate_revision(body, library_id=library_id, device=device, epoch=epoch, families=families)
+                validate_revision(body, library_id=library_id, device=rev_device, epoch=epoch, families=families)
                 revisions.append(revision)
         except PackError:
             return None
-    return Snapshot(device_dir.name, manifest["snapshot"], manifest_receipts(manifest), revisions)
+    return Snapshot(device, manifest["snapshot"], manifest_receipts(manifest), revisions)
 
 
 # --- Catching up and completeness ---------------------------------------------------
 
-def _peer_announcement(device_dir: Path) -> tuple[int, int] | None:
+def _peer_announcement(store: Store, library_id: str, device: str) -> tuple[int, int] | None:
     """(published through, retired through) announced in device.json."""
-    path = device_dir / "device.json"
-    if path.is_symlink() or not path.is_file() or path.stat().st_size > 4096:
+    rel = f"{library_rel(library_id)}/devices/{device}/device.json"
+    entry = store.stat(rel)
+    if entry is None or entry.is_dir or entry.size > 4096:
+        return None
+    data = _read(store, rel, 4096)
+    if data is None:
         return None
     try:
-        info = _parse(path.read_bytes())
+        info = _parse(data)
     except PackError:
         return None
     published, retired = info.get("published"), info.get("retired")
@@ -270,23 +290,24 @@ def _known_through(conn: sqlite3.Connection, device: str) -> int:
     return int(row[0] or 0)
 
 
-def catch_up(conn: sqlite3.Connection, root: Path, families: Mapping[str, Family], *, now: float) -> bool:
+def catch_up(conn: sqlite3.Connection, root: Path | Store, families: Mapping[str, Family], *, now: float) -> bool:
     """Load a covering snapshot when some peer has retired history this device lacks. Returns whether it did."""
+    store = as_store(root)
     identity = sync_identity(conn)
     if identity is None:
         return False
     missing: dict[str, int] = {}
-    for device_dir in _device_dirs(root, identity.library_id):
-        if device_dir.name == identity.device_id:
+    for device in _device_dirs(store, identity.library_id):
+        if device == identity.device_id:
             continue
-        announced = _peer_announcement(device_dir)
-        if announced and announced[1] > _known_through(conn, device_dir.name):
-            missing[device_dir.name] = announced[1]
+        announced = _peer_announcement(store, identity.library_id, device)
+        if announced and announced[1] > _known_through(conn, device):
+            missing[device] = announced[1]
     if not missing:
         return False
     candidates = []
-    for device_dir in _device_dirs(root, identity.library_id):
-        snapshot = load_snapshot(device_dir, identity.library_id, families)
+    for device in _device_dirs(store, identity.library_id):
+        snapshot = load_snapshot(store, identity.library_id, device, families)
         if snapshot and all(max(snapshot.receipts.get(device, {0: 0}).values()) >= through
                             for device, through in missing.items()):
             candidates.append(snapshot)
@@ -319,24 +340,25 @@ def catch_up(conn: sqlite3.Connection, root: Path, families: Mapping[str, Family
     return True
 
 
-def history_complete(conn: sqlite3.Connection, root: Path) -> bool:
+def history_complete(conn: sqlite3.Connection, root: Path | Store) -> bool:
     """Whether every peer's unretired revisions are all known here.
 
     Then a parent that is still unknown lived only in a retired pack and can
     no longer arrive.
     """
+    store = as_store(root)
     identity = sync_identity(conn)
     if identity is None:
         return False
-    for device_dir in _device_dirs(root, identity.library_id):
-        if device_dir.name == identity.device_id:
+    for device in _device_dirs(store, identity.library_id):
+        if device == identity.device_id:
             continue
-        announced = _peer_announcement(device_dir)
+        announced = _peer_announcement(store, identity.library_id, device)
         if announced is None:
             return False
         through, gone = announced
         known = conn.execute("SELECT count(DISTINCT seq) FROM sync_revisions WHERE device=? AND seq>? AND seq<=?",
-                             (device_dir.name, gone, through)).fetchone()[0]
+                             (device, gone, through)).fetchone()[0]
         if known != through - gone:
             return False
     return True
@@ -344,30 +366,29 @@ def history_complete(conn: sqlite3.Connection, root: Path) -> bool:
 
 # --- Retention ---------------------------------------------------------------------
 
-def retire_packs(conn: sqlite3.Connection, root: Path) -> int:
+def retire_packs(conn: sqlite3.Connection, root: Path | Store) -> int:
     """Delete this device's packs that every device's latest snapshot covers. Returns how many."""
+    store = as_store(root)
     identity = sync_identity(conn)
     if identity is None:
         return 0
     covered = []
-    for device, receipts in latest_snapshot_receipts(root, identity.library_id).items():
+    for device, receipts in latest_snapshot_receipts(store, identity.library_id).items():
         if receipts is None:
             return 0  # a device without a snapshot could still need everything
         covered.append(receipts.get(identity.device_id, {}).get(identity.epoch, 0))
     if not covered:
         return 0
     limit = min(covered)
-    packs_dir = library_dir(root, identity.library_id) / "devices" / identity.device_id / "packs"
-    if not packs_dir.is_dir():
-        return 0
-    packs = sorted((int(match[2]), path) for path in packs_dir.iterdir()
-                   if (match := _PACK_NAME.match(path.name)) and int(match[1]) == identity.epoch)
+    packs_rel = f"{library_rel(identity.library_id)}/devices/{identity.device_id}/packs"
+    packs = sorted((int(match[2]), entry.name) for entry in store.listdir(packs_rel)
+                   if (match := _PACK_NAME.match(entry.name)) and int(match[1]) == identity.epoch)
     last_published = published_through(conn, identity.device_id, identity.epoch)
     removed, retired = 0, retired_through(conn)
-    for index, (first_seq, path) in enumerate(packs):
+    for index, (first_seq, name) in enumerate(packs):
         last_seq = packs[index + 1][0] - 1 if index + 1 < len(packs) else last_published
         if last_seq <= limit:
-            path.unlink(missing_ok=True)
+            store.delete(f"{packs_rel}/{name}")
             removed += 1
             retired = max(retired, last_seq)
     if removed:
@@ -375,32 +396,42 @@ def retire_packs(conn: sqlite3.Connection, root: Path) -> int:
     return removed
 
 
-def sweep_blobs(root: Path, library_id: str, *, now: float, grace_seconds: float) -> int:
+def sweep_blobs(root: Path | Store, library_id: str, *, now: float, grace_seconds: float) -> int:
     """Delete exchange blobs no pack or snapshot names, once older than the grace period. Returns how many."""
-    library = library_dir(root, library_id)
+    store = as_store(root)
+    library = library_rel(library_id)
     referenced: set[str] = set()
-    devices = library / "devices"
-    sources = [*devices.glob("*/packs/*.pack"), *devices.glob("*/snapshots/*.snap")] if devices.is_dir() else []
-    for path in sources:
-        if path.is_symlink() or path.stat().st_size > MAX_PACK_BYTES:
-            return 0  # cannot tell what it names: delete nothing
-        data = path.read_bytes()
-        if path.suffix == ".snap":
-            try:
-                data = json.dumps(decode_snapshot_part(data)).encode("utf-8")
-            except PackError:
-                return 0  # unreadable (perhaps still arriving): delete nothing
-        names = _blob_names(data)
-        if names is None:
-            return 0  # unreadable (perhaps still arriving): delete nothing
-        referenced |= names
+    devices = f"{library}/devices"
+    for device in store.listdir(devices):
+        if device.is_symlink or not device.is_dir:
+            continue
+        for folder, suffix in (("packs", ".pack"), ("snapshots", ".snap")):
+            for entry in store.listdir(f"{devices}/{device.name}/{folder}"):
+                if not entry.name.endswith(suffix):
+                    continue
+                if entry.is_symlink or entry.is_dir or entry.size > MAX_PACK_BYTES:
+                    return 0  # cannot tell what it names: delete nothing
+                data = _read(store, f"{devices}/{device.name}/{folder}/{entry.name}", MAX_PACK_BYTES)
+                if data is None:
+                    return 0
+                if entry.name.endswith(".snap"):
+                    try:
+                        data = json.dumps(decode_snapshot_part(data)).encode("utf-8")
+                    except PackError:
+                        return 0  # unreadable (perhaps still arriving): delete nothing
+                names = _blob_names(data)
+                if names is None:
+                    return 0  # unreadable (perhaps still arriving): delete nothing
+                referenced |= names
     removed = 0
-    blobs = library / "blobs"
-    for path in blobs.glob("*/*") if blobs.is_dir() else []:
-        if (_HEX64.match(path.name) and path.name not in referenced and path.is_file() and not path.is_symlink()
-                and now - path.stat().st_mtime > grace_seconds):
-            path.unlink(missing_ok=True)
-            removed += 1
+    for prefix in store.listdir(f"{library}/blobs"):
+        if prefix.is_symlink or not prefix.is_dir:
+            continue
+        for entry in store.listdir(f"{library}/blobs/{prefix.name}"):
+            if (_HEX64.match(entry.name) and entry.name not in referenced and not entry.is_dir
+                    and not entry.is_symlink and now - entry.mtime > grace_seconds):
+                store.delete(f"{library}/blobs/{prefix.name}/{entry.name}")
+                removed += 1
     return removed
 
 

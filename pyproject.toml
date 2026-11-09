@@ -47,6 +47,7 @@ files = [
     "backend/sync_records.py",
     "backend/sync_service.py",
     "backend/sync_snapshot.py",
+    "backend/sync_store.py",
     "frontend/quick_tag_shortcuts.py",
     "frontend/tag_colors.py",
 ]

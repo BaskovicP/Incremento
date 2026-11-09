@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import sqlite3
 import time
@@ -32,11 +31,13 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .sync_blobs import copy_blob, has_blob
+    from .sync_blobs import fetch_exchange_blob, has_blob, put_exchange_blob
     from .sync_capture import revision_id, sync_identity
+    from .sync_store import Entry, Store, StoreError, as_store
     from .sync_records import SYNC_FORMAT, Family, canonical_json, record_blobs, validate_card_deps
 except ImportError:
-    from sync_blobs import copy_blob, has_blob  # type: ignore[no-redef]
+    from sync_blobs import fetch_exchange_blob, has_blob, put_exchange_blob  # type: ignore[no-redef]
+    from sync_store import Entry, Store, StoreError, as_store  # type: ignore[no-redef]
     from sync_capture import revision_id, sync_identity  # type: ignore[no-redef]
     from sync_records import (  # type: ignore[no-redef]
         SYNC_FORMAT, Family, canonical_json, record_blobs, validate_card_deps,
@@ -86,25 +87,28 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def library_rel(library_id: str) -> str:
+    """A library's folder below the exchange root, as a store path."""
+    return "/".join((*EXCHANGE_DIR, library_id))
+
+
 def library_dir(root: Path, library_id: str) -> Path:
+    """The same folder as a directory path, for a folder-backed exchange (tests and tools)."""
     return Path(root).joinpath(*EXCHANGE_DIR, library_id)
 
 
-def _write_atomic(path: Path, data: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp")
-    with temporary.open("wb") as stream:
-        stream.write(data)
-        stream.flush()
-        os.fsync(stream.fileno())
-    os.replace(temporary, path)
+def _read_or_none(store: Store, rel: str, limit: int) -> bytes | None:
+    try:
+        return store.read(rel, limit)
+    except StoreError:
+        return None
 
 
-def _write_json_if_changed(path: Path, value: Any) -> None:
+def _write_json_if_changed(store: Store, rel: str, value: Any) -> None:
     data = canonical_json(value).encode("utf-8")
-    if path.is_file() and path.read_bytes() == data:
+    if _read_or_none(store, rel, 1_000_000) == data:
         return
-    _write_atomic(path, data)
+    store.write(rel, data)
 
 
 # --- Publication ---------------------------------------------------------------
@@ -133,21 +137,22 @@ def _mark_published(conn: sqlite3.Connection, revision_ids: list[str], now: int)
                      (str(int(highest or 0)),))
 
 
-def publish(conn: sqlite3.Connection, root: Path, *, anki_usn: int | None = None, anki_scm: int | None = None,
+def publish(conn: sqlite3.Connection, root: Path | Store, *, anki_usn: int | None = None, anki_scm: int | None = None,
             blob_store: Path | None = None, now: Callable[[], float] = time.time) -> PublishResult:
     """Write every unpublished revision into packs below this device's folder.
 
     ``anki_usn`` is the collection's usn after its last AnkiWeb sync; other
     devices use it to tell a card still on its way from a deleted one.
     """
+    store = as_store(root)
     identity = sync_identity(conn)
     if identity is None:
         raise RuntimeError("sync is not enabled for this profile")
-    library = library_dir(root, identity.library_id)
-    library_file = library / "library.json"
-    if not library_file.exists():
-        _write_json_if_changed(library_file, {"format": SYNC_FORMAT, "library_id": identity.library_id})
-    device_dir = library / "devices" / identity.device_id
+    library = library_rel(identity.library_id)
+    if store.stat(f"{library}/library.json") is None:
+        _write_json_if_changed(store, f"{library}/library.json",
+                               {"format": SYNC_FORMAT, "library_id": identity.library_id})
+    device = f"{library}/devices/{identity.device_id}"
 
     result = PublishResult()
     rows = conn.execute(
@@ -164,27 +169,30 @@ def publish(conn: sqlite3.Connection, root: Path, *, anki_usn: int | None = None
         # Files first: a pack never names a blob that has not been placed.
         for row in batch:
             for sha in json.loads(row[7]).get("blobs", []):
-                if blob_store is None or not copy_blob(blob_store, sha, library / "blobs"):
+                if blob_store is None or not put_exchange_blob(store, library, blob_store, sha):
                     raise RuntimeError(f"blob {sha} of revision {row[0]} is not in the local blob store")
         data = _pack_bytes(identity.library_id, identity.device_id, epoch, batch)
         digest = sha256_bytes(data)
-        path = device_dir / "packs" / f"{epoch:06d}-{batch[0][4]:012d}-{digest}.pack"
-        if not (path.is_file() and sha256_file(path) == digest):
-            _write_atomic(path, data)
-            if sha256_file(path) != digest:
-                raise OSError(f"pack {path.name} did not verify after writing")
+        rel = f"{device}/packs/{epoch:06d}-{batch[0][4]:012d}-{digest}.pack"
+        existing = _read_or_none(store, rel, MAX_PACK_BYTES)
+        if not (existing is not None and sha256_bytes(existing) == digest):
+            store.write(rel, data)
+            written = _read_or_none(store, rel, len(data))
+            if written is None or sha256_bytes(written) != digest:
+                raise OSError(f"pack {rel.rsplit('/', 1)[-1]} did not verify after writing")
             result.packs_written += 1
         _mark_published(conn, [row[0] for row in batch], int(now()))
         result.revisions_published += len(batch)
-    announce(conn, root, anki_usn=anki_usn, anki_scm=anki_scm)
+    announce(conn, store, anki_usn=anki_usn, anki_scm=anki_scm)
     return result
 
 
-def announce(conn: sqlite3.Connection, root: Path, *, anki_usn: int | None, anki_scm: int | None) -> None:
+def announce(conn: sqlite3.Connection, root: Path | Store, *, anki_usn: int | None, anki_scm: int | None) -> None:
     """Write this device's device.json: its AnkiWeb state and what it has published and retired.
 
     Written after the packs, so a reader never sees a range announced before its packs exist here.
     """
+    store = as_store(root)
     identity = sync_identity(conn)
     if identity is None:
         raise RuntimeError("sync is not enabled for this profile")
@@ -192,7 +200,7 @@ def announce(conn: sqlite3.Connection, root: Path, *, anki_usn: int | None, anki
     published = int(row[0]) if row else 0
     retired = conn.execute("SELECT value FROM sync_meta WHERE key='retired_through'").fetchone()
     _write_json_if_changed(
-        library_dir(root, identity.library_id) / "devices" / identity.device_id / "device.json",
+        store, f"{library_rel(identity.library_id)}/devices/{identity.device_id}/device.json",
         {"format": SYNC_FORMAT, "device_id": identity.device_id, "epoch": identity.epoch, "anki_usn": anki_usn,
          "anki_scm": anki_scm, "published": {"epoch": identity.epoch, "last_seq": int(published)},
          "retired": {"epoch": identity.epoch, "through": int(retired[0]) if retired else 0}})
@@ -334,12 +342,11 @@ def _store(conn: sqlite3.Connection, revisions: list[dict[str, Any]], *, device:
 
 
 def release_waiting(conn: sqlite3.Connection, now: int, *, blob_store: Path | None = None,
-                    folder_blobs: Path | None = None, parents_may_be_retired: bool = False) -> int:
+                    fetch: Callable[[str], bool] | None = None, parents_may_be_retired: bool = False) -> int:
     """Re-check waiting revisions: parents known and blobs present make them received.
 
-    With ``folder_blobs`` (receiving), missing blobs are copied from the
-    exchange folder into ``blob_store`` after verification. Returns how many
-    revisions became received.
+    With ``fetch`` (receiving), a missing blob is copied from the exchange into ``blob_store`` after
+    verification. Returns how many revisions became received.
     """
     released = 0
     waiting = conn.execute("SELECT i.revision_id, i.status, r.parents, r.deps FROM sync_inbox i "
@@ -354,9 +361,7 @@ def release_waiting(conn: sqlite3.Connection, now: int, *, blob_store: Path | No
             else:
                 missing = []
                 for sha in json.loads(deps).get("blobs", []):
-                    available = has_blob(blob_store, sha) or (
-                        blob_store is not None and folder_blobs is not None
-                        and copy_blob(folder_blobs, sha, blob_store))
+                    available = has_blob(blob_store, sha) or (fetch is not None and fetch(sha))
                     if not available:
                         missing.append(sha)
                 new_status = "pending_blob" if missing else "received"
@@ -367,28 +372,32 @@ def release_waiting(conn: sqlite3.Connection, now: int, *, blob_store: Path | No
     return released
 
 
-def _record_peer(conn: sqlite3.Connection, device: Path, now: int, problems: list[str]) -> None:
+def _record_peer(conn: sqlite3.Connection, store: Store, device_rel: str, name: str, entries: dict[str, Entry],
+                 now: int, problems: list[str]) -> None:
     """Remember a peer's announced AnkiWeb state from its device.json."""
-    path = device / "device.json"
-    if path.is_symlink() or not path.is_file():
+    entry = entries.get("device.json")
+    if entry is None or entry.is_symlink or entry.is_dir:
         return
-    if path.stat().st_size > MAX_DEVICE_FILE_BYTES:
-        problems.append(f"{device.name}/device.json: size exceeds {MAX_DEVICE_FILE_BYTES} bytes")
+    if entry.size > MAX_DEVICE_FILE_BYTES:
+        problems.append(f"{name}/device.json: size exceeds {MAX_DEVICE_FILE_BYTES} bytes")
+        return
+    data = _read_or_none(store, f"{device_rel}/device.json", MAX_DEVICE_FILE_BYTES)
+    if data is None:
         return
     try:
-        info = _parse(path.read_bytes())
+        info = _parse(data)
     except PackError as exc:
-        problems.append(f"{device.name}/device.json: {exc}")
+        problems.append(f"{name}/device.json: {exc}")
         return
     usn, scm = info.get("anki_usn"), info.get("anki_scm")
-    if info.get("device_id") != device.name or not all(
+    if info.get("device_id") != name or not all(
             value is None or (isinstance(value, int) and not isinstance(value, bool) and value >= 0)
             for value in (usn, scm)):
-        problems.append(f"{device.name}/device.json: device, anki_usn or anki_scm invalid")
+        problems.append(f"{name}/device.json: device, anki_usn or anki_scm invalid")
         return
     with conn:
         conn.execute("INSERT OR REPLACE INTO sync_peers(device, anki_usn, anki_scm, seen_at) VALUES (?, ?, ?, ?)",
-                     (device.name, usn, scm, now))
+                     (name, usn, scm, now))
 
 
 def _remember(conn: sqlite3.Connection, device: str, name: str, outcome: str, now: int) -> None:
@@ -397,31 +406,32 @@ def _remember(conn: sqlite3.Connection, device: str, name: str, outcome: str, no
                      "VALUES (?, ?, ?, ?, ?)", (device, name, outcome, SYNC_FORMAT, now))
 
 
-def sample_card_refs(root: Path, library_id: str, limit: int = 50) -> dict[int, str]:
+def sample_card_refs(root: Path | Store, library_id: str, limit: int = 50) -> dict[int, str]:
     """Card ids and note GUIDs named by a library's packs: evidence of which collection it belongs to.
 
     Reads only complete packs (bytes matching their name) within the size
     limit; anything else is skipped, never trusted.
     """
+    store = as_store(root)
     found: dict[int, str] = {}
-    devices = library_dir(root, library_id) / "devices"
-    if not devices.is_dir():
-        return found
-    for device in sorted(devices.iterdir(), key=lambda path: path.name):
-        if device.is_symlink():
+    devices_rel = f"{library_rel(library_id)}/devices"
+    for device in sorted(store.listdir(devices_rel), key=lambda entry: entry.name):
+        if device.is_symlink or not device.is_dir or not _IDENTIFIER.match(device.name):
             continue
         # Packs, and snapshot parts once packs have been retired.
-        files = [(path, _PACK_NAME.match(path.name), 3) for path in sorted((device / "packs").glob("*.pack"))]
-        files += [(path, _SNAPSHOT_PART_NAME.match(path.name), 3)
-                  for path in sorted((device / "snapshots").glob("*.snap"))]
-        for path, match, digest_group in files:
-            if not match or path.is_symlink() or not path.is_file() or path.stat().st_size > MAX_PACK_BYTES:
+        files = [(f"{devices_rel}/{device.name}/packs/{entry.name}", entry, _PACK_NAME.match(entry.name))
+                 for entry in sorted(store.listdir(f"{devices_rel}/{device.name}/packs"), key=lambda e: e.name)]
+        files += [(f"{devices_rel}/{device.name}/snapshots/{entry.name}", entry, _SNAPSHOT_PART_NAME.match(entry.name))
+                  for entry in sorted(store.listdir(f"{devices_rel}/{device.name}/snapshots"),
+                                      key=lambda e: e.name)]
+        for rel, entry, match in files:
+            if not match or entry.is_symlink or entry.is_dir or entry.size > MAX_PACK_BYTES:
                 continue
-            data = path.read_bytes()
-            if sha256_bytes(data) != match[digest_group]:
+            data = _read_or_none(store, rel, MAX_PACK_BYTES)
+            if data is None or sha256_bytes(data) != match[3]:
                 continue
             try:
-                payload = decode_snapshot_part(data) if path.suffix == ".snap" else _parse(data)
+                payload = decode_snapshot_part(data) if rel.endswith(".snap") else _parse(data)
                 revisions = payload.get("revisions", [])
             except PackError:
                 continue
@@ -435,35 +445,37 @@ def sample_card_refs(root: Path, library_id: str, limit: int = 50) -> dict[int, 
     return found
 
 
-def receive(conn: sqlite3.Connection, root: Path, families: Mapping[str, Family], *,
+def receive(conn: sqlite3.Connection, root: Path | Store, families: Mapping[str, Family], *,
             blob_store: Path | None = None, now: Callable[[], float] = time.time) -> ReceiveResult:
     """Validate and record other devices' packs. Applies nothing."""
+    store = as_store(root)
     identity = sync_identity(conn)
     if identity is None:
         raise RuntimeError("sync is not enabled for this profile")
     result = ReceiveResult()
-    devices = library_dir(root, identity.library_id) / "devices"
-    if not devices.is_dir():
-        return result
+    library = library_rel(identity.library_id)
+    devices_rel = f"{library}/devices"
     timestamp = int(now())
     received_before = conn.execute("SELECT count(*) FROM sync_inbox").fetchone()[0]
-    for device in sorted(devices.iterdir(), key=lambda path: path.name):
+    for device in sorted(store.listdir(devices_rel), key=lambda entry: entry.name):
         if device.name == identity.device_id:
             continue
-        if device.is_symlink():
+        if device.is_symlink:
             result.problems.append(f"{device.name}: symlink not followed")
             continue
-        if not device.is_dir() or not _IDENTIFIER.match(device.name):
+        if not device.is_dir or not _IDENTIFIER.match(device.name):
             continue
-        _record_peer(conn, device, timestamp, result.problems)
-        packs = device / "packs"
-        if packs.is_symlink():
+        device_rel = f"{devices_rel}/{device.name}"
+        inside = {entry.name: entry for entry in store.listdir(device_rel)}
+        _record_peer(conn, store, device_rel, device.name, inside, timestamp, result.problems)
+        packs = inside.get("packs")
+        if packs is not None and packs.is_symlink:
             result.problems.append(f"{device.name}/packs: symlink not followed")
             continue
-        if not packs.is_dir():
+        if packs is None or not packs.is_dir:
             continue
         names = []
-        for entry in packs.iterdir():
+        for entry in store.listdir(f"{device_rel}/packs"):
             match = _PACK_NAME.match(entry.name)
             if match:
                 names.append((int(match[1]), int(match[2]), match[3], entry))
@@ -471,23 +483,26 @@ def receive(conn: sqlite3.Connection, root: Path, families: Mapping[str, Family]
         seen = {row[0] for row in conn.execute(
             "SELECT name FROM sync_seen_packs WHERE device=? AND (outcome='accepted' OR format=?)",
             (device.name, SYNC_FORMAT))}
-        for epoch, first_seq, digest, path in sorted(names, key=lambda item: item[:2]):
-            label = f"{device.name}/{path.name}"
-            if path.name in seen:
+        for epoch, first_seq, digest, entry in sorted(names, key=lambda item: item[:2]):
+            label = f"{device.name}/{entry.name}"
+            if entry.name in seen:
                 continue  # immutable and named by its hash: already accepted or rejected
-            if path.is_symlink() or not path.is_file():
+            if entry.is_symlink or entry.is_dir:
                 result.problems.append(f"{label}: not a regular file (symlink not followed)")
                 result.rejected += 1
                 continue
-            if path.stat().st_size > MAX_PACK_BYTES:
+            if entry.size > MAX_PACK_BYTES:
                 result.problems.append(f"{label}: size exceeds {MAX_PACK_BYTES} bytes")
                 result.rejected += 1
                 continue
-            data = path.read_bytes()
-            if len(data) > MAX_PACK_BYTES:
+            try:
+                data = store.read(f"{device_rel}/packs/{entry.name}", MAX_PACK_BYTES)
+            except StoreError:
                 result.problems.append(f"{label}: size exceeds {MAX_PACK_BYTES} bytes")
                 result.rejected += 1
                 continue
+            if data is None:
+                continue  # removed while we were looking
             if sha256_bytes(data) != digest:
                 result.incomplete += 1
                 continue
@@ -495,12 +510,12 @@ def receive(conn: sqlite3.Connection, root: Path, families: Mapping[str, Family]
                 revisions = _validate(_parse(data), library_id=identity.library_id, device_dir=device.name,
                                       epoch=epoch, first_seq=first_seq, families=families)
                 _store(conn, revisions, device=device.name, epoch=epoch, now=timestamp)
-                _remember(conn, device.name, path.name, "accepted", timestamp)
+                _remember(conn, device.name, entry.name, "accepted", timestamp)
             except PackError as exc:
                 result.problems.append(f"{label}: {exc}")
                 result.rejected += 1
-                _remember(conn, device.name, path.name, "rejected", timestamp)
-    release_waiting(conn, timestamp, blob_store=blob_store,
-                    folder_blobs=library_dir(root, identity.library_id) / "blobs")
+                _remember(conn, device.name, entry.name, "rejected", timestamp)
+    fetch = None if blob_store is None else (lambda sha: fetch_exchange_blob(store, library, sha, blob_store))
+    release_waiting(conn, timestamp, blob_store=blob_store, fetch=fetch)
     result.received = conn.execute("SELECT count(*) FROM sync_inbox").fetchone()[0] - received_before
     return result

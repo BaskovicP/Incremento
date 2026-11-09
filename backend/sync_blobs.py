@@ -15,6 +15,11 @@ import shutil
 import tempfile
 from pathlib import Path
 
+try:
+    from .sync_store import Store, StoreError
+except ImportError:
+    from sync_store import Store, StoreError  # type: ignore[no-redef]
+
 MAX_BLOB_BYTES = 512 * 1024 * 1024
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -71,19 +76,57 @@ def store_file(store: Path, source: Path) -> str:
     return sha
 
 
-def copy_blob(source_store: Path, sha: str, target_store: Path) -> bool:
-    """Copy one blob between stores, verifying it. False if the source lacks a complete copy."""
-    if has_blob(target_store, sha):
-        return True
-    source = blob_path(source_store, sha)
-    if source.is_symlink() or not source.is_file() or source.stat().st_size > MAX_BLOB_BYTES:
+def exchange_blob_rel(library_rel: str, sha: str) -> str:
+    if not _HEX64.match(sha):
+        raise ValueError(f"not a blob name: {sha!r}")
+    return f"{library_rel}/blobs/{sha[:2]}/{sha}"
+
+
+def put_exchange_blob(store: Store, library_rel: str, local_store: Path, sha: str) -> bool:
+    """Place one of this device's verified local blobs in the exchange. False if it has no local copy."""
+    if not has_blob(local_store, sha):
         return False
-    temporary, actual = _copy_hashing(source, Path(target_store) / ".tmp")
-    if actual != sha:
-        temporary.unlink(missing_ok=True)
-        return False
-    _place(temporary, Path(target_store), sha)
+    source = blob_path(local_store, sha)
+    rel = exchange_blob_rel(library_rel, sha)
+    existing = store.stat(rel)
+    if existing is not None and not existing.is_dir and existing.size == source.stat().st_size:
+        return True  # named by its hash and written atomically: complete
+    store.upload(source, rel)
     return True
+
+
+def fetch_exchange_blob(store: Store, library_rel: str, sha: str, local_store: Path) -> bool:
+    """Copy one blob from the exchange into the local store after verifying its bytes against its name."""
+    if has_blob(local_store, sha):
+        return True
+    rel = exchange_blob_rel(library_rel, sha)
+    entry = store.stat(rel)
+    if entry is None or entry.is_dir or entry.size > MAX_BLOB_BYTES:
+        return False
+    directory = Path(local_store) / ".tmp"
+    directory.mkdir(parents=True, exist_ok=True)
+    handle, name = tempfile.mkstemp(dir=directory, prefix=".incoming-")
+    os.close(handle)
+    downloaded = Path(name)
+    try:
+        try:
+            store.download(rel, downloaded, MAX_BLOB_BYTES)
+        except StoreError:
+            return False
+        if _file_sha256(downloaded) != sha:
+            return False
+        _place(downloaded, Path(local_store), sha)
+        return True
+    finally:
+        downloaded.unlink(missing_ok=True)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def materialize(store: Path, sha: str, destination: Path) -> None:
