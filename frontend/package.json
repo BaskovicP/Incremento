@@ -20,5 +20,8 @@
     "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^10.9.1",
     "vite": "^6.0.7"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
   }
 }

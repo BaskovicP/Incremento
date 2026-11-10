@@ -1,5 +1,5 @@
 # The full suite launches real Anki subprocesses and imports Qt/WebEngine.
-aqt[qt]==25.09.2
+aqt[qt]==25.09.4
 beautifulsoup4>=4.12,<5
 hypothesis>=6.100,<7
 mypy>=1.13,<2
