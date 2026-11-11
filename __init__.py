@@ -214,6 +214,7 @@ from .backend import review_time_tracker as _review_time_mod
 from .backend.learning_leech import LearningLeechTracker
 from .backend import anki_compat as _anki_compat
 from .backend import reconciliation as _reconciliation_mod
+from .backend import sync_service as _sync_service
 from .backend import pdf_context_cards as _pdf_context_cards_mod
 from .backend import pdf_context_snapshot as _pdf_context_snapshot_mod
 from .backend import pdf_snapshot_cleanup as _pdf_snapshot_cleanup_mod
@@ -4874,6 +4875,133 @@ gui_hooks.profile_will_close.append(_stop_automatic_backups)
 gui_hooks.main_window_did_init.append(_install_close_backup_gate)
 
 
+# --- Shared-folder sync (docs/architecture/shared-folder-sync.md §7) --------
+
+_sync_timer: QTimer | None = None
+_sync_generation = 0
+_SYNC_INTERVAL_MS = 15 * 60 * 1000
+_SYNC_AFTER_OPEN_MS = 20 * 1000
+
+
+class _SyncController:
+    """What the sync dialog may do, bound to the profile it was opened for."""
+
+    def __init__(self, profile: str):
+        self.profile = profile
+
+    def status(self):
+        return _sync_service.status(_ADDON_DIR, self.profile)
+
+    def conflicts(self):
+        return _sync_service.open_conflicts(_ADDON_DIR, self.profile)
+
+    def configure(self, folder: str) -> None:
+        _sync_service.configure(_ADDON_DIR, self.profile, folder, query=mw.col.db.all)
+
+    def configure_hub(self, code: str) -> None:
+        _sync_service.configure_hub(_ADDON_DIR, self.profile, code, query=mw.col.db.all)
+
+    def disable(self) -> None:
+        _sync_service.disable(_ADDON_DIR, self.profile)
+
+    def sync(self, done) -> None:
+        _start_background_sync(done=done)
+
+    def discard_stale(self) -> None:
+        _sync_service.discard_stale(_ADDON_DIR, self.profile)
+
+    def resolve(self, conflict_id: int, value) -> None:
+        _sync_service.resolve(_ADDON_DIR, self.profile, conflict_id, value, mw.col.db.all)
+
+
+def openSyncDialogFunction() -> None:
+    from .frontend.sync_dialog import SyncDialog
+
+    SyncDialog(_current_profile_name(), _SyncController(_active_profile()), mw).exec()
+
+
+def _start_background_sync(done=None) -> None:
+    """Sync the active profile on the collection executor; results of a closed profile are dropped."""
+    from aqt.operations import QueryOp
+
+    profile = _active_profile()
+    generation = _sync_generation
+
+    def is_current() -> bool:
+        return generation == _sync_generation and _active_profile() == profile
+
+    def finish() -> None:
+        if done is not None:
+            done()
+
+    try:
+        configured = mw.col is not None and _sync_service.status(_ADDON_DIR, profile).configured
+    except Exception:
+        configured = False
+    if not configured:
+        finish()
+        return
+
+    def run(col):
+        return _sync_service.sync_now(_ADDON_DIR, profile, col.db.all, is_current=is_current)
+
+    def succeeded(report) -> None:
+        if is_current() and report.conflicts:
+            open_count = len(_sync_service.open_conflicts(_ADDON_DIR, profile))
+            tooltip(_t("root_sync_conflicts", count=open_count))
+        finish()
+
+    def failed(exc: Exception) -> None:
+        if is_current():
+            tooltip(_t("root_sync_failed", error=exc))
+        finish()
+
+    QueryOp(parent=mw, op=run, success=succeeded).failure(failed).run_in_background()
+
+
+def _start_sync_schedule() -> None:
+    global _sync_timer, _sync_generation
+    _sync_generation += 1
+    if _sync_timer is not None:
+        _sync_timer.stop()
+    _sync_timer = QTimer(mw)
+    _sync_timer.setInterval(_SYNC_INTERVAL_MS)
+    _sync_timer.timeout.connect(lambda: _start_background_sync())
+    _sync_timer.start()
+    # Give Anki's own sync on open a head start: cards it delivers let more Incremento changes apply.
+    QTimer.singleShot(_SYNC_AFTER_OPEN_MS, lambda: _start_background_sync())
+
+
+def _sync_after_ankiweb() -> None:
+    _start_background_sync()
+
+
+def _cancel_running_sync(*_args) -> None:
+    """A full sync replaces the collection: drop the results of a sync started before it."""
+    global _sync_generation
+    _sync_generation += 1
+
+
+def _publish_sync_on_close() -> None:
+    """Capture and publish what changed before the profile closes; never block closing."""
+    global _sync_generation
+    _sync_generation += 1
+    if _sync_timer is not None:
+        _sync_timer.stop()
+    try:
+        profile = _active_profile()
+        if mw.col is not None and _sync_service.status(_ADDON_DIR, profile).configured:
+            _sync_service.publish_now(_ADDON_DIR, profile, mw.col.db.all)
+    except Exception:
+        pass
+
+
+gui_hooks.profile_did_open.append(_start_sync_schedule)
+gui_hooks.sync_did_finish.append(_sync_after_ankiweb)
+gui_hooks.profile_will_close.append(_publish_sync_on_close)
+gui_hooks.collection_will_temporarily_close.append(_cancel_running_sync)
+
+
 def _start_full_backup(
     path: str, *, automatic_policy: dict | None = None, close_triggered: bool = False
 ) -> bool:
@@ -7816,6 +7944,11 @@ def _build_incremento_menu() -> None:
     _autoBackupAction.setProperty("incremento_translation_key", "root_menu_configure_auto_backups")
     qconnect(_autoBackupAction.triggered, configureAutomaticBackupsFunction)
     _menu.addAction(_autoBackupAction)
+
+    _syncAction = QAction(_t("root_menu_sync"), mw)
+    _syncAction.setProperty("incremento_translation_key", "root_menu_sync")
+    qconnect(_syncAction.triggered, openSyncDialogFunction)
+    _menu.addAction(_syncAction)
 
     _apply_shortcuts_from_config()
     _ensure_settings_menu_action()

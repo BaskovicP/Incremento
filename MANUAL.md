@@ -1704,6 +1704,16 @@ Choose **Incremento → Export Full Backup → Automatic Backups…** (or the se
 
 A folder synced by the Google Drive desktop app (or another cloud-sync app) can be selected. Incremento builds automatic backups outside that folder when possible, validates them, and then exposes only the final fixed slot to the sync service. Incremento itself does not sign in to a cloud service or verify that the ZIP finished uploading. Temporary `.incremento-backup-*.zip` items uploaded by an older version may need to be removed once in the cloud provider's web interface because they can remain remotely after disappearing from the local folder. These full backups include private cards, media and configuration: protect the sync account and destination accordingly. Keep an additional backup outside the sync service if you need protection against cloud-side deletion or account loss.
 
+### Syncing Incremento data between computers (preview)
+
+Anki's cards, notes and scheduling sync through AnkiWeb, but Incremento's own data stays on each computer unless you sync it. Choose **Incremento → Sync Incremento Data…** and pick a folder that Dropbox, Google Drive, OneDrive, iCloud Drive or a similar service keeps in step on each computer. Do the same on the other computer with the same folder. Incremento never signs in to a cloud service and never puts a live database in that folder.
+
+What syncs: priorities, reader bookmarks, reading positions (page, scroll and read markers), PDF and EPUB highlights, and the PDF and EPUB files themselves. Zoom, text size and page appearance stay on each computer. Topic schedules, the knowledge tree, writing, presets and statistics stay on each computer for now.
+
+Incremento syncs about 20 seconds after the profile opens, after every AnkiWeb sync, every 15 minutes, and when you choose **Sync now**. When the profile closes it sends its latest changes without applying anything. A change whose card has not arrived from AnkiWeb yet waits and applies after a later AnkiWeb sync; one whose card was deleted is set aside. When both computers changed the same thing differently, Incremento keeps this computer's version, notifies you, and lists the conflict in the dialog, where you choose which version to keep. **Stop syncing** deletes nothing; choosing the folder again later continues where it left off.
+
+Each computer writes only inside its own folder in `IncrementoSync/`, and Incremento checks everything it receives before using it. Every few hundred changes, or weekly, each computer also saves a snapshot of its view. Once every computer's latest snapshot covers its older changes, it removes them from the folder, and a computer joining later starts from a snapshot. File copies that nothing refers to any more are removed after 30 days. A computer that never syncs again keeps old changes in the folder; Incremento never deletes a computer's work before every other computer has it. Copies of synced documents are kept under `user_files/<ProfileName>/sync/` and are left out of full backups, which already contain the documents. This feature is a preview: keep your usual backups. Design: `docs/architecture/shared-folder-sync.md`.
+
 ---
 
 ## 13. Settings, Utilities, and Dependencies

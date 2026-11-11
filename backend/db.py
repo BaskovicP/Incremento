@@ -63,6 +63,7 @@ try:
     from .paths import get_db_checkpoint_dir, get_db_path, get_stats_path
     from .db_connection import ProfileConnectionManager
     from .db_schema import initialize_schema
+    from .sync_schema import SYNC_SCHEMA
     from .web_extract_anchors import (
         MAX_WEB_EXTRACT_ANCHORS_JSON_CHARS,
         MAX_STORED_WEB_EXTRACT_ANCHORS,
@@ -73,6 +74,7 @@ except ImportError:
     from paths import get_db_checkpoint_dir, get_db_path, get_stats_path  # test environment
     from db_connection import ProfileConnectionManager  # type: ignore
     from db_schema import initialize_schema  # type: ignore
+    from sync_schema import SYNC_SCHEMA  # type: ignore
     from web_extract_anchors import (  # type: ignore
         MAX_WEB_EXTRACT_ANCHORS_JSON_CHARS,
         MAX_STORED_WEB_EXTRACT_ANCHORS,
@@ -917,6 +919,17 @@ def _migration_26_passages_and_coverage(conn: sqlite3.Connection) -> None:
     """)
 
 
+def _migration_27_sync_foundations(conn: sqlite3.Connection) -> None:
+    """Local state of shared-folder sync (docs/architecture/shared-folder-sync.md §4).
+
+    Revisions, baseline, outbox and inbox live beside the data they describe so
+    capture and apply commit together with it. Nothing here is exported as-is.
+    The tables are defined in sync_schema.py, which the engine also runs itself
+    when a host's ledger does not know about sync.
+    """
+    _begin_migration_script(conn, SYNC_SCHEMA)
+
+
 _SCHEMA_MIGRATIONS = (
     (2, "operation_lifecycle", _migration_2_operation_lifecycle),
     (3, "search_fts", _migration_3_search_fts),
@@ -943,6 +956,7 @@ _SCHEMA_MIGRATIONS = (
     (24, "document_link_notes", _migration_24_document_link_notes),
     (25, "writing_links", _migration_25_writing_links),
     (26, "passages_and_coverage", _migration_26_passages_and_coverage),
+    (27, "sync_foundations", _migration_27_sync_foundations),
 )
 
 
