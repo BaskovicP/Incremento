@@ -1438,7 +1438,7 @@ def bookshelf_reveal_menu(monkeypatch, tmp_path):
             _selected_library_entries=lambda: [entry],
             _list=SimpleNamespace(
                 itemAt=lambda _position: item,
-                setCurrentItem=selected.append,
+                setCurrentItem=lambda item, *_flags: selected.append(item),
                 viewport=lambda: SimpleNamespace(mapToGlobal=lambda position: position),
             ),
             _duplicates_for_entry=lambda _entry: (),

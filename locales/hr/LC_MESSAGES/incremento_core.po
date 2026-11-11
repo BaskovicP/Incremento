@@ -422,6 +422,12 @@ msgstr "Prikaži dijalog prioriteta nakon svake dovršene kartice prije nastavka
 msgid "settings_show_review_button_group"
 msgstr "Prikaži skup gumba za ponavljanje"
 
+msgid "settings_show_parent_context_icon"
+msgstr "Prikaži ikonu roditeljskog konteksta"
+
+msgid "settings_show_parent_context_icon_hint"
+msgstr "Prikaži ikonu roditelja uz kartice za učenje ili iznad kartice. Otvara roditeljsku karticu u bočnoj traci samo za čitanje."
+
 msgid "settings_show_reviewer_priority_badge_on"
 msgstr "Prikaži značku prioriteta na:"
 

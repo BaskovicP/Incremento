@@ -1369,3 +1369,15 @@ msgstr "已将 {count} 张 PDF 截图（{size}）移至 Anki 媒体回收站。"
 
 msgid "root_pdf_snapshot_cleanup_failed"
 msgstr "无法清理 PDF 截图：\n{error}"
+
+msgid "root_browser_set_priority"
+msgstr "设置优先级…（{count_label}）"
+
+msgid "root_browser_priority_scope"
+msgstr "为{count_label}设置相同的优先级。"
+
+msgid "root_browser_priority_saved"
+msgstr "已为{count_label}设置优先级 {priority}。"
+
+msgid "root_browser_priority_failed"
+msgstr "无法设置优先级。所有优先级均未更改。请刷新浏览器后重试。"

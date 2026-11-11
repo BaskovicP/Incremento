@@ -5240,3 +5240,6 @@ msgstr "Kartica 8"
 
 msgid "workspace_tab_9"
 msgstr "Kartica 9"
+
+msgid "reader_bookshelf_priority_failed"
+msgstr "Nije moguće ažurirati prioritete dokumenata. Nijedan prioritet nije promijenjen. Ponovno otvorite policu s knjigama i pokušajte ponovno."

@@ -12207,6 +12207,14 @@
     },
     {
       "component": "addon",
+      "key": "reader_bookshelf_priority_failed",
+      "form": "",
+      "source": "Could not update document priorities. No priorities were changed. Reopen the bookshelf and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "reader_bookshelf_priority_unset",
       "form": "",
       "source": "Priority: not set",
@@ -25100,6 +25108,35 @@
     },
     {
       "component": "addon",
+      "key": "root_browser_priority_failed",
+      "form": "",
+      "source": "Could not set priority. No priorities were changed. Refresh the Browser and try again.",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_browser_priority_saved",
+      "form": "",
+      "source": "Priority {priority} set for {count_label}.",
+      "tokens": [
+        "{count_label}",
+        "{priority}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_browser_priority_scope",
+      "form": "",
+      "source": "Set one priority for {count_label}.",
+      "tokens": [
+        "{count_label}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
       "key": "root_browser_regenerate_epub_covers",
       "form": "",
       "source": "Regenerate EPUB Covers ({count_label})",
@@ -25491,6 +25528,16 @@
       "key": "root_browser_set_a_factor",
       "form": "",
       "source": "Set A-Factor… ({count_label})",
+      "tokens": [
+        "{count_label}"
+      ],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "root_browser_set_priority",
+      "form": "",
+      "source": "Set Priority… ({count_label})",
       "tokens": [
         "{count_label}"
       ],
@@ -32295,6 +32342,22 @@
       "key": "settings_show_markdown_preview_in_writing_cards",
       "form": "",
       "source": "Show markdown preview in writing cards",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_show_parent_context_icon",
+      "form": "",
+      "source": "Show parent context icon",
+      "tokens": [],
+      "markup": []
+    },
+    {
+      "component": "addon",
+      "key": "settings_show_parent_context_icon_hint",
+      "form": "",
+      "source": "Show the Parent icon beside the study tabs or above the card. It opens the parent card in a read-only sidebar.",
       "tokens": [],
       "markup": []
     },

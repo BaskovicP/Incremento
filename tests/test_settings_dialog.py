@@ -1152,6 +1152,16 @@ class TestIncrementoSettingsDialogDeckBrowserTagCharts:
 
 
 class TestIncrementoSettingsDialogReviewerButtons:
+    def test_parent_context_icon_defaults_visible_and_restores_saved_choice(self):
+        dialog = IncrementoSettingsDialog({})
+        assert dialog.reviewer_parent_context_enabled is True
+        dialog._reviewer_parent_context_cb.setChecked(False)
+        assert dialog.reviewer_parent_context_enabled is False
+        restored = IncrementoSettingsDialog({}, current_reviewer_parent_context_enabled=False)
+        assert restored.reviewer_parent_context_enabled is False
+        restored._reviewer_parent_context_cb.setChecked(True)
+        assert restored.reviewer_parent_context_enabled is True
+
     def test_fail_pass_defaults_enabled_for_new_profiles(self):
         dialog = IncrementoSettingsDialog({})
         assert dialog.use_fail_pass_on_items is True
@@ -1195,6 +1205,9 @@ class TestIncrementoSettingsDialogReviewerButtons:
         assert 'cfg["reviewer_button_visibility"] = visibility' in body
         assert 'cfg["reviewer_button_group_visible"] = dlg.reviewer_button_group_visible' in body
         assert "_sync_reviewer_button_visibility(mw.reviewer)" in body
+        assert "current_reviewer_parent_context_enabled=configured_reviewer_parent_context_enabled(cfg)" in body
+        assert 'cfg["reviewer_parent_context_enabled"] = dlg.reviewer_parent_context_enabled' in body
+        assert body.index("_save_settings_with_language_pack(cfg, dlg.pending_language_pack, settings_profile)") < body.index("_reviewer_parent_context_mod.reviewer_shown()")
 
 
 class TestIncrementoSettingsDialogReviewerPriorityBadge:

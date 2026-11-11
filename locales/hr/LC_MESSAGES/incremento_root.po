@@ -1403,3 +1403,15 @@ msgstr "Premješteno je {count} PDF snimki ({size}) u Ankijev koš za medije."
 
 msgid "root_pdf_snapshot_cleanup_failed"
 msgstr "Nije moguće očistiti PDF snimke:\n{error}"
+
+msgid "root_browser_set_priority"
+msgstr "Postavi prioritet… ({count_label})"
+
+msgid "root_browser_priority_scope"
+msgstr "Postavite isti prioritet za odabrane kartice ({count_label})."
+
+msgid "root_browser_priority_saved"
+msgstr "Prioritet {priority} postavljen je za odabrane kartice ({count_label})."
+
+msgid "root_browser_priority_failed"
+msgstr "Nije moguće postaviti prioritet. Nijedan prioritet nije promijenjen. Osvježite preglednik i pokušajte ponovno."

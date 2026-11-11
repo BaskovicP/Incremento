@@ -33,6 +33,7 @@ try:
         DEFAULT_TOPIC_DONE_TAG, DEFAULT_LEARNING_LEECH_TAG, configured_learning_leech,
         normalize_learning_leech_tag, configured_reviewer_button_visibility,
         configured_reviewer_button_group_visible,
+        configured_reviewer_parent_context_enabled,
         configured_study_workspace_enabled,
         configured_pdf_citation_page_numbering,
         normalize_pdf_link_preview_zoom,
@@ -57,6 +58,7 @@ except ImportError:
         DEFAULT_TOPIC_DONE_TAG, DEFAULT_LEARNING_LEECH_TAG, configured_learning_leech,
         normalize_learning_leech_tag, configured_reviewer_button_visibility,
         configured_reviewer_button_group_visible,
+        configured_reviewer_parent_context_enabled,
         configured_study_workspace_enabled,
         configured_pdf_citation_page_numbering,
         normalize_pdf_link_preview_zoom,
@@ -449,6 +451,7 @@ class IncrementoSettingsDialog(QDialog):
         current_reviewer_priority_badge_card_types: dict[str, bool] | None = None,
         current_reviewer_button_visibility: dict[str, bool] | None = None,
         current_reviewer_button_group_visible: bool = True,
+        current_reviewer_parent_context_enabled: bool = True,
         current_show_incremento_fields: bool = False,
         current_remember_browser_card_scroll: bool = True,
         current_pdf_scroll_to_top_on_page_change: bool = True,
@@ -1046,6 +1049,15 @@ class IncrementoSettingsDialog(QDialog):
         )
         availability_hint.setWordWrap(True)
         reviewer_controls_layout.addWidget(availability_hint)
+
+        self._reviewer_parent_context_cb = QCheckBox(t('settings_show_parent_context_icon'))
+        self._reviewer_parent_context_cb.setChecked(
+            configured_reviewer_parent_context_enabled(
+                {"reviewer_parent_context_enabled": current_reviewer_parent_context_enabled}
+            )
+        )
+        self._reviewer_parent_context_cb.setToolTip(t('settings_show_parent_context_icon_hint'))
+        reviewer_controls_layout.addWidget(self._reviewer_parent_context_cb)
 
         self._remember_browser_card_scroll_cb = QCheckBox(
             t('settings_remember_scrolling_position_in_browser_cards')
@@ -2195,6 +2207,10 @@ class IncrementoSettingsDialog(QDialog):
     @property
     def reviewer_button_group_visible(self) -> bool:
         return bool(self._reviewer_button_group_cb.isChecked())
+
+    @property
+    def reviewer_parent_context_enabled(self) -> bool:
+        return bool(self._reviewer_parent_context_cb.isChecked())
 
     @property
     def study_workspace_enabled(self) -> bool:

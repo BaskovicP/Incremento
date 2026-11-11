@@ -1386,3 +1386,15 @@ msgstr "Moved {count} PDF screenshots ({size}) to Anki's media trash."
 
 msgid "root_pdf_snapshot_cleanup_failed"
 msgstr "Could not clean up PDF screenshots:\n{error}"
+
+msgid "root_browser_set_priority"
+msgstr "Set Priority… ({count_label})"
+
+msgid "root_browser_priority_scope"
+msgstr "Set one priority for {count_label}."
+
+msgid "root_browser_priority_saved"
+msgstr "Priority {priority} set for {count_label}."
+
+msgid "root_browser_priority_failed"
+msgstr "Could not set priority. No priorities were changed. Refresh the Browser and try again."

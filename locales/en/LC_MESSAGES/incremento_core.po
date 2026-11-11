@@ -422,6 +422,12 @@ msgstr "Show priority dialog after each card is done before moving forward"
 msgid "settings_show_review_button_group"
 msgstr "Show review button group"
 
+msgid "settings_show_parent_context_icon"
+msgstr "Show parent context icon"
+
+msgid "settings_show_parent_context_icon_hint"
+msgstr "Show the Parent icon beside the study tabs or above the card. It opens the parent card in a read-only sidebar."
+
 msgid "settings_show_reviewer_priority_badge_on"
 msgstr "Show reviewer priority badge on:"
 

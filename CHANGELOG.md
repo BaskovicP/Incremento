@@ -2,6 +2,26 @@
 
 Changes after **16 September 2026, 09:44 (Europe/Zagreb)**.
 
+## 11 November 2026 — 2026.11.11
+
+Changes since tag **v2026.11.01.1**.
+
+- Set one Incremento priority for a Browser selection through **Incremento → Set Priority…**. Cards mode changes only the selected cards; Notes mode includes every card belonging to the selected notes. The background batch saves atomically and refreshes the Browser without changing Anki schedules or topic A-factors.
+- Right-click one or more PDFs or EPUBs in either Document Bookshelf view to **Set Priority…**. Saving updates visible priorities and priority sorting while preserving selection and unsaved details. The bookshelf also gains **Last added** sorting.
+- Read the current review card's original parent in a read-only sidebar without changing the card or answer side. **Settings → Review → Reviewer Controls → Show parent context icon** controls the icon and applies immediately. Automatic study navigation and priority badges stay limited to cards using Incremento.
+- Keep up to 32 writing drafts in one tabbed pane, with per-draft text, Undo/Redo, reading position, appearance, bookmarks, and word progress. Use the compact formatting toolbar, export the current draft as Markdown or standalone HTML, and optionally open a selected passage in Google Translate. Saved workspaces retain the writing tabs and their order.
+- Connect exact passages in PDFs and EPUBs, briefly reveal matching source or destination text, and return with **Jump Back**. Send selected reader or reviewer text to Writing with a source link, and reopen the writing excerpt from the source-side indicator. Existing page and section links remain usable.
+- Track non-linear reading with separate **Viewed** and **Marked read** figures in readers and the Document Bookshelf. Mark or unmark PDF pages and ranges or EPUB passages and sections; repeated visits count once, and explicit marks combine with existing **Read to here** progress in Statistics.
+- Save webpages from Anki or Companion as an **HTML snapshot — website appearance** or an editable **Reading copy — reflowable Markdown**. Preview HTML captures, remove unwanted elements with **Zap elements**, and undo or restore removals before saving. Read the result offline with EPUB tools and export standalone HTML, Markdown, or TXT. Later captures create separate documents.
+- Keep grouped workspace tabs active for newly opened readers, references, writing, and searches. Find, pin, rename, resize, color, and group tabs; collapse groups without closing their readers. Reopen recently closed panes and restore each profile's last tab session automatically or manually, including browsing addresses and reader positions.
+- Preview internal PDF links and footnotes on hover, including when link navigation is disabled. Keep text inside noted highlights selectable, avoid duplicate annotation rendering after synchronization, and refresh overlay-only edits without reloading the document. Fix PDF annotation synchronization and edited Markdown document saves on Windows.
+- Stage full backups on the selected destination's filesystem, including external drives, while preserving previous backups on failure. Improve visible progress, event processing, restore recovery, and database-connection handling during backup and restore.
+- Refresh English, Croatian, and Simplified Chinese interface text, improve translated-control layouts, rebuild the reader and Companion assets, and update vulnerable Anki and minimatch development dependencies.
+
+Restart Anki after updating. Reload or reinstall Companion from the updated add-on and refresh pages using its capture features. Reading coverage, document associations, writing backlinks, offline documents, and workspace sessions are profile-local; use Incremento backups to preserve data that Anki Sync alone does not transfer. Existing read-to-here markers are retained. Offline snapshots preserve captured content and available resources with scripts and interactive website behavior disabled. The minimum supported Anki version remains 24.11.
+
+[Full comparison](https://github.com/BaskovicP/Incremento/compare/v2026.11.01.1...v2026.11.11)
+
 ## 4 November 2026 — 2026.11.04
 
 Changes since tag **v2026.11.03**.

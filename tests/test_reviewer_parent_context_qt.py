@@ -74,6 +74,44 @@ def test_parent_button_mutes_on_an_unlinked_card_and_deleted_sources_are_not_cli
     ''')
 
 
+@pytest.mark.parametrize('side', ['question', 'answer'])
+def test_hiding_parent_icon_closes_preview_cancels_pending_results_and_can_restore_it(side):
+    run_scene(f'side={side!r}\n' + dedent('''
+        from frontend import reviewer_parent_context as parent
+        parent.get_active_profile=lambda:profile[0]
+        config={'reviewer_parent_context_enabled':False}
+        parent.load_addon_config=lambda *a:config
+        parent.load_parent_context=lambda *a:dict(card_id=10,title='Original',available=True,fields=[('Front','Context')])
+        mw.reviewer.state=side
+        parent.reviewer_shown()
+        assert not pending and not parent._command
+        assert "document.getElementById('incremento-parent-context')?.remove()" in scripts[-1]
+        config['reviewer_parent_context_enabled']=True
+        parent.reviewer_shown();drain()
+        command=parent._command
+        parent.on_js_message((False,None),command,mw.reviewer);drain();app.processEvents()
+        dock=parent._dock
+        assert dock.isVisible() and dock.widget().toPlainText()
+        parent.reviewer_shown()
+        query=pending.pop(0);result=query.op(mw.col)
+        config['reviewer_parent_context_enabled']=False
+        parent.reviewer_shown()
+        assert not dock.isVisible() and not dock.widget().toPlainText()
+        assert not parent._command and parent._snapshot is None
+        scripts_after_hide=list(scripts)
+        query.success(result)
+        parent.on_js_message((False,None),command,mw.reviewer)
+        assert scripts==scripts_after_hide and not pending
+        assert mw.reviewer.card.id==41 and mw.reviewer.state==side
+        assert web.toPlainText()=='Original question' and mw.reviewer.auto_advance_enabled
+        config['reviewer_parent_context_enabled']=True
+        parent.reviewer_shown();drain()
+        assert parent._command and '"available": true' in scripts[-1]
+        assert mw.reviewer.card.id==41 and mw.reviewer.state==side
+        parent.reset()
+    '''))
+
+
 def test_parent_icon_stays_compact_and_changes_color_with_parent_availability(tmp_path):
     from webpage_browser import browser_runtime, _runtime_dir
 
@@ -92,9 +130,11 @@ def test_parent_icon_stays_compact_and_changes_color_with_parent_availability(tm
         active=scripts[-1]
         parent._render_link(None);empty=scripts[-1]
         parent._render_link(dict(card_id=10,title='Deleted topic',available=False));missing=scripts[-1]
+        parent.load_addon_config=lambda *a:{'reviewer_parent_context_enabled':False}
+        parent.reviewer_shown();hidden=scripts[-1]
         routes=[dict(stage=stage,label=label,current=stage=='card',command='study:'+stage)
                 for stage,label in [('card','Card'),('book','PDFs'),('video','Videos')]]
-        Path(payload_path).write_text(json.dumps(dict(active=active,empty=empty,missing=missing,title=title,
+        Path(payload_path).write_text(json.dumps(dict(active=active,empty=empty,missing=missing,hidden=hidden,title=title,
             nav=reviewer_navigation_script(routes,'Study resources'),clear=reviewer_navigation_clear_script())))
     '''))
     script = dedent('''
@@ -154,6 +194,11 @@ def test_parent_icon_stays_compact_and_changes_color_with_parent_availability(tm
                     assert page.locator('input').input_value()=='My answer'
                     assert page.locator('img').count()==0
                     page.screenshot(path=str(Path(sys.argv[4])/f'parent-{dark}-{width}.png'))
+                    page.evaluate(data['hidden'])
+                    expect(button).to_have_count(0)
+                    page.evaluate(data['nav'])
+                    expect(button).to_have_count(0)
+                    assert page.evaluate('original===document.getElementById("qa")')
             browser.close()
     ''')
     result = subprocess.run([runtime[0], '-I', '-c', script, str(_runtime_dir()/'packages'), runtime[1],

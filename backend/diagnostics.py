@@ -410,6 +410,7 @@ _KNOWN_CONFIG_KEYS = {
     "remember_browser_card_scroll",
     "reviewer_button_visibility",
     "reviewer_button_group_visible",
+    "reviewer_parent_context_enabled",
     "reviewer_priority_badge_card_types",
     "scheduler_scope",
     "scheduler_presets",

@@ -105,6 +105,7 @@ from .backend.priority_manager import (
     configured_priority_lower_is_more_important,
     get_priority,
     set_priority,
+    set_priorities as _set_priorities,
     get_all_priorities,
     invert_all_priorities,
 )
@@ -247,6 +248,7 @@ from .backend import backup_schedule as _backup_schedule
 from .backend.config_service import (
     configured_companion_browser,
     configured_reviewer_button_group_visible,
+    configured_reviewer_parent_context_enabled,
     configured_reviewer_button_visibility,
     configured_topic_done_tag as _configured_topic_done_tag,
     load_addon_config as _load_addon_config,
@@ -1803,6 +1805,69 @@ def _open_custom_schedule_dialog(card_ids: list[int]) -> None:
         tooltip(_t("root_browser_schedule_saved", summary=summary, saved=_tn("root_browser_schedule_saved_cards", updated)))
 
 
+def _open_browser_priority_dialog(browser, card_ids: list[int]) -> None:
+    """Assign one priority to the captured Browser selection atomically."""
+    from aqt.operations import QueryOp
+
+    selected_ids = tuple(dict.fromkeys(int(card_id) for card_id in card_ids))
+    if not selected_ids:
+        showInfo(_t("root_browser_select_rows"))
+        return
+
+    profile, collection = _active_profile(), mw.col
+    dlg = PriorityDialog(
+        card_label=_t(
+            "root_browser_priority_scope",
+            count_label=_tn("root_browser_selected_card", len(selected_ids)),
+        ),
+        lower_is_more_important=configured_priority_lower_is_more_important(),
+        parent=browser,
+    )
+    if not dlg.exec():
+        return
+    priority = dlg.priority
+
+    def current():
+        return mw.col is collection and _active_profile() == profile
+
+    def ui_current():
+        try:
+            return current() and browser.isVisible()
+        except RuntimeError:  # Browser Qt object was deleted while saving.
+            return False
+
+    def save(col):
+        if col is not collection or not current():
+            return False
+        for start in range(0, len(selected_ids), 900):
+            chunk = selected_ids[start:start + 900]
+            marks = ",".join("?" for _ in chunk)
+            live_ids = set(col.db.list(f"SELECT id FROM cards WHERE id IN ({marks})", *chunk))
+            if live_ids != set(chunk):
+                raise ValueError("Selected cards no longer exist")
+        if not current():
+            return False
+        _set_priorities(_ADDON_DIR, profile, ((cid, priority) for cid in selected_ids))
+        return True
+
+    def saved(updated):
+        if not updated or not ui_current():
+            return
+        browser.search()
+        _sync_reviewer_priority_badge()
+        tooltip(_t(
+            "root_browser_priority_saved",
+            priority=f"{priority:.4f}",
+            count_label=_tn("root_browser_selected_card", len(selected_ids)),
+        ))
+
+    def failed(_exc):
+        if ui_current():
+            showInfo(_t("root_browser_priority_failed"))
+
+    QueryOp(parent=mw, op=save, success=saved).failure(failed).run_in_background()
+
+
 def _open_browser_a_factor_dialog(browser, card_ids: list[int]) -> None:
     normalized_ids = sorted({int(card_id) for card_id in (card_ids or [])})
     if not normalized_ids:
@@ -2318,6 +2383,14 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
     study_action = QAction(_t("root_browser_study_selected", count_label=count_label), submenu)
     topic_action = QAction(_t("root_browser_make_topic", count_label=count_label), submenu)
     item_action = QAction(_t("root_browser_make_item", count_label=count_label), submenu)
+    priority_card_ids = [
+        int(getattr(ref, "id", ref))
+        for ref in _browser_priority_toolbar_mod._selected_browser_card_refs(browser)
+    ]
+    priority_action = QAction(_t(
+        "root_browser_set_priority",
+        count_label=_tn("root_browser_selected_card", len(priority_card_ids)),
+    ), submenu)
     a_factor_action = QAction(_t("root_browser_set_a_factor", count_label=count_label), submenu)
     schedule_action = QAction(_t("root_browser_custom_schedule", count_label=count_label), submenu)
     pdf_cover_action = QAction(_t("root_browser_regenerate_pdf_covers", count_label=count_label), submenu)
@@ -2347,6 +2420,13 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
     qconnect(
         schedule_action.triggered,
         lambda _checked=False, card_ids=list(card_ids): _open_custom_schedule_dialog(card_ids),
+    )
+    qconnect(
+        priority_action.triggered,
+        lambda _checked=False, b=browser, card_ids=list(priority_card_ids): _open_browser_priority_dialog(
+            b,
+            card_ids,
+        ),
     )
     qconnect(
         a_factor_action.triggered,
@@ -2381,6 +2461,7 @@ def _on_browser_context_menu(browser, menu: QMenu) -> None:
     submenu.addAction(topic_action)
     submenu.addAction(item_action)
     submenu.addSeparator()
+    submenu.addAction(priority_action)
     submenu.addAction(a_factor_action)
     submenu.addAction(schedule_action)
     submenu.addAction(pdf_cover_action)
@@ -7122,6 +7203,7 @@ def openSettingsFunction() -> None:
         current_reviewer_priority_badge_card_types=configured_reviewer_priority_badge_card_types(cfg),
         current_reviewer_button_visibility=configured_reviewer_button_visibility(cfg),
         current_reviewer_button_group_visible=configured_reviewer_button_group_visible(cfg),
+        current_reviewer_parent_context_enabled=configured_reviewer_parent_context_enabled(cfg),
         current_study_workspace_enabled=cfg['study_workspace_enabled'],
         current_workspace_restore_last_session=cfg['workspace_restore_last_session'],
         current_bookshelf_caption_fields=cfg['bookshelf_caption_fields'],
@@ -7225,6 +7307,7 @@ def openSettingsFunction() -> None:
     visibility.update(dlg.reviewer_button_visibility)
     cfg["reviewer_button_visibility"] = visibility
     cfg["reviewer_button_group_visible"] = dlg.reviewer_button_group_visible
+    cfg["reviewer_parent_context_enabled"] = dlg.reviewer_parent_context_enabled
     cfg['study_workspace_enabled'] = dlg.study_workspace_enabled
     cfg['workspace_restore_last_session'] = dlg.workspace_restore_last_session
     cfg["show_incremento_fields"] = dlg.show_incremento_fields
@@ -7305,6 +7388,7 @@ def openSettingsFunction() -> None:
     _sync_reviewer_priority_badge()
     if mw.state == "review" and getattr(mw, "reviewer", None) is not None:
         _sync_reviewer_button_visibility(mw.reviewer)
+        _reviewer_parent_context_mod.reviewer_shown()
     try:
         if _web_dock_mod._runtime.dock is not None:
             checked = bool(dlg.track_web_window_with_extension)

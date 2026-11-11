@@ -100,7 +100,7 @@ try:
     from ..backend.document_library import load_document_notes
     from ..backend.document_library_stats import load_document_statistics
     from ..backend.document_statistics import document_progress_from_collection
-    from ..backend.priority_manager import configured_priority_lower_is_more_important, get_all_priorities
+    from ..backend.priority_manager import configured_priority_lower_is_more_important, get_all_priorities, set_priorities
 except ImportError:
     from pdf_manager import PDF_COVER_FIELD, PDF_NOTE_TYPE, pdf_storage_abspath  # type: ignore
     from epub_manager import EPUB_COVER_FIELD, EPUB_FILE_FIELD, EPUB_NOTE_TYPE, epub_storage_abspath  # type: ignore
@@ -111,7 +111,7 @@ except ImportError:
     from document_library import load_document_notes  # type: ignore
     from document_library_stats import load_document_statistics  # type: ignore
     from document_statistics import document_progress_from_collection  # type: ignore
-    from priority_manager import configured_priority_lower_is_more_important, get_all_priorities  # type: ignore
+    from priority_manager import configured_priority_lower_is_more_important, get_all_priorities, set_priorities  # type: ignore
 
 try:
     from .file_shell import reveal_local_file
@@ -2783,13 +2783,21 @@ class _DocumentBookshelfDialog(QDialog):
         if item.isSelected():
             self._list.setCurrentItem(item, QItemSelectionModel.SelectionFlag.NoUpdate)
         else:
-            self._list.setCurrentItem(item)
+            self._list.setCurrentItem(item, QItemSelectionModel.SelectionFlag.ClearAndSelect)
 
         menu = QMenu(self)
+
+        def add_priority_action():
+            action = menu.addAction(t("imports_priority_title") + "…")
+            action.setEnabled(str(_active_profile() or "") == self._profile)
+            qconnect(action.triggered, lambda _checked=False, entries=tuple(self._selected_library_entries()):
+                     self._set_entry_priorities(entries))
+
         if len(self._selected_library_entries()) > 1:
             action = menu.addAction(t("reader_library_add_selected_to_list"))
             action.setEnabled(self._add_to_list_button.isEnabled())
             qconnect(action.triggered, self._add_selected_to_list)
+            add_priority_action()
             menu.exec(self._list.viewport().mapToGlobal(position))
             return
         reveal_key = (
@@ -2815,6 +2823,7 @@ class _DocumentBookshelfDialog(QDialog):
                 rename_action.triggered,
                 lambda _checked=False, target=entry: self._edit_pdf_name(target),
             )
+        add_priority_action()
         menu.addSeparator()
         if getattr(self, "_selection_only", False):
             menu.exec(self._list.viewport().mapToGlobal(position))
@@ -2851,6 +2860,64 @@ class _DocumentBookshelfDialog(QDialog):
             )
 
         menu.exec(self._list.viewport().mapToGlobal(position))
+
+    def _set_entry_priorities(self, entries) -> None:
+        from aqt.operations import QueryOp
+        try:
+            from .priority_dialog import PriorityDialog
+        except ImportError:
+            from priority_dialog import PriorityDialog
+
+        addon_dir, profile, collection = self._addon_dir, self._profile, mw.col
+        cancelled = self._pdf_metadata_cancelled
+
+        def current():
+            return not cancelled.is_set() and str(_active_profile() or "") == profile and mw.col is collection
+
+        if not entries or not current():
+            return
+        card_ids = tuple(dict.fromkeys(entry.card_id for entry in entries))
+        values = {entry.priority if entry.priority is not None else 50.0 for entry in entries}
+        dialog = PriorityDialog(
+            current_priority=values.pop() if len(values) == 1 else 50.0,
+            card_label=entries[0].title if len(entries) == 1 else tn("reader_library_selected_books", len(card_ids)),
+            lower_is_more_important=self._priority_lower_is_more_important,
+            parent=self,
+        )
+        if not dialog.exec() or not current():
+            return
+        priority = dialog.priority
+
+        def save(col):
+            if col is not collection or not current():
+                return False
+            for start in range(0, len(card_ids), 900):
+                chunk = card_ids[start:start + 900]
+                marks = ",".join("?" for _ in chunk)
+                if set(col.db.list(f"SELECT id FROM cards WHERE id IN ({marks})", *chunk)) != set(chunk):
+                    raise ValueError("Selected document cards no longer exist")
+            if not current():
+                return False
+            set_priorities(addon_dir, profile, ((card_id, priority) for card_id in card_ids))
+            return True
+
+        def saved(updated):
+            if not updated or not current():
+                return
+            selected = set(card_ids)
+            self._entries = [replace(entry, priority=priority) if entry.card_id in selected else entry
+                             for entry in self._entries]
+            self._refresh()
+            tooltip(t("root_reviewer_priority_set", priority=f"{priority:g}"), parent=self)
+
+        def failed(_error):
+            if current():
+                tooltip(t("reader_bookshelf_priority_failed"), parent=self)
+
+        try:
+            QueryOp(parent=self, op=save, success=saved).failure(failed).run_in_background()
+        except Exception as error:
+            failed(error)
 
     def _edit_pdf_name(self, entry: _BookshelfEntry) -> None:
         captured_profile = self._profile

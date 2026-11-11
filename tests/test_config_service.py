@@ -642,6 +642,14 @@ def test_reviewer_button_group_toggle_normalizes_without_changing_individual_cho
     }
 
 
+@pytest.mark.parametrize("raw, expected", [(False, False), ("false", False), ("true", True), (None, True)])
+def test_parent_context_icon_defaults_visible_and_normalizes_saved_choice(raw, expected):
+    assert config_service.configured_reviewer_parent_context_enabled({}) is True
+    normalized = config_service.normalize_config({"reviewer_parent_context_enabled": raw})
+    assert normalized["reviewer_parent_context_enabled"] is expected
+    assert config_service.configured_reviewer_parent_context_enabled(normalized) is expected
+
+
 def test_automatic_backup_config_is_profile_scoped_and_invalid_values_fail_closed():
     result = config_service.normalize_config({"automatic_backups": {
         "P": {"enabled": True, "directory": "/backup", "versions": 99,

@@ -10,14 +10,17 @@ from aqt.qt import QDockWidget, QTextBrowser, Qt
 
 try:
     from ..backend.card_context import load_parent_context
+    from ..backend.config_service import load_addon_config, configured_reviewer_parent_context_enabled
     from ..backend.i18n import t
     from ..backend.paths import get_active_profile
 except ImportError:
     from backend.card_context import load_parent_context
+    from backend.config_service import load_addon_config, configured_reviewer_parent_context_enabled
     from backend.i18n import t
     from backend.paths import get_active_profile
 
 _ADDON_DIR = str(Path(__file__).resolve().parent.parent)
+_ADDON_PKG = __name__.split('.')[0]
 _PREFIX = 'incremento_parent_context:'
 _command = ''
 _review_context = None
@@ -125,6 +128,14 @@ def reviewer_shown(*_):
     if context != _review_context:
         reset()
     if not context[2]:
+        return
+    try:
+        config = load_addon_config(getattr(mw, 'addonManager', None), _ADDON_PKG)
+    except Exception:
+        config = {}
+    if not configured_reviewer_parent_context_enabled(config):
+        reset()
+        mw.reviewer.web.eval("document.getElementById('incremento-parent-context')?.remove();")
         return
     _review_context, _snapshot = context, None
     command = _command = _PREFIX + secrets.token_urlsafe(24)

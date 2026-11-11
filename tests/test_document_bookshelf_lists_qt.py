@@ -196,8 +196,9 @@ def test_bookshelf_groups_a_selection_without_replacing_notes_or_other_lists(tmp
             QMenu.exec = lambda menu, _position: menus.append(menu)
             dialog._show_context_menu(dialog._list.visualItemRect(items[1]).center())
             assert selected() == {1, 3}
-            assert len(menus[0].actions()) == 1
-            menus[0].actions()[0].trigger()
+            actions = {action.text(): action for action in menus[0].actions()}
+            assert set(actions) == {shelf.t('reader_library_add_selected_to_list'), shelf.t('imports_priority_title') + '…'}
+            actions[shelf.t('reader_library_add_selected_to_list')].trigger()
         assert len(pending) == 1
         assert library.load_document_library(root, 'Captured') == before
         (work, done), options = pending.pop()

@@ -422,6 +422,12 @@ msgstr "每张卡片完成后，在继续前显示优先级对话框"
 msgid "settings_show_review_button_group"
 msgstr "显示复习按钮组"
 
+msgid "settings_show_parent_context_icon"
+msgstr "显示父卡片上下文图标"
+
+msgid "settings_show_parent_context_icon_hint"
+msgstr "在学习选项卡旁或卡片上方显示父卡片图标。点击后会在只读侧栏中打开父卡片。"
+
 msgid "settings_show_reviewer_priority_badge_on"
 msgstr "在以下卡片上显示优先级徽标："
 

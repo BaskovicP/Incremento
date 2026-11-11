@@ -5154,3 +5154,6 @@ msgstr "标签页 8"
 
 msgid "workspace_tab_9"
 msgstr "标签页 9"
+
+msgid "reader_bookshelf_priority_failed"
+msgstr "无法更新文档优先级。所有优先级均未更改。请重新打开书架后重试。"

@@ -5197,3 +5197,6 @@ msgstr "Tab 8"
 
 msgid "workspace_tab_9"
 msgstr "Tab 9"
+
+msgid "reader_bookshelf_priority_failed"
+msgstr "Could not update document priorities. No priorities were changed. Reopen the bookshelf and try again."

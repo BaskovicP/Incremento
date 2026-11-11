@@ -56,6 +56,7 @@
         "extract": true
     },
     "reviewer_button_group_visible": true,
+    "reviewer_parent_context_enabled": true,
     "show_incremento_fields": false,
     "auto_timer_enabled": false,
     "auto_timer_tags": [],

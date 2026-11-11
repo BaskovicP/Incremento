@@ -45,6 +45,7 @@ _BOOLEAN_DEFAULTS = {
     "study_workspace_enabled": True,
     "priority_lower_is_more_important": True,
     "reviewer_button_group_visible": True,
+    "reviewer_parent_context_enabled": True,
     "remember_browser_card_scroll": True,
     "show_priority_dialog_after_answer": False,
     "show_incremento_fields": False,
@@ -329,6 +330,10 @@ def configured_reviewer_button_group_visible(
     config: Mapping[str, Any] | None = None,
 ) -> bool:
     return _bool((config or {}).get("reviewer_button_group_visible"), True)
+
+
+def configured_reviewer_parent_context_enabled(config: Mapping[str, Any] | None = None) -> bool:
+    return _bool((config or {}).get("reviewer_parent_context_enabled"), True)
 
 
 def configured_study_workspace_enabled(config: Mapping[str, Any] | None = None) -> bool:
