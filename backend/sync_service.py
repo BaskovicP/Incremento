@@ -30,6 +30,7 @@ try:
     from .sync_capture import adopt_new_device_identity, capture, enable_sync, sync_identity
     from .sync_documents import DocumentFamily
     from .sync_files import LocalFileFamily
+    from .sync_links import LINK_FAMILIES
     from .sync_blobs import Budget
     from .sync_exchange import EXCHANGE_DIR, announce, publish, receive, release_waiting, sample_card_refs
     from .sync_snapshot import catch_up, history_complete, retire_packs, sweep_blobs, write_snapshot_if_due
@@ -47,6 +48,7 @@ except ImportError:
     )
     from sync_documents import DocumentFamily  # type: ignore[no-redef]
     from sync_files import LocalFileFamily  # type: ignore[no-redef]
+    from sync_links import LINK_FAMILIES  # type: ignore[no-redef]
     from sync_blobs import Budget  # type: ignore[no-redef]
     from sync_exchange import (  # type: ignore[no-redef]
         EXCHANGE_DIR, announce, publish, receive, release_waiting, sample_card_refs,
@@ -133,7 +135,7 @@ def families_for(addon_dir: str, profile: str) -> dict[str, Family]:
     with _locks_guard:
         documents = _document_families.setdefault((addon_dir, profile), DocumentFamily(addon_dir, profile))
         files = _file_families.setdefault((addon_dir, profile), LocalFileFamily(addon_dir, profile))
-    return {**FAMILIES, "document": documents, "localfile": files}
+    return {**FAMILIES, **LINK_FAMILIES, "document": documents, "localfile": files}
 
 
 def _meta(conn: Any, key: str) -> str | None:

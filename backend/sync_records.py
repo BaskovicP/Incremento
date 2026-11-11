@@ -665,6 +665,8 @@ TABLE_CLASSIFICATION: Mapping[str, str] = {
     "pdf_highlights": "synced",
     "epub_highlights": "synced",
     "content_items": "synced",
+    "document_links": "synced",
+    "epub_connections": "synced",
     # Machinery, derived indexes, history, per-day usage, browser and UI memory.
     "schema_migrations": "local",
     "sqlite_sequence": "local",
@@ -708,8 +710,6 @@ TABLE_CLASSIFICATION: Mapping[str, str] = {
     "knowledge_tree_postpone_presets": "later",
     "writing_progress": "later",
     "writing_word_stats": "later",
-    "document_links": "later",
-    "epub_connections": "later",
     "recording_links": "later",
     "pdf_card_sources": "later",
     "epub_card_sources": "later",
@@ -745,6 +745,12 @@ SYNCED_COLUMNS: Mapping[str, frozenset[str]] = {
     "epub_highlights": frozenset({"id", "card_id", "section_index", "color", "text", "note", "start_offset",
                                   "end_offset", "note_html", "style"}),
     "content_items": frozenset({"content_id", "kind", "card_id", "note_id", "storage_key"}),
+    "document_links": frozenset({"source_card_id", "source_content_id", "source_kind", "source_page", "quote",
+                                 "target_card_id", "target_content_id", "target_page", "target_scroll", "source_y",
+                                 "target_y", "connection_note", "source_passage", "target_passage"}),
+    "epub_connections": frozenset({"source_card_id", "source_content_id", "source_section", "source_offset",
+                                   "source_scroll", "target_card_id", "target_content_id", "target_section",
+                                   "target_offset", "target_scroll", "quote", "source_passage", "target_passage"}),
 }
 
 #: Columns of synced tables that stay on the device: display preferences and
@@ -755,6 +761,9 @@ LOCAL_COLUMNS: Mapping[str, frozenset[str]] = {
     "epub_progress": frozenset({"font_scale", "appearance_mode"}),
     "web_progress": frozenset({"media_updated_at"}),
     "content_items": frozenset({"created_at", "updated_at"}),
+    # The local row id: links are identified by their two ends.
+    "document_links": frozenset({"id"}),
+    "epub_connections": frozenset({"id"}),
 }
 
 
