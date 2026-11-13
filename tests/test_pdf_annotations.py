@@ -784,6 +784,127 @@ def test_failed_atomic_save_preserves_pdf_and_incremento_notes(tmp_path, monkeyp
     assert load_highlights(str(tmp_path), PROFILE, CARD)[0]['note'] == 'My saved note'
 
 
+@pytest.fixture
+def tracked_pdf_documents(monkeypatch):
+    opened = []
+    open_pdf = fitz.open
+
+    def track_open(*args, **kwargs):
+        document = open_pdf(*args, **kwargs)
+        opened.append((Path(document.name) if document.name else None, document))
+        return document
+
+    monkeypatch.setattr(fitz, 'open', track_open)
+    return opened
+
+
+@pytest.mark.parametrize('origin', ['local', 'managed', 'linked'])
+def test_sync_replaces_documents_only_after_releasing_pdf_handles(
+    tmp_path, monkeypatch, tracked_pdf_documents, origin,
+):
+    filename = pdf_file(tmp_path)
+    change_pdf(filename, lambda doc: doc.set_metadata({'title': 'Study document', 'author': 'Author'}))
+    original = tmp_path / 'original.pdf'
+    shutil.copy2(filename, original)
+    if origin == 'local':
+        add_highlight(str(tmp_path), PROFILE, CARD, local_highlight('Portable note'))
+    else:
+        change_pdf(filename if origin == 'managed' else original,
+                   lambda doc: add_native(doc, 'Portable note'))
+    replace = annotations.os.replace
+    replaced = []
+
+    def windows_replace(source, destination):
+        if any(not doc.is_closed and path in (Path(source), Path(destination))
+               for path, doc in tracked_pdf_documents):
+            raise PermissionError('Windows cannot replace an open PDF')
+        replace(source, destination)
+        replaced.append(Path(destination))
+
+    monkeypatch.setattr(annotations.os, 'replace', windows_replace)
+
+    result = sync(tmp_path, source_path=str(original))
+
+    assert all(doc.is_closed for _path, doc in tracked_pdf_documents)
+    assert filename in replaced and original in replaced
+    assert native_rows(filename) == native_rows(original)
+    assert [row['note'] for row in native_rows(filename)] == ['Portable note']
+    assert [row['note'] for row in load_highlights(str(tmp_path), PROFILE, CARD)] == ['Portable note']
+    assert native_rows(result['reader_path']) == []
+    for path in (filename, original):
+        with fitz.open(path) as document:
+            assert document.metadata['title'] == 'Study document'
+            assert document.metadata['author'] == 'Author'
+    assert not list(tmp_path.rglob('.incremento-annotations-*'))
+    assert not list(tmp_path.rglob('.backup-*'))
+
+
+def test_sync_flushes_staged_pdf_and_backup_with_write_access(tmp_path, monkeypatch):
+    filename = pdf_file(tmp_path)
+    before = filename.read_bytes()
+    add_highlight(str(tmp_path), PROFILE, CARD, local_highlight())
+    opened = []
+    flushed = []
+    open_file = Path.open
+    fsync = annotations.os.fsync
+
+    def track_open(path, *args, **kwargs):
+        stream = open_file(path, *args, **kwargs)
+        opened.append((path, stream))
+        return stream
+
+    def windows_fsync(descriptor):
+        for path, stream in opened:
+            if not stream.closed and stream.fileno() == descriptor:
+                if not stream.writable():
+                    raise PermissionError('Windows requires write access to flush a file')
+                flushed.append(path)
+        return fsync(descriptor)
+
+    monkeypatch.setattr(Path, 'open', track_open)
+    monkeypatch.setattr(annotations.os, 'fsync', windows_fsync)
+
+    sync(tmp_path)
+
+    assert len(flushed) == 3, 'the saved PDF, reader PDF, and recovery backup must reach disk'
+    assert all(stream.closed for _path, stream in opened)
+    backup = paths.get_pdf_annotation_backup_path(str(tmp_path), PROFILE, CARD, source=False)
+    assert backup.read_bytes() == before
+    assert [row['note'] for row in native_rows(filename)] == ['My saved note']
+
+
+@pytest.mark.parametrize('failure', ['save', 'replace'])
+def test_sync_io_failure_releases_documents_and_removes_staged_files(
+    tmp_path, monkeypatch, tracked_pdf_documents, failure,
+):
+    filename = pdf_file(tmp_path)
+    add_highlight(str(tmp_path), PROFILE, CARD, local_highlight())
+    before = filename.read_bytes()
+    save = fitz.Document.save
+
+    def failed_save(document, target, *args, **kwargs):
+        save(document, target, *args, **kwargs)
+        raise OSError('simulated save failure')
+
+    def failed_replace(*args, **kwargs):
+        raise OSError('simulated replace failure')
+
+    if failure == 'save':
+        monkeypatch.setattr(fitz.Document, 'save', failed_save)
+    else:
+        monkeypatch.setattr(annotations.os, 'replace', failed_replace)
+
+    with pytest.raises(OSError, match=f'simulated {failure} failure'):
+        sync(tmp_path)
+
+    assert all(doc.is_closed for _path, doc in tracked_pdf_documents)
+    assert filename.read_bytes() == before
+    assert load_highlights(str(tmp_path), PROFILE, CARD)[0]['note'] == 'My saved note'
+    assert not list(tmp_path.rglob('.incremento-annotations-*'))
+    assert not list(tmp_path.rglob('.backup-*'))
+    assert not annotations._sync_lock.locked()
+
+
 def test_changed_font_resources_cannot_reuse_positions_from_a_different_pdf(tmp_path):
     filename = pdf_file(tmp_path)
     original = tmp_path / 'original.pdf'

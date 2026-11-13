@@ -609,17 +609,17 @@ msgstr "Use the Chrome extension to send the current webpage as PDF, webpage, or
 msgid "root_about_disclaimer_label"
 msgstr "Disclaimer:"
 
-#. Composition-root note formats and About UI: By using this add-on, you accept full responsibility for any damage, data loss, or other issues that may result from its use.
+#. Composition-root note formats and About UI: Provided without warranty, to the extent permitted by law. See LICENSE for the warranty disclaimer and limitation of liability.
 msgid "root_about_disclaimer"
-msgstr "By using this add-on, you accept full responsibility for any damage, data loss, or other issues that may result from its use."
+msgstr "Provided without warranty, to the extent permitted by law. See LICENSE for the warranty disclaimer and limitation of liability."
 
 #. Composition-root note formats and About UI: License:
 msgid "root_about_license_label"
 msgstr "License:"
 
-#. Composition-root note formats and About UI: All rights reserved. Using, copying, modifying, or distributing this code requires prior written permission from Paulo Baskovic.
+#. Composition-root note formats and About UI: AGPL-3.0-or-later. You may use, modify, and share Incremento under its terms. See LICENSE and THIRD_PARTY_NOTICES.txt.
 msgid "root_about_license"
-msgstr "All rights reserved. Using, copying, modifying, or distributing this code requires prior written permission from Paulo Baskovic."
+msgstr "AGPL-3.0-or-later. You may use, modify, and share Incremento under its terms. See LICENSE and THIRD_PARTY_NOTICES.txt."
 
 #. Incremento composition-root UI: Please enter a video URL.
 msgid "root_video_enter_url"

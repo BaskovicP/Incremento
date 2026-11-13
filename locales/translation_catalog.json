@@ -24013,7 +24013,7 @@
       "component": "addon",
       "key": "root_about_disclaimer",
       "form": "",
-      "source": "By using this add-on, you accept full responsibility for any damage, data loss, or other issues that may result from its use.",
+      "source": "Provided without warranty, to the extent permitted by law. See LICENSE for the warranty disclaimer and limitation of liability.",
       "tokens": [],
       "markup": []
     },
@@ -24053,7 +24053,7 @@
       "component": "addon",
       "key": "root_about_license",
       "form": "",
-      "source": "All rights reserved. Using, copying, modifying, or distributing this code requires prior written permission from Paulo Baskovic.",
+      "source": "AGPL-3.0-or-later. You may use, modify, and share Incremento under its terms. See LICENSE and THIRD_PARTY_NOTICES.txt.",
       "tokens": [],
       "markup": []
     },

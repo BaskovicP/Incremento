@@ -334,7 +334,22 @@ Imports stay offline in Chrome's local extension storage. A file may contain at 
 
 ## License
 
-All rights reserved. Using, copying, modifying, or distributing this code requires prior written permission from Paulo Baskovic.
+Copyright (c) 2026 Paulo Baskovic. Incremento Companion's original code is
+licensed under **AGPL-3.0-or-later**; see the repository-root [LICENSE](../../LICENSE).
+You may use, modify, fork, and redistribute it under those terms, including
+commercially. The software is provided without warranty to the extent
+permitted by law. Preserve copyright and license notices, provide the source
+and license rights required by AGPL, and identify unofficial versions accurately.
+
+Third-party components retain their own licenses. Their full notices are in
+[THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt), which must accompany
+distributed copies. This file mirrors the repository-root notices and is
+included in packaged Companion and Firefox exports.
+
+See [SOURCE.md](../../SOURCE.md) for build instructions and matching source
+archives. Packaged exports carry their own `SOURCE.md` and, when exported
+from an installed release, `SOURCE_ARTIFACT.json` identifying the matching
+source archive. Provide that source access when distributing the extension.
 
 
 ## Large bookmark collections and media tracking

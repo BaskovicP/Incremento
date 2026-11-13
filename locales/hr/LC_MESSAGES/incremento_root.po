@@ -623,17 +623,17 @@ msgstr "Upotrijebite proširenje za Chrome za slanje trenutačne mrežne stranic
 msgid "root_about_disclaimer_label"
 msgstr "Odricanje od odgovornosti:"
 
-#. Composition-root note formats and About UI: By using this add-on, you accept full responsibility for any damage, data loss, or other issues that may result from its use.
+#. Composition-root note formats and About UI: Provided without warranty, to the extent permitted by law. See LICENSE for the warranty disclaimer and limitation of liability.
 msgid "root_about_disclaimer"
-msgstr "Uporabom ovog dodatka prihvaćate punu odgovornost za svaku štetu, gubitak podataka ili druge probleme koji mogu nastati njegovom uporabom."
+msgstr "Pruža se bez jamstva, u mjeri dopuštenoj zakonom. Odricanje od jamstva i ograničenje odgovornosti navedeni su u datoteci LICENSE."
 
 #. Composition-root note formats and About UI: License:
 msgid "root_about_license_label"
 msgstr "Licencija:"
 
-#. Composition-root note formats and About UI: All rights reserved. Using, copying, modifying, or distributing this code requires prior written permission from Paulo Baskovic.
+#. Composition-root note formats and About UI: AGPL-3.0-or-later. You may use, modify, and share Incremento under its terms. See LICENSE and THIRD_PARTY_NOTICES.txt.
 msgid "root_about_license"
-msgstr "Sva prava pridržana. Za uporabu, kopiranje, izmjenu ili distribuciju ovog koda potrebno je prethodno pisano dopuštenje Paula Baskovica."
+msgstr "AGPL-3.0-or-later. Incremento možete upotrebljavati, mijenjati i dijeliti prema uvjetima te licencije. Pogledajte LICENSE i THIRD_PARTY_NOTICES.txt."
 
 #. Incremento composition-root UI: Please enter a video URL.
 msgid "root_video_enter_url"

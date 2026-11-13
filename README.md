@@ -57,6 +57,37 @@ Common add-on paths:
 | Windows | `%APPDATA%\Anki2\addons21\incremento\` |
 | Linux | `~/.local/share/Anki2/addons21/incremento/` |
 
+## License and user freedom
+
+Copyright (c) 2026 Paulo Baskovic. Incremento's original code, including the
+Anki add-on and browser companion, is licensed under
+**AGPL-3.0-or-later**. See [LICENSE](LICENSE) for the full terms and
+[THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt) for separately licensed
+components.
+
+Incremento is currently free of charge. You may use, study, modify, fork, and
+redistribute it under the license, including commercially. Covered derivatives
+must preserve the source-sharing and licensing rights required by AGPL;
+modified versions used over a network also have source-access obligations.
+Private modifications do not have to be publicly released merely because
+you made them.
+
+The author may offer paid official distributions, support, or optional
+services in the future. This does not withdraw the rights granted for
+previously released versions. Forks may also be distributed or sold in
+compliance with the license. Describe unofficial versions accurately and do
+not imply endorsement by Paulo Baskovic or the official Incremento project.
+
+The software is provided without warranty, to the extent permitted by law;
+the full disclaimer and limitation of liability are in LICENSE. Retain
+copyright and license notices when sharing it. Contributions submitted for
+inclusion must be available under AGPL-3.0-or-later (or an expressly identified
+compatible license); contributors retain their copyright.
+
+See [SOURCE.md](SOURCE.md) for matching release source and build instructions,
+and [EXPORTING.md](EXPORTING.md) for backups and data portability. The code
+license does not grant rights to user-imported or other third-party content.
+
 ## Optional Dependencies
 
 Core functionality works without extra system setup, but some PDF features improve when these are available:
@@ -107,6 +138,8 @@ Extension details and install steps:
 - Export and restore guide: [EXPORTING.md](EXPORTING.md)
 - Persistence and software architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
 - Vulnerability reporting, trust boundaries, and guarded repair automation: [SECURITY.md](SECURITY.md)
+- Third-party component licenses and required notices: [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)
+- Matching release source and rebuilding: [SOURCE.md](SOURCE.md)
 - Internal agent/developer notes: [AGENTS.md](AGENTS.md) with nested area-specific guides under `backend/`, `frontend/`, `chrome_extensions/incremento_companion/`, and `tests/`
 
 ## Interface languages
@@ -253,7 +286,17 @@ python3 scripts/package_addon.py --run-tests
 python3 scripts/package_addon.py --include-meta
 ```
 
-The script writes the `.ankiaddon` into `dist/` and stages the exact packaged folder next to it for inspection unless `--clean-staging` is used. Runtime `user_files/`, tests, caches, bytecode, and local installation metadata are excluded; the archive is reopened and validated before success is reported.
+The script writes the `.ankiaddon` and its matching `-source.zip` into `dist/`
+and stages the runtime folder next to them unless `--clean-staging` is used.
+The runtime archive excludes `user_files/`, tests, caches, bytecode, and local
+installation metadata; the source archive includes the build inputs and tests.
+Publish both archives together. `SOURCE_ARTIFACT.json` in the runtime package
+identifies the source archive and its SHA-256 digest. See [SOURCE.md](SOURCE.md).
+
+Keep `THIRD_PARTY_NOTICES.txt` with distributed copies, including standalone
+Companion exports. The repository-root file is canonical; the checked-in
+Companion copy must stay identical. These notices preserve the licenses of
+third-party components alongside Incremento's AGPL terms in [LICENSE](LICENSE).
 
 ## Repository Hygiene
 

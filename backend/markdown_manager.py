@@ -681,7 +681,7 @@ def save_markdown_document(
                     shutil.copyfile(prepared.path, replacement)
                     os.chmod(replacement, 0o600)
                     for output in (previous, replacement):
-                        # Windows refuses fsync on a read-only handle (EBADF).
+                        # Windows flushes require a handle with write access.
                         with output.open("r+b") as handle:
                             os.fsync(handle.fileno())
                     backup.parent.mkdir(parents=True, exist_ok=True)

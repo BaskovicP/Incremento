@@ -595,17 +595,17 @@ msgstr "使用 Chrome 扩展程序将当前网页发送为 PDF、网页或写作
 msgid "root_about_disclaimer_label"
 msgstr "免责声明："
 
-#. Composition-root note formats and About UI: By using this add-on, you accept full responsibility for any damage, data loss, or other issues that may result from its use.
+#. Composition-root note formats and About UI: Provided without warranty, to the extent permitted by law. See LICENSE for the warranty disclaimer and limitation of liability.
 msgid "root_about_disclaimer"
-msgstr "使用本插件即表示您对其可能造成的损害、数据丢失或其他问题承担全部责任。"
+msgstr "在法律允许的范围内，本软件不提供任何担保。有关担保免责声明和责任限制，请参阅 LICENSE。"
 
 #. Composition-root note formats and About UI: License:
 msgid "root_about_license_label"
 msgstr "许可："
 
-#. Composition-root note formats and About UI: All rights reserved. Using, copying, modifying, or distributing this code requires prior written permission from Paulo Baskovic.
+#. Composition-root note formats and About UI: AGPL-3.0-or-later. You may use, modify, and share Incremento under its terms. See LICENSE and THIRD_PARTY_NOTICES.txt.
 msgid "root_about_license"
-msgstr "保留所有权利。使用、复制、修改或分发此代码须事先获得 Paulo Baskovic 的书面许可。"
+msgstr "AGPL-3.0-or-later。您可以按照该许可证的条款使用、修改和分享 Incremento。请参阅 LICENSE 和 THIRD_PARTY_NOTICES.txt。"
 
 #. Incremento composition-root UI: Please enter a video URL.
 msgid "root_video_enter_url"
