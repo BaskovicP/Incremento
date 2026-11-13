@@ -13,6 +13,14 @@ from backend.i18n import Translator
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.parametrize("locale", ["en", "hr", "zh-Hans"])
+def test_about_license_in_shipped_catalog_grants_agpl_rights(locale):
+    license_text = Translator(locale).t("root_about_license")
+    assert "AGPL-3.0-or-later" in license_text
+    assert "LICENSE" in license_text
+    assert "THIRD_PARTY_NOTICES.txt" in license_text
+
+
 @pytest.mark.parametrize('locale,skip,postpone', [('hr', 'Preskoči', 'Odgodi'), ('zh-Hans', '跳过', '推迟')])
 def test_reviewer_question_buttons_translate_labels_and_preserve_commands(locale, skip, postpone):
     source = ast.parse((ROOT / '__init__.py').read_text(encoding='utf-8'))

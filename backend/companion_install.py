@@ -35,6 +35,13 @@ def prepare(source: Path, destination: Path) -> Path:
     for name in ("manifest.json", "content-loader.js", "popup.html", "firefox-help.html", "dist/background.js"):
         if source / name not in files:
             raise ValueError(f"Missing runtime file; build the extension first: {name}")
+    legal_files = [ROOT / name for name in ("LICENSE", "THIRD_PARTY_NOTICES.txt", "SOURCE.md")]
+    source_metadata = ROOT / "SOURCE_ARTIFACT.json"
+    if source_metadata.exists() or source_metadata.is_symlink():
+        legal_files.append(source_metadata)
+    for path in legal_files:
+        if path.is_symlink() or not path.is_file():
+            raise ValueError(f"Missing or symlinked legal notice: {path.name}")
     manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
     manifest["background"] = {"scripts": ["dist/background.js"], "type": "module"}
     manifest["permissions"] = [name for name in manifest["permissions"] if name != "offscreen"]
@@ -59,7 +66,8 @@ def prepare(source: Path, destination: Path) -> Path:
             output = staging / path.relative_to(source)
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(path, output)
-        shutil.copyfile(ROOT / "LICENSE", staging / "LICENSE")
+        for path in legal_files:
+            shutil.copyfile(path, staging / path.name)
         (staging / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         if destination.exists() or destination.is_symlink():
             raise FileExistsError(destination)

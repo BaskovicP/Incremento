@@ -1,0 +1,103 @@
+{
+  "version": "4.10.38",
+  "upstream_package": {
+    "url": "https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-4.10.38.tgz",
+    "sha256": "1011b38553532d7078c59f26b15a471f8dae00f101b60e2add9b8511737a1ce0"
+  },
+  "upstream_source": {
+    "url": "https://github.com/mozilla/pdf.js/tree/f9bea397f817100a186d0ced2aa3d4b85813b637",
+    "revision": "f9bea397f817100a186d0ced2aa3d4b85813b637"
+  },
+  "esbuild_version": "0.25.12",
+  "inputs": {
+    "pdf.mjs": "a209a2124baa35cbb9015b809926f1bcec9dd1c247296290e205dd9d76cb9128",
+    "pdf.worker.mjs": "7c237f83fa56bce645d8af51d183c9c56ba7b2d2928ff42754dc7020bea36323",
+    "pdf.sandbox.mjs": "5e399b86b83b3bbc8c38f1de88a45b38a988a05117e9b4044a4baae2f6d557b6"
+  },
+  "source_archives": [
+    {
+      "component": "pdfjs",
+      "revision": "f9bea397f817100a186d0ced2aa3d4b85813b637",
+      "url": "https://github.com/mozilla/pdf.js/tree/f9bea397f817100a186d0ced2aa3d4b85813b637",
+      "archive": "sources/pdfjs-f9bea397f817100a186d0ced2aa3d4b85813b637.tar.gz",
+      "sha256": "b857f2e22b7dfe230b30dcf035172d0dfd53a6c1f7cbbd4e0e74a4be00c35a2f",
+      "files": 756,
+      "bytes": 4085507,
+      "included_paths": [
+        "root files",
+        "src/",
+        "external/",
+        "web/",
+        "extensions/",
+        "utils/",
+        "l10n/",
+        "test/*.mjs",
+        "test/*.js"
+      ]
+    },
+    {
+      "component": "quickjs",
+      "revision": "3f81070e573e3592728dbbbd04c84c498b20d6dc",
+      "url": "https://github.com/bellard/quickjs/tree/3f81070e573e3592728dbbbd04c84c498b20d6dc",
+      "archive": "sources/quickjs-3f81070e573e3592728dbbbd04c84c498b20d6dc.tar.gz",
+      "sha256": "e1a5e3eadc6d90d691d3c30b9b7fca9d251c214c0defde3345e2acec9e617b70",
+      "files": 48,
+      "bytes": 576496,
+      "excluded_top_level": [
+        "test",
+        "tests",
+        "testing",
+        ".github",
+        ".git"
+      ]
+    },
+    {
+      "component": "pdfjs-quickjs",
+      "revision": "3ca8f480cd32240378d5e53b759c5e14b76a3549",
+      "url": "https://github.com/mozilla/pdf.js.quickjs/tree/3ca8f480cd32240378d5e53b759c5e14b76a3549",
+      "archive": "sources/pdfjs-quickjs-3ca8f480cd32240378d5e53b759c5e14b76a3549.tar.gz",
+      "sha256": "87f3f855f57c05d8043410844fb41f44fc02cc91bfbead64e9964bfe629899ed",
+      "files": 12,
+      "bytes": 30188,
+      "excluded_top_level": [
+        "test",
+        "tests",
+        "testing",
+        ".github",
+        ".git"
+      ]
+    },
+    {
+      "component": "openjpeg",
+      "revision": "6e92b398dc8e0bf1c2d39dc01f4e9f94b15e75f7",
+      "url": "https://github.com/uclouvain/openjpeg/tree/6e92b398dc8e0bf1c2d39dc01f4e9f94b15e75f7",
+      "archive": "sources/openjpeg-6e92b398dc8e0bf1c2d39dc01f4e9f94b15e75f7.tar.gz",
+      "sha256": "7b49309d5cde35a1de606c3b566d98d196083629edd168fc68a39e3918a4690e",
+      "files": 429,
+      "bytes": 2065926,
+      "excluded_top_level": [
+        "test",
+        "tests",
+        "testing",
+        ".github",
+        ".git"
+      ]
+    },
+    {
+      "component": "pdfjs-openjpeg",
+      "revision": "154e3b397c5b4f22d4f93e3cd8bacde090d6e453",
+      "url": "https://github.com/mozilla/pdf.js.openjpeg/tree/154e3b397c5b4f22d4f93e3cd8bacde090d6e453",
+      "archive": "sources/pdfjs-openjpeg-154e3b397c5b4f22d4f93e3cd8bacde090d6e453.tar.gz",
+      "sha256": "8d7d9a7d3469d63b8cd1e70ad51db7ca1069285e668008c45c64a3e522c5e929",
+      "files": 13,
+      "bytes": 27926,
+      "excluded_top_level": [
+        "test",
+        "tests",
+        "testing",
+        ".github",
+        ".git"
+      ]
+    }
+  ]
+}

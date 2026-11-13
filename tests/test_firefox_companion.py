@@ -15,6 +15,81 @@ def builder():
     return module
 
 
+def test_unpacked_companion_third_party_notices_match_canonical_copy():
+    assert (ROOT / "chrome_extensions/incremento_companion/THIRD_PARTY_NOTICES.txt").read_bytes() == (
+        ROOT / "THIRD_PARTY_NOTICES.txt"
+    ).read_bytes()
+
+
+@pytest.mark.parametrize("archive", [False, True], ids=["folder", "xpi"])
+def test_firefox_exports_preserve_canonical_third_party_notices(tmp_path, monkeypatch, archive):
+    import companion_install
+    from zipfile import ZipFile
+
+    addon = tmp_path / "addon"
+    addon.mkdir()
+    notices = b"Third-party notices\nCopyright Example Authors\nPermission and disclaimer text.\n"
+    (addon / "LICENSE").write_bytes(b"Existing project license\n")
+    (addon / "THIRD_PARTY_NOTICES.txt").write_bytes(notices)
+    (addon / "SOURCE.md").write_bytes(b"Source build instructions\n")
+    monkeypatch.setattr(companion_install, "ROOT", addon)
+    source = ROOT / "chrome_extensions/incremento_companion"
+    destination = tmp_path / ("companion.xpi" if archive else "companion")
+
+    if archive:
+        companion_install.export_firefox(source, destination)
+        with ZipFile(destination) as exported:
+            assert exported.read("THIRD_PARTY_NOTICES.txt") == notices
+            assert exported.read("LICENSE") == b"Existing project license\n"
+    else:
+        companion_install.prepare(source, destination)
+        assert (destination / "THIRD_PARTY_NOTICES.txt").read_bytes() == notices
+        assert (destination / "LICENSE").read_bytes() == b"Existing project license\n"
+
+
+def test_installed_firefox_export_preserves_matching_source_reference(tmp_path, monkeypatch):
+    import companion_install
+    from zipfile import ZipFile
+
+    addon = tmp_path / "addon"
+    addon.mkdir()
+    for name in ("LICENSE", "THIRD_PARTY_NOTICES.txt", "SOURCE.md"):
+        (addon / name).write_text(f"Contents of {name}\n")
+    metadata = b'{"archive":"incremento-source.zip","sha256":"example"}\n'
+    (addon / "SOURCE_ARTIFACT.json").write_bytes(metadata)
+    monkeypatch.setattr(companion_install, "ROOT", addon)
+    destination = tmp_path / "companion.xpi"
+
+    companion_install.export_firefox(ROOT / "chrome_extensions/incremento_companion", destination)
+
+    with ZipFile(destination) as exported:
+        assert exported.read("SOURCE_ARTIFACT.json") == metadata
+        assert exported.read("SOURCE.md") == (addon / "SOURCE.md").read_bytes()
+
+
+@pytest.mark.parametrize("archive", [False, True], ids=["folder", "xpi"])
+@pytest.mark.parametrize("invalid_input", ["missing", "symlink"])
+def test_firefox_rejects_missing_or_symlinked_notices_without_export(tmp_path, monkeypatch, archive, invalid_input):
+    import companion_install
+
+    addon = tmp_path / "addon"
+    addon.mkdir()
+    (addon / "LICENSE").write_text("Existing project license")
+    if invalid_input == "symlink":
+        private = tmp_path / "private.txt"
+        private.write_text("private sentinel")
+        (addon / "THIRD_PARTY_NOTICES.txt").symlink_to(private)
+    monkeypatch.setattr(companion_install, "ROOT", addon)
+    destination = tmp_path / ("companion.xpi" if archive else "companion")
+    export = companion_install.export_firefox if archive else companion_install.prepare
+
+    with pytest.raises(ValueError, match="THIRD_PARTY_NOTICES.txt"):
+        export(ROOT / "chrome_extensions/incremento_companion", destination)
+
+    assert not destination.exists()
+    assert not any(path.name.startswith(("incremento-export-", "incremento-firefox-")) for path in tmp_path.iterdir())
+
+
 def test_local_firefox_build_has_working_entry_points_and_no_private_inputs(tmp_path):
     source = ROOT / "chrome_extensions/incremento_companion"
     before = (source / "manifest.json").read_bytes()

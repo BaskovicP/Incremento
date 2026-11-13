@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import runpy
 import subprocess
 import sys
 from pathlib import Path
 from zipfile import ZipFile
+
+import pytest
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "package_addon.py"
@@ -29,12 +33,41 @@ def make_fake_repo(tmp_path: Path) -> Path:
         "ARCHITECTURE.md",
         "SECURITY.md",
         "LICENSE",
+        "THIRD_PARTY_NOTICES.txt",
+        "SOURCE.md",
     ):
         write_file(repo, relpath)
 
     write_file(repo, "meta.json", '{"local": true}')
     write_file(repo, "pyproject.toml")
     write_file(repo, "pytest.ini")
+    for name in (
+        "requirements-dev.txt", "LICENSING_AUDIT.md", ".gitignore", ".github/dependabot.yml",
+        ".github/workflows/verify.yml",
+        "frontend/vite.config.js", "frontend/vite.extension.config.js", "frontend/eslint.config.js",
+        "frontend/src/main.jsx", "frontend/tests/example.test.mjs",
+        "chrome_extensions/incremento_companion/README.md",
+        "chrome_extensions/incremento_companion/src/popup/main.jsx",
+        "vendor/pdfjs/README.md", "vendor/pdfjs/manifest.json", "vendor/pdfjs/LICENSE",
+        "vendor/pdfjs/pdf.mjs", "vendor/pdfjs/pdf.worker.mjs", "vendor/pdfjs/pdf.sandbox.mjs",
+        "scripts/package_addon.py", "scripts/compile_i18n.py", "scripts/i18n_inventory.py",
+        "scripts/build_translation_catalog.py", "scripts/i18n_literal_exceptions.json",
+        "scripts/generate_icons.py", "scripts/prepare_firefox_companion.py", "scripts/build_pdfjs.mjs",
+        "scripts/mutation_smoke.py", "scripts/repair_pipeline.py", "scripts/llm_repair_loop.py",
+        "scripts/llm_repair_eval.py", "scripts/disposable_anki_smoke.py",
+        "tests/fixtures/djvu/text_and_blank.djvu", "tests/fixtures/djvu/README.md",
+        "tests/repair_cases/README.md", "tests/repair_cases/schema.json",
+        "tests/repair_cases/absolute_path_rejection.json", "tests/repair_cases/credential_rejection.json",
+        "tests/repair_cases/prompt_injection_framing.json", "tests/repair_cases/email_rejection.json",
+        "tests/repair_cases/url_rejection.json", "tests/repair_cases/path_traversal_protection.json",
+        "tests/repair_cases/naked_credential_rejection.json",
+    ):
+        write_file(repo, name)
+    upstream = "licensed upstream source"
+    write_file(repo, "vendor/pdfjs/sources/upstream.tar.gz", upstream)
+    write_file(repo, "vendor/pdfjs/manifest.json", json.dumps({"source_archives": [{
+        "archive": "sources/upstream.tar.gz", "sha256": hashlib.sha256(upstream.encode()).hexdigest(),
+    }]}))
     write_file(repo, "PLAN.md")
     write_file(repo, ".DS_Store")
     write_file(repo, "dist/old.zip")
@@ -128,6 +161,7 @@ def make_fake_repo(tmp_path: Path) -> Path:
 
     extension_files = (
         "chrome_extensions/incremento_companion/manifest.json",
+        "chrome_extensions/incremento_companion/THIRD_PARTY_NOTICES.txt",
         "chrome_extensions/incremento_companion/popup.html",
         "chrome_extensions/incremento_companion/popup.css",
         "chrome_extensions/incremento_companion/bookmarks.html",
@@ -165,6 +199,7 @@ def make_fake_repo(tmp_path: Path) -> Path:
     for locale in ("en", "hr", "zh-Hans"):
         for domain in ("core", "qt", "readers", "root", "backend", "admin", "imports"):
             write_file(repo, f"locales/{locale}/LC_MESSAGES/incremento_{domain}.mo")
+            write_file(repo, f"locales/{locale}/LC_MESSAGES/incremento_{domain}.po")
     for locale in ("en", "hr", "zh_CN"):
         write_file(repo, f"chrome_extensions/incremento_companion/_locales/{locale}/messages.json", "{}")
     write_file(repo, "tests/test_private.py")
@@ -197,6 +232,149 @@ def run_package(
 def archive_names(path: Path) -> set[str]:
     with ZipFile(path) as zf:
         return set(zf.namelist())
+
+
+def test_package_preserves_canonical_third_party_notices_in_addon_and_companion(tmp_path):
+    repo = make_fake_repo(tmp_path)
+    notices = "Third-party notices\nCopyright Example Authors\nPermission and disclaimer text.\n"
+    write_file(repo, "THIRD_PARTY_NOTICES.txt", notices)
+    write_file(repo, "chrome_extensions/incremento_companion/THIRD_PARTY_NOTICES.txt", "stale copy")
+
+    artifact = run_package(repo, tmp_path / "out")
+
+    with ZipFile(artifact) as archive:
+        for name in ("THIRD_PARTY_NOTICES.txt", "chrome_extensions/incremento_companion/THIRD_PARTY_NOTICES.txt"):
+            assert archive.read(name) == notices.encode("utf-8")
+
+
+@pytest.mark.parametrize("invalid_input", ["missing", "symlink"])
+def test_package_rejects_unavailable_or_symlinked_third_party_notices(tmp_path, invalid_input):
+    repo = make_fake_repo(tmp_path)
+    notice = repo / "THIRD_PARTY_NOTICES.txt"
+    notice.unlink()
+    if invalid_input == "symlink":
+        private = tmp_path / "private.txt"
+        private.write_text("private sentinel")
+        notice.symlink_to(private)
+    output = tmp_path / "out"
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_package(repo, output)
+
+    assert "THIRD_PARTY_NOTICES.txt" in error.value.stderr
+    assert not list(output.glob("*.ankiaddon"))
+
+
+@pytest.mark.parametrize("missing", [
+    "THIRD_PARTY_NOTICES.txt", "chrome_extensions/incremento_companion/THIRD_PARTY_NOTICES.txt",
+])
+def test_archive_validation_rejects_missing_third_party_notices(tmp_path, missing):
+    repo = make_fake_repo(tmp_path)
+    artifact = run_package(repo, tmp_path / "out")
+    damaged = tmp_path / "missing-notice.ankiaddon"
+    with ZipFile(artifact) as source, ZipFile(damaged, "w") as destination:
+        for member in source.infolist():
+            if member.filename != missing:
+                destination.writestr(member, source.read(member.filename))
+
+    validate_archive = runpy.run_path(str(SCRIPT))["validate_archive"]
+    with pytest.raises(SystemExit, match="missing required runtime paths") as error:
+        validate_archive(damaged)
+    assert missing in str(error.value)
+
+
+def test_package_emits_matching_source_with_build_inputs_and_exact_archive_reference(tmp_path):
+    repo = make_fake_repo(tmp_path)
+    write_file(repo, ".gitignore", ".coverage\n.hypothesis/\n")
+    write_file(repo, ".github/dependabot.yml", "version: 2\nupdates: []\n")
+    write_file(repo, "frontend/src/main.jsx", "// current uncommitted source\n")
+    write_file(repo, "vendor/pdfjs/sources/upstream.tar.gz", "licensed upstream source")
+    for private in ("frontend/src/.env", "frontend/src/user_files/private.json",
+                    "tests/__pycache__/private.pyc", "tests/fixtures/private.json",
+                    "vendor/pdfjs/.env", "security_private/report.md"):
+        write_file(repo, private, "private sentinel")
+
+    artifact = run_package(repo, tmp_path / "out", "review-build", "--include-meta")
+    source_path = artifact.with_name("review-build-source.zip")
+    with ZipFile(artifact) as addon, ZipFile(source_path) as source:
+        expected = {"archive": source_path.name, "sha256": hashlib.sha256(source_path.read_bytes()).hexdigest()}
+        assert json.loads(addon.read("SOURCE_ARTIFACT.json")) == expected
+        assert json.loads(addon.read("chrome_extensions/incremento_companion/SOURCE_ARTIFACT.json")) == expected
+        assert addon.read("SOURCE.md") == addon.read("chrome_extensions/incremento_companion/SOURCE.md")
+        assert addon.read("LICENSE") == addon.read("chrome_extensions/incremento_companion/LICENSE")
+        assert source.read("frontend/src/main.jsx") == b"// current uncommitted source\n"
+        assert source.read(".gitignore") == b".coverage\n.hypothesis/\n"
+        assert source.read(".github/dependabot.yml") == b"version: 2\nupdates: []\n"
+        assert source.read("backend/db.py") == addon.read("backend/db.py")
+        assert source.read("web/dist/pdf_viewer.js") == addon.read("web/dist/pdf_viewer.js")
+        assert {"LICENSE", "SOURCE.md", "THIRD_PARTY_NOTICES.txt", "frontend/package-lock.json",
+                "frontend/vite.config.js", "frontend/vite.extension.config.js", "frontend/eslint.config.js",
+                "chrome_extensions/incremento_companion/src/popup/main.jsx",
+                "frontend/tests/example.test.mjs", "chrome_extensions/incremento_companion/tests/background.test.js",
+                "tests/fixtures/djvu/text_and_blank.djvu", "locales/en/LC_MESSAGES/incremento_core.po",
+                "scripts/build_pdfjs.mjs", "scripts/package_addon.py", "scripts/compile_i18n.py",
+                "scripts/i18n_literal_exceptions.json", "requirements-dev.txt", "pyproject.toml", "pytest.ini",
+                ".github/workflows/verify.yml", "vendor/pdfjs/pdf.mjs", "vendor/pdfjs/sources/upstream.tar.gz"} <= set(source.namelist())
+        assert "meta.json" in addon.namelist()
+        assert "tests/fixtures/private.json" not in source.namelist()
+        assert not any(name == "meta.json" or name.endswith("SOURCE_ARTIFACT.json")
+                       or any(part in {"user_files", "node_modules", "__pycache__", "security_private", ".git", ".env"}
+                              for part in name.split("/")) for name in source.namelist())
+
+
+@pytest.mark.parametrize("invalid_input", ["missing", "symlink"])
+def test_package_rejects_missing_or_symlinked_required_source_input(tmp_path, invalid_input):
+    repo = make_fake_repo(tmp_path)
+    source = repo / "frontend/src/main.jsx"
+    source.unlink()
+    if invalid_input == "symlink":
+        private = tmp_path / "private.jsx"
+        private.write_text("private sentinel")
+        source.symlink_to(private)
+    output = tmp_path / "out"
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_package(repo, output)
+
+    assert "frontend/src/main.jsx" in error.value.stderr
+    assert not list(output.glob("*.ankiaddon"))
+    assert not list(output.glob("*-source.zip"))
+
+
+@pytest.mark.parametrize("kind", ["file", "directory"])
+def test_package_rejects_nested_source_symlinks_without_archiving_private_data(tmp_path, kind):
+    repo = make_fake_repo(tmp_path)
+    private = tmp_path / "private"
+    private.mkdir()
+    (private / "secret.jsx").write_text("private sentinel")
+    nested = repo / "frontend/src/nested"
+    if kind == "file":
+        nested.mkdir()
+        (nested / "secret.jsx").symlink_to(private / "secret.jsx")
+    else:
+        nested.symlink_to(private, target_is_directory=True)
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_package(repo, tmp_path / "out")
+
+    assert "Symlink source input" in error.value.stderr
+    assert "private sentinel" not in error.value.stderr
+    assert not list((tmp_path / "out").glob("*.ankiaddon"))
+    assert not list((tmp_path / "out").glob("*-source.zip"))
+
+
+@pytest.mark.parametrize("archive", ["../../private.tar.gz", "/private.tar.gz"])
+def test_package_rejects_vendor_manifest_source_path_escape(tmp_path, archive):
+    repo = make_fake_repo(tmp_path)
+    write_file(repo, "vendor/pdfjs/manifest.json", json.dumps({"source_archives": [{
+        "archive": archive, "sha256": "0" * 64,
+    }]}))
+
+    with pytest.raises(subprocess.CalledProcessError) as error:
+        run_package(repo, tmp_path / "out")
+
+    assert "Invalid vendor source archive path" in error.value.stderr
+    assert not list((tmp_path / "out").glob("*-source.zip"))
 
 
 def test_package_addon_writes_root_ankiaddon_manifest_and_runtime_files(tmp_path: Path) -> None:
@@ -363,7 +541,7 @@ def test_package_addon_defaults_to_timestamped_ankiaddon_name(tmp_path: Path) ->
 
     artifacts = list(output_dir.glob("incremento-addon-*.ankiaddon"))
     assert len(artifacts) == 1
-    assert not list(output_dir.glob("*.zip"))
+    assert list(output_dir.glob("*-source.zip")) == [artifacts[0].with_name(f"{artifacts[0].stem}-source.zip")]
 
 
 def test_package_includes_language_catalogs_only(tmp_path):

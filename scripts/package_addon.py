@@ -9,6 +9,7 @@ that can be installed with Anki's "Install from file" flow.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
@@ -34,6 +35,8 @@ ROOT_FILES = (
     "ARCHITECTURE.md",
     "SECURITY.md",
     "LICENSE",
+    "THIRD_PARTY_NOTICES.txt",
+    "SOURCE.md",
 )
 WEB_RUNTIME_FILES = (
     "web/mcp/manifest.json",
@@ -44,6 +47,10 @@ WEB_RUNTIME_FILES = (
     "web/dist/pdf_viewer.js",
 )
 CHROME_EXTENSION_ROOT = Path("chrome_extensions/incremento_companion")
+THIRD_PARTY_NOTICE_PATHS = (
+    "THIRD_PARTY_NOTICES.txt",
+    f"{CHROME_EXTENSION_ROOT.as_posix()}/THIRD_PARTY_NOTICES.txt",
+)
 CHROME_EXTENSION_ROOT_FILES = (
     "manifest.json",
     "content-loader.js",
@@ -65,6 +72,9 @@ CUSTOM_LANGUAGE_PATHS = (
     "locales/UNICODE_LICENSE.txt",
 )
 REQUIRED_RUNTIME_PATHS = (
+    "LICENSE",
+    "SOURCE.md",
+    *THIRD_PARTY_NOTICE_PATHS,
     *CUSTOM_LANGUAGE_PATHS,
     "backend/language_packs.py",
     "frontend/language_pack_settings.py",
@@ -130,6 +140,43 @@ REQUIRED_RUNTIME_PATHS = (
     "chrome_extensions/incremento_companion/manifest.json",
     "chrome_extensions/incremento_companion/dist",
 )
+REQUIRED_ARTIFACT_PATHS = (
+    *REQUIRED_RUNTIME_PATHS,
+    "SOURCE_ARTIFACT.json",
+    f"{CHROME_EXTENSION_ROOT.as_posix()}/LICENSE",
+    f"{CHROME_EXTENSION_ROOT.as_posix()}/SOURCE.md",
+    f"{CHROME_EXTENSION_ROOT.as_posix()}/SOURCE_ARTIFACT.json",
+)
+SOURCE_FILES = (
+    "pyproject.toml", "pytest.ini", "requirements-dev.txt", "LICENSING_AUDIT.md",
+    ".gitignore", ".github/dependabot.yml", ".github/workflows/verify.yml",
+    "frontend/package.json", "frontend/package-lock.json", "frontend/eslint.config.js",
+    "frontend/vite.config.js", "frontend/vite.extension.config.js",
+    "chrome_extensions/incremento_companion/package.json",
+    "chrome_extensions/incremento_companion/README.md",
+    "scripts/package_addon.py", "scripts/compile_i18n.py", "scripts/i18n_inventory.py",
+    "scripts/build_translation_catalog.py", "scripts/i18n_literal_exceptions.json",
+    "scripts/generate_icons.py", "scripts/prepare_firefox_companion.py", "scripts/build_pdfjs.mjs",
+    "scripts/mutation_smoke.py", "scripts/repair_pipeline.py", "scripts/llm_repair_loop.py",
+    "scripts/llm_repair_eval.py", "scripts/disposable_anki_smoke.py",
+    "tests/fixtures/djvu/text_and_blank.djvu", "tests/fixtures/djvu/README.md",
+    "tests/repair_cases/README.md", "tests/repair_cases/schema.json",
+    "tests/repair_cases/absolute_path_rejection.json", "tests/repair_cases/credential_rejection.json",
+    "tests/repair_cases/prompt_injection_framing.json", "tests/repair_cases/email_rejection.json",
+    "tests/repair_cases/url_rejection.json", "tests/repair_cases/path_traversal_protection.json",
+    "tests/repair_cases/naked_credential_rejection.json",
+    *(Path(path).with_suffix(".po").as_posix() for path in PYTHON_CATALOG_PATHS),
+)
+SOURCE_TREES = (
+    "frontend/src", "frontend/tests", "chrome_extensions/incremento_companion/src",
+    "chrome_extensions/incremento_companion/tests", "tests", "vendor/pdfjs",
+)
+REQUIRED_SOURCE_PATHS = (
+    *SOURCE_FILES, "frontend/src/main.jsx", "chrome_extensions/incremento_companion/src/popup/main.jsx",
+    "vendor/pdfjs/README.md", "vendor/pdfjs/manifest.json", "vendor/pdfjs/LICENSE",
+    "vendor/pdfjs/pdf.mjs", "vendor/pdfjs/pdf.worker.mjs", "vendor/pdfjs/pdf.sandbox.mjs",
+)
+SOURCE_SUFFIXES = {".py", ".js", ".jsx", ".mjs", ".json", ".md", ".txt", ".css", ".html"}
 EXCLUDE_DIR_NAMES = {
     ".git",
     ".idea",
@@ -162,6 +209,7 @@ EXCLUDE_FILE_NAMES = {
 @dataclass
 class BuildSummary:
     artifact_path: Path
+    source_path: Path
     staged_root: Path
     include_meta: bool
     rebuilt_frontend: bool
@@ -252,6 +300,7 @@ def main() -> int:
     if args.release:
         run_i18n_check(repo_root)
     ensure_required_runtime_paths(repo_root)
+    source_inputs = collect_source_inputs(repo_root)
 
     rebuilt_frontend = False
     rebuilt_extension = False
@@ -289,6 +338,13 @@ def main() -> int:
         include_meta=args.include_meta,
         human_version=args.human_version or default_human_version(),
     )
+    source_path = artifact_path.with_name(f"{artifact_path.stem}-source.zip")
+    create_source_archive(repo_root, staged_root, source_inputs, source_path)
+    with source_path.open("rb") as source_file:
+        source_digest = hashlib.file_digest(source_file, "sha256").hexdigest()
+    metadata = json.dumps({"archive": source_path.name, "sha256": source_digest}, indent=2) + "\n"
+    for directory in (staged_root, staged_root / CHROME_EXTENSION_ROOT):
+        (directory / "SOURCE_ARTIFACT.json").write_text(metadata, encoding="utf-8")
     create_archive(output_dir, staged_root, artifact_path)
     validate_archive(artifact_path)
 
@@ -297,6 +353,7 @@ def main() -> int:
 
     summary = BuildSummary(
         artifact_path=artifact_path,
+        source_path=source_path,
         staged_root=staged_root,
         include_meta=args.include_meta,
         rebuilt_frontend=rebuilt_frontend,
@@ -316,6 +373,9 @@ def validate_repo_root(repo_root: Path) -> None:
 
 
 def ensure_required_runtime_paths(repo_root: Path) -> None:
+    for relative in THIRD_PARTY_NOTICE_PATHS:
+        if (repo_root / relative).is_symlink():
+            raise SystemExit(f"Symlink third-party notice is not allowed: {relative}")
     missing = [relpath for relpath in REQUIRED_RUNTIME_PATHS if not (repo_root / relpath).exists()]
     if missing:
         raise SystemExit(
@@ -323,6 +383,80 @@ def ensure_required_runtime_paths(repo_root: Path) -> None:
             + "\n".join(f"- {path}" for path in missing)
             + "\n\nRun the frontend build if web/dist/pdf_viewer.js is missing."
         )
+
+
+def validate_source_input(path: Path, repo_root: Path) -> None:
+    for component in (path, *path.parents):
+        if component == repo_root:
+            break
+        if component.is_symlink():
+            raise SystemExit(f"Symlink source input is not allowed: {path.relative_to(repo_root)}")
+    if not path.is_file():
+        raise SystemExit(f"Missing required source input: {path.relative_to(repo_root)}")
+
+
+def collect_source_inputs(repo_root: Path) -> list[Path]:
+    """Select build/test source from dedicated roots without local or runtime data."""
+    for relative in REQUIRED_SOURCE_PATHS:
+        validate_source_input(repo_root / relative, repo_root)
+    inputs = {repo_root / relative for relative in SOURCE_FILES}
+    vendor = repo_root / "vendor/pdfjs"
+    try:
+        source_archives = json.loads((vendor / "manifest.json").read_text(encoding="utf-8"))["source_archives"]
+        if not isinstance(source_archives, list) or not source_archives:
+            raise ValueError("source_archives must be a nonempty list")
+        for entry in source_archives:
+            name = entry["archive"]
+            parts = name.split("/")
+            if (len(parts) != 2 or parts[0] != "sources" or parts[1].startswith(".")
+                    or "\\" in name or not name.endswith(".tar.gz")):
+                raise SystemExit(f"Invalid vendor source archive path: {name}")
+            path = vendor / name
+            validate_source_input(path, repo_root)
+            with path.open("rb") as source_file:
+                if hashlib.file_digest(source_file, "sha256").hexdigest() != entry["sha256"]:
+                    raise SystemExit(f"Vendor source archive checksum mismatch: {name}")
+            inputs.add(path)
+    except (KeyError, TypeError, ValueError, AttributeError) as exc:
+        raise SystemExit(f"Invalid vendor source archive manifest: {exc}") from exc
+    excluded = EXCLUDE_DIR_NAMES | {"security_private", ".dependencies"}
+    # Tests are a deliberate source input, although excluded from runtime packages.
+    excluded.remove("tests")
+    for relative in SOURCE_TREES:
+        root = repo_root / relative
+        if root.is_symlink() or not root.is_dir():
+            raise SystemExit(f"Missing or symlinked source directory: {relative}")
+        for path in sorted(root.rglob("*")):
+            parts = path.relative_to(root).parts
+            if any(part.startswith(".") or part in excluded for part in parts):
+                continue
+            if path.name in {"AGENT.md", "AGENTS.md", "meta.json", "SOURCE_ARTIFACT.json"}:
+                continue
+            if relative == "tests" and (parts[0] == "fixtures" or path.suffix not in {".py", ".mjs"}):
+                continue
+            if path.is_symlink():
+                raise SystemExit(f"Symlink source input is not allowed: {path.relative_to(repo_root)}")
+            if path.is_file() and (path.suffix in SOURCE_SUFFIXES or path.name in {"LICENSE", "NOTICE", "COPYING"}):
+                validate_source_input(path, repo_root)
+                inputs.add(path)
+    return sorted(inputs)
+
+
+def create_source_archive(repo_root: Path, staged_root: Path, source_inputs: list[Path], source_path: Path) -> None:
+    """Pair the exact staged runtime with editable code and its build inputs."""
+    files = {path.relative_to(staged_root).as_posix(): path for path in staged_root.rglob("*")
+             if path.is_file() and path.name not in {"meta.json", "SOURCE_ARTIFACT.json"}}
+    files.update({path.relative_to(repo_root).as_posix(): path for path in source_inputs})
+    with tempfile.TemporaryDirectory(dir=source_path.parent) as temporary:
+        candidate = Path(temporary) / source_path.name
+        with ZipFile(candidate, "w", compression=ZIP_DEFLATED) as archive:
+            for relative, path in sorted(files.items()):
+                archive.write(path, relative)
+        with ZipFile(candidate) as archive:
+            corrupt = archive.testzip()
+            if corrupt is not None:
+                raise SystemExit(f"Source archive is corrupt at: {corrupt}")
+        candidate.replace(source_path)
 
 
 def run_i18n_check(repo_root: Path) -> None:
@@ -531,6 +665,9 @@ def stage_web(repo_root: Path, staged_root: Path) -> None:
 def stage_chrome_extension(repo_root: Path, staged_root: Path) -> None:
     src = repo_root / CHROME_EXTENSION_ROOT
     dst = staged_root / CHROME_EXTENSION_ROOT
+    copy_file(repo_root / "THIRD_PARTY_NOTICES.txt", dst / "THIRD_PARTY_NOTICES.txt")
+    copy_file(repo_root / "SOURCE.md", dst / "SOURCE.md")
+    copy_file(repo_root / "LICENSE", dst / "LICENSE")
 
     for name in CHROME_EXTENSION_ROOT_FILES:
         path = src / name
@@ -599,7 +736,7 @@ def validate_archive(artifact_path: Path) -> None:
         if corrupt is not None:
             raise SystemExit(f"Packaged archive is corrupt at: {corrupt}")
         names = {name.rstrip("/") for name in zf.namelist() if name.rstrip("/")}
-    missing = sorted(path for path in REQUIRED_RUNTIME_PATHS if path not in names)
+    missing = sorted(path for path in REQUIRED_ARTIFACT_PATHS if path not in names)
     if missing:
         raise SystemExit(
             "Packaged archive is missing required runtime paths:\n"
@@ -628,6 +765,7 @@ def validate_archive(artifact_path: Path) -> None:
 def print_summary(summary: BuildSummary) -> None:
     print("\n[package_addon] Package created")
     print(f"  install file: {summary.artifact_path}")
+    print(f"  matching source: {summary.source_path}")
     print(f"  staged folder: {summary.staged_root}")
     print("  user_files: excluded")
     print(f"  meta.json: {'included' if summary.include_meta else 'excluded'}")

@@ -159,6 +159,55 @@ def test_cache_swap_failure_restores_archive_and_index(editable_document, monkey
     assert conn.execute("SELECT text FROM epub_text_index WHERE card_id=41").fetchone() == ("Old content",)
 
 
+def test_edit_flushes_writable_files_before_atomic_replacement(editable_document, monkeypatch):
+    import paths
+
+    addon, profile, _source, target, conn = editable_document
+    snapshot = markdown_manager.load_markdown_document(addon, profile, target.name)
+    original = target.read_bytes()
+    opened = []
+    flushed = []
+    open_file = Path.open
+    fsync = markdown_manager.os.fsync
+    replace = markdown_manager.os.replace
+
+    def track_open(path, *args, **kwargs):
+        stream = open_file(path, *args, **kwargs)
+        opened.append((path, stream))
+        return stream
+
+    def windows_fsync(descriptor):
+        for path, stream in opened:
+            if not stream.closed and stream.fileno() == descriptor:
+                if not stream.writable():
+                    raise PermissionError("Windows requires write access to flush a file")
+                flushed.append(path)
+        return fsync(descriptor)
+
+    def windows_replace(source, destination):
+        if any(not stream.closed and path in (source, destination) for path, stream in opened):
+            raise PermissionError("Windows cannot replace an open file")
+        return replace(source, destination)
+
+    monkeypatch.setattr(Path, "open", track_open)
+    monkeypatch.setattr(markdown_manager.os, "fsync", windows_fsync)
+    monkeypatch.setattr(markdown_manager.os, "replace", windows_replace)
+
+    markdown_manager.save_markdown_document(
+        addon, profile, 41, target.name, "# Revised\n\nSaved on Windows", title="Lesson",
+        expected_revision=snapshot.revision,
+    )
+
+    assert len(flushed) == 2, "both the recovery archive and the replacement must reach disk"
+    assert all(stream.closed for _path, stream in opened)
+    assert paths.get_markdown_backup_path(addon, profile, target.name).read_bytes() == original
+    assert markdown_manager.load_markdown_document(addon, profile, target.name).text == "# Revised\n\nSaved on Windows"
+    assert conn.execute("SELECT text FROM epub_text_index WHERE card_id=41").fetchone() == (
+        "Revised Revised Saved on Windows",
+    )
+    assert not list(target.parent.glob(".markdown-edit-*"))
+
+
 def _sections(prepared, tmp_path, monkeypatch):
     root = tmp_path / "extracted"
     monkeypatch.setattr(epub_manager, "get_epub_extract_root", lambda profile=None: str(root))
